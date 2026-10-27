@@ -21,8 +21,11 @@ Everything in this repository is in English: code, comments, docs, commit messag
    nothing else in the contract. A feature may take several sessions.
 3. **Tests first.** Write the failing test, then the code. When every step is ticked, run the
    feature's `verify` command and the contract's evidence until they pass.
-4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a message
-   that starts with the feature id, e.g. `F05: Add key store with 0700/0600 permissions`.
+4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a
+   [Conventional Commits](https://www.conventionalcommits.org) message scoped to the feature id,
+   e.g. `feat(F05): add key store with 0700/0600 permissions`. Types: `feat`, `fix`, `docs`,
+   `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`, `revert`. `harness/commit-msg.sh`
+   enforces it in the commit-msg hook, the loop and CI.
 
 ## Protect the context window
 

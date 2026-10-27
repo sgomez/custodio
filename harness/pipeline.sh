@@ -30,7 +30,7 @@ if [ ! -f SPEC.md ]; then
   HARNESS_ROLE=planner claude -p --dangerously-skip-permissions --agent planner \
     "Write SPEC.md from IDEA.md." >"$LOG_DIR/$(date +%Y%m%d-%H%M%S)-planner.log" 2>&1 || true
   [ -s SPEC.md ] || die "The planner did not write SPEC.md; see $LOG_DIR."
-  commit "Add spec drafted by the planner" SPEC.md
+  commit "docs: add spec drafted by the planner" SPEC.md
 fi
 gate spec SPEC.md
 
@@ -43,7 +43,7 @@ if [ ! -f features.json ]; then
   harness/validate-features.sh
   jq -e 'all(.features[]; .passes == false)' features.json >/dev/null \
     || die "The initializer marked features as passing."
-  commit "Add feature list drafted by the initializer" features.json
+  commit "chore: add feature list drafted by the initializer" features.json
 fi
 harness/validate-features.sh
 gate features features.json

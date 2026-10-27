@@ -1,4 +1,4 @@
-# Fast checks on commit, slow ones on push. Install with `lefthook install`.
+# Commit message format and fast checks on commit, slow ones on push. Install with `lefthook install`.
 pre-commit:
   commands:
     check:
@@ -8,3 +8,8 @@ pre-push:
   commands:
     check-slow:
       run: just check-slow
+
+commit-msg:
+  commands:
+    conventional:
+      run: harness/commit-msg.sh {1}

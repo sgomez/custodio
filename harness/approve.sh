@@ -20,5 +20,5 @@ touch APPROVALS
 grep -v "^$what " APPROVALS > APPROVALS.tmp || true
 echo "$line" >> APPROVALS.tmp
 mv APPROVALS.tmp APPROVALS
-commit "Approve $what" APPROVALS
+commit "chore: approve $what" APPROVALS
 log "Approved $what."

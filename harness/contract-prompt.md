@@ -23,4 +23,4 @@ Every point in the feature description must appear under Evidence, with evidence
 if the feature were wrong. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.
 
-Do not write code in this session. Commit the contract with a message like `F09: Add contract`.
+Do not write code in this session. Commit the contract with a message like `docs(F09): add contract`.

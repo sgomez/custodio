@@ -47,6 +47,15 @@ stash_leftovers() {
   fi
 }
 
+# bad_commits <id>: prints the feature's commits that are not Conventional Commits, and how to fix them.
+bad_commits() {
+  local base out
+  base=$(cat "$STATE/$1.base")
+  out=$(harness/commit-msg.sh --range "$base..HEAD" 2>&1) && return 1
+  # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
+  printf '%s\n\nRewrite them, e.g. as one commit: `git reset --soft %s && git commit -m "feat(%s): ..."`.\n' "$out" "$base" "$1"
+}
+
 findings() { { printf '# Findings for %s\n\n' "$1"; cat; } > NEXT_FINDINGS.md; log "$1: $2"; }
 
 next_feature() {
@@ -80,6 +89,10 @@ $(cat "$STATE/$id.contract-review")"
       echo "The previous session did not commit contracts/$id.md." > "$STATE/$id.contract-review"
       continue
     fi
+    if bad_commits "$id" > "$STATE/$id.commits"; then
+      mv "$STATE/$id.commits" "$STATE/$id.contract-review"
+      continue
+    fi
     run_claude evaluator "$LOG_DIR/$stamp-review.log" --agent evaluator \
       "Mode: contract. Review contracts/$id.md for this feature: $feature"
     if [ "$(verdict "$LOG_DIR/$stamp-review.log")" = APPROVED ]; then
@@ -109,7 +122,7 @@ while true; do
   c="contracts/$id.md"
 
   # 1. Contract
-  [ -f "$STATE/$id.contract" ] && [ -f "$c" ] || negotiate_contract "$id" "$feature"
+  if [ ! -f "$STATE/$id.contract" ] || [ ! -f "$c" ]; then negotiate_contract "$id" "$feature"; fi
 
   # 2. Build
   n=$(bump "$id.sessions")
@@ -128,6 +141,10 @@ Approved contract: $c"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
     echo "The previous session made no commit. Commit your work at the end of every session." \
       | findings "$id" "no commit"
+    continue
+  fi
+  if bad_commits "$id" > "$STATE/$id.commits"; then
+    findings "$id" "commit messages" < "$STATE/$id.commits"
     continue
   fi
 
@@ -165,7 +182,7 @@ Approved contract: $c"
   if [ "$(verdict "$LOG_DIR/$stamp-eval.log")" = PASS ]; then
     jq --arg id "$id" '(.features[] | select(.id == $id) | .passes) = true' features.json > features.json.tmp
     mv features.json.tmp features.json
-    commit "$id: mark as passing (verify + evaluator)" features.json
+    commit "chore($id): mark as passing (verify + evaluator)" features.json
     rm -f NEXT_FINDINGS.md "$STATE/$id".*
     log "$id: PASS"
   else

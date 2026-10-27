@@ -50,7 +50,8 @@ Stop at any time with `touch AGENT_STOP`. Logs are in `.harness/logs/`.
 
 Agents commit on the current branch inside the container, as you: the planner's spec, the
 initializer's feature list, each contract and each builder session. The loop commits
-`<id>: mark as passing` when a feature passes. Nothing is pushed and no PRs are opened.
+`chore(<id>): mark as passing` when a feature passes. Every message must be a Conventional Commit
+(`harness/commit-msg.sh`): the loop sends a session back if its commits are not, and CI fails. Nothing is pushed and no PRs are opened.
 
 ## Files
 

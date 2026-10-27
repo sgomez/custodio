@@ -15,6 +15,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  commits:
+    name: conventional commits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A new branch pushes with an all-zero `before`; check only its tip then.
+          if [ "${BASE//0/}" = "" ]; then BASE="$HEAD~1"; fi
+          harness/commit-msg.sh --range "$BASE..$HEAD"
+
   check:
     name: just check
     runs-on: ubuntu-24.04
@@ -62,7 +81,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [check, check-slow]
+    needs: [commits, check, check-slow]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
