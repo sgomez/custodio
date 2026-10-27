@@ -12,3 +12,10 @@ unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
 indexing_slicing = "deny"
+
+[dependencies]
+secrecy = "0.10.3"
+zeroize = "1.9.1"
+
+[dev-dependencies]
+tempfile = "3.27.0"
