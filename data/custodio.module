@@ -1,0 +1,5 @@
+# p11-kit module file for Custodio: installed as /usr/share/p11-kit/modules/custodio.module.
+# The library path is the packaged location (the Cargo artifact is libcustodio_pkcs11.so).
+module: /usr/lib/custodio/libcustodio_pkcs11.so
+critical: no
+trust-policy: no

@@ -1,6 +1,15 @@
 //! Custodio PKCS#11 module.
 //!
-//! This is the only crate allowed to contain `unsafe` code (the PKCS#11 FFI layer).
+//! This is the only crate allowed to contain `unsafe` code (the PKCS#11 FFI layer, in `ffi`).
+//! The module lists one token per key, finds the certificate and the private key object, and
+//! forwards `C_Sign` to the `custodiod` service over D-Bus. Every other function returns
+//! `CKR_FUNCTION_NOT_SUPPORTED`.
+
+pub mod backend;
+mod ffi;
+pub mod module;
+pub mod token;
+mod unsupported;
 
 /// Name of the module, reported in the token info.
 pub const MODULE_NAME: &str = "custodio-pkcs11";

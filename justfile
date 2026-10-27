@@ -32,8 +32,10 @@ test:
 check: lint test
 
 # Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
+# The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
 test-integration:
     cargo test -p custodiod --locked --test dbus --test polkit
+    cargo test -p custodio-pkcs11 --locked --test cryptoki
 
 # Slow checks (later features add to it): everything in `check`, the integration tests and the fuzz targets building.
 check-slow: check test-integration fuzz-build

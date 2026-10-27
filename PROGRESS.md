@@ -92,3 +92,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (Import CLI). `custodiod` path dependency needed an explicit `version` for `cargo deny` wildcard ban.
 - Not done / known issues: `tty::Terminal` is not tested (no tty in CI); the round-trip test needs `dbus-daemon` (runs in `just test`); no `list` subcommand; ImportP12 is still not polkit-guarded.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F11 — 1
+- Done: `custodio-pkcs11` module. `ffi` (unsafe, pointer checks, panic guard, `pthread_atfork`), `module` (pointer-free logic over a `Backend` trait; unit tests with a fake), `token` (cert → attributes), `backend` (D-Bus client, connection per call), `unsupported` (generated stubs). `data/custodio.module` for p11-kit. `tests/cryptoki.rs` loads the built `.so` through `cryptoki` against a private `dbus-daemon`, fake polkit and the real service, in a child process with `DBUS_SYSTEM_BUS_ADDRESS` set: list/find/sign (RSA PKCS, PSS, ECDSA, compared with the service's own deterministic signatures), denial (each attempt asks), unsupported functions, no service, 8 threads, `fork` while another thread uses the module. `just test-integration` runs it; the test builds the cdylib itself. verify passes.
+- Decisions: see docs/decisions.md (PKCS#11 module). Library file is `libcustodio_pkcs11.so` (Cargo forbids hyphens).
+- Not done / known issues: no fuzz target for PKCS#11 arguments and no Miri/ASAN run of the FFI layer yet (SPEC asks for both); tested with `cryptoki` only, not yet with `pkcs11-tool`/NSS/p11-kit; slot ids are indexes, so they can shift if keys are added between `C_GetSlotList` calls; `C_GetSlotList` ignores `tokenPresent` and `C_WaitForSlotEvent` is unsupported.
+- Next session should: nothing specific; a later feature can add the FFI fuzz target and Miri run.

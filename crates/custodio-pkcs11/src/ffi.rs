@@ -1,0 +1,598 @@
+//! The C side: raw pointers in, `CK_RV` out. Every function checks its pointers, converts them
+//! to safe values and calls [`Module`]; a panic is caught here and becomes `CKR_GENERAL_ERROR`,
+//! because unwinding into C is undefined behaviour.
+// PKCS#11 names its functions and fields in camel case with underscores.
+#![allow(non_snake_case)]
+
+use std::cell::RefCell;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::ptr;
+use std::sync::Once;
+
+use cryptoki_sys::{
+    CK_ATTRIBUTE_PTR, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS, CK_FLAGS, CK_FUNCTION_LIST,
+    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INFO_PTR, CK_MECHANISM, CK_MECHANISM_INFO,
+    CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE,
+    CK_OBJECT_HANDLE_PTR, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
+    CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
+    CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
+    CK_UNAVAILABLE_INFORMATION, CK_VERSION, CK_VOID_PTR, CKF_EC_F_P, CKF_EC_NAMEDCURVE,
+    CKF_OS_LOCKING_OK, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED,
+    CKF_TOKEN_PRESENT, CKF_WRITE_PROTECTED, CKM_ECDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS,
+    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CANT_LOCK, CKR_GENERAL_ERROR,
+    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OK, CKR_SESSION_PARALLEL_NOT_SUPPORTED,
+    CKR_TOKEN_WRITE_PROTECTED, CKS_RO_PUBLIC_SESSION,
+};
+
+use crate::backend::DbusBackend;
+use crate::module::{ForkGuard, Mechanism, Module, SignOutcome, mechanisms};
+use crate::token::Attribute;
+use crate::unsupported;
+
+static MODULE: Module<DbusBackend> = Module::new(DbusBackend);
+
+const MANUFACTURER: &str = "Custodio";
+const SERIAL_LEN: usize = 16;
+/// Search templates and attribute lists above this size are refused rather than allocated.
+const MAX_ATTRIBUTES: usize = 64;
+/// Largest value of a search template attribute.
+const MAX_ATTRIBUTE_LEN: usize = 16 * 1024;
+
+type Rv<T> = Result<T, CK_RV>;
+
+fn guard(f: impl FnOnce() -> Rv<()>) -> CK_RV {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(Ok(())) => CKR_OK,
+        Ok(Err(rv)) => rv,
+        Err(_) => CKR_GENERAL_ERROR,
+    }
+}
+
+fn to_usize(v: CK_ULONG) -> Rv<usize> {
+    usize::try_from(v).map_err(|_| CKR_ARGUMENTS_BAD)
+}
+
+fn to_ulong(v: usize) -> Rv<CK_ULONG> {
+    CK_ULONG::try_from(v).map_err(|_| CKR_GENERAL_ERROR)
+}
+
+fn padded<const N: usize>(text: &str) -> [u8; N] {
+    let mut out = [b' '; N];
+    for (dst, src) in out.iter_mut().zip(text.bytes()) {
+        *dst = src;
+    }
+    out
+}
+
+/// A non-null pointer to write one value through.
+unsafe fn out<'a, T>(p: *mut T) -> Rv<&'a mut T> {
+    // SAFETY: the caller promises that a non-null `p` is valid for writes of `T`.
+    unsafe { p.as_mut() }.ok_or(CKR_ARGUMENTS_BAD)
+}
+
+/// `len` bytes at `p`; an empty slice for `len == 0` whatever `p` is.
+unsafe fn input<'a>(p: *const u8, len: CK_ULONG) -> Rv<&'a [u8]> {
+    let len = to_usize(len)?;
+    if len == 0 {
+        return Ok(&[]);
+    }
+    if p.is_null() || isize::try_from(len).is_err() {
+        return Err(CKR_ARGUMENTS_BAD);
+    }
+    // SAFETY: non-null, and the caller promises `len` readable bytes at `p`.
+    Ok(unsafe { std::slice::from_raw_parts(p, len) })
+}
+
+/// The usual two-call output of a list: `dst` null asks for the count.
+unsafe fn write_list<T: Copy>(items: &[T], dst: *mut T, count: CK_ULONG_PTR) -> Rv<()> {
+    // SAFETY: `count` is checked for null; validity is the caller's promise.
+    let count = unsafe { out(count) }?;
+    let needed = to_ulong(items.len())?;
+    if dst.is_null() {
+        *count = needed;
+        return Ok(());
+    }
+    let room = *count;
+    *count = needed;
+    if room < needed {
+        return Err(CKR_BUFFER_TOO_SMALL);
+    }
+    // SAFETY: `dst` is non-null and the caller promises room for `room >= needed` items.
+    unsafe { ptr::copy_nonoverlapping(items.as_ptr(), dst, items.len()) };
+    Ok(())
+}
+
+unsafe fn template(attrs: CK_ATTRIBUTE_PTR, count: CK_ULONG) -> Rv<Vec<Attribute>> {
+    let count = to_usize(count)?;
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    if attrs.is_null() || count > MAX_ATTRIBUTES {
+        return Err(CKR_ARGUMENTS_BAD);
+    }
+    // SAFETY: non-null, and the caller promises `count` attributes.
+    let attrs = unsafe { std::slice::from_raw_parts(attrs, count) };
+    attrs
+        .iter()
+        .map(|a| {
+            if to_usize(a.ulValueLen)? > MAX_ATTRIBUTE_LEN {
+                return Err(CKR_ARGUMENTS_BAD);
+            }
+            // SAFETY: the caller promises `ulValueLen` readable bytes at `pValue`.
+            let value = unsafe { input(a.pValue.cast::<u8>(), a.ulValueLen) }?;
+            Ok((a.type_, value.to_vec()))
+        })
+        .collect()
+}
+
+// Fork safety. The state lock is held by the forking thread from `prepare` until `parent` or
+// `child` runs, so the child never inherits it locked by a thread that no longer exists. The
+// module keeps no connection or thread between calls, so nothing else needs repair.
+thread_local! {
+    static FORK_GUARD: RefCell<Option<ForkGuard<'static>>> = const { RefCell::new(None) };
+}
+
+extern "C" fn fork_prepare() {
+    let guard = MODULE.lock_for_fork();
+    let _ = FORK_GUARD.try_with(|slot| *slot.borrow_mut() = Some(guard));
+}
+
+extern "C" fn fork_release() {
+    let _ = FORK_GUARD.try_with(|slot| slot.borrow_mut().take());
+}
+
+fn register_fork_handlers() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: the three handlers are plain `extern "C"` functions that live for the whole
+        // process. A failure only means no handlers, which is the state before this call.
+        unsafe {
+            libc::pthread_atfork(Some(fork_prepare), Some(fork_release), Some(fork_release));
+        }
+    });
+}
+
+unsafe extern "C" fn C_Initialize(args: CK_VOID_PTR) -> CK_RV {
+    guard(|| {
+        if !args.is_null() {
+            // SAFETY: the caller passes a `CK_C_INITIALIZE_ARGS` or NULL.
+            let args = unsafe { &*args.cast::<CK_C_INITIALIZE_ARGS>() };
+            let callbacks = [
+                args.CreateMutex.is_some(),
+                args.DestroyMutex.is_some(),
+                args.LockMutex.is_some(),
+                args.UnlockMutex.is_some(),
+            ];
+            if !args.pReserved.is_null() {
+                return Err(CKR_ARGUMENTS_BAD);
+            }
+            // Our own locking is always on; custom mutex callbacks are not used, and a caller
+            // that insists on them (without allowing OS locking) is told so.
+            let all = callbacks.iter().all(|c| *c);
+            let none = callbacks.iter().all(|c| !*c);
+            if !all && !none {
+                return Err(CKR_ARGUMENTS_BAD);
+            }
+            if all && args.flags & CKF_OS_LOCKING_OK == 0 {
+                return Err(CKR_CANT_LOCK);
+            }
+        }
+        register_fork_handlers();
+        MODULE.initialize()
+    })
+}
+
+unsafe extern "C" fn C_Finalize(reserved: CK_VOID_PTR) -> CK_RV {
+    guard(|| {
+        if !reserved.is_null() {
+            return Err(CKR_ARGUMENTS_BAD);
+        }
+        MODULE.finalize()
+    })
+}
+
+unsafe extern "C" fn C_GetInfo(info: CK_INFO_PTR) -> CK_RV {
+    guard(|| {
+        // SAFETY: checked for null; validity is the caller's promise.
+        let info = unsafe { out(info) }?;
+        *info = CK_INFO {
+            cryptokiVersion: CK_VERSION {
+                major: 2,
+                minor: 40,
+            },
+            manufacturerID: padded(MANUFACTURER),
+            flags: 0,
+            libraryDescription: padded("Custodio PKCS#11 module"),
+            libraryVersion: CK_VERSION { major: 0, minor: 1 },
+        };
+        Ok(())
+    })
+}
+
+/// The only exported symbol: the entry point every PKCS#11 loader looks for.
+///
+/// # Safety
+/// `list` must be NULL or valid for a write of one pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn C_GetFunctionList(list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
+    guard(|| {
+        // SAFETY: checked for null; validity is the caller's promise.
+        let list = unsafe { out(list) }?;
+        *list = ptr::from_ref(&FUNCTION_LIST).cast_mut();
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_GetSlotList(
+    _token_present: u8,
+    list: CK_SLOT_ID_PTR,
+    count: CK_ULONG_PTR,
+) -> CK_RV {
+    // Every slot holds a token, so `token_present` does not change the answer.
+    guard(|| {
+        let slots = MODULE.slot_list()?;
+        // SAFETY: pointers are checked inside; validity is the caller's promise.
+        unsafe { write_list(&slots, list, count) }
+    })
+}
+
+unsafe extern "C" fn C_GetSlotInfo(slot: CK_SLOT_ID, info: CK_SLOT_INFO_PTR) -> CK_RV {
+    guard(|| {
+        let token = MODULE.token(slot)?;
+        // SAFETY: checked for null; validity is the caller's promise.
+        let info = unsafe { out(info) }?;
+        *info = CK_SLOT_INFO {
+            slotDescription: padded(&format!("Custodio key {}", token.id)),
+            manufacturerID: padded(MANUFACTURER),
+            flags: CKF_TOKEN_PRESENT,
+            hardwareVersion: CK_VERSION { major: 0, minor: 0 },
+            firmwareVersion: CK_VERSION { major: 0, minor: 0 },
+        };
+        Ok(())
+    })
+}
+
+/// A serial number that tells tokens apart: FNV-1a of the key id, in hex.
+fn serial(id: &str) -> [u8; SERIAL_LEN] {
+    let hash = id.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    });
+    padded(&format!("{hash:016x}"))
+}
+
+unsafe extern "C" fn C_GetTokenInfo(slot: CK_SLOT_ID, info: CK_TOKEN_INFO_PTR) -> CK_RV {
+    guard(|| {
+        let token = MODULE.token(slot)?;
+        // SAFETY: checked for null; validity is the caller's promise.
+        let info = unsafe { out(info) }?;
+        let unavailable = CK_UNAVAILABLE_INFORMATION;
+        *info = CK_TOKEN_INFO {
+            label: padded(&token.id),
+            manufacturerID: padded(MANUFACTURER),
+            model: padded("Custodio key"),
+            serialNumber: serial(&token.id),
+            flags: CKF_TOKEN_INITIALIZED | CKF_WRITE_PROTECTED,
+            ulMaxSessionCount: unavailable,
+            ulSessionCount: unavailable,
+            ulMaxRwSessionCount: 0,
+            ulRwSessionCount: 0,
+            ulMaxPinLen: 0,
+            ulMinPinLen: 0,
+            ulTotalPublicMemory: unavailable,
+            ulFreePublicMemory: unavailable,
+            ulTotalPrivateMemory: unavailable,
+            ulFreePrivateMemory: unavailable,
+            hardwareVersion: CK_VERSION { major: 0, minor: 0 },
+            firmwareVersion: CK_VERSION { major: 0, minor: 0 },
+            utcTime: [b' '; 16],
+        };
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_GetMechanismList(
+    slot: CK_SLOT_ID,
+    list: *mut CK_MECHANISM_TYPE,
+    count: CK_ULONG_PTR,
+) -> CK_RV {
+    guard(|| {
+        let mechs = mechanisms(&*MODULE.token(slot)?);
+        // SAFETY: pointers are checked inside; validity is the caller's promise.
+        unsafe { write_list(&mechs, list, count) }
+    })
+}
+
+unsafe extern "C" fn C_GetMechanismInfo(
+    slot: CK_SLOT_ID,
+    mechanism: CK_MECHANISM_TYPE,
+    info: CK_MECHANISM_INFO_PTR,
+) -> CK_RV {
+    guard(|| {
+        let token = MODULE.token(slot)?;
+        if !mechanisms(&token).contains(&mechanism) {
+            return Err(CKR_MECHANISM_INVALID);
+        }
+        // SAFETY: checked for null; validity is the caller's promise.
+        let info = unsafe { out(info) }?;
+        let (bits, flags) = match mechanism {
+            CKM_ECDSA => (256, CKF_SIGN | CKF_EC_F_P | CKF_EC_NAMEDCURVE),
+            _ => (2048, CKF_SIGN),
+        };
+        *info = CK_MECHANISM_INFO {
+            ulMinKeySize: bits,
+            ulMaxKeySize: bits,
+            flags,
+        };
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_OpenSession(
+    slot: CK_SLOT_ID,
+    flags: CK_FLAGS,
+    _application: CK_VOID_PTR,
+    _notify: cryptoki_sys::CK_NOTIFY,
+    session: CK_SESSION_HANDLE_PTR,
+) -> CK_RV {
+    guard(|| {
+        if flags & CKF_SERIAL_SESSION == 0 {
+            return Err(CKR_SESSION_PARALLEL_NOT_SUPPORTED);
+        }
+        if flags & CKF_RW_SESSION != 0 {
+            return Err(CKR_TOKEN_WRITE_PROTECTED);
+        }
+        // SAFETY: checked for null; validity is the caller's promise.
+        let session = unsafe { out(session) }?;
+        *session = MODULE.open_session(slot)?;
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_CloseSession(session: CK_SESSION_HANDLE) -> CK_RV {
+    guard(|| MODULE.close_session(session))
+}
+
+unsafe extern "C" fn C_CloseAllSessions(slot: CK_SLOT_ID) -> CK_RV {
+    guard(|| MODULE.close_all_sessions(slot))
+}
+
+unsafe extern "C" fn C_GetSessionInfo(
+    session: CK_SESSION_HANDLE,
+    info: CK_SESSION_INFO_PTR,
+) -> CK_RV {
+    guard(|| {
+        let slot = MODULE.session_slot(session)?;
+        // SAFETY: checked for null; validity is the caller's promise.
+        let info = unsafe { out(info) }?;
+        *info = CK_SESSION_INFO {
+            slotID: slot,
+            state: CKS_RO_PUBLIC_SESSION,
+            flags: CKF_SERIAL_SESSION,
+            ulDeviceError: 0,
+        };
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_GetAttributeValue(
+    session: CK_SESSION_HANDLE,
+    object: CK_OBJECT_HANDLE,
+    attrs: CK_ATTRIBUTE_PTR,
+    count: CK_ULONG,
+) -> CK_RV {
+    guard(|| {
+        let known = MODULE.object(session, object)?;
+        let count = to_usize(count)?;
+        if count == 0 {
+            return Ok(());
+        }
+        if attrs.is_null() || count > MAX_ATTRIBUTES {
+            return Err(CKR_ARGUMENTS_BAD);
+        }
+        // SAFETY: non-null, and the caller promises `count` attributes it lets us write.
+        let attrs = unsafe { std::slice::from_raw_parts_mut(attrs, count) };
+        let mut result = Ok(());
+        for attr in attrs {
+            let Some((_, value)) = known.iter().find(|(t, _)| *t == attr.type_) else {
+                attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
+                result = result.and(Err(Module::<DbusBackend>::missing_attribute(
+                    object, attr.type_,
+                )));
+                continue;
+            };
+            let len = to_ulong(value.len())?;
+            if attr.pValue.is_null() {
+                attr.ulValueLen = len;
+            } else if attr.ulValueLen < len {
+                attr.ulValueLen = CK_UNAVAILABLE_INFORMATION;
+                result = result.and(Err(CKR_BUFFER_TOO_SMALL));
+            } else {
+                // SAFETY: `pValue` has room for `ulValueLen >= len` bytes, by the caller's promise.
+                unsafe {
+                    ptr::copy_nonoverlapping(value.as_ptr(), attr.pValue.cast::<u8>(), value.len());
+                }
+                attr.ulValueLen = len;
+            }
+        }
+        result
+    })
+}
+
+unsafe extern "C" fn C_FindObjectsInit(
+    session: CK_SESSION_HANDLE,
+    attrs: CK_ATTRIBUTE_PTR,
+    count: CK_ULONG,
+) -> CK_RV {
+    guard(|| {
+        // SAFETY: pointers are checked inside; validity is the caller's promise.
+        let template = unsafe { template(attrs, count) }?;
+        MODULE.find_init(session, &template)
+    })
+}
+
+unsafe extern "C" fn C_FindObjects(
+    session: CK_SESSION_HANDLE,
+    objects: CK_OBJECT_HANDLE_PTR,
+    max: CK_ULONG,
+    found: CK_ULONG_PTR,
+) -> CK_RV {
+    guard(|| {
+        // SAFETY: checked for null; validity is the caller's promise.
+        let found = unsafe { out(found) }?;
+        let max = to_usize(max)?;
+        if objects.is_null() && max > 0 {
+            return Err(CKR_ARGUMENTS_BAD);
+        }
+        let handles = MODULE.find(session, max)?;
+        for (i, handle) in handles.iter().enumerate() {
+            // SAFETY: at most `max` handles, and the caller promises room for `max`.
+            unsafe { objects.add(i).write(*handle) };
+        }
+        *found = to_ulong(handles.len())?;
+        Ok(())
+    })
+}
+
+unsafe extern "C" fn C_FindObjectsFinal(session: CK_SESSION_HANDLE) -> CK_RV {
+    guard(|| MODULE.find_final(session))
+}
+
+unsafe extern "C" fn C_SignInit(
+    session: CK_SESSION_HANDLE,
+    mechanism: CK_MECHANISM_PTR,
+    key: CK_OBJECT_HANDLE,
+) -> CK_RV {
+    guard(|| {
+        // SAFETY: checked for null; validity is the caller's promise.
+        let m: &CK_MECHANISM = unsafe { mechanism.as_ref() }.ok_or(CKR_ARGUMENTS_BAD)?;
+        let pss = if m.mechanism == CKM_RSA_PKCS_PSS {
+            if m.pParameter.is_null()
+                || to_usize(m.ulParameterLen)? != size_of::<CK_RSA_PKCS_PSS_PARAMS>()
+                || !m.pParameter.cast::<CK_RSA_PKCS_PSS_PARAMS>().is_aligned()
+            {
+                return Err(CKR_MECHANISM_PARAM_INVALID);
+            }
+            // SAFETY: non-null, aligned and exactly the size of the structure.
+            let p = unsafe { &*m.pParameter.cast::<CK_RSA_PKCS_PSS_PARAMS>() };
+            Some((p.hashAlg, p.mgf, p.sLen))
+        } else if m.mechanism == CKM_RSA_PKCS || m.mechanism == CKM_ECDSA {
+            if !m.pParameter.is_null() || m.ulParameterLen != 0 {
+                return Err(CKR_MECHANISM_PARAM_INVALID);
+            }
+            None
+        } else {
+            return Err(CKR_MECHANISM_INVALID);
+        };
+        MODULE.sign_init(session, Mechanism::new(m.mechanism, pss)?, key)
+    })
+}
+
+unsafe extern "C" fn C_Sign(
+    session: CK_SESSION_HANDLE,
+    data: CK_BYTE_PTR,
+    data_len: CK_ULONG,
+    signature: CK_BYTE_PTR,
+    signature_len: CK_ULONG_PTR,
+) -> CK_RV {
+    guard(|| {
+        // SAFETY: checked for null; validity is the caller's promise.
+        let signature_len = unsafe { out(signature_len) }?;
+        // SAFETY: the caller promises `data_len` readable bytes at `data`.
+        let data = unsafe { input(data, data_len) }?;
+        let capacity = if signature.is_null() {
+            None
+        } else {
+            Some(to_usize(*signature_len)?)
+        };
+        match MODULE.sign(session, data, capacity)? {
+            SignOutcome::Length(n) => *signature_len = to_ulong(n)?,
+            SignOutcome::TooSmall(n) => {
+                *signature_len = to_ulong(n)?;
+                return Err(CKR_BUFFER_TOO_SMALL);
+            }
+            SignOutcome::Signature(bytes) => {
+                // SAFETY: `sign` only returns a signature when `capacity` (the caller's buffer
+                // size at the non-null `signature`) is at least its length.
+                unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), signature, bytes.len()) };
+                *signature_len = to_ulong(bytes.len())?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The function list: the calls above, and `CKR_FUNCTION_NOT_SUPPORTED` for every other entry.
+static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
+    version: CK_VERSION {
+        major: 2,
+        minor: 40,
+    },
+    C_Initialize: Some(C_Initialize),
+    C_Finalize: Some(C_Finalize),
+    C_GetInfo: Some(C_GetInfo),
+    C_GetFunctionList: Some(C_GetFunctionList),
+    C_GetSlotList: Some(C_GetSlotList),
+    C_GetSlotInfo: Some(C_GetSlotInfo),
+    C_GetTokenInfo: Some(C_GetTokenInfo),
+    C_GetMechanismList: Some(C_GetMechanismList),
+    C_GetMechanismInfo: Some(C_GetMechanismInfo),
+    C_InitToken: Some(unsupported::InitToken),
+    C_InitPIN: Some(unsupported::InitPIN),
+    C_SetPIN: Some(unsupported::SetPIN),
+    C_OpenSession: Some(C_OpenSession),
+    C_CloseSession: Some(C_CloseSession),
+    C_CloseAllSessions: Some(C_CloseAllSessions),
+    C_GetSessionInfo: Some(C_GetSessionInfo),
+    C_GetOperationState: Some(unsupported::GetOperationState),
+    C_SetOperationState: Some(unsupported::SetOperationState),
+    C_Login: Some(unsupported::Login),
+    C_Logout: Some(unsupported::Logout),
+    C_CreateObject: Some(unsupported::CreateObject),
+    C_CopyObject: Some(unsupported::CopyObject),
+    C_DestroyObject: Some(unsupported::DestroyObject),
+    C_GetObjectSize: Some(unsupported::GetObjectSize),
+    C_GetAttributeValue: Some(C_GetAttributeValue),
+    C_SetAttributeValue: Some(unsupported::SetAttributeValue),
+    C_FindObjectsInit: Some(C_FindObjectsInit),
+    C_FindObjects: Some(C_FindObjects),
+    C_FindObjectsFinal: Some(C_FindObjectsFinal),
+    C_EncryptInit: Some(unsupported::EncryptInit),
+    C_Encrypt: Some(unsupported::Encrypt),
+    C_EncryptUpdate: Some(unsupported::EncryptUpdate),
+    C_EncryptFinal: Some(unsupported::EncryptFinal),
+    C_DecryptInit: Some(unsupported::DecryptInit),
+    C_Decrypt: Some(unsupported::Decrypt),
+    C_DecryptUpdate: Some(unsupported::DecryptUpdate),
+    C_DecryptFinal: Some(unsupported::DecryptFinal),
+    C_DigestInit: Some(unsupported::DigestInit),
+    C_Digest: Some(unsupported::Digest),
+    C_DigestUpdate: Some(unsupported::DigestUpdate),
+    C_DigestKey: Some(unsupported::DigestKey),
+    C_DigestFinal: Some(unsupported::DigestFinal),
+    C_SignInit: Some(C_SignInit),
+    C_Sign: Some(C_Sign),
+    C_SignUpdate: Some(unsupported::SignUpdate),
+    C_SignFinal: Some(unsupported::SignFinal),
+    C_SignRecoverInit: Some(unsupported::SignRecoverInit),
+    C_SignRecover: Some(unsupported::SignRecover),
+    C_VerifyInit: Some(unsupported::VerifyInit),
+    C_Verify: Some(unsupported::Verify),
+    C_VerifyUpdate: Some(unsupported::VerifyUpdate),
+    C_VerifyFinal: Some(unsupported::VerifyFinal),
+    C_VerifyRecoverInit: Some(unsupported::VerifyRecoverInit),
+    C_VerifyRecover: Some(unsupported::VerifyRecover),
+    C_DigestEncryptUpdate: Some(unsupported::DigestEncryptUpdate),
+    C_DecryptDigestUpdate: Some(unsupported::DecryptDigestUpdate),
+    C_SignEncryptUpdate: Some(unsupported::SignEncryptUpdate),
+    C_DecryptVerifyUpdate: Some(unsupported::DecryptVerifyUpdate),
+    C_GenerateKey: Some(unsupported::GenerateKey),
+    C_GenerateKeyPair: Some(unsupported::GenerateKeyPair),
+    C_WrapKey: Some(unsupported::WrapKey),
+    C_UnwrapKey: Some(unsupported::UnwrapKey),
+    C_DeriveKey: Some(unsupported::DeriveKey),
+    C_SeedRandom: Some(unsupported::SeedRandom),
+    C_GenerateRandom: Some(unsupported::GenerateRandom),
+    C_GetFunctionStatus: Some(unsupported::GetFunctionStatus),
+    C_CancelFunction: Some(unsupported::CancelFunction),
+    C_WaitForSlotEvent: Some(unsupported::WaitForSlotEvent),
+};
