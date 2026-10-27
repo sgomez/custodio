@@ -28,4 +28,10 @@ openssl req -new -x509 -key "$tmp/legacy.key" -subj "/CN=custodio test legacy" -
   -out "$tmp/legacy.crt"
 openssl pkcs12 -export -legacy -inkey "$tmp/legacy.key" -in "$tmp/legacy.crt" \
   -passout pass:test-password -out rsa2048-legacy.p12
+# A second, unrelated P-256 key and certificate (for key/certificate mismatch tests).
+make p256-other -algorithm EC -pkeyopt ec_paramgen_curve:P-256
+
+# A key bag without a localKeyId, next to its certificate bag.
+openssl pkcs12 -export -inkey "$tmp/p256.key" -certfile "$tmp/p256.crt" -nocerts \
+  -passout pass:test-password -out p256-nokid.p12 2>/dev/null
 chmod 644 ./*.p12

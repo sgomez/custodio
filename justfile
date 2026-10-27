@@ -36,6 +36,12 @@ check-slow: check fuzz-build
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:
-    for dir in $(git ls-files '*/fuzz/Cargo.toml' 'fuzz/Cargo.toml' | xargs -r -n1 dirname); do \
-        (cd "$dir/.." && cargo +nightly fuzz build --target "$(rustc +nightly -vV | sed -n "s/^host: //p")") || exit 1; \
-    done
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host=$(rustc +nightly -vV | sed -n 's/^host: //p')
+    found=0
+    while IFS= read -r manifest; do
+        found=1
+        (cd "$(dirname "$manifest")/.." && cargo +nightly fuzz build --target "$host")
+    done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
+    if [ "$found" = 0 ]; then echo "no fuzz targets found" >&2; exit 1; fi
