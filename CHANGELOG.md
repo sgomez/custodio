@@ -1,3 +1,45 @@
+## [0.2.0] - 2026-10-27
+
+### 🚀 Features
+
+- Group the harness commands under `just milestone` and `just harness`
+- Archive PROGRESS.md with its milestone
+
+### 🐛 Bug Fixes
+
+- Count a milestone as released when a tag contains its last feature
+- Create target/ before cargo-mutants writes its output there
+- Run the systemd and bus gates through one recipe in the lint job
+- *(crap)* Count guards through syn 3 guard patterns
+- Key the ci caches on the lockfiles and the toolchain again
+
+### 📚 Documentation
+
+- Close milestone M0
+- Archive the M0 progress log
+- Scope decisions.md to decisions and trim it
+
+### 🚜 Refactor
+
+- Move inline tests to their own files and split oversized modules
+
+### ⚙️ Miscellaneous Tasks
+
+- Update skills
+- Update docs
+- Split the slow checks into parallel jobs by build family
+- Run only the fast jobs on a pr; coverage and nightly on main, full mutants on release tags
+- Split check into lint and test jobs and build without debuginfo
+- Add a security policy and weekly dependabot updates
+- Cancel the older run on main as well
+- Pin the nightly toolchain and key the caches on our own toolchains
+- Pin ci tools to mise.toml, drop the pre-push hook and tighten the fuzzing guard
+
+### 💼 Other
+
+- *(deps-dev)* Bump the npm group with 2 updates
+- *(deps)* Bump syn
+- Fail lint on files over 5,000 tokens or with inline test modules
 ## [0.1.0] - 2026-10-27
 
 ### 🚀 Features
@@ -31,6 +73,7 @@
 - *(F18)* Answer the open questions in docs/findings.md
 - *(F18)* Narrow thread-measurement claims to what the test shows
 - *(M01)* Record manual acceptance run (rFirma and Firefox pass, fingerprint unverified)
+- Simplify the harness README
 
 ### 🚜 Refactor
 
