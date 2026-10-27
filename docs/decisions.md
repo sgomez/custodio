@@ -111,7 +111,7 @@ Decision. Why. Alternatives considered. -->
 - Alternatives: a job per recipe (rebuilds the same artifacts many times); the full mutant sweep on every push (the old cost).
 
 ## 2026-10-28 — Pinned nightly and stable CI cache keys
-- Decision: the justfile pins the nightly (`nightly_toolchain`), and every `rust-cache` step drops the environment hash: stable jobs key on `rust-toolchain.toml` (already in the key), the nightly job on the pinned toolchain. Both fuzz workspaces are cached.
+- Decision: the justfile pins the nightly (`nightly_toolchain`), and every `rust-cache` step drops its environment hash and keys instead on a `hashFiles` of `rust-toolchain.toml`, the `Cargo.lock` files and the `Cargo.toml` files (dropping the environment hash drops rust-cache's lockfile hash too), plus the pinned toolchain in the nightly job. Both fuzz workspaces are cached.
 - Why: the environment hash lists every toolchain on the runner image (one image ships 1.99.0, another not) and a floating nightly changes daily, so the nightly job never found its cache and took ~10 minutes; `crates/custodiod/fuzz` was not cached at all.
 - Alternatives: a floating nightly (no cache most days); keeping the environment hash (misses whenever the image changes).
 
