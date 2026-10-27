@@ -1,0 +1,10 @@
+# Fast checks on commit, slow ones on push. Install with `lefthook install`.
+pre-commit:
+  commands:
+    check:
+      run: just check
+
+pre-push:
+  commands:
+    check-slow:
+      run: just check-slow

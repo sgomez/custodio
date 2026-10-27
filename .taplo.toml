@@ -1,0 +1,13 @@
+include = [
+  "Cargo.toml",
+  "rust-toolchain.toml",
+  "*.toml",
+  "crates/**/*.toml",
+  ".taplo.toml",
+  "_typos.toml",
+]
+exclude = ["target/**"]
+
+[formatting]
+align_entries = false
+column_width = 100
