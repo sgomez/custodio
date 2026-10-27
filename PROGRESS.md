@@ -180,3 +180,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. findings.md header now says source reading plus the `signing_leaves_no_helper_threads` experiment; the claim is narrowed to "no thread left behind after `C_Sign`" (a thread started and joined inside the call is explicitly not measured); same narrowing in docs/decisions.md and the test's doc comment. The `tasks` mode now returns an error when the count changes. cryptoki tests (10) and `just lint` pass.
 - Not done / known issues: no in-call thread sampling; fork during `C_Sign` untested; no real Firefox/LibreOffice run.
 - Next session should: nothing specific.
+
+### 2026-10-27 — M01 — 1 (human-assisted, Ubuntu 26.04 VM)
+- Done: acceptance 2 (rFirma) and 3 (Firefox `.deb` from Mozilla) pass by hand; results in docs/findings.md §4.
+- Not done / known issues: acceptance 6 (fingerprint) not verified, no reader, so M01 cannot pass yet. Firefox snap cannot load the module. Firefox on Ubuntu ignores p11-kit `.module` files. rFirma needed two fixes, on its local branch `feat/rsa-pkcs-over-digest-info` (not merged). No audit log per signature in `custodiod`.
+- Next session should: verify acceptance 6 on a machine with a fingerprint reader; decide how the package registers the module for Firefox and whether to support the snap.
