@@ -150,7 +150,7 @@
         "F09"
       ],
       "verify": "just check && just security-score",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F16",
