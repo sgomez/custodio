@@ -130,6 +130,12 @@ coverage:
 crap threshold="30":
     cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs
 
+# One .deb in target/debian with the binaries, the unit, the sysusers file, the D-Bus policy and activation file, the polkit action and
+# the p11-kit module (needs cargo-deb).
+package:
+    cargo build --release --locked -p custodiod -p custodio-cli -p custodio-pkcs11
+    cargo deb --locked --no-build -p custodiod
+
 # Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan, the fuzz targets building, mutation testing, coverage and the CRAP gate.
 check-slow: check test-integration miri asan fuzz-build mutants coverage crap
 
