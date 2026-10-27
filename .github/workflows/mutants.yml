@@ -32,7 +32,7 @@ jobs:
       # No rust-cache: a tag-triggered workflow restoring a cache is a cache-poisoning path, and this runs rarely.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just,cargo-mutants@27.1.0
+          tool: just@1.59.0,cargo-mutants@27.1.0
       - env:
           SHARD: ${{ matrix.shard }}
         run: just mutants --in-place --shard "$SHARD/4"

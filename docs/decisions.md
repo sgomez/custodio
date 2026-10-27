@@ -114,3 +114,8 @@ Decision. Why. Alternatives considered. -->
 - Decision: the justfile pins the nightly (`nightly_toolchain`), and every `rust-cache` step drops the environment hash: stable jobs key on `rust-toolchain.toml` (already in the key), the nightly job on the pinned toolchain. Both fuzz workspaces are cached.
 - Why: the environment hash lists every toolchain on the runner image (one image ships 1.99.0, another not) and a floating nightly changes daily, so the nightly job never found its cache and took ~10 minutes; `crates/custodiod/fuzz` was not cached at all.
 - Alternatives: a floating nightly (no cache most days); keeping the environment hash (misses whenever the image changes).
+
+## 2026-10-28 — No pre-push hook; CI tools pinned like mise.toml; a precise fuzzing guard
+- Decision: `lefthook.yml` drops `pre-push: just check-slow` (M0's SPEC asked for it). Why: pre-commit already runs `just check`, and main now takes changes by PR with the `ci` check, which runs the slow checks; the hook spent ~20 minutes repeating them before every push.
+- Decision: `install-action` gets the versions in `mise.toml` instead of the latest. Why: a new release of a linter could turn CI red with no change in the repository.
+- Decision: `lint-fuzz` checks the `fuzzing` release build fails with the guard's own `compile_error!`, with `cargo check`. Why: `! cargo build … 2>/dev/null` passed on any build error.

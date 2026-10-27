@@ -40,8 +40,15 @@ lint:
 # Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
 # another configuration, so they run with the nightly checks, not in `check`.
 lint-fuzz:
-    cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings
-    ! cargo build -p custodio-pkcs11 --features fuzzing --release --locked 2>/dev/null
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings)
+    # Only the guard's compile_error may fail this check; a bare `!` would accept any other error too.
+    if out=$(cargo check -p custodio-pkcs11 --features fuzzing --release --locked 2>&1); then
+        echo "lint-fuzz: the fuzzing feature built in release" >&2
+        exit 1
+    fi
+    grep -q "must not be built outside fuzz or debug builds" <<< "$out" || { echo "$out" >&2; exit 1; }
 
 # Unit tests.
 test:
