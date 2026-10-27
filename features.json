@@ -78,7 +78,7 @@
         "F02"
       ],
       "verify": "just check",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F09",
