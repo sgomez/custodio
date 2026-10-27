@@ -25,3 +25,8 @@ Decision. Why. Alternatives considered. -->
 - Decision: one file per key, named by id (`[A-Za-z0-9_-]{1,64}`), in the state dir. Written to a `.tmp-*` file (`create_new`, 0600, fsync), then `hard_link`ed into place so it is atomic and never overwrites; dir fsynced. An existing state dir or key file whose mode is not exactly 0700/0600 is rejected, not repaired.
 - Why: conservative; a loosened mode may mean the key was already exposed, so a human should look. Systemd must create the dir with `StateDirectoryMode=0700`.
 - Alternatives: `rename` (silently overwrites); auto-chmod (hides exposure).
+
+## 2026-10-27 — Key store hardening (F05, attempt 2)
+- Decision: `open` checks the dir owner and `get` checks the file owner against the effective uid; `get` opens with `O_NOFOLLOW` and rejects symlinks; reads use an exactly-sized `Zeroizing` buffer; `open` deletes stale `.tmp-*` files (single process per state dir); a failed dir fsync after linking returns `SyncFailed` (key is stored) instead of `Io`.
+- Why: SPEC requires service-uid ownership; avoids key bytes in freed memory and reading keys via symlinks.
+- Alternatives: owner check only in tests (weaker); ignoring dir fsync errors (hides durability loss).
