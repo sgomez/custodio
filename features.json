@@ -120,7 +120,7 @@
         "F11"
       ],
       "verify": "just miri && just asan && just fuzz-build",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F13",
