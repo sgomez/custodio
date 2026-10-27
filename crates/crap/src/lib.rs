@@ -80,11 +80,9 @@ pub fn complexity(block: &syn::Block) -> u32 {
             visit::visit_expr(self, e);
         }
 
-        fn visit_arm(&mut self, arm: &'ast syn::Arm) {
-            if arm.guard.is_some() {
-                self.0 += 1;
-            }
-            visit::visit_arm(self, arm);
+        fn visit_pat_guard(&mut self, g: &'ast syn::PatGuard) {
+            self.0 += 1;
+            visit::visit_pat_guard(self, g);
         }
 
         fn visit_local(&mut self, local: &'ast syn::Local) {
