@@ -26,7 +26,8 @@ gate() {
 
 # 1. Planner: IDEA.md → SPEC.md
 if [ ! -f SPEC.md ]; then
-  [ -s IDEA.md ] || die "Write IDEA.md (a few sentences: what, for whom, why) and run again."
+  [ -s IDEA.md ] || die "No IDEA.md. Start a milestone with: just milestone open"
+  grep -q '^TODO:' IDEA.md && die "IDEA.md still has its TODO line; write the idea first."
   log "Planner: writing SPEC.md from IDEA.md"
   HARNESS_ROLE=planner claude -p --dangerously-skip-permissions --agent planner \
     "Write SPEC.md from IDEA.md." >"$LOG_DIR/$(date +%Y%m%d-%H%M%S)-planner.log" 2>&1 || true

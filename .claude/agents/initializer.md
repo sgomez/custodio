@@ -28,6 +28,8 @@ Format:
 
 Rules:
 
+- `milestone` is the name on the `Milestone:` line of `IDEA.md` (`M0` if there is none), and ids
+  start at the number `IDEA.md` gives (`F01` if it gives none).
 - Cover everything in the spec's Design, harnesses, Scope and Acceptance, and nothing in Out of
   scope.
 - Order by dependency, and make `depends_on` exact: it decides what can be built and when.

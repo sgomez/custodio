@@ -9,7 +9,9 @@ Not sure what to do? Run `just status`: it says where the harness is and the nex
 | `just harness-try` | Same, at most 3 sessions |
 | `just harness-stop` / `just harness-resume` | Stop, continue |
 | `just approve spec` / `just approve features` | Approve after reviewing |
-| `just new-milestone M0` | Archive a finished milestone, start the next |
+| `just milestone list` | Closed milestones and the open one |
+| `just milestone close` / `just milestone open` | Archive the finished milestone, start the next |
+| `just release` | Changelog, version tag and push |
 
 How Custodio gets built by agents, from idea to milestone, following Anthropic's articles on
 long-running agents: a planner writes the spec, an initializer splits it into features, and each

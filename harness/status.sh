@@ -27,7 +27,8 @@ if [ -e BLOCKED.md ]; then
   next "decide, then: rm BLOCKED.md && git commit -am 'docs: answer blocked question' && just harness"
 fi
 if [ ! -f SPEC.md ]; then
-  [ -s IDEA.md ] || next "write IDEA.md (3-4 sentences: what, for whom, why), then: just harness"
+  [ -f IDEA.md ] || next "just milestone open"
+  grep -q '^TODO:' IDEA.md && next "write IDEA.md (replace the TODO line), then: just harness"
   next "just harness   (the planner writes SPEC.md)"
 fi
 if ! approved spec; then
@@ -53,7 +54,11 @@ fi
 
 if [ "$done_" = "$total" ]; then
   manual=$(jq -r '[.features[] | select(.manual and (.passes | not)) | .id] | join(", ")' features.json)
-  [ -n "$manual" ] && echo "Check these by hand: $manual"
-  next "review git log, push, open the PR. For more work: add features to features.json, or just new-milestone <name>"
+  if [ -n "$manual" ]; then
+    echo "Check these by hand: $manual"
+    next "check them, set \"passes\": true for each in features.json, and commit"
+  fi
+  git describe --tags --exact-match HEAD >/dev/null 2>&1 || next "just release"
+  next "just milestone close"
 fi
 next "just harness   (or: just harness-try, to spend at most 3 sessions)"

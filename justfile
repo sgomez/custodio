@@ -199,6 +199,11 @@ harness-resume:
 approve what:
     harness/approve.sh {{what}}
 
-# Archive the finished milestone and start the next one from a new IDEA.md: `just new-milestone M0`.
-new-milestone name:
-    harness/new-milestone.sh {{name}}
+# Milestones: `just milestone list`, `just milestone close` (archive the finished one),
+# `just milestone open` (start the next from a new IDEA.md).
+milestone action="list":
+    harness/milestone.sh {{action}}
+
+# Next version from the commits (git-cliff), CHANGELOG.md, release commit, tag and push.
+release:
+    harness/release.sh
