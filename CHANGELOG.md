@@ -1,4 +1,4 @@
-## [unreleased]
+## [0.1.0] - 2026-10-27
 
 ### 🚀 Features
 
@@ -12,6 +12,8 @@
 - *(F11)* Add PKCS#11 module forwarding signatures to the service over D-Bus
 - *(F15)* Add systemd unit, D-Bus policy and hardening score gate
 - Automate planning: planner, initializer, contracts and approval gates
+- Add just recipes and a status command for the harness
+- Add `just milestone` and `just release`
 
 ### 🐛 Bug Fixes
 
@@ -21,6 +23,7 @@
 - *(F15)* Static service user for the bus policy, check the policy and unit in check
 - *(F15)* Clean up the private dbus-daemon from inside try_own
 - *(F17)* Make the end-to-end suite pass under a live systemd
+- Say why the spec or feature list counts as unapproved
 
 ### 📚 Documentation
 
@@ -53,6 +56,13 @@
 - Disable commit and PR attribution for the loop's Claude sessions
 - Enforce conventional commits
 - Check full history when the push base is unknown
+- Lint commits with commitlint and generate the changelog with git-cliff
+- Run the slow checks in parallel jobs with caching and shard mutants
+- *(M01)* Mark as passing (manual acceptance)
+
+### ◀️ Revert
+
+- Ci: run the slow checks in parallel jobs with caching and shard mutants
 
 ### 💼 Other
 
@@ -62,3 +72,4 @@
 - *(F04)* Add cargo-deny policy and cargo-machete to just check
 - *(F07)* Drop unused signature dependency, refresh Cargo.lock
 - *(F16)* Add .deb package with cargo-deb
+- Pin development tools with mise and add `just setup`
