@@ -164,3 +164,9 @@ with an empty context.
 - Decisions: docs/decisions.md (state dir symlink, polkit action owner).
 - Not done / known issues: the loop's dev container still cannot run `just e2e`; a human runs it on the host.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F18 — 1
+- Done: `docs/findings.md` answers the three open questions, each claim marked verified or inferred: `CKA_ALWAYS_AUTHENTICATE` in NSS, Firefox, LibreOffice, pkcs11-provider and libp11; D-Bus client behaviour with threads and fork in NSS-hosting processes; polkit/bus versions per distribution. verify passes.
+- Decisions: keep `CKA_ALWAYS_AUTHENTICATE=false` and authorize inside `C_Sign` (reasons in findings).
+- Not done / known issues: source reading only, no live experiment; no real Firefox/LibreOffice run; "default bus" per distro is inferred.
+- Next session should: nothing specific.
