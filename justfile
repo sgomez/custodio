@@ -128,6 +128,7 @@ asan:
 # Extra arguments go to cargo-mutants, e.g. `--in-diff <file>` or `--shard 0/4`.
 [positional-arguments]
 mutants *args:
+    mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
     cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
