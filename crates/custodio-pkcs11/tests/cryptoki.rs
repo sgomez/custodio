@@ -213,8 +213,9 @@ fn task_names() -> Vec<String> {
     names
 }
 
-/// OS threads of this process before, during-after and a while after `C_Sign`: the module must
-/// not leave helper threads behind (NSS initializes it with `CKF_LIBRARY_CANT_CREATE_OS_THREADS`).
+/// OS threads of this process before `C_Sign`, right after it returns and two seconds later: the
+/// module must not leave helper threads behind. A thread started and joined inside the call is
+/// not seen (NSS initializes the module with `CKF_LIBRARY_CANT_CREATE_OS_THREADS`).
 fn tasks(pkcs11: &Pkcs11) -> TestResult {
     let before = task_names();
     let (session, key) = first_key(pkcs11)?;
@@ -224,6 +225,9 @@ fn tasks(pkcs11: &Pkcs11) -> TestResult {
     let later = task_names();
     println!("\nTASKS {} {} {}", before.len(), after.len(), later.len());
     println!("NAMES before={before:?} after={after:?} later={later:?}");
+    if before.len() != after.len() || before.len() != later.len() {
+        return Err("thread count changed around C_Sign".into());
+    }
     Ok(())
 }
 
@@ -544,10 +548,7 @@ fn signing_leaves_no_helper_threads() -> TestResult {
     let (ok, out) = f.run("tasks")?;
     assert!(ok);
     let counts = lines(&out, "TASKS").next().ok_or("no TASKS line")?;
-    assert_eq!(
-        counts[0], counts[1],
-        "threads appeared during C_Sign: {out}"
-    );
+    assert_eq!(counts[0], counts[1], "threads left behind by C_Sign: {out}");
     assert_eq!(counts[0], counts[2], "threads linger after C_Sign: {out}");
     Ok(())
 }
