@@ -58,7 +58,9 @@ if [ "$done_" = "$total" ]; then
     echo "Check these by hand: $manual"
     next "check them by hand, then for each: just milestone pass <id>"
   fi
-  git describe --tags --exact-match HEAD >/dev/null 2>&1 || next "just release"
+  # Released when a tag contains the last change to features.json (the last feature marked).
+  last=$(git log -1 --format=%H -- features.json)
+  [ -n "$(git tag --contains "$last")" ] || next "just release"
   next "just milestone close"
 fi
 next "just harness run   (or: just harness try, to spend at most 3 sessions)"
