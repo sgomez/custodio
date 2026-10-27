@@ -1,0 +1,8 @@
+#!/bin/sh
+# Create the static `custodio` account the D-Bus policy names, and let systemd see the new unit.
+set -e
+if [ "$1" = configure ]; then
+    systemd-sysusers custodio.conf || true
+    systemctl daemon-reload || true
+    systemctl reload dbus || true
+fi

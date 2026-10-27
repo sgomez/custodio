@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=com.rfirma.Custodio1
+Exec=/bin/false
+User=custodio
+SystemdService=custodio.service

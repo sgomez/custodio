@@ -147,3 +147,9 @@ with an empty context.
 - Done: evaluator passed attempt 2; applied its optional fix. `bus-policy`'s `try_own` now has its own EXIT trap (it runs in a `$(...)` subshell) so the private `dbus-daemon` is killed if it fails partway. `just check && just security-score` pass.
 - Not done / known issues: as in attempt 2 (nothing run under a live systemd; end-to-end feature must start the real unit).
 - Next session should: nothing specific.
+
+### 2026-10-27 — F16 — 1
+- Done: `just package` builds the release binaries and one `.deb` (`target/debian/custodio_0.1.0-1_amd64.deb`) with the daemon, `custodio` CLI, PKCS#11 `.so`, systemd unit, sysusers file, D-Bus policy and activation file, polkit action and p11-kit `.module`; a postinst creates the `custodio` account. Metadata in `crates/custodiod/Cargo.toml`. verify passes; `just lint` clean.
+- Decisions: see docs/decisions.md (Debian package).
+- Not done / known issues: package not installed on a live system; the service is not enabled on install.
+- Next session should: nothing specific.

@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+description = "Custodio signing service"
 
 # Cannot extend `workspace.lints`, so the workspace baseline (pedantic) is repeated here.
 [lints.clippy]
@@ -43,3 +44,61 @@ zeroize = "1.9.1"
 
 [dev-dependencies]
 tempfile = "3.27.0"
+
+# The one .deb of the project (`just package`). The other crates' artifacts are built first by the recipe.
+[package.metadata.deb]
+name = "custodio"
+maintainer = "rFirma <info@rfirma.com>"
+copyright = "rFirma, EUPL-1.2"
+section = "utils"
+priority = "optional"
+extended-description = "Signing service that keeps PKCS#12 keys and asks polkit before every signature, with a command-line importer and a PKCS#11 module for p11-kit."
+depends = "$auto, dbus, polkitd, systemd, p11-kit"
+maintainer-scripts = "../../data/debian"
+assets = [
+  [
+    "target/release/custodiod",
+    "usr/libexec/custodiod",
+    "755",
+  ],
+  [
+    "target/release/custodio-cli",
+    "usr/bin/custodio",
+    "755",
+  ],
+  [
+    "target/release/libcustodio_pkcs11.so",
+    "usr/lib/custodio/libcustodio_pkcs11.so",
+    "644",
+  ],
+  [
+    "../../data/custodio.service",
+    "usr/lib/systemd/system/custodio.service",
+    "644",
+  ],
+  [
+    "../../data/sysusers.d/custodio.conf",
+    "usr/lib/sysusers.d/custodio.conf",
+    "644",
+  ],
+  [
+    "../../data/com.rfirma.Custodio1.conf",
+    "usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf",
+    "644",
+  ],
+  [
+    "../../data/com.rfirma.Custodio1.service",
+    "usr/share/dbus-1/system-services/com.rfirma.Custodio1.service",
+    "644",
+  ],
+  [
+    "../../data/com.rfirma.custodio.policy",
+    "usr/share/polkit-1/actions/com.rfirma.custodio.policy",
+    "644",
+  ],
+  [
+    "../../data/custodio.module",
+    "usr/share/p11-kit/modules/custodio.module",
+    "644",
+  ],
+]
