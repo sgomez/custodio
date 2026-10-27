@@ -90,7 +90,7 @@
         "F08"
       ],
       "verify": "just check && just test-integration && just fuzz-build",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F10",
