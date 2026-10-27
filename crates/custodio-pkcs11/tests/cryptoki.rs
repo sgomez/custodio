@@ -197,6 +197,36 @@ fn threads(pkcs11: &Pkcs11) -> TestResult {
     Ok(())
 }
 
+fn task_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir("/proc/self/task")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|t| {
+            std::fs::read_to_string(t.path().join("comm"))
+                .unwrap_or_default()
+                .trim()
+                .to_owned()
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// OS threads of this process before, during-after and a while after `C_Sign`: the module must
+/// not leave helper threads behind (NSS initializes it with `CKF_LIBRARY_CANT_CREATE_OS_THREADS`).
+fn tasks(pkcs11: &Pkcs11) -> TestResult {
+    let before = task_names();
+    let (session, key) = first_key(pkcs11)?;
+    session.sign(&Mechanism::Ecdsa, key, &[3; 32])?;
+    let after = task_names();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let later = task_names();
+    println!("\nTASKS {} {} {}", before.len(), after.len(), later.len());
+    println!("NAMES before={before:?} after={after:?} later={later:?}");
+    Ok(())
+}
+
 /// `fork` while other threads use the module: the children must not deadlock and can sign.
 fn forks(pkcs11: &Pkcs11) -> TestResult {
     let pkcs11 = Arc::new(Pkcs11::clone(pkcs11));
@@ -248,6 +278,7 @@ fn client() -> TestResult {
         "no_service" => no_service(&pkcs11),
         "threads" => threads(&pkcs11),
         "forks" => forks(&pkcs11),
+        "tasks" => tasks(&pkcs11),
         other => Err(format!("unknown mode {other}").into()),
     }
 }
@@ -504,6 +535,20 @@ fn threads_can_sign_at_once() -> TestResult {
     let f = Fixture::start(true, true)?;
     assert!(f.run("threads")?.0);
     assert_eq!(f.asked(), 24);
+    Ok(())
+}
+
+#[test]
+fn signing_leaves_no_helper_threads() -> TestResult {
+    let f = Fixture::start(true, true)?;
+    let (ok, out) = f.run("tasks")?;
+    assert!(ok);
+    let counts = lines(&out, "TASKS").next().ok_or("no TASKS line")?;
+    assert_eq!(
+        counts[0], counts[1],
+        "threads appeared during C_Sign: {out}"
+    );
+    assert_eq!(counts[0], counts[2], "threads linger after C_Sign: {out}");
     Ok(())
 }
 

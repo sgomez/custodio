@@ -170,3 +170,8 @@ with an empty context.
 - Decisions: keep `CKA_ALWAYS_AUTHENTICATE=false` and authorize inside `C_Sign` (reasons in findings).
 - Not done / known issues: source reading only, no live experiment; no real Firefox/LibreOffice run; "default bus" per distro is inferred.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F18 — 2
+- Done: fixed NEXT_FINDINGS. New test `signing_leaves_no_helper_threads` (cryptoki.rs) counts `/proc/self/task` around `C_Sign`: no thread created, none lingering; findings.md now rests on that measurement (the `blocking`-like string is zbus's `zruntime` pool, unused on our path). Fork section says exactly what the `forks` test covers (not a fork during `C_Sign`). polkit's use of `ProcessFD` confirmed in `polkitsystembusname.c`. Fedora default-bus row marked inferred; open risk added. Decisions added to docs/decisions.md. `just check` passes.
+- Not done / known issues: fork during an in-progress `C_Sign` untested; no real Firefox/LibreOffice run.
+- Next session should: nothing specific.
