@@ -63,3 +63,13 @@ fn defines_exactly_the_sign_action() -> TestResult {
 fn comment_stripping_works() {
     assert_eq!(without_comments("a<!-- x -->b<!-- y"), "ab");
 }
+
+/// polkit only lets an unprivileged caller check another user's subject if it owns the action.
+#[test]
+fn the_service_user_owns_the_action() -> TestResult {
+    let xml = without_comments(&policy()?);
+    assert!(xml.contains(
+        "<annotate key=\"org.freedesktop.policykit.owner\">unix-user:custodio</annotate>"
+    ));
+    Ok(())
+}
