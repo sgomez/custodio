@@ -1,13 +1,8 @@
-# Commit message format and fast checks on commit, slow ones on push. Install with `just setup`.
+# Commit message format and fast checks on commit; CI runs the slow ones. Install with `just setup`.
 pre-commit:
   commands:
     check:
       run: just check
-
-pre-push:
-  commands:
-    check-slow:
-      run: just check-slow
 
 commit-msg:
   commands:
