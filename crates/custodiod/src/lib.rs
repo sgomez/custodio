@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod import;
+pub mod sign;
 pub mod store;
 
 /// Name of the service, used in logs and on the bus.

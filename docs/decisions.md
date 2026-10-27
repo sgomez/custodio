@@ -36,3 +36,9 @@ Decision. Why. Alternatives considered. -->
 - Why: the spec scopes keys to RSA 2048 and P-256; one key per file keeps import unambiguous. `p12-keystore` keeps its own non-zeroized copy of the key while parsing; no zeroizing pure-Rust alternative exists, so the copy is dropped right after extraction.
 - Alternatives: `pkcs12` + `rsa`/`p256` crates directly (more code, more attack surface); OpenSSL (banned). `deny.toml` skips the duplicate build-time-only `syn` 2.
 - Fuzzing: `crates/custodiod/fuzz` is its own workspace (nightly, sanitizers); `just fuzz-build` builds every `*/fuzz/Cargo.toml` and is part of `check-slow` (CI installs nightly and cargo-fuzz).
+
+## 2026-10-27 — Signing primitives (F07)
+- Decision: `custodiod::sign::sign(key, Mechanism, data)` takes the PKCS#8 DER from the store and signs caller-prepared bytes like PKCS#11: `RsaPkcs` signs `data` as is with PKCS#1 v1.5 padding (caller gives the `DigestInfo`); `RsaPkcsPss` needs a SHA-256/384/512 digest of matching length and uses MGF1 with the same hash (SHA-1 not offered, conservative); `Ecdsa` returns raw `r || s` (64 bytes) with RFC 6979 nonces. A mechanism that does not fit the key type is `MechanismMismatch`. Empty ECDSA input is rejected because the nonce code panics on it.
+- Crypto crates: `rsa` 0.10.0-rc.19 (pinned with `=`; only prerelease line with the current `crypto-bigint`) and `p256`/`ecdsa`, `sha2`. RUSTSEC-2023-0071 (Marvin) is ignored in `deny.toml` with a justification: no fix exists, each signature needs a polkit approval so timing samples cannot be gathered at scale, RNG blinding is on, and a same-uid attacker is out of scope.
+- Alternatives: OpenSSL (banned); `sad-rsa` (unknown fork, supply chain risk); no RSA (SPEC requires RSA 2048).
+- Not done: polkit is not called here; the caller (D-Bus layer) must authorize before `sign`.
