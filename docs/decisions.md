@@ -30,3 +30,9 @@ Decision. Why. Alternatives considered. -->
 - Decision: `open` checks the dir owner and `get` checks the file owner against the effective uid; `get` opens with `O_NOFOLLOW` and rejects symlinks; reads use an exactly-sized `Zeroizing` buffer; `open` deletes stale `.tmp-*` files (single process per state dir); a failed dir fsync after linking returns `SyncFailed` (key is stored) instead of `Io`.
 - Why: SPEC requires service-uid ownership; avoids key bytes in freed memory and reading keys via symlinks.
 - Alternatives: owner check only in tests (weaker); ignoring dir fsync errors (hides durability loss).
+
+## 2026-10-27 — `.p12` import (F06)
+- Decision: `custodiod::import` uses `p12-keystore` (pure Rust; reads both modern PBES2 and legacy 3DES/RC2 files). Accepts exactly one private key, RSA with a 2048-bit modulus or EC on prime256v1, with at least one certificate; input capped at 1 MiB. Key is stored as PKCS#8 DER under `<id>`, leaf certificate under `<id>-cert` (written first, as it is public). The key↔certificate public-key match is not verified yet.
+- Why: the spec scopes keys to RSA 2048 and P-256; one key per file keeps import unambiguous. `p12-keystore` keeps its own non-zeroized copy of the key while parsing; no zeroizing pure-Rust alternative exists, so the copy is dropped right after extraction.
+- Alternatives: `pkcs12` + `rsa`/`p256` crates directly (more code, more attack surface); OpenSSL (banned). `deny.toml` skips the duplicate build-time-only `syn` 2.
+- Fuzzing: `crates/custodiod/fuzz` is its own workspace (nightly, sanitizers); `just fuzz-build` builds every `*/fuzz/Cargo.toml` and is part of `check-slow` (CI installs nightly and cargo-fuzz).

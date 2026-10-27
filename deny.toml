@@ -35,7 +35,11 @@ deny = [
   { crate = "openssl" },
   { crate = "openssl-sys" },
 ]
-skip = []
+skip = [
+  # Two proc-macro generations in the build graph (displaydoc/thiserror-impl on syn 3, the asn1-rs
+  # derives on syn 2) via p12-keystore. Build-time only; nothing from either ships in the binary.
+  { crate = "syn@2.0.119", reason = "proc-macro only; pulled in by asn1-rs-derive via p12-keystore" },
+]
 skip-tree = []
 
 [sources]
