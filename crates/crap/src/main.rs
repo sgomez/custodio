@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! `crap <coverage.json> <threshold> [--exclude <file>]... <crate-dir>...`: fails when the CRAP
 //! score of a function in the `src` of a crate is above the threshold. The JSON is the output of
 //! `cargo llvm-cov report --json`. Excluded files are not scored.

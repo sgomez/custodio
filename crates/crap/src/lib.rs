@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! CRAP score per function: `complexity² × (1 − coverage)³ + complexity`.
 //!
 //! Complexity is the cyclomatic complexity of the function body, computed from the syntax tree.
