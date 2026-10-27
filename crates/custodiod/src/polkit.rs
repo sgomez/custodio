@@ -149,4 +149,17 @@ mod tests {
             assert!(matches!(request(bad), Err(AuthError::BadSender)), "{bad}");
         }
     }
+
+    #[test]
+    fn auth_errors_display() {
+        assert_eq!(
+            AuthError::BadSender.to_string(),
+            "sender is not a unique bus name"
+        );
+        assert_eq!(AuthError::Denied.to_string(), "not authorized");
+        assert_eq!(
+            AuthError::Unavailable("why".into()).to_string(),
+            "polkit unavailable: why"
+        );
+    }
 }
