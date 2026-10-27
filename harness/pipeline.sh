@@ -20,7 +20,7 @@ tracked_changes && die "Uncommitted changes to tracked files; commit or stash th
 gate() {
   approved "$1" && return 0
   log "Stopped for review: read $2, edit it if needed, then run on your machine:"
-  log "  harness/approve.sh $1 && harness/run.sh"
+  log "  just milestone approve $1 && just harness run"
   exit 3
 }
 

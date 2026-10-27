@@ -178,31 +178,13 @@ changelog:
 status:
     harness/status.sh
 
-# Run or continue the harness in the dev container (plan, split, build).
-harness:
-    harness/run.sh
+# Milestone lifecycle: list, open, close, approve spec|features, pass <manual feature id>.
+milestone action="list" *args:
+    harness/milestone.sh {{action}} {{args}}
 
-# Same, spending at most 3 Claude sessions.
-harness-try:
-    MAX_SESSIONS=3 harness/run.sh
-
-# Stop the running harness after the current tool call.
-harness-stop:
-    touch AGENT_STOP
-
-# Continue after `just harness-stop`.
-harness-resume:
-    rm -f AGENT_STOP
-    harness/run.sh
-
-# Approve the reviewed spec or feature list: `just approve spec`, `just approve features`.
-approve what:
-    harness/approve.sh {{what}}
-
-# Milestones: `just milestone list`, `just milestone close` (archive the finished one),
-# `just milestone open` (start the next from a new IDEA.md).
-milestone action="list":
-    harness/milestone.sh {{action}}
+# The agents: run, try (at most 3 Claude sessions), stop, resume, unblock.
+harness action="run":
+    harness/harness.sh {{action}}
 
 # Next version from the commits (git-cliff), CHANGELOG.md, release commit, tag and push.
 release:

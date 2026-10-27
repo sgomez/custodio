@@ -3,6 +3,8 @@
 #   harness/milestone.sh list    # closed milestones and the open one
 #   harness/milestone.sh close   # archive the finished milestone in docs/milestones/<name>
 #   harness/milestone.sh open    # start the next one from a new IDEA.md
+#   harness/milestone.sh approve spec|features   # approve what you reviewed
+#   harness/milestone.sh pass <id>               # mark a manual feature as checked
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=harness/lib.sh
@@ -90,12 +92,30 @@ Earlier milestones are archived in $archive/; build on the code that already exi
 Number this milestone's features from $first.
 EOF
   commit "docs: open milestone $name" IDEA.md
-  log "Opened $name. Write IDEA.md, then: just harness"
+  log "Opened $name. Write IDEA.md, then: just harness run"
+}
+
+pass() {
+  local id=${1:-}
+  [ -n "$id" ] || die "Usage: just milestone pass <id of a manual feature>"
+  [ -f features.json ] || die "No open milestone (no features.json)."
+  tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+  jq -e --arg id "$id" 'any(.features[]; .id == $id)' features.json >/dev/null || die "No feature $id."
+  jq -e --arg id "$id" 'any(.features[]; .id == $id and (.manual // false))' features.json >/dev/null \
+    || die "$id is not a manual feature; the loop marks the others."
+  jq -e --arg id "$id" 'any(.features[]; .id == $id and .passes)' features.json >/dev/null \
+    && die "$id already passes."
+  jq --arg id "$id" '(.features[] | select(.id == $id) | .passes) = true' features.json > features.json.tmp
+  mv features.json.tmp features.json
+  commit "chore($id): mark as passing (manual acceptance)" features.json
+  log "$id passes."
 }
 
 case "${1:-list}" in
   list) list ;;
   close) close ;;
   open) open ;;
-  *) die "Usage: just milestone [list|close|open]" ;;
+  approve) shift; harness/approve.sh "$@" ;;
+  pass) shift; pass "$@" ;;
+  *) die "Usage: just milestone [list|open|close|approve spec|approve features|pass <id>]" ;;
 esac

@@ -16,24 +16,28 @@ only a person can check.
 | Command | Does |
 |---|---|
 | `just status` | Where things are and what to run next |
-| `just harness` | Run the agents, or continue after a stop |
-| `just harness-try` | Same, at most 3 Claude sessions |
-| `just harness-stop` / `just harness-resume` | Stop the agents, continue |
-| `just approve spec` / `just approve features` | Approve what you reviewed |
 | `just release` | Changelog, version tag and push |
+| **Milestone** | |
 | `just milestone list` | Milestones, closed and open |
-| `just milestone close` / `just milestone open` | Finish a milestone, start the next |
+| `just milestone open` / `close` | Start a milestone, finish it |
+| `just milestone approve spec` / `approve features` | Approve what you reviewed |
+| `just milestone pass <id>` | Mark a manual feature as checked |
+| **Agents** | |
+| `just harness run` | Run the agents, or continue after a stop |
+| `just harness try` | Same, at most 3 Claude sessions |
+| `just harness stop` / `resume` | Stop the agents, continue |
+| `just harness unblock` | After deciding what `BLOCKED.md` asks: commit and continue |
 
 ## A milestone, start to end
 
 1. `just milestone open`, then write the idea in `IDEA.md` (replace the `TODO` line).
-2. `just harness`. A planner writes `SPEC.md` and stops.
-3. Read `SPEC.md`, fix what you don't like, `just approve spec`.
-4. `just harness`. An initializer splits the spec into `features.json` and stops.
+2. `just harness run`. A planner writes `SPEC.md` and stops.
+3. Read `SPEC.md`, fix what you don't like, `just milestone approve spec`.
+4. `just harness run`. An initializer splits the spec into `features.json` and stops.
 5. Read `features.json`: every feature there, in order, each with a `verify` that checks something
-   real. `just approve features`.
-6. `just harness`. The agents build feature after feature.
-7. Check by hand the features marked `manual`, set their `passes` to `true`, commit.
+   real. `just milestone approve features`.
+6. `just harness run`. The agents build feature after feature.
+7. Check by hand the features marked `manual`, then `just milestone pass <id>` for each.
 8. `just release`, then `just milestone close`.
 
 ## When it stops
@@ -41,12 +45,12 @@ only a person can check.
 | It says | You do |
 |---|---|
 | `Stopped for review` | Steps 3 or 5 above |
-| `BLOCKED.md found` | Read `BLOCKED.md`, decide, delete it, commit, `just harness` |
-| `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just approve features`, `just harness` |
+| `BLOCKED.md found` | Read `BLOCKED.md`, apply your decision in the code or spec, `just harness unblock` |
+| `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`, `just harness run` |
 | `contract not approved` | Same, reading `.harness/state/<id>.contract-review` |
-| `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just approve features`, `just harness` |
-| `Reached MAX_SESSIONS` | Budget for this run spent: `just harness` when you want to spend more |
-| `Uncommitted changes` | Commit or `git stash`, then `just harness` |
+| `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just milestone approve features`, `just harness run` |
+| `Reached MAX_SESSIONS` | Budget for this run spent: `just harness run` when you want to spend more |
+| `Uncommitted changes` | Commit or `git stash`, then `just harness run` |
 
 ## Good to know
 
@@ -68,7 +72,7 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
 ```
 
 The design follows Anthropic's articles on long-running agents. `harness/pipeline.sh` runs the
-planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness` skips both reviews.
+planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run` skips both reviews.
 
 | Limit | Default | Counts |
 |---|---|---|
@@ -82,7 +86,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness` sk
 | `IDEA.md` | you |
 | `SPEC.md` | the planner, then you |
 | `features.json` | the initializer, then you; `passes` by the loop |
-| `APPROVALS` | `just approve` |
+| `APPROVALS` | `just milestone approve` |
 | `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
