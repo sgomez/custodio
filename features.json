@@ -28,7 +28,7 @@
         "F02"
       ],
       "verify": "just check && actionlint && zizmor --offline .github/workflows",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F04",
