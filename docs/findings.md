@@ -1,7 +1,7 @@
 # Findings on the open questions in SPEC.md
 
-Evidence comes from reading source at the stated versions. No live spy or experiment was run;
-each claim is marked **verified** (read in source or release notes) or **inferred**. Versions
+Evidence is source reading at the stated versions plus one experiment: the cryptoki test
+`signing_leaves_no_helper_threads` (thread counts around `C_Sign`, section 2). Each claim is marked **verified** (read in source or release notes) or **inferred**. Versions
 read: NSS `NSS_3_110_RTM` (same as Debian trixie), Firefox `main`/`esr128`/`esr140`,
 LibreOffice `main`, zbus 6.1.0 (our `Cargo.lock`), pkcs11-provider and libp11 default branches
 (Oct 2026, not the exact distro versions). Distribution data: Repology API, dated 2026-10-27.
@@ -34,10 +34,13 @@ tolerate `C_Sign` blocking for as long as the person takes to answer.
   `signing_leaves_no_helper_threads` counts `/proc/self/task` in a process that loaded the
   built `.so`: 2 threads (the test harness's own) before the first `C_GetSlotList`/`C_Sign`,
   2 right after `C_Sign` (a full `Connection::system()`, the polkit round trip, the reply), and
-  2 two seconds later. No thread is created and none lingers. The built `.so` does contain
-  zbus's `zruntime` unblock pool (string "failed to spawn a thread for blocking work"); it
-  spawns threads only for work handed to it, and our call path does not hand it any (the count
-  above). A future zbus or a new code path could change that, so the test guards it.
+  2 two seconds later. No thread is left behind after `C_Sign`. The test samples only before and
+  after the call, so a thread started and joined inside `C_Sign` would not be seen; that is
+  **not measured** (source reading: our path hands zbus no blocking work). The built `.so` does
+  contain zbus's `zruntime` unblock pool (string "failed to spawn a thread for blocking work");
+  it spawns threads only for work handed to it, and our call path does not hand it any
+  (inferred). A future zbus or a new code path could change that, so the test guards the
+  leftover-thread case.
 - NSS treats `CKR_CRYPTOKI_ALREADY_INITIALIZED` as success (verified). Modules are called from
   several threads (verified: NSS task queue, main thread, Firefox's background protected-auth
   task); the module is thread-safe (cryptoki integration test `threads`).
@@ -45,7 +48,7 @@ tolerate `C_Sign` blocking for as long as the person takes to answer.
   `NSS_ContextInit` calls `SECMOD_RestartModules`, which re-initializes a module only if
   `C_GetSlotList` fails (verified). So the module must be correct in a child by itself:
   `ffi.rs` registers `pthread_atfork` and holds the state lock across `fork`; the module keeps
-  no connection or thread between calls (experiment above). The `forks` cryptoki test forks
+  no connection or thread between calls (no thread left behind: experiment above). The `forks` cryptoki test forks
   while another thread repeatedly calls `get_slots_with_token`, then checks the child does not
   deadlock and can sign. It does **not** fork while a `C_Sign` is in progress (blocked on
   polkit); that case is untested. In it the child would only see a copy of a half-finished
@@ -59,7 +62,7 @@ tolerate `C_Sign` blocking for as long as the person takes to answer.
   `soffice.bin` (verified). Helper processes are fork+exec, so the atfork handlers matter only
   before `exec`.
 - zbus has no fork handling (grep, verified); after `fork` only the calling thread exists, so
-  holding no connection or thread across calls is what makes this safe (the no-thread part
+  holding no connection or thread across calls is what makes this safe (the no-leftover-thread part
   verified by experiment; the rest inferred, partly covered by the `forks` test).
 - Not tested: a real Firefox or LibreOffice session. A human should try signing from both once
   a graphical session is available.

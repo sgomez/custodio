@@ -175,3 +175,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. New test `signing_leaves_no_helper_threads` (cryptoki.rs) counts `/proc/self/task` around `C_Sign`: no thread created, none lingering; findings.md now rests on that measurement (the `blocking`-like string is zbus's `zruntime` pool, unused on our path). Fork section says exactly what the `forks` test covers (not a fork during `C_Sign`). polkit's use of `ProcessFD` confirmed in `polkitsystembusname.c`. Fedora default-bus row marked inferred; open risk added. Decisions added to docs/decisions.md. `just check` passes.
 - Not done / known issues: fork during an in-progress `C_Sign` untested; no real Firefox/LibreOffice run.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F18 — 3
+- Done: fixed NEXT_FINDINGS. findings.md header now says source reading plus the `signing_leaves_no_helper_threads` experiment; the claim is narrowed to "no thread left behind after `C_Sign`" (a thread started and joined inside the call is explicitly not measured); same narrowing in docs/decisions.md and the test's doc comment. The `tasks` mode now returns an error when the count changes. cryptoki tests (10) and `just lint` pass.
+- Not done / known issues: no in-call thread sampling; fork during `C_Sign` untested; no real Firefox/LibreOffice run.
+- Next session should: nothing specific.
