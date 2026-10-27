@@ -24,6 +24,9 @@ use cryptoki_sys::{
     CKR_TOKEN_WRITE_PROTECTED, CKS_RO_PUBLIC_SESSION,
 };
 
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
+
 #[cfg(not(any(test, feature = "fuzzing")))]
 use crate::backend::DbusBackend;
 use crate::module::{ForkGuard, Mechanism, Module, SignOutcome, mechanisms};

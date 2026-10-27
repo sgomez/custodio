@@ -16,6 +16,9 @@ fmt:
 lint:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
+    cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings
+    ! cargo build -p custodio-pkcs11 --features fuzzing --release --locked 2>/dev/null
     taplo fmt --check
     typos
     {{shell_scripts}} | xargs -r shellcheck

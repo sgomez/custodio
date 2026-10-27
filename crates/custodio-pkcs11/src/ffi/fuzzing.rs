@@ -11,7 +11,7 @@ use std::ptr;
 
 use cryptoki_sys::{CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_FUNCTION_LIST, CK_MECHANISM, CK_ULONG};
 
-use crate::ffi::C_GetFunctionList;
+use super::C_GetFunctionList;
 
 /// Largest buffer the script allocates for one argument.
 const MAX_BUFFER: usize = 4096;
@@ -33,7 +33,9 @@ impl Input<'_> {
             2 => CK_ULONG::from_le_bytes([self.byte(); size_of::<CK_ULONG>()]),
             _ => {
                 let mut bytes = [0; size_of::<CK_ULONG>()];
-                bytes.iter_mut().for_each(|b| *b = self.byte());
+                for b in &mut bytes {
+                    *b = self.byte();
+                }
                 CK_ULONG::from_le_bytes(bytes)
             }
         }
@@ -78,7 +80,7 @@ pub fn run(data: &[u8]) {
     unsafe { f.C_Finalize.map(|finalize| finalize(ptr::null_mut())) };
 }
 
-/// A pointer to `buf` or NULL, and the size to claim for it (at most the real size).
+/// A pointer to `buf`, or NULL.
 fn maybe(buf: &mut [u8], null: bool) -> *mut u8 {
     if null {
         ptr::null_mut()
@@ -94,7 +96,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
     let op = input.byte() % 17;
     let a = input.ulong();
     let b = input.ulong();
-    let null = input.byte() % 5 == 0;
+    let null = input.byte().is_multiple_of(5);
     // SAFETY (whole body): see the function's and `run`'s safety comments; out pointers are
     // to live locals or buffers sized as claimed.
     unsafe {
@@ -102,7 +104,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
             0 => {
                 let mut args: CK_C_INITIALIZE_ARGS = std::mem::zeroed();
                 args.flags = a;
-                if input.byte() % 2 == 0 {
+                if input.byte().is_multiple_of(2) {
                     args.pReserved = ptr::dangling_mut();
                 }
                 let p = if null {
@@ -129,7 +131,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     slots.as_mut_ptr()
                 };
                 if let Some(call) = f.C_GetSlotList {
-                    call(b as u8, list, &raw mut count);
+                    call(u8::from(b.is_multiple_of(2)), list, &raw mut count);
                 }
             }
             3 => {
@@ -221,7 +223,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     if op == 13 {
                         value.resize(usize::from(input.byte()) * 4, 0);
                     }
-                    let no_value = input.byte() % 4 == 0;
+                    let no_value = input.byte().is_multiple_of(4);
                     let len = if op == 13 && no_value {
                         0
                     } else {
@@ -253,10 +255,10 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                 };
                 if op == 11 {
                     if let Some(call) = f.C_FindObjectsInit {
-                        call(a, p, if p.is_null() { 0 } else { claimed });
+                        call(a, p, claimed);
                     }
                 } else if let Some(call) = f.C_GetAttributeValue {
-                    call(a, b % 4, p, if p.is_null() { 0 } else { claimed });
+                    call(a, b % 4, p, claimed);
                 }
                 drop(values);
             }
@@ -281,16 +283,18 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
             }
             15 => {
                 // Mechanism parameter: sometimes exactly the size of the PSS structure.
-                let want = if input.byte() % 2 == 0 {
+                let want = if input.byte().is_multiple_of(2) {
                     size_of::<cryptoki_sys::CK_RSA_PKCS_PSS_PARAMS>()
                 } else {
                     usize::from(input.byte() % 64)
                 };
                 let mut param = storage(want);
                 let bytes = std::slice::from_raw_parts_mut(param.as_mut_ptr().cast::<u8>(), want);
-                bytes.iter_mut().for_each(|x| *x = input.byte());
+                for x in bytes.iter_mut() {
+                    *x = input.byte();
+                }
                 let mut m = CK_MECHANISM {
-                    mechanism: if input.byte() % 2 == 0 {
+                    mechanism: if input.byte().is_multiple_of(2) {
                         a % 2 + 0x1
                     } else {
                         a
@@ -302,7 +306,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     },
                     ulParameterLen: if null { b % 2 } else { want as CK_ULONG },
                 };
-                if input.byte() % 2 == 0 {
+                if input.byte().is_multiple_of(2) {
                     // The mechanism types the module knows: RSA_PKCS, RSA_PKCS_PSS, ECDSA.
                     m.mechanism = [
                         cryptoki_sys::CKM_RSA_PKCS,
@@ -310,7 +314,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                         cryptoki_sys::CKM_ECDSA,
                     ][usize::from(input.byte() % 3)];
                 }
-                let mp = if input.byte() % 16 == 0 {
+                let mp = if input.byte().is_multiple_of(16) {
                     ptr::null_mut()
                 } else {
                     &raw mut m
