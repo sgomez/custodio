@@ -8,13 +8,15 @@
       "description": "Cargo workspace with crates `custodiod` (service: lib + bin), `custodio-pkcs11` (cdylib) and `custodio-cli` (import tool). `rust-toolchain.toml` pinned, `Cargo.lock` committed. `#![forbid(unsafe_code)]` in every crate except `custodio-pkcs11`. Workspace lints: clippy `pedantic` denied; in `custodiod` also `unwrap_used`, `expect_used`, `panic` and `indexing_slicing`.",
       "depends_on": [],
       "verify": "cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F02",
       "title": "just and lefthook entry point, repository linters",
       "description": "`justfile` with `fmt`, `lint`, `test`, `check` (fast: fmt, clippy, unit tests, taplo, typos, shellcheck) and `check-slow` (later features add to it). `lefthook.yml`: fast checks on pre-commit, slow ones on pre-push. Config for taplo and typos.",
-      "depends_on": ["F01"],
+      "depends_on": [
+        "F01"
+      ],
       "verify": "just check && test -f lefthook.yml",
       "passes": false
     },
@@ -22,7 +24,9 @@
       "id": "F03",
       "title": "CI workflow",
       "description": "GitHub Actions workflow that runs `just check` and `just check-slow` and blocks the merge. Pinned actions, minimal permissions. actionlint and zizmor clean, and both added to `just check`.",
-      "depends_on": ["F02"],
+      "depends_on": [
+        "F02"
+      ],
       "verify": "just check && actionlint && zizmor --offline .github/workflows",
       "passes": false
     },
@@ -30,7 +34,9 @@
       "id": "F04",
       "title": "Supply chain checks",
       "description": "`deny.toml`: advisories, licences compatible with EUPL-1.2, banned and duplicate crates, allowed sources. cargo-machete for unused dependencies. Both in `just check`.",
-      "depends_on": ["F02"],
+      "depends_on": [
+        "F02"
+      ],
       "verify": "just check && cargo deny check && cargo machete",
       "passes": false
     },
@@ -38,7 +44,9 @@
       "id": "F05",
       "title": "Key store",
       "description": "Key store in `custodiod`: plain files in a configurable state directory, directory 0700 and files 0600, created atomically. Key material in `secrecy`/`zeroize` types. Tests for the permissions and that `Debug` never prints key material.",
-      "depends_on": ["F02"],
+      "depends_on": [
+        "F02"
+      ],
       "verify": "just check",
       "passes": false
     },
@@ -46,7 +54,9 @@
       "id": "F06",
       "title": ".p12 import",
       "description": "Parse a `.p12` with its password. Accept only RSA 2048 and ECDSA P-256 keys with their certificate; reject anything else with a clear error. Store through the key store. Fuzz target for the `.p12` parser and a `just fuzz-build` recipe that builds all fuzz targets.",
-      "depends_on": ["F05"],
+      "depends_on": [
+        "F05"
+      ],
       "verify": "just check && just fuzz-build",
       "passes": false
     },
@@ -54,7 +64,9 @@
       "id": "F07",
       "title": "Signing primitives",
       "description": "Sign caller-provided data with a stored key for the PKCS#11 mechanisms consumers use: `CKM_RSA_PKCS`, `CKM_RSA_PKCS_PSS` and `CKM_ECDSA`. Known-answer and verify-roundtrip tests.",
-      "depends_on": ["F05"],
+      "depends_on": [
+        "F05"
+      ],
       "verify": "just check",
       "passes": false
     },
@@ -62,7 +74,9 @@
       "id": "F08",
       "title": "polkit authorization",
       "description": "Call polkit `CheckAuthorization` for `com.rfirma.custodio.sign` with a `system-bus-name` subject for the D-Bus sender and `AllowUserInteraction`, behind a trait so tests can fake it. Policy file `data/com.rfirma.custodio.policy` with `auth_self` for active, inactive and any, and a test that fails if any default is a `_keep` variant.",
-      "depends_on": ["F02"],
+      "depends_on": [
+        "F02"
+      ],
       "verify": "just check",
       "passes": false
     },
@@ -70,7 +84,11 @@
       "id": "F09",
       "title": "D-Bus service",
       "description": "`custodiod` owns `com.rfirma.Custodio1` at `/com/rfirma/Custodio1` (zbus): list keys and certificates, import a `.p12`, sign. Every sign call asks polkit first. Integration tests against a private `dbus-daemon` with a fake polkit authority on that bus: approve signs; deny returns an error and produces no signature; two signatures in a row ask twice. Fuzz target for the D-Bus method arguments. `just test-integration` recipe, added to `check-slow`.",
-      "depends_on": ["F06", "F07", "F08"],
+      "depends_on": [
+        "F06",
+        "F07",
+        "F08"
+      ],
       "verify": "just check && just test-integration && just fuzz-build",
       "passes": false
     },
@@ -78,7 +96,9 @@
       "id": "F10",
       "title": "Import CLI",
       "description": "`custodio import <file.p12>` reads the password from the terminal (never from argv or the environment), sends it to the service, and tells the person to delete the original file afterwards.",
-      "depends_on": ["F09"],
+      "depends_on": [
+        "F09"
+      ],
       "verify": "just check",
       "passes": false
     },
@@ -86,7 +106,9 @@
       "id": "F11",
       "title": "PKCS#11 module",
       "description": "`libcustodio-pkcs11.so` modelled on siguldry-pkcs11 (fedora-infra/siguldry): exposes one token per key, lets consumers list the certificate, find the private key object and `C_SignInit`/`C_Sign`, forwarding to the service over D-Bus. Everything else returns `CKR_FUNCTION_NOT_SUPPORTED`. Safe across threads and `fork`. p11-kit `.module` file. Integration test that loads the built module through the `cryptoki` crate against the private bus.",
-      "depends_on": ["F09"],
+      "depends_on": [
+        "F09"
+      ],
       "verify": "just check && just test-integration",
       "passes": false
     },
@@ -94,7 +116,9 @@
       "id": "F12",
       "title": "FFI safety",
       "description": "The FFI layer of `custodio-pkcs11` runs under Miri (`just miri`) and its tests under AddressSanitizer (`just asan`). Fuzz target for the PKCS#11 arguments the module receives. All three in `check-slow`.",
-      "depends_on": ["F11"],
+      "depends_on": [
+        "F11"
+      ],
       "verify": "just miri && just asan && just fuzz-build",
       "passes": false
     },
@@ -102,7 +126,9 @@
       "id": "F13",
       "title": "Mutation testing",
       "description": "`just mutants` runs cargo-mutants on the authorization path and the key store; any surviving mutant fails. Add tests until none survive. In `check-slow`.",
-      "depends_on": ["F09"],
+      "depends_on": [
+        "F09"
+      ],
       "verify": "just mutants",
       "passes": false
     },
@@ -110,7 +136,9 @@
       "id": "F14",
       "title": "Coverage report and CRAP gate",
       "description": "`just coverage` produces a cargo-llvm-cov report (not a target). `just crap` fails when a function's CRAP score exceeds a fixed threshold. Both in `check-slow`.",
-      "depends_on": ["F09"],
+      "depends_on": [
+        "F09"
+      ],
       "verify": "just coverage && just crap",
       "passes": false
     },
@@ -118,7 +146,9 @@
       "id": "F15",
       "title": "systemd unit, D-Bus policy, hardening gate",
       "description": "`custodio.service` with `DynamicUser=`, `StateDirectory=custodio` and hardening options; D-Bus system policy for the bus name. `just security-score` fails if `systemd-analyze security --offline=yes` exposure exceeds a fixed threshold. In `check`.",
-      "depends_on": ["F09"],
+      "depends_on": [
+        "F09"
+      ],
       "verify": "just check && just security-score",
       "passes": false
     },
@@ -126,7 +156,11 @@
       "id": "F16",
       "title": ".deb package",
       "description": "`just package` builds one `.deb` (cargo-deb) that installs the binaries, the systemd unit, the D-Bus policy, the polkit action and the p11-kit `.module`.",
-      "depends_on": ["F10", "F11", "F15"],
+      "depends_on": [
+        "F10",
+        "F11",
+        "F15"
+      ],
       "verify": "just package && dpkg-deb -c target/debian/*.deb",
       "passes": false
     },
@@ -134,7 +168,9 @@
       "id": "F17",
       "title": "End-to-end tests",
       "description": "`just e2e`: in a systemd container or VM with the package installed, real polkit and a test authentication agent that approves or denies on demand. Sign with `pkcs11-tool` and through NSS (`modutil`, `certutil`): approve, deny, and second signature asks again. Acceptance 1: the user cannot read the key files.",
-      "depends_on": ["F16"],
+      "depends_on": [
+        "F16"
+      ],
       "verify": "just e2e",
       "passes": false
     },
@@ -142,7 +178,9 @@
       "id": "F18",
       "title": "Open questions",
       "description": "`docs/findings.md` answers the open questions in SPEC.md with evidence from experiments or sources: `CKA_ALWAYS_AUTHENTICATE` in NSS and OpenSSL; D-Bus client behaviour in Firefox and LibreOffice (threads, fork); which target distributions meet polkit 124 and a bus exposing `ProcessFD`.",
-      "depends_on": ["F11"],
+      "depends_on": [
+        "F11"
+      ],
       "verify": "test -s docs/findings.md",
       "passes": false
     },
@@ -150,7 +188,9 @@
       "id": "M01",
       "title": "Acceptance 2, 3 and 6 by hand",
       "description": "rFirma signs with the token, Firefox uses it for TLS client authentication, each signature shows the polkit dialog, and fingerprint works with pam_fprintd.",
-      "depends_on": ["F17"],
+      "depends_on": [
+        "F17"
+      ],
       "manual": true,
       "passes": false
     }
