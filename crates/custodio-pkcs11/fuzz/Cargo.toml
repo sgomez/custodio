@@ -1,0 +1,23 @@
+[package]
+name = "custodio-pkcs11-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+custodio-pkcs11 = { path = "..", features = ["fuzzing"] }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "pkcs11_args"
+path = "fuzz_targets/pkcs11_args.rs"
+test = false
+doc = false
+bench = false
+
+# Keep out of the main workspace: fuzz targets need nightly and sanitizer flags.
+[workspace]

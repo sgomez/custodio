@@ -1,12 +1,17 @@
 //! Custodio PKCS#11 module.
 //!
-//! This is the only crate allowed to contain `unsafe` code (the PKCS#11 FFI layer, in `ffi`).
+//! This is the only crate allowed to contain `unsafe` code (the PKCS#11 FFI layer, in `ffi`, and
+//! the feature-gated fuzz harness in `fuzzing`).
 //! The module lists one token per key, finds the certificate and the private key object, and
 //! forwards `C_Sign` to the `custodiod` service over D-Bus. Every other function returns
 //! `CKR_FUNCTION_NOT_SUPPORTED`.
 
 pub mod backend;
+#[cfg(any(test, feature = "fuzzing"))]
+mod fake;
 mod ffi;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 pub mod module;
 pub mod token;
 mod unsupported;

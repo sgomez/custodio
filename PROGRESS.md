@@ -98,3 +98,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (PKCS#11 module). Library file is `libcustodio_pkcs11.so` (Cargo forbids hyphens).
 - Not done / known issues: no fuzz target for PKCS#11 arguments and no Miri/ASAN run of the FFI layer yet (SPEC asks for both); tested with `cryptoki` only, not yet with `pkcs11-tool`/NSS/p11-kit; slot ids are indexes, so they can shift if keys are added between `C_GetSlotList` calls; `C_GetSlotList` ignores `tokenPresent` and `C_WaitForSlotEvent` is unsupported.
 - Next session should: nothing specific; a later feature can add the FFI fuzz target and Miri run.
+
+### 2026-10-27 — F12 — 1
+- Done: `just miri` (nightly Miri on `custodio-pkcs11 --lib`), `just asan` (same tests under `-Zsanitizer=address`), both in `check-slow`; CI installs the miri and rust-src components. New `ffi::tests` (9) call every implemented C function through the function list with NULLs, lying-small buffers, absurd lengths, misaligned PSS parameters, and check guard bytes stay untouched. For this the global module's backend is an alias: `DbusBackend` normally, `fake::FakeBackend` under `cfg(test)` or feature `fuzzing`. Fuzz target `pkcs11_args` in `crates/custodio-pkcs11/fuzz` (scripts of calls via `fuzzing::run`; 40 s run clean, ~400k execs); built by `just fuzz-build`. verify passes; `just check` and `just test-integration` green.
+- Decisions: see docs/decisions.md (FFI safety).
+- Not done / known issues: Miri/ASan do not cover the `.so` integration tests (need a bus and `dlopen`); the real `DbusBackend` path is not under Miri; the fuzz harness never passes pointers with sizes larger than the buffers (UB by contract).
+- Next session should: nothing specific.

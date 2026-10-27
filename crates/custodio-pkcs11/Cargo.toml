@@ -11,6 +11,10 @@ crate-type = ["cdylib", "rlib"]
 [lints]
 workspace = true
 
+[features]
+# Swaps the service for a fixed fake and exposes `fuzzing::run`; only for the fuzz target.
+fuzzing = []
+
 [dependencies]
 cryptoki-sys = "0.5.0"
 libc = "0.2.191"
