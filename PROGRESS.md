@@ -26,3 +26,9 @@ with an empty context.
 - Decisions: tests use `cargo test` (nextest not installed). `check-slow` currently just depends on `check`.
 - Not done / known issues: none.
 - Next session should: add slow steps to `check-slow` as features land.
+
+### 2026-10-27 — F03 — 1
+- Done: `.github/workflows/ci.yml` (jobs `check`, `check-slow`, aggregate `ci`); SHA-pinned actions, minimal permissions, no persisted credentials. `just lint` now runs `actionlint` and `zizmor --offline .github/workflows`. verify passes.
+- Decisions: see docs/decisions.md (CI workflow shape). Branch protection must require the `ci` check; this is a GitHub setting a human must apply.
+- Not done / known issues: tool installs in CI use taiki-e/install-action (not exercised locally); no cargo cache.
+- Next session should: nothing specific.
