@@ -115,8 +115,9 @@ asan:
         --target "$host" --target-dir target/asan
 
 # Mutation testing of the authorization path (polkit, D-Bus service) and the key store. A surviving mutant fails.
-mutants:
-    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants
+# Extra arguments go to cargo-mutants, e.g. `just mutants --in-diff pr.diff` or `just mutants --shard 0/4`.
+mutants *args:
+    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants {{args}}
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
