@@ -56,3 +56,9 @@ with an empty context.
 - Decisions: none new.
 - Not done / known issues: `SyncFailed` is never produced by any test (needs fault injection); note for mutation-testing setup. NEXT_FINDINGS.md left for the loop to clear.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F06 — 1
+- Done: `custodiod::import` (`parse_p12`, `import_p12`, `ImportError`, `KeyKind`); tests in `crates/custodiod/tests/import.rs` with fixtures from `tests/fixtures/gen.sh` (RSA 2048/3072, P-256/P-384, Ed25519, legacy PBE; no-cert, two-key and no-key files are built in-test). Fuzz target `p12_parse` in `crates/custodiod/fuzz` (10 s smoke run clean); `just fuzz-build` added and wired into `check-slow` and CI. verify passes.
+- Decisions: see docs/decisions.md (`.p12` import). Duplicate `syn` skipped in deny.toml.
+- Not done / known issues: key↔certificate public-key match not checked; `p12-keystore` holds an unzeroized copy of the key during parsing; no CLI wiring yet; CI changes (nightly, cargo-fuzz) not exercised locally.
+- Next session should: nothing specific.

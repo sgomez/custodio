@@ -4,3 +4,6 @@ CLAUDE.local.md
 AGENT_STOP
 NEXT_FINDINGS.md
 .claude/settings.local.json
+/crates/*/fuzz/target
+/crates/*/fuzz/corpus
+/crates/*/fuzz/artifacts
