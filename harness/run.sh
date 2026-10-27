@@ -11,9 +11,13 @@ engine=$(command -v podman || command -v docker)
 "$engine" build -q -t custodio-dev -f harness/Containerfile harness >/dev/null
 "$engine" volume create custodio-target >/dev/null 2>&1 || true
 
-exec "$engine" run --rm -it \
+# Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
+userns=() target_opts=
+if [[ $engine == *podman ]]; then userns=(--userns=keep-id) target_opts=:U; fi
+
+exec "$engine" run --rm -it ${userns[@]+"${userns[@]}"} \
   -v "$PWD":/work \
-  -v custodio-target:/work/target \
+  -v "custodio-target:/work/target$target_opts" \
   -e CLAUDE_CODE_OAUTH_TOKEN \
   -e MAX_SESSIONS -e MAX_ATTEMPTS \
   -e GIT_AUTHOR_NAME="$(git config user.name)" -e GIT_AUTHOR_EMAIL="$(git config user.email)" \
