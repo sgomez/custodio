@@ -56,104 +56,36 @@ jobs:
           curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
           tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
-      # Caches are written only from main, so a pull request cannot poison them.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: just check
 
-  # The slow checks of `just check-slow`, one job each so they run in parallel, without repeating
-  # `just check` (its own job above).
-  slow:
-    name: ${{ matrix.name }}
+  check-slow:
+    name: just check-slow
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: integration tests
-            recipes: test-integration
-          - name: miri
-            recipes: miri
-            nightly: true
-          - name: asan
-            recipes: asan
-            nightly: true
-          - name: fuzz targets build
-            recipes: fuzz-build
-            nightly: true
-            fuzz: true
-          - name: coverage and crap
-            recipes: coverage crap
-            tools: cargo-llvm-cov
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just${{ matrix.tools && format(',{0}', matrix.tools) || '' }}
-      - if: matrix.nightly
-        run: rustup toolchain install nightly --profile minimal --component miri --component rust-src
-      - if: matrix.tools == 'cargo-llvm-cov'
-        run: rustup component add llvm-tools-preview
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: ${{ matrix.name }}
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      # cargo-fuzz is built from source; rust-cache keeps it in ~/.cargo/bin between runs.
-      - if: matrix.fuzz
-        run: command -v cargo-fuzz || cargo install --locked cargo-fuzz@0.13.2
-      - env:
-          RECIPES: ${{ matrix.recipes }}
-        run: |
-          read -ra recipes <<<"$RECIPES"
-          just "${recipes[@]}"
-
-  # Mutation testing, split into shards that run in parallel. On a pull request only the mutants in
-  # lines the pull request changes; on main every mutant.
-  mutants:
-    name: mutants (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2, 3]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
-        with:
-          tool: just,cargo-mutants
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: mutants
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - env:
-          SHARD: ${{ matrix.shard }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          args=(--shard "$SHARD/4")
-          if [ -n "$BASE" ]; then
-            git diff "$BASE...$HEAD" > "$RUNNER_TEMP/pr.diff"
-            args+=(--in-diff "$RUNNER_TEMP/pr.diff")
-          fi
-          just mutants "${args[@]}"
+          tool: just,taplo,typos,zizmor,shellcheck,cargo-deny,cargo-machete,cargo-mutants,cargo-llvm-cov
+      # install-action does not ship actionlint; pinned release, checksum-verified.
+      - run: |
+          curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
+      - run: cargo install --locked cargo-fuzz@0.13.2
+      - run: rustup toolchain install nightly --profile minimal --component miri --component rust-src
+      - run: rustup component add llvm-tools-preview
+      - run: just check-slow
 
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:
     name: ci
     if: always()
-    needs: [commits, check, slow, mutants]
+    needs: [commits, check, check-slow]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
