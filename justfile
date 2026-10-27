@@ -37,8 +37,21 @@ test-integration:
     cargo test -p custodiod --locked --test dbus --test polkit
     cargo test -p custodio-pkcs11 --locked --test cryptoki
 
-# Slow checks (later features add to it): everything in `check`, the integration tests and the fuzz targets building.
-check-slow: check test-integration fuzz-build
+# The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
+# use a fake service, because Miri cannot talk to a bus.
+miri:
+    cargo +nightly miri test -p custodio-pkcs11 --lib --locked
+
+# The tests of the PKCS#11 module under AddressSanitizer (needs nightly).
+asan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host=$(rustc +nightly -vV | sed -n 's/^host: //p')
+    RUSTFLAGS="-Zsanitizer=address" cargo +nightly test -p custodio-pkcs11 --lib --locked \
+        --target "$host" --target-dir target/asan
+
+# Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan and the fuzz targets building.
+check-slow: check test-integration miri asan fuzz-build
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:
