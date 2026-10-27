@@ -32,7 +32,7 @@ test:
     cargo test --workspace --locked
 
 # Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
-check: lint test security-score
+check: lint test security-score unit-verify bus-policy
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
@@ -47,6 +47,52 @@ security-score threshold="10":
         echo "security-score: a bare unit passed the gate" >&2
         exit 1
     fi
+
+# The unit parses cleanly: `systemd-analyze verify` exits 0 on unknown or invalid settings, so any output fails. ExecStart is
+# replaced by a stub because the binary is installed by packaging.
+unit-verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    sed 's#^ExecStart=.*#ExecStart=/bin/true#' data/custodio.service > "$dir/custodio.service"
+    out=$(systemd-analyze verify "$dir/custodio.service" 2>&1) || { echo "$out" >&2; exit 1; }
+    if [ -n "$out" ]; then echo "unit-verify: $out" >&2; exit 1; fi
+    systemd-sysusers --dry-run data/sysusers.d/custodio.conf >/dev/null 2>&1
+
+# The bus policy really grants the name to the service user and to nobody else: a private dbus-daemon includes the policy file
+# (with `custodio` replaced by the current user, or by a different user for the negative case) and we try to own the name.
+bus-policy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=$(mktemp -d)
+    daemon=
+    trap '[ -z "$daemon" ] || kill "$daemon" 2>/dev/null || true; rm -rf "$dir"' EXIT
+    me=$(id -un)
+    try_own() { # $1 = user named in the policy; prints the RequestName outcome
+        sed "s#user=\"custodio\"#user=\"$1\"#" data/com.rfirma.Custodio1.conf > "$dir/policy.conf"
+        {
+            echo '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"'
+            echo ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">'
+            echo '<busconfig><type>system</type>'
+            echo "<listen>unix:path=$dir/bus</listen><auth>EXTERNAL</auth>"
+            echo '<policy context="default"><allow user="*"/><allow send_destination="*"/><allow own="*"/><allow receive_sender="*"/></policy>'
+            echo "<include>$dir/policy.conf</include></busconfig>"
+        } > "$dir/bus.conf"
+        dbus-daemon --config-file="$dir/bus.conf" --nofork --nopidfile & daemon=$!
+        for _ in $(seq 50); do [ -S "$dir/bus" ] && break; sleep 0.1; done
+        busctl --address="unix:path=$dir/bus" call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus RequestName su com.rfirma.Custodio1 0 2>&1 || true
+        kill "$daemon"; wait "$daemon" 2>/dev/null || true; daemon=
+        rm -f "$dir/bus"
+    }
+    granted=$(try_own "$me")
+    [ "$granted" = "u 1" ] || { echo "bus-policy: the policy user could not own the name: $granted" >&2; exit 1; }
+    denied=$(try_own "nobody")
+    case "$denied" in
+        "u 1"*) echo "bus-policy: another user owned the name" >&2; exit 1 ;;
+        *"AccessDenied"*|*"not allowed"*|*"denied"*) ;;
+        *) echo "bus-policy: unexpected result for another user: $denied" >&2; exit 1 ;;
+    esac
 
 # Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
 # The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
