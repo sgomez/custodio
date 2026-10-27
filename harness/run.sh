@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the build loop in the dev container. From the repository root on your Mac:
 #   export CLAUDE_CODE_OAUTH_TOKEN=...   # once, from `claude setup-token`
-#   harness/run.sh                       # loop
+#   harness/run.sh                       # pipeline: plan, split, build
 #   harness/run.sh bash                  # a shell in the container
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -19,7 +19,7 @@ exec "$engine" run --rm -it ${userns[@]+"${userns[@]}"} \
   -v "$PWD":/work \
   -v "custodio-target:/work/target$target_opts" \
   -e CLAUDE_CODE_OAUTH_TOKEN \
-  -e MAX_SESSIONS -e MAX_ATTEMPTS \
+  -e AUTO_APPROVE -e MAX_SESSIONS -e MAX_ATTEMPTS -e MAX_CONTRACT_ROUNDS -e MAX_FEATURE_SESSIONS \
   -e GIT_AUTHOR_NAME="$(git config user.name)" -e GIT_AUTHOR_EMAIL="$(git config user.email)" \
   -e GIT_COMMITTER_NAME="$(git config user.name)" -e GIT_COMMITTER_EMAIL="$(git config user.email)" \
-  custodio-dev "${@:-harness/loop.sh}"
+  custodio-dev "${@:-harness/pipeline.sh}"
