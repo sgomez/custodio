@@ -113,5 +113,5 @@ with an empty context.
 ### 2026-10-27 — F13 — 1
 - Done: `just mutants` runs `cargo-mutants` on `polkit.rs`, `dbus.rs` and `store.rs` (the authorization path and the key store) in `custodiod`; any surviving or timed-out mutant fails. Added to `check-slow`. Final run: 120 mutants, 103 caught, 17 unviable, 0 missed. New unit tests: exact boundaries (id length, sign data, p12/password size, key file size), PSS SHA-256/512, `Display`/`Debug` text, `store_error` mapping, stale-temp cleanup keeps keys, non-NotFound open errors.
 - Decisions: three small refactors so no mutant is equivalent instead of excluding anything: `open_as` uses `if` on the error kind; `get` flags use `.union()` (`|` and `^` of disjoint bits are equal); `get` maps open errors in one arm. No mutants are skipped or excluded.
-- Not done / known issues: takes ~2 min; `sign.rs` and `import.rs` are not in scope (spec names only authorization path and key store); the CI job has not run `cargo-mutants` (installed locally; CI must install it).
+- Not done / known issues: takes ~2 min; `sign.rs` and `import.rs` are not in scope (spec names only authorization path and key store); CI installs `cargo-mutants` but was not exercised locally.
 - Next session should: nothing specific.
