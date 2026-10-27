@@ -27,8 +27,6 @@ lint:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
-    cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings
-    ! cargo build -p custodio-pkcs11 --features fuzzing --release --locked 2>/dev/null
     taplo fmt --check
     typos
     {{shell_scripts}} | xargs -r shellcheck
@@ -37,12 +35,21 @@ lint:
     cargo deny check
     cargo machete
 
+# Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
+# another configuration, so they run with the nightly checks, not in `check`.
+lint-fuzz:
+    cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings
+    ! cargo build -p custodio-pkcs11 --features fuzzing --release --locked 2>/dev/null
+
 # Unit tests.
 test:
     cargo test --workspace --locked
 
 # Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
-check: lint test security-score unit-verify bus-policy
+check: lint test system-gates
+
+# The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
+system-gates: security-score unit-verify bus-policy
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
@@ -160,8 +167,8 @@ e2e: package
 # gate. The integration tests run under coverage. CI runs each of these as its own job.
 check-slow: check nightly mutants coverage-gate
 
-# Everything that needs the nightly toolchain: Miri, ASan and the fuzz targets building.
-nightly: miri asan fuzz-build
+# Miri, ASan, the fuzz targets building and their lints.
+nightly: miri asan fuzz-build lint-fuzz
 
 # Coverage of every test (unit and integration) and the CRAP gate on it.
 coverage-gate: coverage crap

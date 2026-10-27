@@ -1,8 +1,10 @@
 name: Mutants
 
-# Every mutant, in four shards. ci.yml only runs the ones on changed lines, so this catches a mutant that a test change let
-# survive.
+# Every mutant, in four shards, weekly and on each release tag. ci.yml only runs the ones on changed lines, so this catches a
+# mutant that a test change let survive.
 on:
+  push:
+    tags: ['v*']
   schedule:
     - cron: '0 3 * * 6'
   workflow_dispatch:
@@ -27,14 +29,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The cache ci.yml saves for its mutants job; restore only, so the shards do not race to save it.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          shared-key: mutants
-          workspaces: |
-            . -> target
-            crates/custodio-pkcs11/fuzz -> target
-          save-if: false
+      # No rust-cache: a tag-triggered workflow restoring a cache is a cache-poisoning path, and this runs rarely.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: just,cargo-mutants@27.1.0
