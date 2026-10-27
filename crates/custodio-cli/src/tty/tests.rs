@@ -1,0 +1,55 @@
+use std::io::Read;
+use std::os::fd::OwnedFd;
+
+use rustix::fs::{Mode, OFlags, open};
+use rustix::pty::{OpenptFlags, grantpt, openpt, ptsname, unlockpt};
+use secrecy::ExposeSecret;
+
+use super::*;
+
+/// A pseudo-terminal: the master end and the slave end opened as a `File`.
+fn pty() -> (File, File) {
+    let master = openpt(OpenptFlags::RDWR | OpenptFlags::NOCTTY).unwrap();
+    grantpt(&master).unwrap();
+    unlockpt(&master).unwrap();
+    let name = ptsname(&master, Vec::new()).unwrap();
+    let slave: OwnedFd = open(
+        name.as_c_str(),
+        OFlags::RDWR | OFlags::NOCTTY,
+        Mode::empty(),
+    )
+    .unwrap();
+    (File::from(master), File::from(slave))
+}
+
+#[test]
+fn reads_a_line_with_echo_off_and_restores_the_terminal() {
+    let (mut master, mut slave) = pty();
+    let before = tcgetattr(&slave).unwrap().local_modes;
+    assert!(before.contains(LocalModes::ECHO));
+    let probe = slave.try_clone().unwrap();
+    let user = std::thread::spawn(move || {
+        let mut seen = [0u8; 8];
+        master.read_exact(&mut seen).unwrap();
+        let during = tcgetattr(&probe).unwrap().local_modes;
+        master.write_all(b"hunter2\n").unwrap();
+        // Whatever the terminal echoes back must not contain the password.
+        let mut echoed = [0u8; 2];
+        master.read_exact(&mut echoed).unwrap();
+        (master, seen, during, echoed)
+    });
+    let password = prompt_on(&mut slave, "Pass: >>").unwrap();
+    let (_master, seen, during, echoed) = user.join().unwrap();
+    assert_eq!(password.expose_secret(), "hunter2");
+    assert_eq!(&seen, b"Pass: >>");
+    assert!(!during.contains(LocalModes::ECHO));
+    assert_eq!(&echoed, b"\r\n");
+    assert_eq!(tcgetattr(&slave).unwrap().local_modes, before);
+}
+
+#[test]
+fn a_closed_terminal_is_an_error_and_still_restores() {
+    let (master, mut slave) = pty();
+    drop(master);
+    assert!(prompt_on(&mut slave, "Pass: ").is_err());
+}

@@ -1,0 +1,186 @@
+//! The parent: the private bus, the fake polkit and the service.
+
+use super::*;
+
+struct Bus {
+    child: Child,
+    address: String,
+}
+
+impl Bus {
+    fn start() -> Result<Self, Box<dyn Error>> {
+        let mut child = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut address = String::new();
+        BufReader::new(child.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
+        Ok(Self {
+            child,
+            address: address.trim().to_owned(),
+        })
+    }
+}
+
+impl Drop for Bus {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct FakePolkit {
+    approve: Arc<AtomicBool>,
+    asked: Arc<Mutex<Vec<String>>>,
+}
+
+#[interface(name = "org.freedesktop.PolicyKit1.Authority")]
+impl FakePolkit {
+    // The `interface` macro needs owned argument types to deserialize the D-Bus message.
+    #[allow(clippy::needless_pass_by_value)]
+    fn check_authorization(
+        &self,
+        subject: (String, HashMap<String, OwnedVariant>),
+        action_id: String,
+        details: HashMap<String, String>,
+        flags: u32,
+        cancellation_id: String,
+    ) -> (bool, bool, HashMap<String, String>) {
+        let _ = (details, flags, cancellation_id);
+        if let Ok(mut asked) = self.asked.lock() {
+            asked.push(action_id);
+        }
+        let _ = subject;
+        (self.approve.load(Ordering::SeqCst), false, HashMap::new())
+    }
+}
+
+pub(super) struct Fixture {
+    _bus: Bus,
+    state: tempfile::TempDir,
+    asked: Arc<Mutex<Vec<String>>>,
+    address: String,
+}
+
+impl Fixture {
+    /// A bus with polkit, and, if `service`, the service holding an RSA and a P-256 key. They
+    /// run on their own thread: the connections only make progress while a thread is inside
+    /// `block_on`, and the test thread is busy waiting for the child process.
+    pub(super) fn start(approve: bool, service: bool) -> Result<Self, Box<dyn Error>> {
+        let bus = Bus::start()?;
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let state = tempfile::tempdir()?;
+        let (ready, wait) = std::sync::mpsc::channel::<Result<(), String>>();
+        let (address, path, log) = (
+            bus.address.clone(),
+            state.path().join("keys"),
+            asked.clone(),
+        );
+        std::thread::spawn(move || {
+            let setup = async {
+                let bus = Builder::address(address.as_str());
+                let polkit = bus.build().await?;
+                polkit
+                    .object_server()
+                    .at(
+                        "/org/freedesktop/PolicyKit1/Authority",
+                        FakePolkit {
+                            approve: Arc::new(AtomicBool::new(approve)),
+                            asked: log,
+                        },
+                    )
+                    .await?;
+                polkit.request_name("org.freedesktop.PolicyKit1").await?;
+                let mut connections = vec![polkit];
+                if service {
+                    let store = Arc::new(KeyStore::open(path)?);
+                    let password = SecretString::from(PASSWORD);
+                    import_p12(&store, "rsa", RSA_P12, &password)?;
+                    import_p12(&store, "ec", EC_P12, &password)?;
+                    let conn = Builder::address(address.as_str()).build().await?;
+                    conn.object_server()
+                        .at(
+                            OBJECT_PATH,
+                            Custodio::new(store, PolkitAuthorizer::new(conn.clone())),
+                        )
+                        .await?;
+                    conn.request_name(BUS_NAME).await?;
+                    connections.push(conn);
+                }
+                Ok::<_, Box<dyn Error>>(connections)
+            };
+            block_on(async {
+                match setup.await {
+                    Ok(connections) => {
+                        let _ = ready.send(Ok(()));
+                        std::future::pending::<()>().await;
+                        drop(connections);
+                    }
+                    Err(e) => {
+                        let _ = ready.send(Err(e.to_string()));
+                    }
+                }
+            });
+        });
+        wait.recv()??;
+        Ok(Self {
+            address: bus.address.clone(),
+            _bus: bus,
+            state,
+            asked,
+        })
+    }
+
+    pub(super) fn store(&self) -> Result<KeyStore, Box<dyn Error>> {
+        Ok(KeyStore::open(self.state.path().join("keys"))?)
+    }
+
+    pub(super) fn asked(&self) -> usize {
+        self.asked.lock().map(|a| a.len()).unwrap_or_default()
+    }
+
+    /// Runs a child scenario; returns whether it passed and its stdout.
+    pub(super) fn run(&self, mode: &str) -> Result<(bool, String), Box<dyn Error>> {
+        let out = Command::new(std::env::current_exe()?)
+            .args(["--exact", "client", "--nocapture", "--test-threads=1"])
+            .env(MODE_VAR, mode)
+            .env(MODULE_VAR, module_path()?)
+            .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
+            .output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        if !out.status.success() {
+            eprintln!("{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
+        }
+        Ok((out.status.success(), stdout))
+    }
+}
+
+/// Builds the module (cargo does not build the `cdylib` of a package for its own tests) and
+/// returns `target/<profile>/libcustodio_pkcs11.so`, next to the `deps` directory of this binary.
+static BUILT: Once = Once::new();
+
+fn module_path() -> Result<PathBuf, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .and_then(|d| d.parent())
+        .ok_or("no target dir")?
+        .to_path_buf();
+    // Build into the target directory this binary lives in (`cargo llvm-cov` uses its own).
+    let target = dir.parent().ok_or("no target dir")?.to_path_buf();
+    BUILT.call_once(|| {
+        let mut build = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+        build.args(["build", "--quiet", "--locked", "-p", "custodio-pkcs11"]);
+        build.arg("--target-dir").arg(&target);
+        if !cfg!(debug_assertions) {
+            build.arg("--release");
+        }
+        assert!(
+            build.status().is_ok_and(|s| s.success()),
+            "building the module failed"
+        );
+    });
+    let path = dir.join("libcustodio_pkcs11.so");
+    assert!(path.exists(), "{} was not built", path.display());
+    Ok(path)
+}
