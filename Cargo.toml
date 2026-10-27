@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["crates/custodiod", "crates/custodio-pkcs11", "crates/custodio-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
