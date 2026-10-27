@@ -58,7 +58,8 @@ unit-verify:
     sed 's#^ExecStart=.*#ExecStart=/bin/true#' data/custodio.service > "$dir/custodio.service"
     out=$(systemd-analyze verify "$dir/custodio.service" 2>&1) || { echo "$out" >&2; exit 1; }
     if [ -n "$out" ]; then echo "unit-verify: $out" >&2; exit 1; fi
-    systemd-sysusers --dry-run data/sysusers.d/custodio.conf >/dev/null 2>&1
+    # Absolute: systemd < 256 looks a relative name up in the sysusers.d directories.
+    out=$(systemd-sysusers --dry-run "$PWD/data/sysusers.d/custodio.conf" 2>&1) || { echo "$out" >&2; exit 1; }
 
 # The bus policy really grants the name to the service user and to nobody else: a private dbus-daemon includes the policy file
 # (with `custodio` replaced by the current user, or by a different user for the negative case) and we try to own the name.
