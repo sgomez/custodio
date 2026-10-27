@@ -142,3 +142,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. Static `custodio` account via `data/sysusers.d/custodio.conf` (the bus policy names it; dbus drops a policy for an unknown user at config load, so the dynamic-only user could never own the name). New `just bus-policy` (private dbus-daemon includes the policy: policy user owns the name, `nobody` is denied; checked that an allow-all policy fails it) and `just unit-verify` (`systemd-analyze verify` with stub ExecStart, any output fails; sysusers dry run); both in `check`. Packaging requirements (binary path, sysusers, policy, activation file) recorded in docs/decisions.md. `just check && just security-score` pass.
 - Not done / known issues: the syscall filter and `PrivateUsers=` still have not run under a live systemd (none here); `unit-verify` checks syntax only.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F15 — 3
+- Done: evaluator passed attempt 2; applied its optional fix. `bus-policy`'s `try_own` now has its own EXIT trap (it runs in a `$(...)` subshell) so the private `dbus-daemon` is killed if it fails partway. `just check && just security-score` pass.
+- Not done / known issues: as in attempt 2 (nothing run under a live systemd; end-to-end feature must start the real unit).
+- Next session should: nothing specific.

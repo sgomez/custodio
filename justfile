@@ -66,8 +66,7 @@ bus-policy:
     #!/usr/bin/env bash
     set -euo pipefail
     dir=$(mktemp -d)
-    daemon=
-    trap '[ -z "$daemon" ] || kill "$daemon" 2>/dev/null || true; rm -rf "$dir"' EXIT
+    trap 'rm -rf "$dir"' EXIT
     me=$(id -un)
     try_own() { # $1 = user named in the policy; prints the RequestName outcome
         sed "s#user=\"custodio\"#user=\"$1\"#" data/com.rfirma.Custodio1.conf > "$dir/policy.conf"
@@ -80,9 +79,10 @@ bus-policy:
             echo "<include>$dir/policy.conf</include></busconfig>"
         } > "$dir/bus.conf"
         dbus-daemon --config-file="$dir/bus.conf" --nofork --nopidfile & daemon=$!
+        trap 'kill "$daemon" 2>/dev/null || true' EXIT # the subshell of $(try_own) owns the daemon
         for _ in $(seq 50); do [ -S "$dir/bus" ] && break; sleep 0.1; done
         busctl --address="unix:path=$dir/bus" call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus RequestName su com.rfirma.Custodio1 0 2>&1 || true
-        kill "$daemon"; wait "$daemon" 2>/dev/null || true; daemon=
+        kill "$daemon"; wait "$daemon" 2>/dev/null || true
         rm -f "$dir/bus"
     }
     granted=$(try_own "$me")
