@@ -15,11 +15,23 @@ indexing_slicing = "deny"
 
 [dependencies]
 p12-keystore = "0.4.1"
-p256 = { version = "0.14.0", default-features = false, features = ["arithmetic"] }
-pkcs8 = { version = "0.11.0", default-features = false }
+p256 = { version = "0.14.0", default-features = false, features = [
+  "arithmetic",
+  "ecdsa",
+  "pkcs8",
+  "alloc",
+] }
+pkcs8 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+rand = "0.10.3"
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = [
+  "std",
+  "encoding",
+  "sha2",
+] }
 rustix = { version = "1.1.6", features = ["fs", "process"] }
 sec1 = { version = "0.8.1", default-features = false, features = ["der"] }
 secrecy = "0.10.3"
+sha2 = "0.11.1"
 x509-cert = { version = "0.3.0", default-features = false }
 zeroize = "1.9.1"
 

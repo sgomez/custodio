@@ -6,7 +6,12 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = []
+# RUSTSEC-2023-0071 (Marvin, `rsa` timing side channel): no patched release exists. Accepted for
+# RSA signing only because every signature needs an interactive polkit approval (seconds each, so
+# the attacker cannot collect the thousands of timings the attack needs), the service passes an RNG
+# so private-key operations are blinded, and a hostile same-uid process is out of scope in SPEC.md.
+# Re-check when `rsa` publishes a fix; see docs/decisions.md (signing primitives).
+ignore = ["RUSTSEC-2023-0071"]
 
 # Licences compatible with EUPL-1.2 (permissive, or weak copyleft listed as compatible in its
 # appendix). Add to this list only after checking compatibility.

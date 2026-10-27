@@ -187,7 +187,7 @@ fn unsupported(why: &str) -> ImportError {
 }
 
 /// Decide whether a PKCS#8 DER key is RSA 2048 or ECDSA P-256.
-fn classify(pkcs8_der: &[u8]) -> Result<KeyKind, ImportError> {
+pub(crate) fn classify(pkcs8_der: &[u8]) -> Result<KeyKind, ImportError> {
     let info =
         PrivateKeyInfoRef::from_der(pkcs8_der).map_err(|_| unsupported("malformed PKCS#8 key"))?;
     let oid = info.algorithm.oid;

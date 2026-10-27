@@ -68,3 +68,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (`.p12` import).
 - Not done / known issues: `p12-keystore` keeps an unzeroized copy of the key while parsing; no CLI wiring yet; CI fuzz changes not exercised locally.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F07 — 1
+- Done: `custodiod::sign::sign(key, Mechanism, data)` for `CKM_RSA_PKCS` (data signed as is, caller supplies DigestInfo), `CKM_RSA_PKCS_PSS` (SHA-256/384/512 digest, MGF1 same hash, explicit salt length) and `CKM_ECDSA` (raw r||s, RFC 6979). Tests in `crates/custodiod/tests/sign.rs`: OpenSSL known answer for RSA, RFC 6979 A.2.5 vectors for ECDSA, verify round trips with independent public-key ops, length/mismatch/garbage-key errors, no panic for any ECDSA input length (empty input panicked in `rfc6979`; now `BadData`). New deps: rsa (=0.10.0-rc.19), sha2, rand, p256 features. verify passes.
+- Decisions: see docs/decisions.md (Signing primitives). `deny.toml` now ignores RUSTSEC-2023-0071 (Marvin) with a justification; no fixed `rsa` exists.
+- Not done / known issues: polkit is not called here (the D-Bus layer must authorize before `sign`); no CLI/D-Bus wiring; no SHA-1 PSS; MGF hash is forced equal to the PSS hash; `rsa` is a prerelease.
+- Next session should: call `sign` only after a polkit check.
