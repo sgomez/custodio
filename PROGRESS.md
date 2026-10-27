@@ -20,3 +20,9 @@ with an empty context.
 - Decisions: Cargo cannot mix `lints.workspace = true` with extra lints, so `custodiod` repeats pedantic locally (see docs/decisions.md).
 - Not done / known issues: no `justfile` yet.
 - Next session should: build the next feature; new crates must set `[lints] workspace = true`.
+
+### 2026-10-27 — F02 — 1
+- Done: `justfile` (`fmt`, `lint`, `test`, `check`, `check-slow`), `lefthook.yml` (pre-commit: `just check`; pre-push: `just check-slow`), `.taplo.toml`, `_typos.toml`. shellcheck runs over git-tracked `*.sh`. verify passes.
+- Decisions: tests use `cargo test` (nextest not installed). `check-slow` currently just depends on `check`.
+- Not done / known issues: none.
+- Next session should: add slow steps to `check-slow` as features land.
