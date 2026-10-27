@@ -7,6 +7,16 @@ shell_scripts := "git ls-files '*.sh'"
 default:
     @just --list
 
+# One-time setup of a development machine: the pinned tools in mise.toml, the nightly toolchain
+# for Miri, ASan and fuzzing, commitlint and the git hooks. Needs mise and rustup.
+setup:
+    mise trust
+    mise install
+    rustup toolchain install nightly --profile minimal --component miri --component rust-src
+    rustup component add llvm-tools-preview
+    npm ci --no-audit --no-fund
+    lefthook install
+
 # Format Rust and TOML in place.
 fmt:
     cargo fmt --all

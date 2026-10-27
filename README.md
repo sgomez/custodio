@@ -12,3 +12,14 @@ intent: the dialog cannot prove what is being signed.
 
 - System D-Bus name: `com.rfirma.Custodio1`
 - polkit action: `com.rfirma.custodio.sign`
+
+## Development
+
+Linux only. Install [mise](https://mise.jdx.dev) and rustup, activate mise in your shell
+(`eval "$(mise activate bash)"` or `zsh`), then once:
+
+```bash
+just setup
+```
+
+`just` lists every task; `just check` runs the fast checks.

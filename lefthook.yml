@@ -1,4 +1,4 @@
-# Commit message format and fast checks on commit, slow ones on push. Install with `npm ci && lefthook install`.
+# Commit message format and fast checks on commit, slow ones on push. Install with `just setup`.
 pre-commit:
   commands:
     check:

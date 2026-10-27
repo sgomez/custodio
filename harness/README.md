@@ -29,12 +29,12 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
 From the repository root on your machine, with Docker or Podman:
 
 ```bash
-npm ci && lefthook install              # once: commitlint and the git hooks on your machine
+just setup                              # once: tools (mise), commitlint and the git hooks
 export CLAUDE_CODE_OAUTH_TOKEN=...      # once: claude setup-token
 harness/run.sh                          # runs harness/pipeline.sh in the dev container
 ```
 
-Without `npm ci`, the commit-msg hook cannot find commitlint and blocks every commit.
+Without `just setup`, the git hooks cannot find their tools and block every commit.
 
 Run it again after each stop: it picks up where it left off.
 
