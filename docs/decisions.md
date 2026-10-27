@@ -55,3 +55,8 @@ Decision. Why. Alternatives considered. -->
 - Why: conservative; fail closed; a testable seam for the fuzzer.
 - Alternatives: string mechanism names (more parsing surface); caching an approval per sender (forbidden by SPEC).
 - Not done: the D-Bus bus policy file (which users may call the service) belongs with packaging; `Sign` and `ImportP12` run blocking crypto/IO on the executor; import is not itself polkit-guarded (any bus caller allowed by the bus policy can add keys).
+
+## 2026-10-27 — Import CLI (F10)
+- Decision: `custodio import [--id <id>] <file.p12>`. The password is read only from `/dev/tty` with echo off (rustix termios, no `unsafe`); there is no option, stdin or environment variable for it, and any unknown option is a usage error. The id defaults to the file stem only if it is already a valid id (never rewritten); otherwise `--id` is required. The delete reminder is printed only after the service accepted the import; the tool never deletes the file itself. Files over 1 MiB are refused before asking for the password.
+- Why: secrets in argv/env leak through `/proc` and shell history; failing closed on odd names avoids surprising ids.
+- Alternatives: `rpassword` (extra dependency, uses unsafe), reading stdin when piped (invites scripts that put passwords in files).

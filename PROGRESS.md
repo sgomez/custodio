@@ -86,3 +86,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (D-Bus service): `CKM_*` numbers on the wire, `-cert` ids reserved, size caps.
 - Not done / known issues: D-Bus bus policy file and unit/packaging not written; `ImportP12` is not polkit-guarded; blocking crypto/IO runs on the executor; `main` is untested against a real system bus/polkit.
 - Next session should: nothing specific; the PKCS#11 client can use the `Sign` signature above.
+
+### 2026-10-27 — F10 — 1
+- Done: `custodio-cli` library + bin: `parse_args`, `run_import` (traits `PasswordPrompt`, `Importer`), `tty::Terminal` (`/dev/tty`, echo off), `bus::DbusImporter` (`ImportP12` on the system bus). Prints the delete-the-original reminder after success only. Tests `crates/custodio-cli/tests/cli.rs` (11): argv rules (no password option), password only from the prompt, reminder, failure paths, round trip against the real service on a private `dbus-daemon`. verify passes.
+- Decisions: see docs/decisions.md (Import CLI). `custodiod` path dependency needed an explicit `version` for `cargo deny` wildcard ban.
+- Not done / known issues: `tty::Terminal` is not tested (no tty in CI); the round-trip test needs `dbus-daemon` (runs in `just test`); no `list` subcommand; ImportP12 is still not polkit-guarded.
+- Next session should: nothing specific.
