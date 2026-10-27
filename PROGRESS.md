@@ -38,3 +38,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (supply chain policy).
 - Not done / known issues: `cargo deny` fetches the advisory DB, so it needs network. Warnings about unused licence allowances are expected until dependencies exist.
 - Next session should: when adding dependencies, fix any deny failures with justified entries, not by loosening policy.
+
+### 2026-10-27 — F05 — 1
+- Done: `custodiod::store::KeyStore` (`open`, `put`, `get`, `list`), keys as `SecretSlice<u8>`, read buffer `Zeroizing`. Tests cover 0700/0600, loose-mode rejection, no overwrite, no temp leftovers, bad ids, and `Debug` of keys/store/errors. New deps: secrecy, zeroize, tempfile (dev). verify passes.
+- Decisions: see docs/decisions.md (key store layout). Systemd unit must set `StateDirectoryMode=0700`.
+- Not done / known issues: no ownership (uid) check yet; no key-type metadata or delete; mutation testing not set up.
+- Next session should: nothing specific.
