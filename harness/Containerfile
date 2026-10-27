@@ -1,0 +1,28 @@
+# Dev container for the build loop: Linux, D-Bus, polkit, PKCS#11 and NSS tools, Rust and the
+# cargo tools SPEC.md asks for, and Claude Code. The agent runs here with
+# --dangerously-skip-permissions, so it only sees the mounted repository.
+FROM debian:trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential clang lld pkg-config libssl-dev git curl ca-certificates sudo jq \
+      dbus dbus-daemon polkitd systemd p11-kit opensc libnss3-tools \
+      just shellcheck nodejs npm python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g lefthook
+RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
+      | bash -s -- latest /usr/local/bin
+
+RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev
+USER dev
+ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:$PATH
+
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --component rustfmt,clippy,llvm-tools-preview \
+    && rustup toolchain install nightly --profile minimal --component miri,rust-src
+RUN curl -L --proto '=https' --tlsv1.2 -sSf \
+      https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
+    && cargo binstall -y cargo-deny cargo-machete cargo-mutants cargo-llvm-cov cargo-fuzz cargo-deb \
+         taplo-cli typos-cli zizmor
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+WORKDIR /work
