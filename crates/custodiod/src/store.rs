@@ -6,7 +6,7 @@
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -88,9 +88,16 @@ impl KeyStore {
     /// # Errors
     /// Fails if the directory cannot be created or has unsafe permissions or owner.
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self, StoreError> {
-        let dir = dir.into();
+        Self::open_as(dir.into(), rustix::process::geteuid().as_raw())
+    }
+
+    /// Like `open`, with the expected owner uid given explicitly so tests can exercise the check.
+    fn open_as(dir: PathBuf, uid: u32) -> Result<Self, StoreError> {
         match DirBuilder::new().mode(DIR_MODE).create(&dir) {
-            Ok(()) => {}
+            Ok(()) => {
+                // The umask can only remove bits; make the mode exact regardless.
+                fs::set_permissions(&dir, fs::Permissions::from_mode(DIR_MODE))?;
+            }
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
             Err(e) => return Err(e.into()),
         }
@@ -101,7 +108,6 @@ impl KeyStore {
         if meta.mode() & PERM_MASK != DIR_MODE {
             return Err(StoreError::BadPermissions(dir));
         }
-        let uid = rustix::process::geteuid().as_raw();
         if meta.uid() != uid {
             return Err(StoreError::BadOwner(dir));
         }
@@ -177,7 +183,12 @@ impl KeyStore {
         let path = self.path_for(id)?;
         let file = match OpenOptions::new()
             .read(true)
-            .custom_flags(OFlags::NOFOLLOW.bits().cast_signed())
+            // NONBLOCK so a FIFO cannot hang the open; NOCTTY so a tty cannot become ours.
+            .custom_flags(
+                (OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::NOCTTY)
+                    .bits()
+                    .cast_signed(),
+            )
             .open(&path)
         {
             Ok(f) => f,
@@ -235,7 +246,7 @@ fn write_synced(path: &Path, data: &[u8]) -> io::Result<()> {
         .mode(FILE_MODE)
         .open(path)?;
     // The umask can only remove bits; make the mode exact regardless.
-    f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(FILE_MODE))?;
+    f.set_permissions(fs::Permissions::from_mode(FILE_MODE))?;
     f.write_all(data)?;
     f.sync_all()
 }
@@ -269,7 +280,7 @@ mod tests {
         let tmp = tempfile::tempdir()?;
         let dir = tmp.path().join("state");
         DirBuilder::new().mode(0o755).create(&dir)?;
-        fs::set_permissions(&dir, std::os::unix::fs::PermissionsExt::from_mode(0o755))?;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755))?;
         assert!(matches!(
             KeyStore::open(&dir),
             Err(StoreError::BadPermissions(_))
@@ -313,6 +324,10 @@ mod tests {
         let p = tmp.path().join("f");
         write_synced(&p, b"x")?;
         assert_eq!(mode(&p)?, 0o600);
+        // A directory created by `open` must also come out exactly 0700.
+        let store = KeyStore::open(tmp.path().join("s"))?;
+        assert_eq!(mode(store.dir())?, 0o700);
+        store.put("k", &secret(b"x"))?;
         println!("umask child ran");
         Ok(())
     }
@@ -323,10 +338,7 @@ mod tests {
         let store = KeyStore::open(tmp.path().join("s"))?;
         let outside = tmp.path().join("outside");
         fs::write(&outside, b"x")?;
-        fs::set_permissions(
-            &outside,
-            std::os::unix::fs::PermissionsExt::from_mode(0o600),
-        )?;
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o600))?;
         std::os::unix::fs::symlink(&outside, store.dir().join("k"))?;
         assert!(matches!(store.get("k"), Err(StoreError::BadFileType(_))));
         Ok(())
@@ -339,6 +351,54 @@ mod tests {
         store.put("k", &secret(b"x"))?;
         store.uid = store.uid.wrapping_add(1);
         assert!(matches!(store.get("k"), Err(StoreError::BadOwner(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn open_rejects_foreign_owner() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let dir = tmp.path().join("s");
+        let uid = rustix::process::geteuid().as_raw();
+        KeyStore::open_as(dir.clone(), uid)?;
+        assert!(matches!(
+            KeyStore::open_as(dir, uid.wrapping_add(1)),
+            Err(StoreError::BadOwner(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn open_rejects_symlink_and_regular_file() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let real = tmp.path().join("real");
+        KeyStore::open(&real)?;
+        let link = tmp.path().join("link");
+        std::os::unix::fs::symlink(&real, &link)?;
+        assert!(matches!(
+            KeyStore::open(&link),
+            Err(StoreError::BadFileType(_))
+        ));
+        let file = tmp.path().join("file");
+        fs::write(&file, b"x")?;
+        assert!(matches!(
+            KeyStore::open(&file),
+            Err(StoreError::BadFileType(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn get_rejects_fifo_without_blocking() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let store = KeyStore::open(tmp.path().join("s"))?;
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            store.dir().join("k"),
+            rustix::fs::FileType::Fifo,
+            rustix::fs::Mode::from_raw_mode(0o600),
+            0,
+        )?;
+        assert!(matches!(store.get("k"), Err(StoreError::BadFileType(_))));
         Ok(())
     }
 
@@ -392,7 +452,7 @@ mod tests {
         assert!(matches!(store.get("nope"), Err(StoreError::NotFound)));
         store.put("k", &secret(b"x"))?;
         let p = store.dir().join("k");
-        fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o644))?;
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o644))?;
         assert!(matches!(store.get("k"), Err(StoreError::BadPermissions(_))));
         Ok(())
     }
