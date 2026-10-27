@@ -18,7 +18,7 @@
         "F01"
       ],
       "verify": "just check && test -f lefthook.yml",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F03",
