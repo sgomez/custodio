@@ -70,6 +70,8 @@ jobs:
   # Unit and integration tests under llvm-cov, then the CRAP gate.
   coverage:
     name: just coverage-gate
+    # Slow: main only; a PR runs the fast jobs.
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -93,6 +95,8 @@ jobs:
 
   nightly:
     name: just nightly
+    # Slow: main only; a PR runs the fast jobs.
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -165,6 +169,7 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
+          # `skipped` is a main-only job on a PR.
           for r in $RESULTS; do
-            [ "$r" = success ] || { echo "job result: $r"; exit 1; }
+            case "$r" in success|skipped) ;; *) echo "job result: $r"; exit 1 ;; esac
           done
