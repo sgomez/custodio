@@ -46,8 +46,10 @@ Everything in this repository is in English: code, comments, docs, commit messag
 - Key material and passwords live in `secrecy` / `zeroize` types and never reach `Debug`, logs or
   error messages.
 - Every signature calls polkit. Never cache an authorization.
-- When `SPEC.md` does not decide something, choose the more conservative option and record it in
-  `docs/decisions.md` (date, decision, why, alternatives) in a few lines.
+- When `SPEC.md` does not decide something, choose the more conservative option. Record it in
+  `docs/decisions.md` only if a later session could undo it without knowing why; follow the rules
+  at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
+  the commit; research in `docs/findings.md`.
 - If you cannot continue without a human (a decision the spec does not cover and that is hard to
   undo, missing credentials, a `verify` command that cannot work), write `BLOCKED.md` with the
   question and the options, commit your work so far, and stop.

@@ -41,6 +41,8 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
      `just` recipes, lints removed from the workspace.
    - The security invariants hold: every signature asks polkit, no `_keep`, key material and
      passwords never reach `Debug`, logs or errors, `unsafe` only in the PKCS#11 FFI layer.
+   - New or changed entries in `docs/decisions.md` follow the rules at the top of that file; an
+     entry that only describes what was built belongs in the commit instead.
 
 Reply: first line exactly `PASS` or `NEEDS_WORK`, then up to 30 lines of findings, most important
 first, each with `file:line` and what to change.
