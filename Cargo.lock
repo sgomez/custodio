@@ -269,6 +269,14 @@ dependencies = [
 [[package]]
 name = "custodio-cli"
 version = "0.1.0"
+dependencies = [
+ "custodiod",
+ "rustix",
+ "secrecy",
+ "tempfile",
+ "zbus",
+ "zeroize",
+]
 
 [[package]]
 name = "custodio-pkcs11"
