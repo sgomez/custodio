@@ -31,8 +31,22 @@ lint:
 test:
     cargo test --workspace --locked
 
-# Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
-check: lint test
+# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
+check: lint test security-score
+
+# Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
+# safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
+security-score threshold="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    systemd-analyze security --offline=yes --no-pager --threshold={{threshold}} data/custodio.service | tail -n 1
+    bare=$(mktemp -d)
+    trap 'rm -rf "$bare"' EXIT
+    printf '[Service]\nExecStart=/bin/true\n' > "$bare/bare.service"
+    if systemd-analyze security --offline=yes --no-pager --threshold={{threshold}} "$bare/bare.service" >/dev/null; then
+        echo "security-score: a bare unit passed the gate" >&2
+        exit 1
+    fi
 
 # Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
 # The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
