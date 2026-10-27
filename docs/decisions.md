@@ -48,3 +48,10 @@ Decision. Why. Alternatives considered. -->
 - Why: SPEC; fail closed. zbus with only `comms`, `proxy`, `default-rt` (no tokio, no tracing). Dev builds also enable `service` to serve the fake authority in tests.
 - Alternatives: a sync/blocking trait (would block the D-Bus service's executor); passing pid/uid subjects (racy, SPEC wants the pidfd resolved by polkit).
 - Not done: no cancellation id, so a client that disconnects mid-dialog leaves the dialog until timeout; install location of the policy file is for the packaging feature.
+
+## 2026-10-27 — D-Bus service (F09)
+- Decision: `custodiod::dbus::Custodio<A: Authorizer>` is served at `/com/rfirma/Custodio1`, interface `com.rfirma.Custodio1`: `ListKeys() -> as`, `ListCertificates() -> a(say)`, `ImportP12(id s, p12 ay, password s) -> s` (key type), `Sign(id s, mechanism u, hash u, salt_len u, data ay) -> ay`. `mechanism` and `hash` use PKCS#11 `CKM_*` numbers (RSA_PKCS 0x1, RSA_PKCS_PSS 0xD, ECDSA 0x1041, SHA256/384/512 0x250/0x260/0x270); `hash` and `salt_len` must be 0 unless PSS. `Sign` checks arguments (no key touched), then calls polkit for the bus sender of that message, then reads the key and signs; denial, challenge, polkit error or missing sender all give `AccessDenied` and no signature. Ids ending in `-cert` are reserved for certificates and refused from clients; max id length is 59 so `<id>-cert` fits the store limit. Data is capped at 1 KiB, passwords at 1 KiB, `.p12` at 1 MiB. Errors sent over the bus never carry paths or secrets. Argument checks are plain functions (`parse_sign_request`, `parse_import_request`) and are the fuzz target `dbus_args`.
+- `main` connects to the system bus and uses `$STATE_DIRECTORY` (default `/var/lib/custodio`).
+- Why: conservative; fail closed; a testable seam for the fuzzer.
+- Alternatives: string mechanism names (more parsing surface); caching an approval per sender (forbidden by SPEC).
+- Not done: the D-Bus bus policy file (which users may call the service) belongs with packaging; `Sign` and `ImportP12` run blocking crypto/IO on the executor; import is not itself polkit-guarded (any bus caller allowed by the bus policy can add keys).
