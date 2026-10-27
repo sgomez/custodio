@@ -1,4 +1,4 @@
-# Commit message format and fast checks on commit, slow ones on push. Install with `lefthook install`.
+# Commit message format and fast checks on commit, slow ones on push. Install with `npm ci && lefthook install`.
 pre-commit:
   commands:
     check:
@@ -12,4 +12,4 @@ pre-push:
 commit-msg:
   commands:
     conventional:
-      run: harness/commit-msg.sh {1}
+      run: npx --no-install commitlint --edit {1}

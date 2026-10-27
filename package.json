@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "description": "Development tooling only: commit message linting with commitlint.",
+  "type": "module",
+  "devDependencies": {
+    "@commitlint/cli": "20.5.3",
+    "@commitlint/config-conventional": "20.5.3"
+  }
+}

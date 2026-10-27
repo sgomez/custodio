@@ -26,14 +26,17 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - run: npm ci --no-audit --no-fund
       - env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          # A new branch (all-zero `before`) or a force push leaves no usable base: check all history.
-          range="$BASE..$HEAD"
-          git cat-file -e "$BASE^{commit}" 2>/dev/null || range=$HEAD
-          harness/commit-msg.sh --range "$range"
+          # A new branch (all-zero `before`) or a force push leaves no usable base: check the pushed commit.
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            npx --no-install commitlint --from "$BASE" --to "$HEAD" --verbose
+          else
+            git log -1 --format=%B "$HEAD" | npx --no-install commitlint --verbose
+          fi
 
   check:
     name: just check

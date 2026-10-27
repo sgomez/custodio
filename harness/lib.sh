@@ -17,6 +17,11 @@ approved() {
   [ -f APPROVALS ] && grep -qx "$1 $("hash_$1")" APPROVALS
 }
 
+# commitlint, pinned in package-lock.json.
+ensure_node_tools() {
+  [ -x node_modules/.bin/commitlint ] || npm ci --silent --no-audit --no-fund || die "npm ci failed."
+}
+
 tracked_changes() { [ -n "$(git status --porcelain --untracked-files=no)" ]; }
 
 commit() { git add -- "${@:2}" && git commit -q -m "$1"; }

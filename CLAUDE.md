@@ -24,8 +24,10 @@ Everything in this repository is in English: code, comments, docs, commit messag
 4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a
    [Conventional Commits](https://www.conventionalcommits.org) message scoped to the feature id,
    e.g. `feat(F05): add key store with 0700/0600 permissions`. Types: `feat`, `fix`, `docs`,
-   `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`, `revert`. `harness/commit-msg.sh`
-   enforces it in the commit-msg hook, the loop and CI.
+   `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `style`, `revert`. Lower-case description,
+   header and body lines up to 100 characters. commitlint (`@commitlint/config-conventional`)
+   enforces it in the commit-msg hook, the loop and CI; the changelog (`just changelog`, git-cliff)
+   is generated from these messages.
 
 ## Protect the context window
 

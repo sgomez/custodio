@@ -18,9 +18,12 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
 From the repository root on your machine, with Docker or Podman:
 
 ```bash
+npm ci && lefthook install              # once: commitlint and the git hooks on your machine
 export CLAUDE_CODE_OAUTH_TOKEN=...      # once: claude setup-token
 harness/run.sh                          # runs harness/pipeline.sh in the dev container
 ```
+
+Without `npm ci`, the commit-msg hook cannot find commitlint and blocks every commit.
 
 Run it again after each stop: it picks up where it left off.
 
@@ -50,8 +53,10 @@ Stop at any time with `touch AGENT_STOP`. Logs are in `.harness/logs/`.
 
 Agents commit on the current branch inside the container, as you: the planner's spec, the
 initializer's feature list, each contract and each builder session. The loop commits
-`chore(<id>): mark as passing` when a feature passes. Every message must be a Conventional Commit
-(`harness/commit-msg.sh`): the loop sends a session back if its commits are not, and CI fails. Nothing is pushed and no PRs are opened.
+`chore(<id>): mark as passing` when a feature passes. Every message must pass commitlint
+(`@commitlint/config-conventional`): the loop sends a session back if its commits do not, and CI
+fails. Nothing is pushed and no PRs are opened. The changelog is generated from these messages
+with `just changelog` (git-cliff); the loop's bookkeeping commits are left out of it.
 
 ## Files
 

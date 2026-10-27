@@ -157,3 +157,7 @@ fuzz-build:
         (cd "$(dirname "$manifest")/.." && cargo +nightly fuzz build --target "$host")
     done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
     if [ "$found" = 0 ]; then echo "no fuzz targets found" >&2; exit 1; fi
+
+# Regenerate CHANGELOG.md from the Conventional Commits history (git-cliff, cliff.toml).
+changelog:
+    git cliff -o CHANGELOG.md

@@ -14,6 +14,7 @@ cd "$(git rev-parse --show-toplevel)"
 [ "$(uname -s)" = Linux ] || die "Run this inside the dev container: harness/run.sh"
 LOG_DIR=.harness/logs
 mkdir -p "$LOG_DIR"
+ensure_node_tools
 tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
 
 gate() {

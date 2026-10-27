@@ -7,3 +7,4 @@ NEXT_FINDINGS.md
 /crates/*/fuzz/target
 /crates/*/fuzz/corpus
 /crates/*/fuzz/artifacts
+/node_modules

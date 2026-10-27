@@ -17,6 +17,7 @@ MAX_FEATURE_SESSIONS=${MAX_FEATURE_SESSIONS:-8} # builder sessions per feature
 LOG_DIR=.harness/logs
 STATE=.harness/state
 mkdir -p "$LOG_DIR" "$STATE" contracts
+ensure_node_tools
 
 [ "$(uname -s)" = Linux ] || die "Run this inside the dev container: harness/run.sh"
 if ! approved spec || ! approved features; then
@@ -47,13 +48,16 @@ stash_leftovers() {
   fi
 }
 
-# bad_commits <id>: prints the feature's commits that are not Conventional Commits, and how to fix them.
+# bad_commits <id>: prints commitlint's report on the feature's commits that break the convention,
+# and how to fix them. Returns 1 when every commit is fine.
 bad_commits() {
-  local base out
+  local base squash_to out
   base=$(cat "$STATE/$1.base")
-  out=$(harness/commit-msg.sh --range "$base..HEAD" 2>&1) && return 1
+  squash_to=$(cat "$STATE/$1.contract-head" 2>/dev/null || echo "$base")
+  out=$(npx --no-install commitlint --from "$base" --to HEAD 2>&1) && return 1
   # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
-  printf '%s\n\nRewrite them, e.g. as one commit: `git reset --soft %s && git commit -m "feat(%s): ..."`.\n' "$out" "$base" "$1"
+  printf '```\n%s\n```\n\nRewrite them, e.g. as one commit: `git reset --soft %s && git commit -m "feat(%s): ..."`.\n' \
+    "$out" "$squash_to" "$1"
 }
 
 findings() { { printf '# Findings for %s\n\n' "$1"; cat; } > NEXT_FINDINGS.md; log "$1: $2"; }
@@ -97,6 +101,7 @@ $(cat "$STATE/$id.contract-review")"
       "Mode: contract. Review contracts/$id.md for this feature: $feature"
     if [ "$(verdict "$LOG_DIR/$stamp-review.log")" = APPROVED ]; then
       contract_hash "$c" > "$STATE/$id.contract"
+      git rev-parse HEAD > "$STATE/$id.contract-head"
       rm -f "$STATE/$id.contract-review"
       log "$id: contract approved"
       return 0
