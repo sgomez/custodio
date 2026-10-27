@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>rFirma</vendor>
+  <vendor_url>https://rfirma.com</vendor_url>
+
+  <action id="com.rfirma.custodio.sign">
+    <description>Sign with a custodied key</description>
+    <message>Authentication is required to sign with a key held by Custodio</message>
+    <defaults>
+      <!-- auth_self, never auth_self_keep: every signature must ask. -->
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>
