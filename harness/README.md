@@ -1,22 +1,63 @@
 # Harness
 
-Not sure what to do? Run `just status`: it says where the harness is and the next command.
+Agents build Custodio one feature at a time. You write the idea, approve the plan, and check what
+only a person can check.
+
+**Lost? Run `just status`.** It says where things are and the next command to run.
+
+## Once per machine
+
+1. Install [mise](https://mise.jdx.dev), rustup and Docker or Podman, and activate mise in your shell.
+2. `just setup`
+3. `claude setup-token`, then put `export CLAUDE_CODE_OAUTH_TOKEN=<token>` in your shell profile.
+
+## Commands
 
 | Command | Does |
 |---|---|
-| `just status` | Where it is and what to run next |
-| `just harness` | Run or continue |
-| `just harness-try` | Same, at most 3 sessions |
-| `just harness-stop` / `just harness-resume` | Stop, continue |
-| `just approve spec` / `just approve features` | Approve after reviewing |
-| `just milestone list` | Closed milestones and the open one |
-| `just milestone close` / `just milestone open` | Archive the finished milestone, start the next |
+| `just status` | Where things are and what to run next |
+| `just harness` | Run the agents, or continue after a stop |
+| `just harness-try` | Same, at most 3 Claude sessions |
+| `just harness-stop` / `just harness-resume` | Stop the agents, continue |
+| `just approve spec` / `just approve features` | Approve what you reviewed |
 | `just release` | Changelog, version tag and push |
+| `just milestone list` | Milestones, closed and open |
+| `just milestone close` / `just milestone open` | Finish a milestone, start the next |
 
-How Custodio gets built by agents, from idea to milestone, following Anthropic's articles on
-long-running agents: a planner writes the spec, an initializer splits it into features, and each
-feature is built by fresh sessions and judged by a separate evaluator. People approve the spec and
-the feature list; agents do the rest.
+## A milestone, start to end
+
+1. `just milestone open`, then write the idea in `IDEA.md` (replace the `TODO` line).
+2. `just harness`. A planner writes `SPEC.md` and stops.
+3. Read `SPEC.md`, fix what you don't like, `just approve spec`.
+4. `just harness`. An initializer splits the spec into `features.json` and stops.
+5. Read `features.json`: every feature there, in order, each with a `verify` that checks something
+   real. `just approve features`.
+6. `just harness`. The agents build feature after feature.
+7. Check by hand the features marked `manual`, set their `passes` to `true`, commit.
+8. `just release`, then `just milestone close`.
+
+## When it stops
+
+| It says | You do |
+|---|---|
+| `Stopped for review` | Steps 3 or 5 above |
+| `BLOCKED.md found` | Read `BLOCKED.md`, decide, delete it, commit, `just harness` |
+| `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just approve features`, `just harness` |
+| `contract not approved` | Same, reading `.harness/state/<id>.contract-review` |
+| `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just approve features`, `just harness` |
+| `Reached MAX_SESSIONS` | Budget for this run spent: `just harness` when you want to spend more |
+| `Uncommitted changes` | Commit or `git stash`, then `just harness` |
+
+## Good to know
+
+- The agents run in a container, commit on your current branch as you, and never push.
+- Every Claude session starts with an empty memory; what carries over is in `PROGRESS.md`,
+  `docs/decisions.md` and `contracts/`.
+- A feature passes only when its `verify` command and a separate reviewer agent both say so.
+- It spends your Claude subscription: each feature takes several sessions.
+- Editing `SPEC.md` or `features.json` after approving them means approving them again.
+
+## How it works
 
 ```
 IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer ──▶ features.json ──[you approve]──▶
@@ -26,62 +67,27 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
     verify command (no LLM) ──▶ evaluator: PASS / NEEDS_WORK ──▶ loop marks it passing
 ```
 
-## Run
+The design follows Anthropic's articles on long-running agents. `harness/pipeline.sh` runs the
+planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness` skips both reviews.
 
-From the repository root on your machine, with Docker or Podman:
-
-```bash
-just setup                              # once: tools (mise), commitlint and the git hooks
-export CLAUDE_CODE_OAUTH_TOKEN=...      # once: claude setup-token
-harness/run.sh                          # runs harness/pipeline.sh in the dev container
-```
-
-Without `just setup`, the git hooks cannot find their tools and block every commit.
-
-Run it again after each stop: it picks up where it left off.
-
-| Stops with | Meaning | What you do |
+| Limit | Default | Counts |
 |---|---|---|
-| `Stopped for review: read SPEC.md` | The planner wrote the spec | Read and edit it, then `harness/approve.sh spec` |
-| `Stopped for review: read features.json` | The initializer split it | Read and edit it, then `harness/approve.sh features` |
-| `BLOCKED.md found` | A session needs a decision | Answer in the code or spec, delete `BLOCKED.md`, commit |
-| `rejected 3 times` / `contract not approved` | The agents disagree | Read `NEXT_FINDINGS.md` or `.harness/state/`, steer, rerun |
-| `Reached MAX_SESSIONS` | Budget spent | Rerun when you want to spend more |
-
-`AUTO_APPROVE=1 harness/run.sh` skips both reviews. Edit either file and its approval lapses
-(`APPROVALS` holds the hashes).
-
-## Knobs
-
-| Variable | Default | Limits |
-|---|---|---|
-| `MAX_SESSIONS` | 40 | claude sessions in one run, all roles |
+| `MAX_SESSIONS` | 40 | Claude sessions in one run, all roles |
 | `MAX_CONTRACT_ROUNDS` | 3 | contract drafts per feature |
 | `MAX_FEATURE_SESSIONS` | 8 | builder sessions per feature |
 | `MAX_ATTEMPTS` | 3 | rejected implementations per feature |
 
-Stop at any time with `touch AGENT_STOP`. Logs are in `.harness/logs/`.
-
-## Who commits
-
-Agents commit on the current branch inside the container, as you: the planner's spec, the
-initializer's feature list, each contract and each builder session. The loop commits
-`chore(<id>): mark as passing` when a feature passes. Every message must pass commitlint
-(`@commitlint/config-conventional`): the loop sends a session back if its commits do not, and CI
-fails. Nothing is pushed and no PRs are opened. The changelog is generated from these messages
-with `just changelog` (git-cliff); the loop's bookkeeping commits are left out of it.
-
-## Files
-
 | File | Written by |
 |---|---|
 | `IDEA.md` | you |
-| `SPEC.md` | planner (`.claude/agents/planner.md`), then you |
-| `features.json` | initializer (`.claude/agents/initializer.md`), then you; `passes` by the loop |
-| `APPROVALS` | `harness/approve.sh` |
-| `contracts/<id>.md` | builder, approved by the evaluator; builders only tick its steps |
+| `SPEC.md` | the planner, then you |
+| `features.json` | the initializer, then you; `passes` by the loop |
+| `APPROVALS` | `just approve` |
+| `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
 | `BLOCKED.md` | any session that needs a person |
 
-`.claude/hooks/protect-contract.sh` stops each role from writing another role's files.
+Commit messages follow Conventional Commits (commitlint checks them in the hook, the loop and CI),
+and `just release` builds the changelog from them. Hooks in `.claude/hooks/` stop each agent role
+from writing another role's files. Logs are in `.harness/logs/`.
