@@ -57,8 +57,21 @@ asan:
 mutants:
     cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants
 
-# Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan and the fuzz targets building.
-check-slow: check test-integration miri asan fuzz-build mutants
+# Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
+# stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
+coverage:
+    cargo llvm-cov --workspace --locked --no-report
+    cargo llvm-cov report --summary-only
+    cargo llvm-cov report --html --output-dir target/coverage
+    cargo llvm-cov report --json --output-path target/coverage/coverage.json
+
+# CRAP gate: fails when a function's CRAP score (complexity² × (1 − coverage)³ + complexity) is above
+# the threshold. Reads the export of `just coverage`.
+crap threshold="30":
+    cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap
+
+# Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan, the fuzz targets building, mutation testing, coverage and the CRAP gate.
+check-slow: check test-integration miri asan fuzz-build mutants coverage crap
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:

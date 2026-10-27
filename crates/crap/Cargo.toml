@@ -1,0 +1,23 @@
+[package]
+name = "crap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "CRAP gate: complexity times missing coverage, per function."
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only for the `span-locations` feature (line numbers of syn spans); not used directly.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+serde_json = "1"
+syn = { version = "2", features = ["full", "visit"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[package.metadata.cargo-machete]
+ignored = ["proc-macro2"]

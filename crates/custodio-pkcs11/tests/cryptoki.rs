@@ -409,11 +409,21 @@ impl Fixture {
 
 /// Builds the module (cargo does not build the `cdylib` of a package for its own tests) and
 /// returns `target/<profile>/libcustodio_pkcs11.so`, next to the `deps` directory of this binary.
+static BUILT: Once = Once::new();
+
 fn module_path() -> Result<PathBuf, Box<dyn Error>> {
-    static BUILT: Once = Once::new();
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .and_then(|d| d.parent())
+        .ok_or("no target dir")?
+        .to_path_buf();
+    // Build into the target directory this binary lives in (`cargo llvm-cov` uses its own).
+    let target = dir.parent().ok_or("no target dir")?.to_path_buf();
     BUILT.call_once(|| {
         let mut build = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
         build.args(["build", "--quiet", "--locked", "-p", "custodio-pkcs11"]);
+        build.arg("--target-dir").arg(&target);
         if !cfg!(debug_assertions) {
             build.arg("--release");
         }
@@ -422,11 +432,6 @@ fn module_path() -> Result<PathBuf, Box<dyn Error>> {
             "building the module failed"
         );
     });
-    let exe = std::env::current_exe()?;
-    let dir = exe
-        .parent()
-        .and_then(|d| d.parent())
-        .ok_or("no target dir")?;
     let path = dir.join("libcustodio_pkcs11.so");
     assert!(path.exists(), "{} was not built", path.display());
     Ok(path)
