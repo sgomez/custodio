@@ -19,12 +19,14 @@ lint:
     taplo fmt --check
     typos
     {{shell_scripts}} | xargs -r shellcheck
+    actionlint
+    zizmor --offline .github/workflows
 
 # Unit tests.
 test:
     cargo test --workspace --locked
 
-# Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck.
+# Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck, actionlint, zizmor.
 check: lint test
 
 # Slow checks (later features add to it).
