@@ -53,8 +53,12 @@ asan:
     RUSTFLAGS="-Zsanitizer=address" cargo +nightly test -p custodio-pkcs11 --lib --locked \
         --target "$host" --target-dir target/asan
 
+# Mutation testing of the authorization path (polkit, D-Bus service) and the key store. A surviving mutant fails.
+mutants:
+    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants
+
 # Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan and the fuzz targets building.
-check-slow: check test-integration miri asan fuzz-build
+check-slow: check test-integration miri asan fuzz-build mutants
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:

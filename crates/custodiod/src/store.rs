@@ -94,12 +94,13 @@ impl KeyStore {
     /// Like `open`, with the expected owner uid given explicitly so tests can exercise the check.
     fn open_as(dir: PathBuf, uid: u32) -> Result<Self, StoreError> {
         match DirBuilder::new().mode(DIR_MODE).create(&dir) {
-            Ok(()) => {
-                // The umask can only remove bits; make the mode exact regardless.
-                fs::set_permissions(&dir, fs::Permissions::from_mode(DIR_MODE))?;
+            // The umask can only remove bits; make the mode exact regardless.
+            Ok(()) => fs::set_permissions(&dir, fs::Permissions::from_mode(DIR_MODE))?,
+            Err(e) => {
+                if e.kind() != io::ErrorKind::AlreadyExists {
+                    return Err(e.into());
+                }
             }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e.into()),
         }
         let meta = fs::symlink_metadata(&dir)?;
         if !meta.is_dir() {
@@ -185,7 +186,9 @@ impl KeyStore {
             .read(true)
             // NONBLOCK so a FIFO cannot hang the open; NOCTTY so a tty cannot become ours.
             .custom_flags(
-                (OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::NOCTTY)
+                OFlags::NOFOLLOW
+                    .union(OFlags::NONBLOCK)
+                    .union(OFlags::NOCTTY)
                     .bits()
                     .cast_signed(),
             )
@@ -196,8 +199,13 @@ impl KeyStore {
             Err(e) if e.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error()) => {
                 return Err(StoreError::BadFileType(path));
             }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(StoreError::NotFound),
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                return Err(if e.kind() == io::ErrorKind::NotFound {
+                    StoreError::NotFound
+                } else {
+                    e.into()
+                });
+            }
         };
         let meta = file.metadata()?;
         if !meta.is_file() {
@@ -493,5 +501,79 @@ mod tests {
             assert!(!format!("{e:?} {e}").contains("SUPERSECRET"));
         }
         Ok(())
+    }
+
+    #[test]
+    fn key_size_limit_is_exact() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let store = KeyStore::open(tmp.path().join("s"))?;
+        let max = usize::try_from(MAX_KEY_LEN)?;
+        assert_eq!(MAX_KEY_LEN, 65536);
+        store.put("small", &secret(&vec![7; 2000]))?;
+        assert_eq!(store.get("small")?.expose_secret().len(), 2000);
+        store.put("max", &secret(&vec![7; max]))?;
+        assert_eq!(store.get("max")?.expose_secret().len(), max);
+        store.put("over", &secret(&vec![7; max + 1]))?;
+        assert!(matches!(store.get("over"), Err(StoreError::TooLarge)));
+        Ok(())
+    }
+
+    #[test]
+    fn open_keeps_keys_and_non_file_temp_entries() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let dir = tmp.path().join("s");
+        let store = KeyStore::open(&dir)?;
+        store.put("k", &secret(b"keep"))?;
+        fs::create_dir(dir.join(".tmp-dir"))?;
+        fs::write(dir.join(".tmp-file"), b"x")?;
+        let store = KeyStore::open(&dir)?;
+        assert_eq!(store.get("k")?.expose_secret(), b"keep");
+        assert!(dir.join(".tmp-dir").is_dir());
+        assert!(!dir.join(".tmp-file").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn open_reports_missing_parent_as_io() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let r = KeyStore::open(tmp.path().join("no/such/s"));
+        assert!(matches!(r, Err(StoreError::Io(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn get_reports_unreadable_file_as_io_not_missing() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let store = KeyStore::open(tmp.path().join("s"))?;
+        store.put("k", &secret(b"x"))?;
+        fs::set_permissions(store.dir().join("k"), fs::Permissions::from_mode(0o0))?;
+        // As root the open would succeed and report the mode instead; both are not `NotFound`.
+        assert!(!matches!(store.get("k"), Err(StoreError::NotFound)));
+        Ok(())
+    }
+
+    #[test]
+    fn errors_display_their_cause() {
+        let p = || PathBuf::from("/x/y");
+        let io = || io::Error::other("boom");
+        for (e, want) in [
+            (StoreError::InvalidId, "invalid key id"),
+            (StoreError::AlreadyExists, "key already exists"),
+            (StoreError::NotFound, "key not found"),
+            (
+                StoreError::BadPermissions(p()),
+                "unsafe permissions on /x/y",
+            ),
+            (StoreError::BadFileType(p()), "unexpected file type at /x/y"),
+            (StoreError::BadOwner(p()), "unexpected owner of /x/y"),
+            (StoreError::TooLarge, "key file too large"),
+            (
+                StoreError::SyncFailed(io()),
+                "key stored but directory sync failed: boom",
+            ),
+            (StoreError::Io(io()), "i/o error: boom"),
+        ] {
+            assert_eq!(e.to_string(), want);
+        }
     }
 }

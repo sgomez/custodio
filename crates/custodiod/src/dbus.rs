@@ -331,4 +331,77 @@ mod tests {
         assert!(!format!("{r:?}").contains("hunter2"));
         Ok(())
     }
+
+    #[test]
+    fn id_length_limit_is_exact() {
+        assert_eq!(MAX_ID_LEN, 59);
+        assert_eq!(check_id(&"a".repeat(59)), Ok(()));
+        assert_eq!(check_id(&"a".repeat(60)), Err(RequestError::BadId));
+    }
+
+    #[test]
+    fn size_limits_are_exact() {
+        let ok = vec![0; MAX_SIGN_DATA_LEN];
+        assert!(parse_sign_request("k", CKM_ECDSA, 0, 0, &ok).is_ok());
+        let ok = vec![0; MAX_P12_LEN];
+        assert!(parse_import_request("k", &ok, &"p".repeat(MAX_PASSWORD_LEN)).is_ok());
+    }
+
+    #[test]
+    fn pss_accepts_every_hash() {
+        for (ckm, hash) in [
+            (CKM_SHA256, PssHash::Sha256),
+            (CKM_SHA384, PssHash::Sha384),
+            (CKM_SHA512, PssHash::Sha512),
+        ] {
+            let r = parse_sign_request("k", CKM_RSA_PKCS_PSS, ckm, 20, b"x");
+            assert_eq!(
+                r.map(|r| r.mechanism),
+                Ok(Mechanism::RsaPkcsPss { hash, salt_len: 20 })
+            );
+        }
+    }
+
+    #[test]
+    fn request_errors_display() {
+        for (e, want) in [
+            (RequestError::BadId, "invalid key id"),
+            (RequestError::BadMechanism, "unsupported mechanism"),
+            (
+                RequestError::BadHash,
+                "unsupported or unexpected hash for the mechanism",
+            ),
+            (
+                RequestError::BadSaltLength,
+                "unexpected salt length for the mechanism",
+            ),
+            (RequestError::DataTooLarge, "data too large"),
+            (RequestError::PasswordTooLarge, "password too large"),
+        ] {
+            assert_eq!(e.to_string(), want);
+        }
+    }
+
+    #[test]
+    fn import_request_debug_shows_id() -> Result<(), RequestError> {
+        let r = parse_import_request("my-id", b"", "hunter2")?;
+        let d = format!("{r:?}");
+        assert!(d.contains("ImportRequest") && d.contains("my-id") && d.contains("REDACTED"));
+        Ok(())
+    }
+
+    #[test]
+    fn store_errors_map_to_distinct_dbus_errors() {
+        assert!(matches!(
+            store_error(&StoreError::InvalidId),
+            fdo::Error::InvalidArgs(_)
+        ));
+        let msg = |e: StoreError| match store_error(&e) {
+            fdo::Error::Failed(m) => m,
+            other => format!("unexpected {other:?}"),
+        };
+        assert_eq!(msg(StoreError::AlreadyExists), "key already exists");
+        assert_eq!(msg(StoreError::NotFound), "no such key");
+        assert_eq!(msg(StoreError::TooLarge), "key store error");
+    }
 }
