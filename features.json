@@ -38,7 +38,7 @@
         "F02"
       ],
       "verify": "just check && cargo deny check && cargo machete",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F05",
