@@ -1,0 +1,47 @@
+[Unit]
+Description=Custodio signing service
+Documentation=https://github.com/rfirma/custodio
+After=dbus.service polkit.service
+Requires=dbus.socket
+
+[Service]
+Type=dbus
+BusName=com.rfirma.Custodio1
+ExecStart=/usr/libexec/custodiod
+User=custodio
+DynamicUser=yes
+StateDirectory=custodio
+StateDirectoryMode=0700
+UMask=0077
+
+# Hardening. The service needs the system bus socket and nothing else.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+IPAddressDeny=any
+
+[Install]
+WantedBy=multi-user.target

@@ -80,3 +80,9 @@ Decision. Why. Alternatives considered. -->
 - Decision: the fuzz harness `ffi/fuzzing.rs` is excluded from the gate (`--exclude` in the justfile). It exists only under the `fuzzing` feature, is driven by cargo-fuzz and is never built by `cargo llvm-cov`, so it would score as 0% covered. Nothing else is excluded.
 - Decision: the cryptoki integration test builds the module into the target directory of its own binary (`--target-dir`), so it works under `cargo llvm-cov`, which uses another one. `custodio-cli`'s password prompt was split into `prompt_on(&mut File, ..)` so a pseudo-terminal can test it.
 - Not done: coverage of the `.so` loaded by `cryptoki` is not measured in the child process beyond what the profile files catch (the module is instrumented, so its profile data is written per process and merged).
+
+## Service unit and D-Bus policy (2026-10-27)
+- Decision: `data/custodio.service` is `Type=dbus` with `DynamicUser=yes`, `User=custodio` (the name `DynamicUser=` would pick anyway, written out so the bus policy can name it), `StateDirectory=custodio` mode 0700, empty capability set, `ProtectSystem=strict`, private tmp/devices/users, `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any`, `MemoryDenyWriteExecute`, syscall filter `@system-service` minus `@privileged @resources`. Score with `systemd-analyze security --offline=yes`: 0.6.
+- Decision: `just security-score` fails above `--threshold=10`, i.e. 1.0 (the edge of "SAFE"), is part of `check`, and also asserts that a bare unit fails the gate.
+- Decision: `data/com.rfirma.Custodio1.conf` denies owning the bus name to everyone except user `custodio`, so no other local user can squat the name; any user may send to it (polkit authorizes each signature).
+- Not done: not tested on a running systemd (end-to-end feature); `PrivateUsers=` and the syscall filter could break the service in practice and need that test.

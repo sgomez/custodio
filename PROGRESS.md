@@ -131,3 +131,9 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. `#![forbid(unsafe_code)]` added to `crap` lib and bin roots. `just crap` now lists the crate dirs before `--exclude` for readability. `just lint` clean; `just coverage && just crap` passes.
 - Not done / known issues: the worst CRAP score is still exactly 30.0 (`custodiod/src/main.rs` `run`, 0% covered); one more branch there turns `check-slow` red.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F15 — 1
+- Done: `data/custodio.service` (DynamicUser, StateDirectory=custodio, strict hardening; offline exposure 0.6 SAFE) and `data/com.rfirma.Custodio1.conf` (only user `custodio` may own the bus name; anyone may send). `just security-score` (threshold 10 = 1.0, tenths of the score) runs `systemd-analyze security --offline=yes` on the unit and also asserts a bare unit fails the gate; it is a dependency of `check`. verify passes.
+- Decisions: see docs/decisions.md (Service unit and D-Bus policy). `User=custodio` is explicit so the bus policy can name the user.
+- Not done / known issues: not run under a real systemd; `PrivateUsers=` and the syscall filter may need loosening in the end-to-end test. Unit and policy are not yet installed by any package (packaging feature).
+- Next session should: nothing specific.
