@@ -80,3 +80,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (polkit authorization).
 - Not done / known issues: integration tests need `dbus-daemon` installed (present on CI runners); no cancellation id; the D-Bus service that calls `authorize` before `sign` and the policy install path are for later features; the real polkit was not available here, so wire format is checked only against the fake.
 - Next session should: call `Authorizer::authorize(sender)` before every `sign`.
+
+### 2026-10-27 — F09 — 1
+- Done: `custodiod::dbus::Custodio<A: Authorizer>` serving `com.rfirma.Custodio1` at `/com/rfirma/Custodio1` (`ListKeys`, `ListCertificates`, `ImportP12`, `Sign`); `main` serves it on the system bus with `PolkitAuthorizer`. `Sign` validates arguments, calls polkit for the sender on every call, then signs; denial/unavailable gives `AccessDenied` and no signature. Integration tests `tests/dbus.rs` (private `dbus-daemon`, fake polkit): import/list/approved sign verified against the certificate, deny, polkit missing, two signatures ask twice, bad arguments rejected before polkit, import errors. Fuzz target `dbus_args` (10 s run clean). `just test-integration` added to `check-slow`. verify passes. `zbus` `service` feature moved to normal deps.
+- Decisions: see docs/decisions.md (D-Bus service): `CKM_*` numbers on the wire, `-cert` ids reserved, size caps.
+- Not done / known issues: D-Bus bus policy file and unit/packaging not written; `ImportP12` is not polkit-guarded; blocking crypto/IO runs on the executor; `main` is untested against a real system bus/polkit.
+- Next session should: nothing specific; the PKCS#11 client can use the `Sign` signature above.

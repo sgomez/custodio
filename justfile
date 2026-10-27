@@ -31,8 +31,12 @@ test:
 # Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
 check: lint test
 
-# Slow checks (later features add to it): everything in `check` plus the fuzz targets building.
-check-slow: check fuzz-build
+# Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
+test-integration:
+    cargo test -p custodiod --locked --test dbus --test polkit
+
+# Slow checks (later features add to it): everything in `check`, the integration tests and the fuzz targets building.
+check-slow: check test-integration fuzz-build
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:
