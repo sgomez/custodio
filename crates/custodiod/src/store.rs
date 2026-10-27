@@ -10,6 +10,7 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use rustix::fs::OFlags;
 use secrecy::{ExposeSecret, SecretSlice};
 use zeroize::Zeroizing;
 
@@ -33,10 +34,15 @@ pub enum StoreError {
     NotFound,
     /// The state directory or a key file has a mode other than the required one.
     BadPermissions(PathBuf),
-    /// The state path or a key file is not owned by the current user, or is not a plain file/dir.
+    /// The state path or a key file is not a plain directory/file (symlinks are rejected).
     BadFileType(PathBuf),
+    /// The state path or a key file is not owned by the service uid.
+    BadOwner(PathBuf),
     /// The key file is larger than any key we store.
     TooLarge,
+    /// The key was stored, but syncing the directory failed, so durability is unconfirmed.
+    /// Retrying `put` yields `AlreadyExists`; use `get` to check the key.
+    SyncFailed(io::Error),
     /// Underlying I/O failure.
     Io(io::Error),
 }
@@ -49,6 +55,8 @@ impl std::fmt::Display for StoreError {
             Self::NotFound => f.write_str("key not found"),
             Self::BadPermissions(p) => write!(f, "unsafe permissions on {}", p.display()),
             Self::BadFileType(p) => write!(f, "unexpected file type at {}", p.display()),
+            Self::BadOwner(p) => write!(f, "unexpected owner of {}", p.display()),
+            Self::SyncFailed(e) => write!(f, "key stored but directory sync failed: {e}"),
             Self::TooLarge => f.write_str("key file too large"),
             Self::Io(e) => write!(f, "i/o error: {e}"),
         }
@@ -67,15 +75,18 @@ impl From<io::Error> for StoreError {
 #[derive(Debug)]
 pub struct KeyStore {
     dir: PathBuf,
+    uid: u32,
 }
 
 impl KeyStore {
     /// Open the store at `dir`, creating it with mode `0700` if missing.
     ///
-    /// An existing directory with any other mode is rejected rather than silently fixed.
+    /// An existing directory with any other mode, or an owner other than the effective uid, is
+    /// rejected rather than silently fixed. Leftover `.tmp-*` files from a crashed `put` are
+    /// removed, so only one process may use a state directory at a time.
     ///
     /// # Errors
-    /// Fails if the directory cannot be created or has unsafe permissions.
+    /// Fails if the directory cannot be created or has unsafe permissions or owner.
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self, StoreError> {
         let dir = dir.into();
         match DirBuilder::new().mode(DIR_MODE).create(&dir) {
@@ -90,7 +101,25 @@ impl KeyStore {
         if meta.mode() & PERM_MASK != DIR_MODE {
             return Err(StoreError::BadPermissions(dir));
         }
-        Ok(Self { dir })
+        let uid = rustix::process::geteuid().as_raw();
+        if meta.uid() != uid {
+            return Err(StoreError::BadOwner(dir));
+        }
+        let store = Self { dir, uid };
+        store.remove_stale_temp_files()?;
+        Ok(store)
+    }
+
+    fn remove_stale_temp_files(&self) -> Result<(), StoreError> {
+        for entry in fs::read_dir(&self.dir)? {
+            let entry = entry?;
+            if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX)
+                && entry.file_type()?.is_file()
+            {
+                fs::remove_file(entry.path())?;
+            }
+        }
+        Ok(())
     }
 
     /// Directory this store lives in.
@@ -134,18 +163,28 @@ impl KeyStore {
                 StoreError::Io(e)
             }
         })?;
-        File::open(&self.dir)?.sync_all()?;
-        Ok(())
+        File::open(&self.dir)
+            .and_then(|d| d.sync_all())
+            .map_err(StoreError::SyncFailed)
     }
 
     /// Read the key stored under `id`.
     ///
     /// # Errors
-    /// `NotFound`, `BadPermissions` if the file is not `0600`, `Io` otherwise.
+    /// `NotFound`; `BadPermissions`, `BadOwner` or `BadFileType` if the file is not a regular
+    /// `0600` file owned by the service uid (symlinks are not followed); `Io` otherwise.
     pub fn get(&self, id: &str) -> Result<SecretSlice<u8>, StoreError> {
         let path = self.path_for(id)?;
-        let file = match File::open(&path) {
+        let file = match OpenOptions::new()
+            .read(true)
+            .custom_flags(OFlags::NOFOLLOW.bits().cast_signed())
+            .open(&path)
+        {
             Ok(f) => f,
+            // With O_NOFOLLOW a symlink fails with ELOOP.
+            Err(e) if e.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error()) => {
+                return Err(StoreError::BadFileType(path));
+            }
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(StoreError::NotFound),
             Err(e) => return Err(e.into()),
         };
@@ -153,14 +192,19 @@ impl KeyStore {
         if !meta.is_file() {
             return Err(StoreError::BadFileType(path));
         }
+        if meta.uid() != self.uid {
+            return Err(StoreError::BadOwner(path));
+        }
         if meta.mode() & PERM_MASK != FILE_MODE {
             return Err(StoreError::BadPermissions(path));
         }
         if meta.len() > MAX_KEY_LEN {
             return Err(StoreError::TooLarge);
         }
-        let mut buf = Zeroizing::new(Vec::new());
-        file.take(MAX_KEY_LEN).read_to_end(&mut buf)?;
+        // Allocate the exact size up front so the buffer never moves and leaves key bytes behind.
+        let len = usize::try_from(meta.len()).map_err(|_| StoreError::TooLarge)?;
+        let mut buf = Zeroizing::new(vec![0_u8; len]);
+        file.take(meta.len()).read_exact(&mut buf)?;
         Ok(SecretSlice::from(buf.to_vec()))
     }
 
@@ -243,13 +287,70 @@ mod tests {
         Ok(())
     }
 
+    const CHILD_ENV: &str = "CUSTODIO_UMASK_CHILD";
+
     #[test]
-    fn mode_is_exact_under_permissive_umask() -> TestResult {
-        // The explicit set_permissions makes the mode independent of the umask.
+    fn mode_is_exact_under_restrictive_umask() -> TestResult {
+        // umask is process-wide, so run the check in a child test process.
+        let exe = std::env::current_exe()?;
+        let out = std::process::Command::new(exe)
+            .args(["--exact", "store::tests::umask_child", "--nocapture"])
+            .env(CHILD_ENV, "1")
+            .output()?;
+        assert!(out.status.success(), "child failed");
+        assert!(String::from_utf8_lossy(&out.stdout).contains("umask child ran"));
+        Ok(())
+    }
+
+    #[test]
+    fn umask_child() -> TestResult {
+        if std::env::var_os(CHILD_ENV).is_none() {
+            return Ok(());
+        }
+        // 0o277 would turn the requested 0600 into 0400 without the explicit chmod.
         let tmp = tempfile::tempdir()?;
+        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o277));
         let p = tmp.path().join("f");
         write_synced(&p, b"x")?;
         assert_eq!(mode(&p)?, 0o600);
+        println!("umask child ran");
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_symlinked_key() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let store = KeyStore::open(tmp.path().join("s"))?;
+        let outside = tmp.path().join("outside");
+        fs::write(&outside, b"x")?;
+        fs::set_permissions(
+            &outside,
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )?;
+        std::os::unix::fs::symlink(&outside, store.dir().join("k"))?;
+        assert!(matches!(store.get("k"), Err(StoreError::BadFileType(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_foreign_owner() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let mut store = KeyStore::open(tmp.path().join("s"))?;
+        store.put("k", &secret(b"x"))?;
+        store.uid = store.uid.wrapping_add(1);
+        assert!(matches!(store.get("k"), Err(StoreError::BadOwner(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn open_removes_stale_temp_files() -> TestResult {
+        let tmp = tempfile::tempdir()?;
+        let dir = tmp.path().join("s");
+        let store = KeyStore::open(&dir)?;
+        fs::write(dir.join(".tmp-1-1"), b"partial")?;
+        drop(store);
+        let store = KeyStore::open(&dir)?;
+        assert_eq!(fs::read_dir(store.dir())?.count(), 0);
         Ok(())
     }
 
@@ -318,9 +419,15 @@ mod tests {
             assert!(!out.contains("SUPERSECRET"));
             assert!(!out.contains("83, 85, 80")); // the bytes as a decimal list
         }
+        // The exact redacted form fails if `secrecy` is swapped for a type that prints contents.
+        assert_eq!(format!("{key:?}"), "SecretBox<[u8]>([REDACTED])");
+        assert_eq!(format!("{got:?}"), "SecretBox<[u8]>([REDACTED])");
         let errs = [
             StoreError::InvalidId,
             StoreError::BadPermissions(PathBuf::from("/x")),
+            StoreError::BadOwner(PathBuf::from("/x")),
+            StoreError::Io(io::Error::other("boom")),
+            StoreError::SyncFailed(io::Error::other("boom")),
         ];
         for e in errs {
             assert!(!format!("{e:?} {e}").contains("SUPERSECRET"));

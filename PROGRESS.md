@@ -44,3 +44,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (key store layout). Systemd unit must set `StateDirectoryMode=0700`.
 - Not done / known issues: no ownership (uid) check yet; no key-type metadata or delete; mutation testing not set up.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F05 — 2
+- Done: fixed all NEXT_FINDINGS. Umask test now runs in a child process with umask 0o277 (fails if the chmod is removed; verified). Owner checks (`BadOwner`) in `open` and `get` with a test. `get` uses `O_NOFOLLOW` (symlink test). Exactly-sized zeroizing read buffer. `SyncFailed` variant for dir-fsync failure after link. `open` removes stale `.tmp-*`. Debug test asserts exact `[REDACTED]` and covers `Io`. New dep: rustix (fs, process). verify passes.
+- Decisions: see docs/decisions.md (Key store hardening).
+- Not done / known issues: NEXT_FINDINGS.md left in place for the loop to clear; mutation testing not set up.
+- Next session should: nothing specific.
