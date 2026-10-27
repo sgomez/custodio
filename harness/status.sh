@@ -7,6 +7,17 @@ cd "$(git rev-parse --show-toplevel)"
 
 next() { printf '\nNext: %s\n' "$1"; exit 0; }
 
+# why_unapproved <spec|features> <file>: says why the file counts as not approved.
+why_unapproved() {
+  if [ ! -f APPROVALS ]; then
+    echo "No approval of $2 is recorded: APPROVALS does not exist (it predates approvals, or nobody ran just approve)."
+  elif grep -q "^$1 " APPROVALS; then
+    echo "$2 changed after you approved it."
+  else
+    echo "$2 has no approval recorded in APPROVALS."
+  fi
+}
+
 if [ -e AGENT_STOP ]; then
   echo "Stopped by you (AGENT_STOP exists)."
   next "just harness-resume"
@@ -20,15 +31,15 @@ if [ ! -f SPEC.md ]; then
   next "just harness   (the planner writes SPEC.md)"
 fi
 if ! approved spec; then
-  echo "SPEC.md is waiting for your review."
-  next "read and edit SPEC.md, then: just approve spec"
+  why_unapproved spec SPEC.md
+  next "if SPEC.md is the spec you want: just approve spec"
 fi
 if [ ! -f features.json ]; then
   next "just harness   (the initializer writes features.json)"
 fi
 if ! approved features; then
-  echo "features.json is waiting for your review."
-  next "read and edit features.json, then: just approve features"
+  why_unapproved features features.json
+  next "if features.json is the list you want: just approve features"
 fi
 
 jq -r '.features[] | "  \(if .passes then "[x]" else "[ ]" end) \(.id) \(.title)\(if .manual then " (manual)" else "" end)"' features.json
