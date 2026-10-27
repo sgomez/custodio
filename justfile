@@ -125,8 +125,10 @@ asan:
         --target "$host" --target-dir target/asan
 
 # Mutation testing of the authorization path (polkit, D-Bus service) and the key store. A surviving mutant fails.
-mutants:
-    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants
+# Extra arguments go to cargo-mutants, e.g. `--in-diff <file>` or `--shard 0/4`.
+[positional-arguments]
+mutants *args:
+    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --no-shuffle --colors never --output target/mutants "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
@@ -153,8 +155,15 @@ package:
 e2e: package
     bash e2e/run.sh
 
-# Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan, the fuzz targets building, mutation testing, coverage and the CRAP gate.
-check-slow: check test-integration miri asan fuzz-build mutants coverage crap
+# Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, and coverage with the CRAP
+# gate. The integration tests run under coverage. CI runs each of these as its own job.
+check-slow: check nightly mutants coverage-gate
+
+# Everything that needs the nightly toolchain: Miri, ASan and the fuzz targets building.
+nightly: miri asan fuzz-build
+
+# Coverage of every test (unit and integration) and the CRAP gate on it.
+coverage-gate: coverage crap
 
 # Build every fuzz target (needs nightly and cargo-fuzz). Does not run them.
 fuzz-build:

@@ -7,8 +7,9 @@ on:
 
 permissions: {}
 
+# A newer push to a PR cancels its older run; on main every commit runs to the end.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -48,6 +49,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ${{ github.job }}
+          workspaces: |
+            . -> target
+            crates/custodio-pkcs11/fuzz -> target
+          # PR caches would evict main's, and main's are the ones every branch restores.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: just,taplo,typos,zizmor,shellcheck,cargo-deny,cargo-machete
@@ -58,34 +67,97 @@ jobs:
           tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
       - run: just check
 
-  check-slow:
-    name: just check-slow
+  # Unit and integration tests under llvm-cov, then the CRAP gate.
+  coverage:
+    name: just coverage-gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ${{ github.job }}
+          workspaces: |
+            . -> target
+            crates/custodio-pkcs11/fuzz -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just,taplo,typos,zizmor,shellcheck,cargo-deny,cargo-machete,cargo-mutants,cargo-llvm-cov
-      # install-action does not ship actionlint; pinned release, checksum-verified.
-      - run: |
-          curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
-          tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
-      - run: cargo install --locked cargo-fuzz@0.13.2
-      - run: rustup toolchain install nightly --profile minimal --component miri --component rust-src
+          tool: just,cargo-llvm-cov@0.9.1
       - run: rustup component add llvm-tools-preview
-      - run: just check-slow
+      - run: just coverage-gate
+
+  nightly:
+    name: just nightly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install nightly --profile minimal --component miri --component rust-src
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ${{ github.job }}
+          workspaces: |
+            . -> target
+            crates/custodio-pkcs11/fuzz -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just,cargo-fuzz@0.13.2
+      - run: just nightly
+
+  # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week.
+  mutants:
+    name: just mutants (diff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ${{ github.job }}
+          workspaces: |
+            . -> target
+            crates/custodio-pkcs11/fuzz -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just,cargo-mutants@27.1.0
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch (all-zero `before`) or a force push leaves no usable base: diff the last commit.
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            base=$(git merge-base "$BASE" HEAD)
+          else
+            base=HEAD^
+          fi
+          git diff "$base" HEAD > "$RUNNER_TEMP/changes.diff"
+          just mutants --in-place --in-diff "$RUNNER_TEMP/changes.diff"
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants-diff
+          path: target/mutants/mutants.out/*.txt
 
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:
     name: ci
     if: always()
-    needs: [commits, check, check-slow]
+    needs: [commits, check, coverage, nightly, mutants]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
