@@ -11,11 +11,4 @@ pub mod store;
 pub const SERVICE_NAME: &str = "custodiod";
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn service_name_is_stable() {
-        assert_eq!(SERVICE_NAME, "custodiod");
-    }
-}
+mod tests;

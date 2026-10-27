@@ -29,11 +29,4 @@ mod unsupported;
 pub const MODULE_NAME: &str = "custodio-pkcs11";
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn module_name_is_stable() {
-        assert_eq!(MODULE_NAME, "custodio-pkcs11");
-    }
-}
+mod tests;

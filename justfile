@@ -36,6 +36,7 @@ lint:
     zizmor --offline .github/workflows
     cargo deny check
     cargo machete
+    scripts/check-files.sh
 
 # Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
 # another configuration, so they run with the nightly checks, not in `check`.
@@ -54,7 +55,8 @@ lint-fuzz:
 test:
     cargo test --workspace --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
+# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
+# file size and tests out of the code.
 check: lint test system-gates
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
