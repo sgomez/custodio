@@ -2,7 +2,7 @@
 # Milestones: the unit of work the harness plans and builds.
 #   harness/milestone.sh list    # closed milestones and the open one
 #   harness/milestone.sh close   # archive the finished milestone in docs/milestones/<name>
-#   harness/milestone.sh open    # start the next one from a new IDEA.md
+#   harness/milestone.sh open    # start the next one from a new IDEA.md and PROGRESS.md
 #   harness/milestone.sh approve spec|features   # approve what you reviewed
 #   harness/milestone.sh pass <id>               # mark a manual feature as checked
 set -euo pipefail
@@ -69,7 +69,7 @@ close() {
   dest="$archive/$name"
   [ -e "$dest" ] && die "$dest already exists."
   mkdir -p "$dest"
-  for f in SPEC.md features.json APPROVALS contracts IDEA.md; do
+  for f in SPEC.md features.json APPROVALS contracts IDEA.md PROGRESS.md; do
     if [ -e "$f" ]; then git mv "$f" "$dest/"; fi
   done
   git commit -q -m "docs: close milestone $name"
@@ -91,7 +91,28 @@ TODO: replace this line with 3-4 sentences: what this milestone adds, for whom, 
 Earlier milestones are archived in $archive/; build on the code that already exists.
 Number this milestone's features from $first.
 EOF
-  commit "docs: open milestone $name" IDEA.md
+  # A fresh session log; the last milestone's is archived with it.
+  if [ ! -f PROGRESS.md ]; then
+    cat > PROGRESS.md <<'EOF'
+# Progress
+
+Each session appends one entry at the bottom. Keep entries short: the next session reads them
+with an empty context.
+
+## Template
+
+```
+### <date> — <feature id> — <attempt n>
+- Done:
+- Decisions (also in docs/decisions.md if lasting):
+- Not done / known issues:
+- Next session should:
+```
+
+## Sessions
+EOF
+  fi
+  commit "docs: open milestone $name" IDEA.md PROGRESS.md
   log "Opened $name. Write IDEA.md, then: just harness run"
 }
 
