@@ -162,7 +162,7 @@
         "F15"
       ],
       "verify": "just package && dpkg-deb -c target/debian/*.deb",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F17",
