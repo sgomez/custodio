@@ -46,7 +46,10 @@ test:
     cargo test --workspace --locked
 
 # Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
-check: lint test security-score unit-verify bus-policy
+check: lint test system-gates
+
+# The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
+system-gates: security-score unit-verify bus-policy
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.

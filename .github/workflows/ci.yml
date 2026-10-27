@@ -67,7 +67,7 @@ jobs:
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
           tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
       # The rest of `just check`; `just test` is its own job.
-      - run: just lint security-score unit-verify bus-policy
+      - run: just lint system-gates
 
   test:
     name: just test
