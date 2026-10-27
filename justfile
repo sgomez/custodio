@@ -162,3 +162,34 @@ fuzz-build:
 # Regenerate CHANGELOG.md from the Conventional Commits history (git-cliff, cliff.toml).
 changelog:
     git cliff -o CHANGELOG.md
+
+# Build loop. `just status` says where it is and what to run next; harness/README.md has the details.
+
+# Where the harness is and the next command to run.
+status:
+    harness/status.sh
+
+# Run or continue the harness in the dev container (plan, split, build).
+harness:
+    harness/run.sh
+
+# Same, spending at most 3 Claude sessions.
+harness-try:
+    MAX_SESSIONS=3 harness/run.sh
+
+# Stop the running harness after the current tool call.
+harness-stop:
+    touch AGENT_STOP
+
+# Continue after `just harness-stop`.
+harness-resume:
+    rm -f AGENT_STOP
+    harness/run.sh
+
+# Approve the reviewed spec or feature list: `just approve spec`, `just approve features`.
+approve what:
+    harness/approve.sh {{what}}
+
+# Archive the finished milestone and start the next one from a new IDEA.md: `just new-milestone M0`.
+new-milestone name:
+    harness/new-milestone.sh {{name}}

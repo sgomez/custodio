@@ -1,5 +1,16 @@
 # Harness
 
+Not sure what to do? Run `just status`: it says where the harness is and the next command.
+
+| Command | Does |
+|---|---|
+| `just status` | Where it is and what to run next |
+| `just harness` | Run or continue |
+| `just harness-try` | Same, at most 3 sessions |
+| `just harness-stop` / `just harness-resume` | Stop, continue |
+| `just approve spec` / `just approve features` | Approve after reviewing |
+| `just new-milestone M0` | Archive a finished milestone, start the next |
+
 How Custodio gets built by agents, from idea to milestone, following Anthropic's articles on
 long-running agents: a planner writes the spec, an initializer splits it into features, and each
 feature is built by fresh sessions and judged by a separate evaluator. People approve the spec and
