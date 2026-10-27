@@ -30,9 +30,10 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          # A new branch pushes with an all-zero `before`; check only its tip then.
-          if [ "${BASE//0/}" = "" ]; then BASE="$HEAD~1"; fi
-          harness/commit-msg.sh --range "$BASE..$HEAD"
+          # A new branch (all-zero `before`) or a force push leaves no usable base: check all history.
+          range="$BASE..$HEAD"
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || range=$HEAD
+          harness/commit-msg.sh --range "$range"
 
   check:
     name: just check
