@@ -58,7 +58,7 @@
         "F05"
       ],
       "verify": "just check && just fuzz-build",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F07",
