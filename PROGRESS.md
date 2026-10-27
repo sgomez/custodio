@@ -50,3 +50,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (Key store hardening).
 - Not done / known issues: NEXT_FINDINGS.md left in place for the loop to clear; mutation testing not set up.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F05 — 3
+- Done: fixed all NEXT_FINDINGS. `open` delegates to `open_as(dir, uid)`; tests for `BadOwner` in `open`, `BadFileType` (symlink to a 0700 dir, regular file), FIFO key file (`O_NONBLOCK|O_NOCTTY`, no hang). `open` now chmods a freshly created dir to exactly 0700 (child-process umask 0o277 test covers it).
+- Decisions: none new.
+- Not done / known issues: `SyncFailed` is never produced by any test (needs fault injection); note for mutation-testing setup. NEXT_FINDINGS.md left for the loop to clear.
+- Next session should: nothing specific.
