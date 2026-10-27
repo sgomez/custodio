@@ -104,3 +104,8 @@ with an empty context.
 - Decisions: see docs/decisions.md (FFI safety).
 - Not done / known issues: Miri/ASan do not cover the `.so` integration tests (need a bus and `dlopen`); the real `DbusBackend` path is not under Miri; the fuzz harness never passes pointers with sizes larger than the buffers (UB by contract).
 - Next session should: nothing specific.
+
+### 2026-10-27 — F12 — 2
+- Done: fixed NEXT_FINDINGS. Clippy errors in the fuzz harness fixed; `just lint` now also runs clippy with `--features fuzzing` and on the fuzz crate. `compile_error!` in `lib.rs` when `fuzzing` is on in a build without debug assertions and without `--cfg fuzzing`; `just lint` asserts a release build with the feature fails; recorded in docs/decisions.md. Harness moved to `ffi/fuzzing.rs` (re-exported as `custodio_pkcs11::fuzzing`). Fixed the `maybe` doc comment; the fuzzer now passes a nonzero count with a NULL template/attribute list. `check`, miri, asan, fuzz-build green; 20 s fuzz run clean.
+- Not done / known issues: as in attempt 1.
+- Next session should: nothing specific.

@@ -8,5 +8,9 @@ edition = "2024"
 license = "EUPL-1.2"
 publish = false
 
+[workspace.lints.rust]
+# `fuzzing` is set by cargo-fuzz.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
+
 [workspace.lints.clippy]
 pedantic = { level = "deny", priority = -1 }
