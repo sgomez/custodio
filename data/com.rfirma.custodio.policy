@@ -14,5 +14,7 @@
       <allow_inactive>auth_self</allow_inactive>
       <allow_active>auth_self</allow_active>
     </defaults>
+    <!-- polkit refuses CheckAuthorization on another user's subject from a non-root caller unless it owns the action. -->
+    <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
   </action>
 </policyconfig>

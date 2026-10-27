@@ -19,7 +19,7 @@ requests() { wc -l < "$E2E_DIR/requests"; }
 expect_requests() { [ "$(requests)" -eq "$1" ] || fail "expected $1 authentication requests, saw $(requests)"; }
 
 # --- Acceptance 1: the user cannot read the key files -------------------------------------------
-[ -z "$(find /var/lib/custodio -maxdepth 3 2>/dev/null | head -n 1)" ] || fail "alice can list the state directory"
+[ -z "$(find -L /var/lib/custodio -mindepth 1 -maxdepth 3 2>/dev/null | head -n 1)" ] || fail "alice can list the state directory"
 if cat /var/lib/custodio/* >/dev/null 2>&1; then fail "alice read a key file"; fi
 if ls /var/lib/custodio >/dev/null 2>&1; then fail "alice listed /var/lib/custodio"; fi
 if grep -rl "PRIVATE KEY\|PKCS" /var/lib/custodio >/dev/null 2>&1; then fail "alice grepped a key file"; fi
@@ -74,7 +74,7 @@ certutil -L -d "sql:$db" -h all 2>&1 | grep -q "rsa1" || fail "NSS does not list
 
 nsssign() { # issues a certificate from the CSR with the custodied key rsa1
     rm -f "$WORK/issued.der"
-    certutil -C -d "sql:$db" -h all -c "rsa1:rsa1" -i "$WORK/csr.pem" -o "$WORK/issued.der" -v 1 -Z SHA256 \
+    certutil -C -d "sql:$db" -c "rsa1:rsa1" -i "$WORK/csr.der" -o "$WORK/issued.der" -v 1 -Z SHA256 \
         >"$WORK/nss.log" 2>&1 < /dev/null
 }
 before=$(requests)

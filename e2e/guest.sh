@@ -7,7 +7,7 @@ fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 
 dpkg -i /pkg/custodio.deb >/dev/null
 systemctl daemon-reload
-systemctl restart dbus
+systemctl reload dbus # restart would drop logind and polkit off the bus
 systemctl start polkit
 # The service is started by D-Bus activation on the first call, as for a user; start it now so a
 # failing unit (hardening too strict) shows up here with its log.
@@ -18,6 +18,7 @@ systemctl is-active --quiet custodio || fail "custodio.service is not active"
 id alice >/dev/null 2>&1 || useradd -m -s /bin/bash alice
 work=$(mktemp -d /tmp/e2e.XXXXXX)
 chmod 755 "$work"
+chown alice "$work" # user.sh writes the agent state and signatures here
 for kind in rsa ec; do
     case $kind in
         rsa) genopt=(-algorithm RSA -pkeyopt rsa_keygen_bits:2048) ;;
