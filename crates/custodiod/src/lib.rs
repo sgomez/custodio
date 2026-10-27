@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod import;
+pub mod polkit;
 pub mod sign;
 pub mod store;
 

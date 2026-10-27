@@ -74,3 +74,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (Signing primitives). `deny.toml` now ignores RUSTSEC-2023-0071 (Marvin) with a justification; no fixed `rsa` exists.
 - Not done / known issues: polkit is not called here (the D-Bus layer must authorize before `sign`); no CLI/D-Bus wiring; no SHA-1 PSS; MGF hash is forced equal to the PSS hash; `rsa` is a prerelease.
 - Next session should: call `sign` only after a polkit check.
+
+### 2026-10-27 — F08 — 1
+- Done: `custodiod::polkit` (`Authorizer` trait, `PolkitAuthorizer` over zbus, `AuthError`, `ACTION_ID`). Calls `CheckAuthorization` with a `system-bus-name` subject and `AllowUserInteraction`; only `is_authorized` passes, challenge/denial/bus error/no polkit are refusals; non-unique senders are rejected first. `data/com.rfirma.custodio.policy` with `auth_self` for any/inactive/active. Tests: `tests/polkit.rs` (private `dbus-daemon` + fake authority: request shape, approve, deny, challenge, error, no polkit, asks every time), `tests/policy.rs` (defaults, no `_keep` even outside comments, one action), unit tests for request building. New dep: zbus (comms, proxy, default-rt; `service` in dev). verify passes.
+- Decisions: see docs/decisions.md (polkit authorization).
+- Not done / known issues: integration tests need `dbus-daemon` installed (present on CI runners); no cancellation id; the D-Bus service that calls `authorize` before `sign` and the policy install path are for later features; the real polkit was not available here, so wire format is checked only against the fake.
+- Next session should: call `Authorizer::authorize(sender)` before every `sign`.

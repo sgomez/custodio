@@ -42,3 +42,9 @@ Decision. Why. Alternatives considered. -->
 - Crypto crates: `rsa` 0.10.0-rc.19 (pinned with `=`; only prerelease line with the current `crypto-bigint`) and `p256`/`ecdsa`, `sha2`. RUSTSEC-2023-0071 (Marvin) is ignored in `deny.toml` with a justification: no fix exists, each signature needs a polkit approval so timing samples cannot be gathered at scale, RNG blinding is on, and a same-uid attacker is out of scope.
 - Alternatives: OpenSSL (banned); `sad-rsa` (unknown fork, supply chain risk); no RSA (SPEC requires RSA 2048).
 - Not done: polkit is not called here; the caller (D-Bus layer) must authorize before `sign`.
+
+## 2026-10-27 — polkit authorization (F08)
+- Decision: `custodiod::polkit` has an `Authorizer` trait (`authorize(sender)`, async, `Ok(())` only on approval) and `PolkitAuthorizer` over a `zbus::Connection`. It calls `CheckAuthorization` with subject `("system-bus-name", {name: sender})`, action `com.rfirma.custodio.sign`, no details, flag `AllowUserInteraction` (1), empty cancellation id. Only `is_authorized == true` passes: a challenge, a denial, a bus error, a malformed reply or no polkit on the bus are all refusals (`Denied` / `Unavailable`). Senders that are not unique names (`:1.x`) are rejected before polkit is called. Nothing is cached. `data/com.rfirma.custodio.policy` sets `auth_self` for any, inactive and active; a test fails on any `_keep`.
+- Why: SPEC; fail closed. zbus with only `comms`, `proxy`, `default-rt` (no tokio, no tracing). Dev builds also enable `service` to serve the fake authority in tests.
+- Alternatives: a sync/blocking trait (would block the D-Bus service's executor); passing pid/uid subjects (racy, SPEC wants the pidfd resolved by polkit).
+- Not done: no cancellation id, so a client that disconnects mid-dialog leaves the dialog until timeout; install location of the policy file is for the packaging feature.
