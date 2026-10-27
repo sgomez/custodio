@@ -32,3 +32,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (CI workflow shape). Branch protection must require the `ci` check; this is a GitHub setting a human must apply.
 - Not done / known issues: tool installs in CI use taiki-e/install-action (not exercised locally); no cargo cache.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F04 — 1
+- Done: `deny.toml` (advisories, licences, bans incl. duplicates/wildcards/openssl, sources); `cargo deny check` and `cargo machete` added to `just lint`; CI installs both tools. verify passes.
+- Decisions: see docs/decisions.md (supply chain policy).
+- Not done / known issues: `cargo deny` fetches the advisory DB, so it needs network. Warnings about unused licence allowances are expected until dependencies exist.
+- Next session should: when adding dependencies, fix any deny failures with justified entries, not by loosening policy.

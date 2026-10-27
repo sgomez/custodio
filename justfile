@@ -21,12 +21,14 @@ lint:
     {{shell_scripts}} | xargs -r shellcheck
     actionlint
     zizmor --offline .github/workflows
+    cargo deny check
+    cargo machete
 
 # Unit tests.
 test:
     cargo test --workspace --locked
 
-# Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck, actionlint, zizmor.
+# Fast checks: fmt, clippy, unit tests, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete.
 check: lint test
 
 # Slow checks (later features add to it).
