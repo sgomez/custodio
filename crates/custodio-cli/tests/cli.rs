@@ -130,14 +130,14 @@ fn success_tells_the_person_to_delete_the_original() -> TestResult {
     let mut out = Vec::new();
     run_import(
         &a,
-        &mut FixedPrompt(Some("pw")),
+        &mut FixedPrompt(Some("Zq9!secret-pass")),
         &Recorder::default(),
         &mut out,
     )?;
     let text = String::from_utf8(out)?;
     assert!(text.contains("delete the original"), "{text}");
     assert!(text.contains(file.to_str().ok_or("path")?), "{text}");
-    assert!(!text.contains("pw"), "{text}");
+    assert!(!text.contains("Zq9!secret-pass"), "{text}");
     // The tool must not delete it itself.
     assert!(file.exists());
     Ok(())

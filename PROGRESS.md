@@ -121,3 +121,8 @@ with an empty context.
 - Decisions: see docs/decisions.md (Coverage and CRAP gate): threshold 30; only `ffi/fuzzing.rs` excluded.
 - Not done / known issues: CRAP is region-based, not line-based; `just coverage` takes about a minute; CI install of cargo-llvm-cov was not exercised locally.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F14 — 2
+- Done: fixed NEXT_FINDINGS. `success_tells_the_person_to_delete_the_original` was flaky: it asserted the output does not contain `"pw"`, but the random temp dir name (e.g. `.tmpwtJfq2`) can contain it. It now uses a password that cannot appear in a path. `just coverage && just crap` passes; the CLI tests were run three times in a row green.
+- Not done / known issues: as in attempt 1. The worst CRAP score is exactly 30.0 (threshold 30, fails only above).
+- Next session should: nothing specific.
