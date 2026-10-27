@@ -55,10 +55,9 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # The environment hash lists every toolchain on the runner image, which changes under us;
-          # rust-toolchain.toml is in the key already.
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
           add-rust-environment-hash-key: false
-          shared-key: ${{ github.job }}
+          shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           # PR caches would evict main's, and main's are the ones every branch restores.
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
@@ -88,10 +87,9 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # The environment hash lists every toolchain on the runner image, which changes under us;
-          # rust-toolchain.toml is in the key already.
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
           add-rust-environment-hash-key: false
-          shared-key: ${{ github.job }}
+          shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -117,10 +115,9 @@ jobs:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # The environment hash lists every toolchain on the runner image, which changes under us;
-          # rust-toolchain.toml is in the key already.
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
           add-rust-environment-hash-key: false
-          shared-key: ${{ github.job }}
+          shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -150,8 +147,8 @@ jobs:
           echo "nightly=$toolchain" >> "$GITHUB_OUTPUT"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # The pinned nightly takes the place of the environment hash, which lists every toolchain on the runner image.
-          shared-key: nightly-${{ steps.toolchain.outputs.nightly }}
+          # The pinned nightly and our own hash replace rust-cache's, which lists every toolchain on the runner image.
+          shared-key: nightly-${{ steps.toolchain.outputs.nightly }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           add-rust-environment-hash-key: false
           workspaces: |
             . -> target
@@ -179,10 +176,9 @@ jobs:
       # The test job's cache holds the same test build; saving one here would freeze whatever the first diff compiled.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # The environment hash lists every toolchain on the runner image, which changes under us;
-          # rust-toolchain.toml is in the key already.
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
           add-rust-environment-hash-key: false
-          shared-key: test
+          shared-key: test-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
