@@ -109,3 +109,8 @@ Decision. Why. Alternatives considered. -->
 - Why: one `check-slow` job took 20 minutes (9 of them re-testing 120 unchanged mutants, 3 repeating `check`), and cancelling on main left most commits unverified.
 - Trade-off: a Miri, ASan, fuzz-build, fuzz-lint, coverage or CRAP failure shows up on main after the merge, not on the PR.
 - Alternatives: a job per recipe (rebuilds the same artifacts many times); the full mutant sweep on every push (the old cost).
+
+## 2026-10-28 — Pinned nightly and stable CI cache keys
+- Decision: the justfile pins the nightly (`nightly_toolchain`), and every `rust-cache` step drops the environment hash: stable jobs key on `rust-toolchain.toml` (already in the key), the nightly job on the pinned toolchain. Both fuzz workspaces are cached.
+- Why: the environment hash lists every toolchain on the runner image (one image ships 1.99.0, another not) and a floating nightly changes daily, so the nightly job never found its cache and took ~10 minutes; `crates/custodiod/fuzz` was not cached at all.
+- Alternatives: a floating nightly (no cache most days); keeping the environment hash (misses whenever the image changes).

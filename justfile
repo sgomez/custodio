@@ -3,6 +3,8 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 shell_scripts := "git ls-files '*.sh'"
+# Pinned so CI can cache the nightly builds; bump by hand.
+nightly_toolchain := "nightly-2026-10-26"
 
 default:
     @just --list
@@ -12,7 +14,7 @@ default:
 setup:
     mise trust
     mise install
-    rustup toolchain install nightly --profile minimal --component miri --component rust-src
+    rustup toolchain install {{nightly_toolchain}} --profile minimal --component miri --component rust-src
     rustup component add llvm-tools-preview
     npm ci --no-audit --no-fund
     lefthook install
@@ -121,14 +123,14 @@ test-integration:
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
 # use a fake service, because Miri cannot talk to a bus.
 miri:
-    cargo +nightly miri test -p custodio-pkcs11 --lib --locked
+    cargo +{{nightly_toolchain}} miri test -p custodio-pkcs11 --lib --locked
 
 # The tests of the PKCS#11 module under AddressSanitizer (needs nightly).
 asan:
     #!/usr/bin/env bash
     set -euo pipefail
-    host=$(rustc +nightly -vV | sed -n 's/^host: //p')
-    RUSTFLAGS="-Zsanitizer=address" cargo +nightly test -p custodio-pkcs11 --lib --locked \
+    host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
+    RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-pkcs11 --lib --locked \
         --target "$host" --target-dir target/asan
 
 # Mutation testing of the authorization path (polkit, D-Bus service) and the key store. A surviving mutant fails.
@@ -177,11 +179,11 @@ coverage-gate: coverage crap
 fuzz-build:
     #!/usr/bin/env bash
     set -euo pipefail
-    host=$(rustc +nightly -vV | sed -n 's/^host: //p')
+    host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
     found=0
     while IFS= read -r manifest; do
         found=1
-        (cd "$(dirname "$manifest")/.." && cargo +nightly fuzz build --target "$host")
+        (cd "$(dirname "$manifest")/.." && cargo +{{nightly_toolchain}} fuzz build --target "$host")
     done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
     if [ "$found" = 0 ]; then echo "no fuzz targets found" >&2; exit 1; fi
 
