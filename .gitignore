@@ -1,2 +1,6 @@
 /target
 CLAUDE.local.md
+.harness/
+AGENT_STOP
+NEXT_FINDINGS.md
+.claude/settings.local.json
