@@ -182,7 +182,7 @@
         "F11"
       ],
       "verify": "test -s docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "M01",
