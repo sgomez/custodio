@@ -3,14 +3,14 @@
 use std::error::Error;
 
 use custodiod::import::{
-    ImportError, KeyKind, MAX_P12_LEN, ParsedP12, cert_id, import_p12, parse_p12,
+    ImportError, KeyKind, MAX_P12_LEN, ParsedP12, cert_id, check_archive, import_p12, parse_p12,
 };
 use custodiod::store::KeyStore;
 use p12_keystore::{
-    Certificate, KeyStore as P12KeyStore, KeyStoreEntry, Pkcs12ImportPolicy, PrivateKey,
-    PrivateKeyChain,
+    Certificate, KeyStore as P12KeyStore, KeyStoreEntry, LocalKeyId, Pkcs12Archive,
+    Pkcs12ImportPolicy, PrivateKey, PrivateKeyBag, PrivateKeyChain,
 };
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretSlice, SecretString};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -213,5 +213,110 @@ fn errors_and_debug_do_not_leak_secrets() -> TestResult {
     let debug = format!("{parsed:?}");
     assert!(debug.contains("[REDACTED]"), "{debug}");
     assert!(!debug.contains(&format!("{:?}", parsed.key.expose_secret())));
+    Ok(())
+}
+
+/// A `.p12` with the key of `key_from` and the certificate of `cert_from`, under one `localKeyId`.
+fn crossed(key_from: &str, cert_from: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let key = PrivateKey::from_der(chain_of(key_from)?.key().as_der())?;
+    let certs = chain_of(cert_from)?.certs().to_vec();
+    let mut out = P12KeyStore::new();
+    out.add_entry(
+        "x",
+        KeyStoreEntry::PrivateKeyChain(PrivateKeyChain::new(&b"same-id"[..], key, certs)),
+    );
+    Ok(out.writer(PASSWORD).write()?)
+}
+
+#[test]
+fn rejects_rsa_key_with_another_rsa_certificate() -> TestResult {
+    let data = crossed("rsa2048", "rsa2048-legacy")?;
+    let err = err_of(parse_p12(&data, &pw(PASSWORD)))?;
+    assert!(matches!(err, ImportError::CertificateMismatch), "{err:?}");
+    Ok(())
+}
+
+#[test]
+fn rejects_p256_key_with_another_p256_certificate() -> TestResult {
+    let data = crossed("p256", "p256-other")?;
+    let err = err_of(parse_p12(&data, &pw(PASSWORD)))?;
+    assert!(matches!(err, ImportError::CertificateMismatch), "{err:?}");
+    Ok(())
+}
+
+#[test]
+fn rejects_key_with_certificate_of_another_type() -> TestResult {
+    for (key, cert) in [("p256", "rsa2048"), ("rsa2048", "p256")] {
+        let err = err_of(parse_p12(&crossed(key, cert)?, &pw(PASSWORD)))?;
+        assert!(matches!(err, ImportError::CertificateMismatch), "{err:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn matching_certificate_is_found_among_several() -> TestResult {
+    let mut archive = Pkcs12Archive::default();
+    for name in ["p256-other", "p256"] {
+        let chain = chain_of(name)?;
+        if name == "p256" {
+            archive.keys.push(bag(&chain, None)?);
+        }
+        archive.certs.push(cert_bag(&chain)?);
+    }
+    let parsed = check_archive(&archive)?;
+    assert_eq!(parsed.certificate, parse("p256")?.certificate);
+    Ok(())
+}
+
+fn bag(chain: &PrivateKeyChain, kid: Option<&[u8]>) -> Result<PrivateKeyBag, Box<dyn Error>> {
+    Ok(PrivateKeyBag {
+        friendly_name: None,
+        local_key_id: kid.map(|k| LocalKeyId(k.to_vec())),
+        key: PrivateKey::from_der(chain.key().as_der())?,
+    })
+}
+
+fn cert_bag(chain: &PrivateKeyChain) -> Result<p12_keystore::CertificateBag, Box<dyn Error>> {
+    Ok(p12_keystore::CertificateBag {
+        friendly_name: None,
+        local_key_id: None,
+        trusted: false,
+        cert: chain.certs().first().ok_or("no cert")?.clone(),
+    })
+}
+
+#[test]
+fn accepts_single_key_without_local_key_id() -> TestResult {
+    assert_eq!(parse("p256-nokid")?.kind, KeyKind::EcdsaP256);
+    Ok(())
+}
+
+#[test]
+fn counts_keys_without_local_key_id() -> TestResult {
+    let (p, r) = (chain_of("p256")?, chain_of("rsa2048")?);
+    let mut archive = Pkcs12Archive::default();
+    archive.keys.push(bag(&p, Some(b"id"))?);
+    archive.keys.push(bag(&r, None)?);
+    archive.certs.push(cert_bag(&p)?);
+    let err = err_of(check_archive(&archive))?;
+    assert!(matches!(err, ImportError::MultipleKeys), "{err:?}");
+
+    archive.keys.clear();
+    archive.keys.push(bag(&p, None)?);
+    archive.keys.push(bag(&r, None)?);
+    let err = err_of(check_archive(&archive))?;
+    assert!(matches!(err, ImportError::MultipleKeys), "{err:?}");
+    Ok(())
+}
+
+#[test]
+fn failed_key_write_leaves_no_certificate() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let store = KeyStore::open(dir.path().join("state"))?;
+    let existing = SecretSlice::from(b"other".to_vec());
+    store.put("k", &existing)?;
+    let err = err_of(import_p12(&store, "k", &fixture("p256")?, &pw(PASSWORD)))?;
+    assert!(matches!(err, ImportError::Store(_)), "{err:?}");
+    assert_eq!(store.list()?, ["k"]);
     Ok(())
 }

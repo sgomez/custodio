@@ -62,3 +62,9 @@ with an empty context.
 - Decisions: see docs/decisions.md (`.p12` import). Duplicate `syn` skipped in deny.toml.
 - Not done / known issues: key↔certificate public-key match not checked; `p12-keystore` holds an unzeroized copy of the key during parsing; no CLI wiring yet; CI changes (nightly, cargo-fuzz) not exercised locally.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F06 — 2
+- Done: fixed all NEXT_FINDINGS. Certificate must match the key's public key (`ImportError::CertificateMismatch`; RSA n/e, P-256 point computed with `p256`); keys counted via `Pkcs12Archive` (single key without `localKeyId` accepted, extra key without it now `MultipleKeys`); `import_p12` checks both ids are free before writing; `just fuzz-build` uses `find` and fails when no fuzz crate exists. New tests (23 total) incl. RSA/P-256/cross-type mismatch, no-`localKeyId` cases (via `check_archive`), no orphan certificate. New fixtures `p256-other`, `p256-nokid`. New deps: p256, sec1, x509-cert. verify passes.
+- Decisions: see docs/decisions.md (`.p12` import).
+- Not done / known issues: `p12-keystore` keeps an unzeroized copy of the key while parsing; no CLI wiring yet; CI fuzz changes not exercised locally.
+- Next session should: nothing specific.
