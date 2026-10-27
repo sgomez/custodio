@@ -1,8 +1,10 @@
 # Custodio — agent guide
 
-`SPEC.md` says what we are building. `features.json` is the contract: the list of features for
-this milestone, in dependency order, each with a `verify` command. You build; a separate evaluator
-and the loop decide whether a feature passes.
+`SPEC.md` says what we are building. `features.json` lists the features for this milestone, in
+dependency order, each with a `verify` command. Before a feature is built, its contract in
+`contracts/<id>.md` says how each requirement will be proven, and an evaluator approves it. You
+build; a separate evaluator and the loop decide whether a feature passes. `harness/README.md`
+explains the whole flow.
 
 ## Language
 
@@ -14,10 +16,11 @@ Everything in this repository is in English: code, comments, docs, commit messag
    (the evaluator's or the loop's findings from the previous attempt; fix those first), and
    `git log --oneline -15`. Run `just check` once it exists; if the tree is red, fix that before
    anything else.
-2. **Build one feature.** Only the feature you were given. Do not start the next one, even if you
-   have context left.
-3. **Tests first.** Write the failing test, then the code. Run the feature's `verify` command until
-   it passes.
+2. **Build one feature, following its contract.** Only the feature you were given; do not start the
+   next one, even if you have context left. Tick contract steps as they are done and change
+   nothing else in the contract. A feature may take several sessions.
+3. **Tests first.** Write the failing test, then the code. When every step is ticked, run the
+   feature's `verify` command and the contract's evidence until they pass.
 4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a message
    that starts with the feature id, e.g. `F05: Add key store with 0700/0600 permissions`.
 
@@ -31,7 +34,8 @@ Everything in this repository is in English: code, comments, docs, commit messag
 
 ## Rules
 
-- Never edit `features.json`. Only the loop marks a feature as passing.
+- Never edit `SPEC.md`, `features.json` or `APPROVALS`. A person approves the spec and the feature
+  list; only the loop marks a feature as passing.
 - Never weaken a gate to get green: no deleting or `#[ignore]`-ing tests, no lowering thresholds,
   no `#[allow(...)]` without a comment that justifies it, no turning a `just` recipe into a no-op.
 - Key material and passwords live in `secrecy` / `zeroize` types and never reach `Debug`, logs or
