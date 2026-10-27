@@ -27,7 +27,12 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just,taplo,typos,actionlint,zizmor,shellcheck,cargo-deny,cargo-machete
+          tool: just,taplo,typos,zizmor,shellcheck,cargo-deny,cargo-machete
+      # install-action does not ship actionlint; pinned release, checksum-verified.
+      - run: |
+          curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
       - run: just check
 
   check-slow:
@@ -42,7 +47,13 @@ jobs:
           persist-credentials: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just,taplo,typos,actionlint,zizmor,shellcheck,cargo-deny,cargo-machete,cargo-fuzz,cargo-mutants,cargo-llvm-cov
+          tool: just,taplo,typos,zizmor,shellcheck,cargo-deny,cargo-machete,cargo-mutants,cargo-llvm-cov
+      # install-action does not ship actionlint; pinned release, checksum-verified.
+      - run: |
+          curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
+          tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
+      - run: cargo install --locked cargo-fuzz@0.13.2
       - run: rustup toolchain install nightly --profile minimal --component miri --component rust-src
       - run: rustup component add llvm-tools-preview
       - run: just check-slow
