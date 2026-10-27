@@ -1,0 +1,16 @@
+# Test machine for `just e2e`: Debian with systemd as PID 1, real polkit and logind, the tools that
+# consume PKCS#11 modules, and Python for the test authentication agent. The Custodio package is
+# NOT in the image: the test installs it, like a user would.
+FROM debian:trixie
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      systemd systemd-sysv systemd-cron dbus dbus-user-session libpam-systemd polkitd p11-kit opensc \
+      libnss3-tools openssl util-linux python3 python3-dbus python3-gi procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# The agent authenticates through PAM like a real one; accept any password for the polkit service
+# so that "approve" needs no secret. The decision (approve or deny) is made by the agent.
+RUN printf 'auth required pam_permit.so\naccount required pam_permit.so\n' > /etc/pam.d/polkit-1
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]

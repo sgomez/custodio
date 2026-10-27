@@ -136,6 +136,12 @@ package:
     cargo build --release --locked -p custodiod -p custodio-cli -p custodio-pkcs11
     cargo deb --locked --no-build -p custodiod
 
+# End-to-end tests: boots a systemd container (podman or docker, privileged), installs the .deb with the real polkit, and signs with
+# pkcs11-tool and NSS (modutil, certutil) while a test authentication agent approves or denies. Not part of `check-slow`: it needs a
+# container engine that can run systemd, which the dev container does not have.
+e2e: package
+    bash e2e/run.sh
+
 # Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan, the fuzz targets building, mutation testing, coverage and the CRAP gate.
 check-slow: check test-integration miri asan fuzz-build mutants coverage crap
 
