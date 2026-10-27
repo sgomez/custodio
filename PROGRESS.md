@@ -115,3 +115,9 @@ with an empty context.
 - Decisions: three small refactors so no mutant is equivalent instead of excluding anything: `open_as` uses `if` on the error kind; `get` flags use `.union()` (`|` and `^` of disjoint bits are equal); `get` maps open errors in one arm. No mutants are skipped or excluded.
 - Not done / known issues: takes ~2 min; `sign.rs` and `import.rs` are not in scope (spec names only authorization path and key store); CI installs `cargo-mutants` but was not exercised locally.
 - Next session should: nothing specific.
+
+### 2026-10-27 — F14 — 1
+- Done: `just coverage` (cargo-llvm-cov over the whole workspace, summary + HTML + JSON in `target/coverage`, no minimum) and `just crap` (new crate `crates/crap`: syn complexity × llvm-cov region coverage per function; fails above 30; worst now 30.0). Both added to `check-slow`; CI installs `cargo-llvm-cov` and `llvm-tools-preview`. Tests: `crap` unit tests (complexity rules, formula, export parsing, matching, threshold) and `tests/cli.rs` (binary on a fixture crate). To get under the gate: `custodio-cli`'s prompt split into `prompt_on` with pty tests (echo off, restored, closed tty). The cryptoki test now builds the module into its own target dir so it works under llvm-cov. verify passes; `just lint`, `just test`, `just test-integration` green.
+- Decisions: see docs/decisions.md (Coverage and CRAP gate): threshold 30; only `ffi/fuzzing.rs` excluded.
+- Not done / known issues: CRAP is region-based, not line-based; `just coverage` takes about a minute; CI install of cargo-llvm-cov was not exercised locally.
+- Next session should: nothing specific.
