@@ -3,7 +3,7 @@
   "description": "Development tooling only: commit message linting with commitlint.",
   "type": "module",
   "devDependencies": {
-    "@commitlint/cli": "20.5.3",
-    "@commitlint/config-conventional": "20.5.3"
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4"
   }
 }
