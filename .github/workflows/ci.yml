@@ -7,9 +7,9 @@ on:
 
 permissions: {}
 
-# A newer push to a PR cancels its older run; on main every commit runs to the end.
+# A newer push cancels the older run, on main too: the newest commit contains the older ones.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
