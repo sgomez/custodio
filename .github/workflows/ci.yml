@@ -39,8 +39,12 @@ jobs:
             git log -1 --format=%B "$HEAD" | npx --no-install commitlint --verbose
           fi
 
-  check:
-    name: just check
+  lint:
+    name: just lint
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -52,9 +56,6 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: ${{ github.job }}
-          workspaces: |
-            . -> target
-            crates/custodio-pkcs11/fuzz -> target
           # PR caches would evict main's, and main's are the ones every branch restores.
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
@@ -65,13 +66,41 @@ jobs:
           curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
           tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
-      - run: just check
+      # The rest of `just check`; `just test` is its own job.
+      - run: just lint security-score unit-verify bus-policy
+
+  test:
+    name: just test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: ${{ github.job }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just
+      - run: just test
 
   # Unit and integration tests under llvm-cov, then the CRAP gate.
   coverage:
     name: just coverage-gate
     # Slow: main only; a PR runs the fast jobs.
     if: github.event_name == 'push'
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -83,9 +112,6 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: ${{ github.job }}
-          workspaces: |
-            . -> target
-            crates/custodio-pkcs11/fuzz -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -123,6 +149,10 @@ jobs:
     name: just mutants (diff)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
     permissions:
       contents: read
     steps:
@@ -130,13 +160,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # The test job's cache holds the same test build; saving one here would freeze whatever the first diff compiled.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: ${{ github.job }}
-          workspaces: |
-            . -> target
-            crates/custodio-pkcs11/fuzz -> target
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: test
+          save-if: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: just,cargo-mutants@27.1.0
@@ -161,7 +189,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [commits, check, coverage, nightly, mutants]
+    needs: [commits, lint, test, coverage, nightly, mutants]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
