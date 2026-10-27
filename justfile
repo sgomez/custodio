@@ -68,7 +68,7 @@ coverage:
 # CRAP gate: fails when a function's CRAP score (complexity² × (1 − coverage)³ + complexity) is above
 # the threshold. Reads the export of `just coverage`.
 crap threshold="30":
-    cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap
+    cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs
 
 # Slow checks (later features add to it): everything in `check`, the integration tests, Miri, ASan, the fuzz targets building, mutation testing, coverage and the CRAP gate.
 check-slow: check test-integration miri asan fuzz-build mutants coverage crap

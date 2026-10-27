@@ -126,3 +126,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. `success_tells_the_person_to_delete_the_original` was flaky: it asserted the output does not contain `"pw"`, but the random temp dir name (e.g. `.tmpwtJfq2`) can contain it. It now uses a password that cannot appear in a path. `just coverage && just crap` passes; the CLI tests were run three times in a row green.
 - Not done / known issues: as in attempt 1. The worst CRAP score is exactly 30.0 (threshold 30, fails only above).
 - Next session should: nothing specific.
+
+### 2026-10-27 — F14 — 3
+- Done: fixed NEXT_FINDINGS. `#![forbid(unsafe_code)]` added to `crap` lib and bin roots. `just crap` now lists the crate dirs before `--exclude` for readability. `just lint` clean; `just coverage && just crap` passes.
+- Not done / known issues: the worst CRAP score is still exactly 30.0 (`custodiod/src/main.rs` `run`, 0% covered); one more branch there turns `check-slow` red.
+- Next session should: nothing specific.
