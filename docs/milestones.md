@@ -12,14 +12,12 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 - Composed mechanisms in the module: `CKM_SHA256_RSA_PKCS`, `CKM_SHA384_RSA_PKCS`,
   `CKM_SHA512_RSA_PKCS`, `CKM_ECDSA_SHA256` and peers. The module hashes and builds the
   `DigestInfo`; the service still receives only the hash.
-- RSA-PSS (`CKM_RSA_PKCS_PSS` and the composed variants), if a target client needs it.
 - `C_Login` accepted as a no-op instead of `CKR_FUNCTION_NOT_SUPPORTED`.
 - rFirma signs without the two workarounds recorded in `docs/findings.md`.
 - LibreOffice signs a document through the module.
 - One journal entry per signature: caller uid and pid, key, approved or denied. No key material and
   no hash contents.
 - Manual acceptance with a P-256 key, not only RSA 2048.
-- Fingerprint acceptance (SPEC acceptance 6) on a machine with a reader.
 
 ## M2 — Packaging and distributions
 
@@ -67,6 +65,8 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
   support them with a PID-based subject and its reuse risk, or leave them out.
 - **Snap and immutable distributions** (systemd-sysext, rpm-ostree layering).
 - **More key types:** RSA 3072/4096, P-384.
+- **Fingerprint acceptance:** M0's SPEC acceptance 6 on a machine with a reader.
+- **RSA-PSS:** `CKM_RSA_PKCS_PSS` and the composed variants, once a target client needs it.
 - **Key lifecycle:** listing and deleting keys, replacing a renewed certificate, and what happens to
   the keys when the disk dies (no export by design).
 - **Presence without polkit:** the service talking to `fprintd` or a FIDO key directly, so the
