@@ -18,6 +18,15 @@ const DIR_MODE: u32 = 0o700;
 const FILE_MODE: u32 = 0o600;
 const PERM_MASK: u32 = 0o777;
 const MAX_ID_LEN: usize = 64;
+/// The rule for a key id: 1 to `MAX_ID_LEN` bytes of `[A-Za-z0-9_-]`. The audit `KeyId` uses it too.
+pub(crate) fn valid_key_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_ID_LEN
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 const MAX_KEY_LEN: u64 = 64 * 1024;
 const TMP_PREFIX: &str = ".tmp-";
 
@@ -136,12 +145,7 @@ impl KeyStore {
     }
 
     fn path_for(&self, id: &str) -> Result<PathBuf, StoreError> {
-        let valid = !id.is_empty()
-            && id.len() <= MAX_ID_LEN
-            && id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
-        if valid {
+        if valid_key_id(id) {
             Ok(self.dir.join(id))
         } else {
             Err(StoreError::InvalidId)

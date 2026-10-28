@@ -151,3 +151,20 @@ Format: a title and three short bullets, a couple of lines each:
   the reported state is never an error. A login keeps no state, so nothing can go stale.
 - Rejected: `CKR_USER_ALREADY_LOGGED_IN` on a repeat (breaks clients that log in per operation);
   reporting `CKS_RO_USER_FUNCTIONS` after a login (needs per-session state and a logout rule).
+
+## 2026-10-28 — Own native-journal writer instead of a crate
+- Decision: `audit::JournalSink` writes the Native Journal Protocol itself (about 20 lines of encoding).
+- Why: no new dependency to vet under cargo-deny, and no `unsafe` (`UnixDatagram` only).
+- Rejected: a journald crate (supply chain, and most use `memfd` or `libsystemd`).
+
+## 2026-10-28 — Oversize audit entry is an error
+- Decision: an entry whose encoding exceeds `MAX_DATAGRAM` gives `AuditError::TooLarge`; it is never
+  truncated and never sent through `memfd`/`SCM_RIGHTS`.
+- Why: a cut entry is a wrong audit record; entries are small by construction (typed fields).
+- Rejected: truncation; `memfd` passing for large entries.
+
+## 2026-10-28 — Non-blocking journal send
+- Decision: the datagram is sent with a non-blocking socket; a busy journal gives `Io(WouldBlock)`.
+- Why: a stuck journal must not hang a signing request; the caller (F25) turns the error into a refused
+  signature.
+- Rejected: blocking send, or retrying and dropping the entry.

@@ -121,3 +121,14 @@ with an empty context.
 - Not done / known issues: none for F23. `scripts/check-files.sh` prints `file:
   command not found` here (pre-existing); sizes checked by hand.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F24 — attempt 1
+- Done: `custodiod::audit` (`audit.rs`, `audit/{wire,journal,memory,tests}.rs`): `AuditSink`, typed `Entry`
+  (`Outcome`, `Caller`, `KeyId`, `AuditMechanism`), `MemorySink`, `FailingSink`, own `JournalSink`
+  (one non-blocking `UnixDatagram` per call, `TooLarge` over 16 KiB, `ShortSend` check). The store's
+  key-id rule is now `store::valid_key_id`, shared with `KeyId`. compile_fail doctests in `audit.rs`.
+  Decisions recorded; `audit/*.rs` added to `just mutants`.
+- Deviations: private `send_fields(path, max, fields)` takes the size limit (3 args) so `record` and
+  the tests share one function. `AuditError::ShortSend` is a new variant. `just mutants` not run.
+- Verify: `just check`, `just system-gates` (0.6 SAFE), `cargo test --doc -p custodiod` pass. Unit unchanged.
+- Next session should: start the next feature (F25 wires the sink into `Sign`).

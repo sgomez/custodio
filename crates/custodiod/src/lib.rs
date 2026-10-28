@@ -1,6 +1,7 @@
 //! Custodio signing service.
 #![forbid(unsafe_code)]
 
+pub mod audit;
 pub mod dbus;
 pub mod import;
 pub mod polkit;
