@@ -17,8 +17,12 @@ RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudo
 USER dev
 ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:$PATH
 
-RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --component rustfmt,clippy,llvm-tools-preview \
-    && rustup toolchain install nightly --profile minimal --component miri,rust-src
+# run.sh passes the pins from rust-toolchain.toml and the justfile's nightly_toolchain.
+ARG STABLE=stable
+ARG NIGHTLY=nightly
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$STABLE" \
+      --component rustfmt,clippy,llvm-tools-preview \
+    && rustup toolchain install "$NIGHTLY" --profile minimal --component miri,rust-src
 RUN curl -L --proto '=https' --tlsv1.2 -sSf \
       https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
     && cargo binstall -y cargo-deny cargo-machete cargo-mutants cargo-llvm-cov cargo-fuzz cargo-deb \

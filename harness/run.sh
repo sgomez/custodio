@@ -8,7 +8,10 @@ cd "$(git rev-parse --show-toplevel)"
 engine=$(command -v podman || command -v docker)
 : "${CLAUDE_CODE_OAUTH_TOKEN:?Set CLAUDE_CODE_OAUTH_TOKEN (run: claude setup-token)}"
 
-"$engine" build -q -t custodio-dev -f harness/Containerfile harness >/dev/null
+stable=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
+"$engine" build -q -t custodio-dev --build-arg STABLE="$stable" --build-arg NIGHTLY="$nightly" \
+  -f harness/Containerfile harness >/dev/null
 "$engine" volume create custodio-target >/dev/null 2>&1 || true
 
 # Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
