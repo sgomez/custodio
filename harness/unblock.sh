@@ -42,9 +42,10 @@ fi
 # The answer approves the contract text it changed; without this the loop rejects the change.
 for c in $(git diff --name-only "$before" HEAD -- 'contracts/*.md'); do
   id=$(basename "$c" .md)
-  [ -f "$c" ] && [ -f "$STATE/$id.contract" ] || continue
-  contract_hash "$c" > "$STATE/$id.contract"
-  log "$id: contract re-approved by your answer. Review it: git diff $before HEAD -- $c"
+  if [ -f "$c" ] && [ -f "$STATE/$id.contract" ]; then
+    contract_hash "$c" > "$STATE/$id.contract"
+    log "$id: contract re-approved by your answer. Review it: git diff $before HEAD -- $c"
+  fi
 done
 
 git rm -q --cached --ignore-unmatch BLOCKED.md
