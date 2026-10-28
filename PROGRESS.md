@@ -248,3 +248,11 @@ with an empty context.
 - Note for the commit history: commit 7669fb5 (builder prompt) and the second `cargo llvm-cov --features fuzzing --lib`
   run in `coverage` are outside the contract's text; the latter only adds the fuzz harness tests to the report.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F27 — attempt 3
+- Done: NEXT_FINDINGS 1. Kept the miri narrowing from aac182b (a deviation from the contract's "miri flags
+  unchanged", made outside F27 so `check-slow` is affordable). Added a `docs/decisions.md` entry, and fixed the
+  justfile comment (`unsupported.rs` allows `unsafe` but only has pointer-free stubs, no tests). **A person should
+  sign off on this gate change.** Minor: `EC_FLAGS` as a `const` removes that expression from mutation instead of
+  proving the mutant equivalent; `mechanism_info_fits_the_key` pins the value.
+- Next session should: start the next feature.
