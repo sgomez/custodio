@@ -29,6 +29,12 @@ $(cat "$STATE/$id.contract-review")"
 NEXT_FINDINGS.md:
 $(cat NEXT_FINDINGS.md)"
 
+# The container starts with no Claude config; skip the first-run onboarding and trust prompts.
+jq -n --arg dir "$PWD" '{hasCompletedOnboarding: true, bypassPermissionsModeAccepted: true,
+  projects: {($dir): {hasTrustDialogAccepted: true}}}' > "$HOME/.claude.json"
+mkdir -p "$HOME/.claude"
+echo '{"skipDangerousModePermissionPrompt": true}' > "$HOME/.claude/settings.json"
+
 HARNESS_ROLE=fixer claude --dangerously-skip-permissions "$prompt" || true
 
 tracked_changes && die "The session left uncommitted changes; commit or stash them."
