@@ -54,7 +54,7 @@
       "description": "custodiod has an audit interface that tests can replace, and a production implementation that sends one entry per call to journald over the Native Journal Protocol (systemd.io), using an existing crate allowed by cargo-deny or a small writer of our own. An entry is a human-readable MESSAGE plus structured fields: a fixed MESSAGE_ID (a 128-bit id chosen once), the caller's uid and pid, the key id, the outcome (approved and signed; approved but signing failed; denied; authorization not possible), optionally the mechanism, and a PRIORITY per outcome. The fields are typed, so key material, passwords, data, digests, DigestInfo, signatures and strings that failed validation cannot be put in an entry. Submission returns an error the caller must handle; it never fails silently. Unit tests check the wire encoding, including values with newlines, against a datagram socket the test owns, and check that a socket that is missing or refuses the entry gives an error. The service unit's hardening does not loosen: just system-gates (security score threshold 10) passes, and the unit keeps dropping every capability.",
       "depends_on": [],
       "verify": "just check",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F25",
