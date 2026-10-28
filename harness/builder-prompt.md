@@ -10,6 +10,8 @@ Follow "Every session" in CLAUDE.md:
    only when it is done and its evidence passes. Change nothing else in the contract.
 3. When every step is ticked, run the feature's `verify` command and every piece of evidence in
    the contract until they pass.
+   `just mutants` is slow: while killing survivors, re-run only the mutants you are working on
+   (`--file <path>`, `--re <regex>` or `--iterate`); run the full recipe once at the end.
 4. Append your entry to PROGRESS.md and commit with a Conventional Commits message scoped to the
    feature id, e.g. `feat(F05): add key store`. Stop at a clean point when your context gets
    long: the next session continues from the contract.
