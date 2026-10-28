@@ -118,6 +118,10 @@ const RSA_COMPOSED: [CK_MECHANISM_TYPE; 3] = [
 ];
 const EC_COMPOSED: [CK_MECHANISM_TYPE; 3] = [CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512];
 
+/// Flags of the ECDSA mechanisms. The bits are distinct, so `+` equals `|`; `+` because `|` and `^`
+/// agree on distinct bits, an equivalent mutant no test can kill. `mechanism_info_fits_the_key` pins the value.
+const EC_FLAGS: CK_FLAGS = CKF_SIGN + CKF_EC_F_P + CKF_EC_NAMEDCURVE;
+
 /// Mechanisms a token offers.
 #[must_use]
 pub fn mechanisms(token: &Token) -> Vec<CK_MECHANISM_TYPE> {
@@ -136,7 +140,7 @@ pub fn mechanism_info(token: &Token, mechanism: CK_MECHANISM_TYPE) -> Option<(CK
         return None;
     }
     Some(match token.kind {
-        KeyKind::EcP256 => (256, CKF_SIGN | CKF_EC_F_P | CKF_EC_NAMEDCURVE),
+        KeyKind::EcP256 => (256, EC_FLAGS),
         KeyKind::Rsa { .. } => (2048, CKF_SIGN),
     })
 }

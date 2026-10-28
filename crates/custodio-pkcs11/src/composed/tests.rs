@@ -218,6 +218,21 @@ fn digest_info_rejects_bad_length() {
 }
 
 #[test]
+fn hash_len_is_never_empty() {
+    for hash in [Hash::Sha256, Hash::Sha384, Hash::Sha512] {
+        assert!(!hash.is_empty(), "{hash:?}");
+    }
+}
+
+#[test]
+fn bad_digest_length_displays_its_reason() {
+    assert_eq!(
+        BadDigestLength.to_string(),
+        "digest length does not match the hash"
+    );
+}
+
+#[test]
 fn sign_input_shape() {
     let expected = [
         ("3031300d060960864801650304020105000420", SHA256_ABC),

@@ -45,25 +45,41 @@ fn recv(s: &UnixDatagram) -> Result<Vec<u8>, Box<dyn Error>> {
 type Field = (String, Vec<u8>);
 type Socket = (tempfile::TempDir, PathBuf, UnixDatagram);
 
+/// `b[from..to]`, or an error for a datagram that is cut short.
+fn slice(b: &[u8], from: usize, to: usize) -> Result<&[u8], Box<dyn Error>> {
+    Ok(b.get(from..to).ok_or("bad datagram")?)
+}
+
+/// One field of a datagram: its name, its value and the bytes after it.
+fn decode_field(b: &[u8]) -> Result<(Field, &[u8]), Box<dyn Error>> {
+    let nl = b.iter().position(|&c| c == b'\n').ok_or("bad datagram")?;
+    let eq = b.iter().position(|&c| c == b'=').filter(|&e| e < nl);
+    if let Some(e) = eq {
+        let field = (
+            String::from_utf8(slice(b, 0, e)?.to_vec())?,
+            slice(b, e + 1, nl)?.to_vec(),
+        );
+        return Ok((field, slice(b, nl + 1, b.len())?));
+    }
+    let len = u64::from_le_bytes(slice(b, nl + 1, nl + 9)?.try_into()?);
+    let end = nl + 9 + usize::try_from(len)?;
+    if b.get(end) != Some(&b'\n') {
+        return Err("bad datagram".into());
+    }
+    let field = (
+        String::from_utf8(slice(b, 0, nl)?.to_vec())?,
+        slice(b, nl + 9, end)?.to_vec(),
+    );
+    Ok((field, slice(b, end + 1, b.len())?))
+}
+
 /// Independent decoder of the Native Journal Protocol.
 fn decode(mut b: &[u8]) -> Result<Vec<Field>, Box<dyn Error>> {
-    let bad = || Box::<dyn Error>::from("bad datagram");
     let mut out = Vec::new();
     while !b.is_empty() {
-        let nl = b.iter().position(|&c| c == b'\n').ok_or_else(bad)?;
-        let eq = b.iter().position(|&c| c == b'=');
-        if let Some(e) = eq.filter(|&e| e < nl) {
-            let name = String::from_utf8(b.get(..e).ok_or_else(bad)?.to_vec())?;
-            out.push((name, b.get(e + 1..nl).ok_or_else(bad)?.to_vec()));
-            b = b.get(nl + 1..).ok_or_else(bad)?;
-        } else {
-            let name = String::from_utf8(b.get(..nl).ok_or_else(bad)?.to_vec())?;
-            let len = u64::from_le_bytes(b.get(nl + 1..nl + 9).ok_or_else(bad)?.try_into()?);
-            let end = nl + 9 + usize::try_from(len)?;
-            out.push((name, b.get(nl + 9..end).ok_or_else(bad)?.to_vec()));
-            assert_eq!(b.get(end), Some(&b'\n'));
-            b = b.get(end + 1..).ok_or_else(bad)?;
-        }
+        let (field, rest) = decode_field(b)?;
+        out.push(field);
+        b = rest;
     }
     Ok(out)
 }
@@ -73,6 +89,22 @@ fn would_block(s: &UnixDatagram) -> TestResult {
     let mut buf = [0u8; 8];
     assert!(matches!(s.recv(&mut buf), Err(e) if e.kind() == ErrorKind::WouldBlock));
     Ok(())
+}
+
+#[test]
+fn decode_rejects_cut_short_datagrams() {
+    let mut binary = b"MESSAGE\n".to_vec();
+    binary.extend_from_slice(&3u64.to_le_bytes());
+    binary.extend_from_slice(b"a\nb\n");
+    assert_eq!(
+        decode(&binary).ok(),
+        Some(vec![("MESSAGE".to_owned(), b"a\nb".to_vec())])
+    );
+    for bad in [&b"NAME"[..], b"NAME\n", b"NAME\n\x01\0", b"=x\0y", b"A=b"] {
+        assert!(decode(bad).is_err(), "{bad:?}");
+    }
+    assert!(decode(binary.split_last().map_or(&[], |(_, rest)| rest)).is_err());
+    assert!(decode(b"\xff=1\n").is_err());
 }
 
 #[test]

@@ -212,3 +212,26 @@ with an empty context.
 - Verified: `journalctl --root=<tmp> --update-catalog` exits 0 and `--list-catalog <id>` prints
   `<id> custodio: Custodio signing request handled`. The feature's `verify` command exits 0.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F27 — attempt 1
+- Done: the custodiod audit path and `dbus.rs` had no survivors (192 mutants, 149 caught, 43 unviable; `sign_call`,
+  `attempt`, `audit_parts` and the five audit/credential files all have mutants). `just mutants` is now a shebang recipe
+  with a second `cargo mutants -p custodio-pkcs11` (`composed.rs`, `module/mechanism.rs`, `--output
+  target/mutants-pkcs11`, same `"$@"`); both always run, exit 1 if either failed. Pkcs11 run: 54 mutants, 39 caught,
+  15 unviable, 0 missed. First run had 4 survivors: `Hash::is_empty`, `BadDigestLength` Display (tests added) and the
+  `|` in the ECDSA flags (equivalent: distinct bits). The flags are now `const EC_FLAGS` built with `+`, no skip.
+- CI: `ci.yml` diff job and `mutants.yml` already call `just mutants`; both artifact `path:` now list the two output
+  dirs. Not changed: the 30-minute timeouts. Full `just mutants` takes ~8 min (custodiod ~4.5, pkcs11 ~4); shards were
+  NOT timed individually (sum of shards ≈ one full run, so each is well below 8 min).
+- Coverage/CRAP: `fuzzing/tests.rs` (feature `fuzzing`) counted at 0% coverage, so `coverage` gets a second
+  `cargo llvm-cov --features fuzzing --lib` run for custodio-pkcs11; `audit/tests.rs::decode` split into `decode_field` +
+  `decode` with a test for truncated datagrams. Threshold 30 and excludes untouched; worst CRAP is 30.0.
+- Gate bites (manual, reverted): flipping the first byte of each of the three DigestInfo prefixes fails
+  `digest_info_prefix_rfc8017`, `sign_input_shape`; swapping two CKM values in `from_ckm` fails `mapping_table`; hashing
+  with SHA-256 in `hash_message` fails `composed_sign_sends_digest_or_digestinfo`; ignoring the sink result in
+  `sign_call` fails `a_failing_sink_replaces_the_error`; dropping `CUSTODIO_KEY_ID` fails `fields_per_outcome`.
+  `--in-diff` touching one crate only: exits 0 for both crates. NOT run: planting a survivor in custodiod to see
+  `target/mutants-pkcs11` still written (the recipe runs both with `|| status=1`).
+- Verify: `just check`, `just lint`, `just coverage-gate` pass; the `just check-slow` run before the CRAP fixes passed
+  mutants and failed only the CRAP gate, now fixed.
+- Next session should: start the next feature.

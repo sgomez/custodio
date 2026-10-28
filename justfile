@@ -143,17 +143,25 @@ asan:
     RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-pkcs11 --lib --locked \
         --target "$host" --target-dir target/asan
 
-# Mutation testing of the authorization path (polkit, D-Bus service) and the key store. A surviving mutant fails.
-# Extra arguments go to cargo-mutants, e.g. `--in-diff <file>` or `--shard 0/4`.
+# Mutation testing of the authorization path (polkit, D-Bus service), the audit path and the key store in custodiod, and of the
+# PKCS#11 module's mechanism mapping, hashing and DigestInfo construction in custodio-pkcs11 (a second cargo-mutants run, output in
+# target/mutants-pkcs11). A surviving mutant fails; both runs always happen and the recipe fails at the end if either failed.
+# Extra arguments go to both runs, e.g. `--in-diff <file>` or `--shard 0/4`.
 [positional-arguments]
 mutants *args:
+    #!/usr/bin/env bash
+    set -uo pipefail
     mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
-    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@"
+    status=0
+    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
+    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
+    exit "$status"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
 coverage:
     cargo llvm-cov --workspace --locked --no-report
+    cargo llvm-cov --package custodio-pkcs11 --features fuzzing --lib --locked --no-report # the fuzz harness tests need the feature
     cargo llvm-cov report --summary-only
     cargo llvm-cov report --html --output-dir target/coverage
     cargo llvm-cov report --json --output-path target/coverage/coverage.json
