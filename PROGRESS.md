@@ -161,3 +161,10 @@ with an empty context.
 - Verify: `just check`, `just test-integration`, `cargo test -p custodiod --locked --test audit`, `just lint`,
   `just system-gates` (0.6 SAFE) pass; `just mutants`: 192 mutants, 149 caught, 43 unviable, 0 missed; `Cargo.lock` unchanged.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F25 — note from the operator
+- Known issue: during session 1, `crates/custodiod/tests/audit/leaks.rs` hung. Its child
+  `audit-… --exact leaks::child_client --test-threads=1` sat for 6+ minutes at ~0 s of CPU, and an operator
+  killed it by hand. The session later reported `--test audit` passing, so the hang may be intermittent.
+- Next session should: check whether `leaks::child_client` can block forever (e.g. waiting on a reply or a
+  pipe that never arrives) and bound it with a timeout, so `just check`, `verify` and CI cannot hang on it.
