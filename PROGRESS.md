@@ -203,3 +203,12 @@ with an empty context.
 - Verified: `journalctl --root=<tmp> --update-catalog` exits 0 and `--list-catalog <id>` now prints
   `<id> custodio: Custodio signing request handled`. The feature's `verify` command exits 0.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F26 — attempt 4
+- Done: NEXT_FINDINGS: restored the approved contract text (only ticks differ). The approved evidence wants the first
+  catalog line `-- <MESSAGE_ID> en`, but a catalog with only that entry makes `journalctl --list-catalog` abort. So
+  `data/custodio.catalog` now has the `en` entry first and an identical untagged default entry after it;
+  `catalog_format` checks both (one `Subject:` and one `Defined-By:` each).
+- Verified: `journalctl --root=<tmp> --update-catalog` exits 0 and `--list-catalog <id>` prints
+  `<id> custodio: Custodio signing request handled`. The feature's `verify` command exits 0.
+- Next session should: start the next feature.

@@ -204,23 +204,40 @@ fn limits_and_compatibility_documented() -> TestResult {
 
 #[test]
 fn catalog_format() -> TestResult {
+    // The `en` entry comes first; the untagged default entry follows, because a catalog with only
+    // a tagged entry makes `journalctl --list-catalog` abort.
     let catalog = catalog()?;
-    let mut lines = catalog.lines().filter(|l| !l.starts_with('#'));
-    assert_eq!(lines.next(), Some(format!("-- {MESSAGE_ID}").as_str()));
+    let lines: Vec<_> = catalog.lines().filter(|l| !l.starts_with('#')).collect();
+    assert_eq!(lines.first(), Some(&format!("-- {MESSAGE_ID} en").as_str()));
     assert!(
         MESSAGE_ID.len() == 32
             && MESSAGE_ID
                 .bytes()
                 .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
     );
-    let rest: Vec<_> = lines.collect();
-    assert_eq!(rest.iter().filter(|l| l.starts_with("Subject:")).count(), 1);
-    assert_eq!(
-        rest.iter()
-            .filter(|l| **l == "Defined-By: custodio")
-            .count(),
-        1
+    let entries: Vec<_> = catalog.split("\n-- ").skip(1).collect();
+    assert_eq!(entries.len(), 2);
+    assert!(
+        entries
+            .first()
+            .is_some_and(|e| e.starts_with(&format!("{MESSAGE_ID} en\n")))
     );
+    assert!(
+        entries
+            .get(1)
+            .is_some_and(|e| e.starts_with(&format!("{MESSAGE_ID}\n")))
+    );
+    for entry in &entries {
+        let rest: Vec<_> = entry.lines().collect();
+        assert_eq!(rest.iter().filter(|l| l.starts_with("Subject:")).count(), 1);
+        assert_eq!(
+            rest.iter()
+                .filter(|l| **l == "Defined-By: custodio")
+                .count(),
+            1
+        );
+    }
+    assert!(lines.contains(&format!("-- {MESSAGE_ID}").as_str()));
     Ok(())
 }
 
