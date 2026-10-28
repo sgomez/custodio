@@ -46,7 +46,7 @@
         "F22"
       ],
       "verify": "just miri && just asan && just fuzz-build && just lint-fuzz",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F24",
