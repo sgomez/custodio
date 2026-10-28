@@ -27,7 +27,7 @@
         "F20"
       ],
       "verify": "just check && just test-integration",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F22",
