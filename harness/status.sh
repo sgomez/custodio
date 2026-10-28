@@ -24,7 +24,7 @@ if [ -e AGENT_STOP ]; then
 fi
 if [ -e BLOCKED.md ]; then
   echo "A session needs a decision from you:"; echo; cat BLOCKED.md
-  next "decide (change the code, SPEC.md or features.json as needed), then: just harness unblock"
+  next "just harness unblock \"<your answer>\" (an agent applies it), or apply it yourself, then: just harness unblock"
 fi
 if [ ! -f SPEC.md ]; then
   [ -f IDEA.md ] || next "just milestone open"

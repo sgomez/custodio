@@ -5,6 +5,7 @@
 #   harness/harness.sh stop      # stop after the current tool call
 #   harness/harness.sh resume    # continue after stop
 #   harness/harness.sh unblock   # after deciding what BLOCKED.md asks: commit and continue
+#   harness/harness.sh unblock "<answer>"  # an agent applies the answer, then continue
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=harness/lib.sh
@@ -17,6 +18,7 @@ case "${1:-run}" in
   resume) rm -f AGENT_STOP; exec harness/run.sh ;;
   unblock)
     [ -e BLOCKED.md ] || die "There is no BLOCKED.md."
+    [ -n "${2:-}" ] && exec harness/run.sh harness/unblock.sh "$2"
     git rm -q --cached --ignore-unmatch BLOCKED.md
     rm -f BLOCKED.md
     git add -u
@@ -24,5 +26,5 @@ case "${1:-run}" in
     log "Unblocked."
     exec harness/run.sh
     ;;
-  *) die "Usage: just harness [run|try|stop|resume|unblock]" ;;
+  *) die "Usage: just harness [run|try|stop|resume|unblock [\"<answer>\"]]" ;;
 esac

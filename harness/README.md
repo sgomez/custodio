@@ -26,7 +26,8 @@ only a person can check.
 | `just harness run` | Run the agents, or continue after a stop |
 | `just harness try` | Same, at most 3 Claude sessions |
 | `just harness stop` / `resume` | Stop the agents, continue |
-| `just harness unblock` | After deciding what `BLOCKED.md` asks: commit and continue |
+| `just harness unblock "<answer>"` | Answer `BLOCKED.md`: an agent applies it, then continue |
+| `just harness unblock` | After applying the answer yourself: commit and continue |
 
 ## A milestone, start to end
 
@@ -45,7 +46,7 @@ only a person can check.
 | It says | You do |
 |---|---|
 | `Stopped for review` | Steps 3 or 5 above |
-| `BLOCKED.md found` | Read `BLOCKED.md`, apply your decision in the code or spec, `just harness unblock` |
+| `BLOCKED.md found` | Read `BLOCKED.md`, then `just harness unblock "<answer>"`. If the answer changes `SPEC.md` or `features.json`, edit and approve them yourself, then `just harness unblock` |
 | `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`, `just harness run` |
 | `contract not approved` | Same, reading `.harness/state/<id>.contract-review` |
 | `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just milestone approve features`, `just harness run` |
@@ -87,7 +88,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `SPEC.md` | the planner, then you |
 | `features.json` | the initializer, then you; `passes` by the loop |
 | `APPROVALS` | `just milestone approve` |
-| `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps |
+| `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps; the unblocker applies your answer to it |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
 | `BLOCKED.md` | any session that needs a person |

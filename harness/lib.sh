@@ -11,6 +11,8 @@ sha() {
 # What a person approves. The features hash ignores `passes`, which the loop changes.
 hash_spec() { sha < SPEC.md; }
 hash_features() { jq -S 'del(.features[].passes)' features.json | sha; }
+# A contract's approved text: ticking or unticking its steps does not change it.
+contract_hash() { sed -E 's/^([[:space:]]*- )\[[xX]\]/\1[ ]/' "$1" | sha; }
 
 approved() {
   [ "${AUTO_APPROVE:-0}" = 1 ] && return 0

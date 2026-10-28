@@ -210,9 +210,10 @@ status:
 milestone action="list" *args:
     harness/milestone.sh {{action}} {{args}}
 
-# The agents: run, try (at most 3 Claude sessions), stop, resume, unblock.
-harness action="run":
-    harness/harness.sh {{action}}
+# The agents: run, try (at most 3 Claude sessions), stop, resume, unblock ["<answer>"].
+[positional-arguments]
+harness action="run" *args:
+    harness/harness.sh "$@"
 
 # Next version from the commits (git-cliff), CHANGELOG.md, release commit, tag and push.
 release:

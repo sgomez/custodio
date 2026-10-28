@@ -38,7 +38,6 @@ run_claude() {
 
 verdict() { grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*'; }
 bump() { local n; n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/$1"; echo "$n"; }
-contract_hash() { sed -E 's/^([[:space:]]*- )\[[xX]\]/\1[ ]/' "$1" | sha; }
 open_steps() { grep -cE '^[[:space:]]*- \[ \]' "$1" || true; }
 
 stash_leftovers() {
