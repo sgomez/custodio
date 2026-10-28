@@ -304,3 +304,14 @@ with an empty context.
   unit name `polkit` for stop/mask; what the provider and `pkcs11-tool` signatures look like on disk (DER vs r||s);
   that the whole-run count matches (F28's `--login` deny case counts +2 in both).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F30 — attempt 1
+- Done: `docs/findings.md` M1 section (CKU_SO per tree, caller detail per target with the ProtectProc
+  table, journald rate limit and the refused-call options). Recommendations: keep CKU_SO failing;
+  add security label and a pidfd cross-check, drop exe/cmdline/cgroup; aggregate for refused calls.
+- Finding worth acting on: our token lacks `CKF_USER_PIN_INITIALIZED`, so NSS's `PK11_NeedUserInit`
+  is true and Firefox's Device Manager would offer a "set password" flow that sends `CKU_SO`.
+- Not done: the journald measurement (no systemd/journald in this container; commands are in the
+  section for the e2e guest). Debian patch sets of client packages and some Firefox/LibreOffice
+  areas were not read; marked in the text.
+- Next session should: start the next feature.

@@ -165,3 +165,211 @@ Run on 2026-10-27 in an Ubuntu 26.04 GNOME VM (polkit 127, dbus-daemon 1.16.2) w
 - Spy log format: a blank line, `N: C_Login`, `P:<pid>; T:0x<tid> <date>`, `[in] hSession = 0x1`,
   `[in] userType = CKU_USER` (or `CKU_CONTEXT_SPECIFIC`), the PIN dump (the log shows the PIN in clear), then
   `Returned:  0 CKR_OK` (two spaces).
+
+## M1 open questions: login type, caller detail, refused calls
+
+Answers three open questions of SPEC.md that need no manual client. Read 2026-10-28 by reading
+source; nothing from the cloned trees was built or run. Each claim is **verified** (read, with
+file and line, tag or commit) or **inferred**. Trees: NSS `NSS_3_110_RTM` (`e0109c37`), LibreOffice
+`core` master (`a39fc5e3`), Firefox `gecko-dev` sparse `security/manager` (`5836a062`, the mirror
+lags: HEAD dated 2025-07-08), OpenSC tag `0.26.1` (`043343d2`, trixie 0.26.1-2) and HEAD `72406af`,
+pkcs11-provider tag `v1.0` (`8f6b9440`, trixie 1.0-3) plus HEAD `ea322ac` and `v1.3.0`, libp11
+`libp11-0.4.13` (`f2c785df`) and HEAD `826afc1`, rFirma `sgomez/rfirma` HEAD `0eebe4c5`
+(2026-10-27), dbus `dbus-1.16.2` and `dbus-1.14.10`, dbus-broker `v37`, systemd `v257`, Linux
+`v6.12` and `v6.17` (`fs/pidfs.c`, `fs/proc`). Distribution data: Repology API and distro
+archives, 2026-10-28 (versions agree with section 3, dated 2026-10-27). Debian patch sets of the
+client packages were not read.
+
+### M1.1 Does any client send `C_Login(CKU_SO)`?
+
+`CKU_SO` call sites, every non-test hit of a whole-tree grep:
+
+| Tree | Where | What reaches it | Mark |
+|---|---|---|---|
+| NSS | `lib/pk11wrap/pk11auth.c:450` `PK11_InitPin` (then `C_InitPIN` at :458) | `certutil -N --empty-password` (`certutil.c:3268`), `certutil` `-M/-S/-A/-E` (:3294, needs `PK11_NeedLogin` too), `certutil -W`/`-N` through `SECU_ChangePW2` (`secutil.c:395`), `pk12util` (`P12U_InitSlot`, :326), `modutil -create` (`pk11.c:738`), `modutil -changepw` (`pk11.c:811`), Firefox `nsPK11Token::InitPassword` (`nsPK11TokenDB.cpp:238`); all gated on `PK11_NeedUserInit(slot)` | verified |
+| NSS | `lib/pk11wrap/pk11auth.c:375` `PK11_CheckSSOPassword` | no caller in `lib/` or `cmd/`; only exported (`nss.def:459`) | verified |
+| NSS | `cmd/pk11mode/pk11mode.c:1695`, `cmd/dbtest/dbtest.c:194` | test tools | verified |
+| NSS | `lib/softoken/pkcs11.c:4594,4602`, `lib/ckfw/session.c:651,677` | module side (`NSC_Login`), not a client call | verified |
+| OpenSC | `src/tools/pkcs11-tool.c:1062` | `--login-type so`; takes effect only with `-l` or `-p` | verified |
+| OpenSC | `pkcs11-tool.c:1367`, `login()` :1916-1962 | `--init-pin` with `-l` or `-p` defaults the login type to SO; PIN from `--so-pin` or prompt | verified |
+| OpenSC | `pkcs11-tool.c:1349,1974-2013` `init_token` | `--init-token` calls `C_InitToken` with `--so-pin`; no session, no `C_Login` | verified |
+| OpenSC | `pkcs11-tool.c:2071` `change_pin` | `--change-pin` passes `--so-pin` as old PIN to `C_SetPIN`; an SO `C_Login` only with `--login-type so -l` | verified |
+| OpenSC | `pkcs11-tool.c:1380-1383` | `--unlock-pin` rejects any login type except context-specific; never SO | verified |
+| OpenSC | `pkcs11-tool.c:9561-9565` | the threaded test uses SO only with `--login-type so` | verified |
+| OpenSC | `pkcs11-spy.c:855` `C_Login` | passes the type through and logs it; never chooses SO | verified |
+| OpenSC | `pkcs11/pkcs11-session.c`, `framework-pkcs15.c` | OpenSC's own module side, not a client | verified |
+| pkcs11-provider | no `CKU_SO` outside `pkcs11.h` | `session.c:828` and :613 pass `CKU_USER` and `CKU_CONTEXT_SPECIFIC`; HEAD adds only the vendor `CKU_LUNA_CU` (`provider.c:1343,1527`) | verified |
+| libp11 | `p11_slot.c:342` (0.4.13: :238) `pkcs11_login_on_session` | public `PKCS11_login(slot, so, pin)`; the engine itself passes `so = 0` (`util_uri.c:542`) | verified |
+| rFirma | no `CKU_SO`; only `User` (`listing.rs:37,125`, `session.rs:100,104`) and `ContextSpecific` (`session.rs:168`) | the one `CKU_SO` string is the fake test module's call logger (`fake-pkcs11/src/calls.rs:15`) | verified |
+
+- `pkcs11-tool` with `--login`, `--sign`, `--list-objects` and no `--login-type so` logs in as
+  `CKU_USER`; the default type is -1 (:466) and resolves to `CKU_USER` unless `--init-pin` is set.
+  `--sign` and similar raise `opt_login` when the token has `CKF_LOGIN_REQUIRED` (:1346). Verified
+  at OpenSC 0.26.1.
+- pkcs11-provider calls `C_Login` only when a private object is needed and `check_skip_login` is
+  false: with the default behaviour it is skipped when the token lacks `CKF_LOGIN_REQUIRED`
+  (`session.c:864-867`, v1.0). With `CKF_PROTECTED_AUTHENTICATION_PATH` it logs in as user with a
+  null PIN (:488, :561). Verified at v1.0; HEAD not diffed (inferred).
+- NSS and our token, flags `CKF_TOKEN_INITIALIZED|CKF_WRITE_PROTECTED`
+  (`crates/custodio-pkcs11/src/ffi.rs:214`; no `CKF_USER_PIN_INITIALIZED`, no `CKF_LOGIN_REQUIRED`,
+  no `CKF_PROTECTED_AUTHENTICATION_PATH`): `PK11_NeedLogin` is false (`pk11slot.c:1302,1801`),
+  `PK11_NeedUserInit` is **true** (`pk11slot.c:2027-2041`, the flag is clear), and
+  `PK11_Authenticate` does no `C_Login` (`pk11auth.c:312,320`). Verified.
+- LibreOffice calls `PK11_InitPin` once, on the internal key slot only
+  (`xmlsecurity/source/xmlsec/nss/nssinitializer.cxx:415-419`), never on a module token; its
+  `PK11_Authenticate` use (`securityenvironment_nssimpl.cxx:268-269`) is user-only and skipped when
+  `PK11_NeedLogin` is false. `PK11_ChangePW`/`PK11_CheckUserPassword` are not called. Verified for
+  `.cxx/.hxx/.cpp/.h/.mm` only; `.c` files and `external/` were not searched. That NSS signing code
+  reaches only `PK11_Authenticate` is inferred (`cryptohi`/`smime` callers not all traced).
+- Firefox reaches `PK11_InitPin` only from the Device Manager UI: `Login()` -> `setPassword`
+  (`nsNSSComponent.cpp:2175-2201`) -> `InitPassword` (`nsPK11TokenDB.cpp:235-238`) after a "set
+  password" dialog, when `PK11_NeedUserInit` is true. Because our token has that property, a user
+  who logs in to it by hand in the Device Manager is offered that dialog; signing and client-auth
+  paths use `PK11_Authenticate`. Verified in `security/manager`; `toolkit/`, `dom/`, `browser/` and
+  the dialog JavaScript were not read (inferred).
+- Today `C_Login(CKU_SO)` returns `CKR_SESSION_READ_ONLY_EXISTS` after the session check, and
+  anything but user, SO and context-specific returns `CKR_USER_TYPE_INVALID`
+  (`crates/custodio-pkcs11/src/ffi/login.rs:20-23`). Verified. Effect on clients: `pkcs11-tool` dies
+  on any `C_Login` error other than `CKR_OK`/`CKR_USER_ALREADY_LOGGED_IN` (:1963-1965, verified), so
+  `--init-pin` and `--login-type so` fail either way; libp11 fails on both codes (verified); NSS's
+  `PK11_InitPin` fails and the Firefox dialog reports an error (inferred).
+- The code `CKR_SESSION_READ_ONLY_EXISTS` is the one PKCS#11 gives for an SO login while a
+  read-only session exists, which is the only kind of session this module opens
+  (`ffi.rs:275`); `CKR_USER_TYPE_INVALID` would say the type does not exist, which is less
+  accurate. Inferred from the PKCS#11 specification.
+
+Recommendation: keep `C_Login(CKU_SO)` failing, with `CKR_SESSION_READ_ONLY_EXISTS` as today: no
+client path found sends it during signing, and every path that does (administration tools,
+Device Manager) fails safely and has nothing to administer on a write-protected token.
+
+### M1.2 Caller detail beyond uid and pid
+
+What `GetConnectionCredentials` returns, per target and shipped version (Repology and distro
+archives, 2026-10-28):
+
+| Target | Default daemon | Version | Kernel | `UnixUserID`, `ProcessID` | `ProcessFD` | `LinuxSecurityLabel` | `UnixGroupIDs` | `AdtAuditSessionData` | Mark |
+|---|---|---|---|---|---|---|---|---|---|
+| Debian 13 | dbus-daemon | 1.16.2 | 6.12 | present | present (6.12 >= 6.5) | with an active LSM (AppArmor expected) | present | absent | versions and key code verified, kernel and LSM inferred |
+| Ubuntu 25.10 | dbus-daemon | 1.16.2 | 6.17 | present | present | with AppArmor (inferred) | present | absent | verified (kernel from `linux-image-generic` dependency) |
+| Ubuntu 26.04 | dbus-daemon | 1.16.2 | 7.0 | present | present | with AppArmor (inferred) | present | absent | verified |
+| Fedora 41+ | dbus-broker | 36 / 37 | 6.11 at GA, later 6.17 | present | present | with SELinux | present | absent | versions verified, default inferred |
+| RHEL/Alma 10 | dbus-broker | 36 | 6.12 | present | present | with SELinux | present | absent | inferred (CentOS Stream 10 packages) |
+| Arch | dbus-daemon | 1.16.2 | rolling (7.x) | present | present | probably absent (no default LSM, inferred) | present | absent | versions verified, rest inferred |
+
+- Key code: dbus-daemon emits `LinuxSecurityLabel` from `getsockopt(SO_PEERSEC)`
+  (`dbus-sysdeps-unix.c` ~2074; `bus/driver.c:2009-2016`), `UnixGroupIDs` from `SO_PEERGROUPS`
+  (`driver.c:1897`), and `ProcessFD` only if the build has `SO_PEERPIDFD` and the caller connection
+  can receive fds (`driver.c:2020-2022`, `dbus-sysdeps-unix.c:2341`). It is not in 1.14.10. NEWS
+  "dbus 1.15.8" introduced it. Verified.
+- dbus-broker: `ProcessFD` since 34 (NEWS "CHANGES WITH 34"), emitted at `src/bus/driver.c:1434-1440`,
+  taken from `sockopt_get_peerpidfd` (`src/bus/peer.c:285`); when the kernel refuses (before 6.5, or
+  the peer is already reaped) the key is silently absent. The label is at `driver.c:1415-1430`.
+  Verified at `v37`.
+- `AdtAuditSessionData` is Solaris-only (the method is `GetAdtAuditSessionData`); neither daemon
+  returns it on Linux. Verified.
+- Both daemons read the peer credentials once, when the peer connects (`peer.c:255-310`;
+  `dbus-transport-socket.c:380`), and `GetConnectionCredentials` returns the stored values. A pid
+  or label is therefore that of the process that called `connect()`; after a fork or fd passing
+  the socket's creds still name the original process. Verified for the capture, inferred for the
+  fork consequence.
+- The `ProcessFD` pidfd pins the process, so unlike `ProcessID` it cannot be reused by another
+  process, however late the service asks (inferred from pidfd semantics). Kernel minimums:
+  `SO_PEERPIDFD` 6.5 (verified, `dbus-sysdeps-unix.c:2342`), `pidfd_open` 5.3, `PIDFD_GET_INFO` 6.13
+  (5.3 and 6.13 inferred; the ioctl is absent from v6.12 and present in v6.17, verified).
+  Every target's kernel in the table is >= 6.12, so `ProcessFD` is present on all; `PIDFD_GET_INFO`
+  only on Ubuntu 25.10+, Fedora with 6.17 updates and Arch.
+- polkit already receives that pidfd from the bus (section 3), so authorization is bound to the
+  process; `custodiod` today reads only `UnixUserID` and `ProcessID`
+  (`crates/custodiod/src/credentials.rs:46-57`, verified).
+
+What the service can use under `ProtectProc=invisible` and `ProcSubset=pid`
+(`data/custodio.service`; systemd v257, Linux v6.12/v6.17):
+
+| Candidate | Usable under `ProtectProc=invisible`/`ProcSubset=pid` | Mark |
+|---|---|---|
+| `/proc/<pid>/exe`, `cmdline`, `cgroup`, `status` | **no**: `invisible` gives ENOENT for another user's pid unless the reader is in `proc_gid` or passes `ptrace_may_access`, which needs `CAP_SYS_PTRACE` (the bounding set is empty); `PrivateUsers=` does not help | verified (`fs/proc/base.c:746-792,2028,3601`; `namespace.c:1429-1440`) |
+| pidfd from `ProcessFD`: `/proc/self/fdinfo/<fd>` `Pid:` | **yes**: `/proc/self` is outside the hidden set, `pidfd_show_fdinfo` has no ptrace check, `Pid:` is -1 once the process exited | verified (`fs/pidfs.c` v6.12:61-80; `fs/proc/root.c:206-210`) |
+| `pidfd_open(pid)` on `ProcessID` | yes, no permission check, allowed by `@system-service`; but it adds nothing over `ProcessFD` and is open to pid reuse | verified (`kernel/pid.c:629-648`, `seccomp-util.c:763-777`) |
+| `PIDFD_GET_INFO` on that pidfd (pid, uid, gid, cgroup id) | yes on kernel >= 6.13 with no `/proc` access; foreign uids show as 65534 under `PrivateUsers=yes`; gives a cgroup id, not a path | verified for v6.17 `pidfs.c:296-403` (no ptrace check), 6.13 and the 65534 munging inferred |
+| `pidfd_getfd` | no: not in `@system-service`, and needs ptrace rights | verified (seccomp groups), ptrace rule inferred |
+| `LinuxSecurityLabel` from the bus | yes: the daemon reads `SO_PEERSEC`, the service needs no `/proc` | verified (daemon side), service side inferred |
+| `UnixGroupIDs` from the bus | yes, same reason | inferred |
+| Executable name, command line, cgroup path | **only** through `/proc/<pid>` or `CAP_SYS_PTRACE`/`hidepid=off`/`proc_gid`, all of which loosen the unit | verified (rows above) |
+
+- Options that need loosening the unit (`ProtectProc=default`, `ProcSubset=all`, a `proc_gid`
+  group, `CAP_SYS_PTRACE`) are rejected: they expose every process of every user to the one service
+  that holds signing authority, which is the exposure the gate measures. Nothing recommended here
+  touches `data/custodio.service` or the `justfile`. Inferred (design judgement).
+- The exposure gate (SPEC.md:301) is untouched: this feature changes only documents (verified by `git diff --stat`).
+
+Recommendation: add the security label and the group ids when the bus returns them (new optional
+audit fields, additive under the compatibility rule of `docs/audit.md`), and request `ProcessFD` and
+check its `Pid:` from `/proc/self/fdinfo` against `ProcessID`, logging `authorization_unavailable`
+on a mismatch; on kernels >= 6.13 also log the cgroup id from `PIDFD_GET_INFO`. Drop the executable
+name, command line and cgroup path: they cannot be read without loosening the unit. Inferred.
+
+### M1.3 Refused calls and journald's rate limit
+
+- Limits: `RateLimitIntervalSec=30s` and `RateLimitBurst=10000` by default; setting either to 0
+  disables limiting; the key is the sender's unit (`c->unit`, from its cgroup), not
+  `SYSLOG_IDENTIFIER`; messages without a unit are never limited. The window is fixed. Verified
+  (`journald-server.c:72-73,1287-1295,2670`; `journald-context.c:312`; `journald-rate-limit.c:175-232`).
+- Each unit has five separate pools by priority: emerg/alert/crit, err, warning, notice+info
+  (shared), debug. No priority is exempt. So `signed` (6) and `denied` (5) share one pool,
+  `authorization_unavailable` (4) has its own, `signing_failed` (3) its own. Verified
+  (`journald-rate-limit.c:13-22`). This matches `docs/audit.md`, which has the same priorities.
+- A unit can set its own with `LogRateLimitIntervalSec=`/`LogRateLimitBurst=`
+  (`/run/systemd/units/log-rate-limit-*:<unit>`, `journald-context.c:474-507`; systemd.exec(5)).
+  `custodio.service` sets neither. Verified.
+- The burst is scaled by the journal's space: `k = floor(log2(available_bytes))`; for `k <= 20` the
+  burst is unchanged, otherwise `burst * (k - 16) / 4` (integer arithmetic). Verified
+  (`burst_modulate`, `journald-rate-limit.c:147-173`); the man page table (x2 at 16 MB ... x6 at 1 TB)
+  is only approximate. `available` is not the filesystem's free space but
+  `limit - used` with `limit = clamp(used + max(0, fs_avail - keep_free), min_use, max_use)`; with
+  default settings `max_use` is 10% of the filesystem capped at 4 GiB, so the budget cannot exceed
+  4 GiB's step. Verified (`journald-server.c:99-215`).
+- Budget for 10000 per 30 s: this machine (about 1.3 TB free, defaults): `max_use` is 4 GiB, so
+  `k` is 31-32 and the burst 37500-40000 per pool; a 1 GiB filesystem: about 102 MiB, `k=26`, 25000;
+  a 100 MiB filesystem: about 10 MiB, `k=23`, 17500; a nearly full journal (<= 1 MiB left): 10000.
+  Computed from the verified formula; the inputs are inferred (journal not inspected here).
+- A suppressed window ends with one driver entry written when the sender next logs:
+  `Suppressed N messages from custodio.service`, `PRIORITY=6`, `_TRANSPORT=driver`,
+  `SYSLOG_IDENTIFIER=systemd-journald`, `MESSAGE_ID=a596d6fe7bfa4994828e72309e95d61e`,
+  `N_DROPPED=N`. It is not emitted if the unit never logs again. Verified (`journald-server.c:1211-1250,1301-1306`).
+- Measurement: **not measured**. This container has `systemd-run`, `logger` and `journalctl`
+  (systemd 257.13) but no running systemd or journald (`/run/systemd` absent, `systemd-run --user`
+  fails for lack of a bus), so a transient unit with `-p LogRateLimitBurst=` cannot be started.
+  The numbers above come from the source, not a run. Inferred. The measurement should be done in
+  the e2e guest, which runs a real journald: `systemd-run --unit=rl-probe -p LogRateLimitBurst=100
+  -p LogRateLimitIntervalSec=30s sh -c 'i=0; while [ $i -lt 1000 ]; do logger -t rl $i; i=$((i+1)); done'`
+  then count `_SYSTEMD_UNIT=rl-probe.service` entries and the suppression notice.
+- What a flood does: refused calls come from local processes with no polkit dialog, so they cost
+  an attacker nothing. If each wrote an entry at priority 5 or 6 they would fill the notice+info
+  pool shared with `signed` and `denied`; after 10000-40000 entries in 30 s real `signed` and
+  `denied` entries are dropped until the window ends. At priority 4 or 3 they would take the pools
+  of `authorization_unavailable` or `signing_failed`. Real entries come at human rate (each needs a
+  polkit decision), far below the budget, so the loss comes only from the flood. Inferred from the
+  pool rules above; whether the bus policy (`data/com.rfirma.Custodio1.conf`) limits who may call is
+  not part of this finding.
+- Options: **no entry**: no flood risk, but the audit trail has a gap exactly where a probing
+  process acts (inferred). **Per-call entry**: complete trail but the flood above; a low priority
+  such as debug (7) would use its own pool and spare real entries, at the cost that debug is
+  usually filtered out of alerts (inferred). **Aggregate**: the service counts refused calls and
+  writes a bounded number of entries; the trail keeps count and who, a flood costs one entry per
+  window (inferred).
+- An aggregate entry would carry the count, the window start and length, and the uid of the
+  caller with the count per uid, for at most a fixed number of uids plus an "others" count; the
+  outcome would be a new value (additive under `docs/audit.md`) at priority 5. It needs its own
+  timer, armed on the first refusal and firing once per window (say 60 s), because flushing only on
+  the next call may never happen; that is at most one entry per window in the shared pool. Inferred.
+
+Recommendation: aggregate.
+
+### Follow-ups (not part of F30)
+
+- Inferred follow-up: decide whether the token should set `CKF_USER_PIN_INITIALIZED` so `PK11_NeedUserInit` is false and
+  Firefox's Device Manager does not offer the "set password" dialog (M1.1); check what else the flag
+  changes for NSS and pkcs11-tool before doing it.
+- Inferred follow-up: request `ProcessFD`, cross-check it against `ProcessID`, add the security label (M1.2).
+- Inferred follow-up: implement the aggregate for refused calls with its own timer (M1.3), then rerun the measurement in
+  the e2e guest.
