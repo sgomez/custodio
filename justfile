@@ -217,6 +217,10 @@ changelog:
 status:
     harness/status.sh
 
+# Follow the agent session running in the dev container.
+log:
+    harness/log.sh
+
 # Milestone lifecycle: list, open, close, approve spec|features, pass <manual feature id>.
 milestone action="list" *args:
     harness/milestone.sh {{action}} {{args}}

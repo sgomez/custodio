@@ -16,6 +16,7 @@ only a person can check.
 | Command | Does |
 |---|---|
 | `just status` | Where things are and what to run next |
+| `just log` | Follow the agent session running in the dev container |
 | `just release` | Changelog, version tag and push |
 | **Milestone** | |
 | `just milestone list` | Milestones, closed and open |
