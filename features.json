@@ -74,7 +74,7 @@
         "F25"
       ],
       "verify": "just check && test -s docs/audit.md && grep -q MESSAGE_ID docs/audit.md && grep -q _SYSTEMD_UNIT docs/audit.md && just package && dpkg-deb -c target/debian/*.deb | grep -q 'systemd/catalog/'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F27",
