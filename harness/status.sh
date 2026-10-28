@@ -52,6 +52,13 @@ if [ -f NEXT_FINDINGS.md ]; then
   printf '\nLast rejection (NEXT_FINDINGS.md):\n'; head -n 15 NEXT_FINDINGS.md
 fi
 
+current=$(jq -r '[.features[] | select((.manual // false) | not) | select(.passes | not)] | first | .id // empty' features.json)
+if [ -n "$current" ] && [ -f ".harness/state/$current.contract-review" ]; then
+  printf '\nThe evaluator sent contracts/%s.md back (.harness/state/%s.contract-review):\n' "$current" "$current"
+  head -n 15 ".harness/state/$current.contract-review"
+  next "just harness fix $current   (an agent fixes it with you, then the loop continues)"
+fi
+
 if [ "$done_" = "$total" ]; then
   manual=$(jq -r '[.features[] | select(.manual and (.passes | not)) | .id] | join(", ")' features.json)
   if [ -n "$manual" ]; then
