@@ -190,3 +190,8 @@ with an empty context.
   no argument it hits a systemd assertion in catalog_list), so the "listed" part of the evidence was NOT confirmed here.
   The evaluator should weigh this.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F26 — attempt 2
+- Done: ticked the five contract steps (work was committed in attempt 1). Re-ran `just check`, `just package` and the
+  catalog line in `dpkg-deb -c` (mode `-rw-r--r--`): all pass. The `--list-catalog` caveat from attempt 1 stands.
+- Next session should: start the next feature.
