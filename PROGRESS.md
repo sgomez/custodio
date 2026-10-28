@@ -138,3 +138,10 @@ with an empty context.
   fields, so only the private-field error remains. Finding 2 (a sibling per case) not blocking; left as is.
 - Verify: `cargo test --doc -p custodiod`, `just check` pass.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F24 — attempt 3
+- Done: closed the 4 surviving mutants from the evaluator's review: new `size_limit_is_exact` (exact
+  boundary and `MAX_DATAGRAM` value), `Display` texts asserted in `debug_prints_only_typed_fields`,
+  `Entry::mechanism()` asserted in `memory_sink_records_entries`.
+- Verify: `cargo test -p custodiod --lib audit` and `just check` pass.
+- Next session should: start the next feature.

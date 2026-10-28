@@ -84,7 +84,9 @@ fn memory_sink_records_entries() -> TestResult {
     dynsink.record(&a)?;
     assert_eq!(sink.entries(), vec![a.clone()]);
     dynsink.record(&b)?;
-    assert_eq!(sink.entries(), vec![a, b]);
+    assert_eq!(sink.entries(), vec![a, b.clone()]);
+    assert_eq!(b.mechanism(), Some(AuditMechanism::Ecdsa));
+    assert_eq!(entry(Outcome::Signed, None)?.mechanism(), None);
     Ok(())
 }
 
@@ -201,6 +203,19 @@ fn debug_prints_only_typed_fields() -> TestResult {
         let d = format!("{err:?}{err}");
         assert!(!d.contains("sock") && !d.contains('/'));
     }
+    assert_eq!(
+        AuditError::Io(ErrorKind::NotFound).to_string(),
+        "audit entry not recorded: entity not found"
+    );
+    assert_eq!(AuditError::TooLarge.to_string(), "audit entry too large");
+    assert_eq!(
+        AuditError::ShortSend {
+            sent: 3,
+            expected: 9
+        }
+        .to_string(),
+        "audit entry sent partially: 3 of 9 bytes"
+    );
     Ok(())
 }
 
@@ -430,6 +445,21 @@ fn short_send_is_an_error() {
 fn oversize_entry_is_too_large() -> TestResult {
     let (_d, path, s) = socket()?;
     let r = JournalSink::with_max(&path, 64).record(&entry(Outcome::Signed, None)?);
+    assert_eq!(r, Err(AuditError::TooLarge));
+    would_block(&s)?;
+    Ok(())
+}
+
+#[test]
+fn size_limit_is_exact() -> TestResult {
+    assert_eq!(MAX_DATAGRAM, 16384);
+    let (_d, path, s) = socket()?;
+    let e = entry(Outcome::Signed, None)?;
+    JournalSink::new(&path).record(&e)?;
+    let len = recv(&s)?.len();
+    JournalSink::with_max(&path, len).record(&e)?;
+    assert_eq!(recv(&s)?.len(), len);
+    let r = JournalSink::with_max(&path, len - 1).record(&e);
     assert_eq!(r, Err(AuditError::TooLarge));
     would_block(&s)?;
     Ok(())
