@@ -168,3 +168,13 @@ with an empty context.
   killed it by hand. The session later reported `--test audit` passing, so the hang may be intermittent.
 - Next session should: check whether `leaks::child_client` can block forever (e.g. waiting on a reply or a
   pipe that never arrives) and bound it with a timeout, so `just check`, `verify` and CI cannot hang on it.
+
+### 2026-10-28 — F25 — attempt 2
+- Done: NEXT_FINDINGS 1: the child client has a 10 s method timeout and the parent polls `try_wait` for 30 s, then
+  kills the child and fails (`leaks::wait_bounded`), so `child_client` cannot hang the run (also answers the
+  operator's note). 2: `outcome_signed` verifies the RSA PKCS#1 signature with the fixture's public key. 3: new
+  fixtures `p256-sentinel.p12`, `rsa2048-sentinel.p12` (password `P@ss-sentinel-7f3a91c4`, added to `gen.sh`)
+  are what `entries_contain_no_secrets` imports and scans for. 5: `exactly_one_entry_per_call` asserts each reply
+  is `Ok` only for `Signed`. 4 (`offload.rs`) stays as a disclosed deviation.
+- Verify: `just check`, `just test-integration`, `cargo test -p custodiod --locked --test audit` pass.
+- Next session should: start the next feature.

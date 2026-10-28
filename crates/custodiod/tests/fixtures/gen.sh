@@ -35,3 +35,13 @@ make p256-other -algorithm EC -pkeyopt ec_paramgen_curve:P-256
 openssl pkcs12 -export -inkey "$tmp/p256.key" -certfile "$tmp/p256.crt" -nocerts \
   -passout pass:test-password -out p256-nokid.p12 2>/dev/null
 chmod 644 ./*.p12
+
+# The same keys under a distinctive password, so a leak scan can look for it (tests/audit).
+# Re-encrypt from the PEM files made above; the password is P@ss-sentinel-7f3a91c4.
+export OLD_PW=test-password
+for n in p256 rsa2048; do
+  openssl pkcs12 -in "$n.p12" -password env:OLD_PW -nodes -out "$tmp/$n.pem" 2>/dev/null
+  openssl pkcs12 -export -in "$tmp/$n.pem" -name "$n" -passout pass:P@ss-sentinel-7f3a91c4 \
+    -out "$n-sentinel.p12" 2>/dev/null
+done
+chmod 644 ./*.p12

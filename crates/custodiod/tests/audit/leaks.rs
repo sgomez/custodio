@@ -11,7 +11,8 @@ use zbus::{Connection, block_on};
 
 use super::bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use super::common::{
-    CKM_ECDSA, CKM_RSA_PKCS, EC_P12, PASSWORD, RSA_P12, digest, digest_info, fixture, import, uid,
+    CKM_ECDSA, CKM_RSA_PKCS, EC_P12, EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, digest,
+    digest_info, fixture, import, import_with, uid,
 };
 use super::scan::{base64, hex, leaks};
 
@@ -55,7 +56,7 @@ async fn no_secrets(
 ) -> TestResult {
     let sink = Arc::new(MemorySink::default());
     let f = fixture(Answer::Yes, &sink).await?;
-    import(&f, key, p12).await?;
+    import_with(&f, key, p12, SENTINEL_PASSWORD).await?;
     let signature = sign(&f.client, key, mechanism, data).await?;
     sign(&f.client, key, other, data)
         .await
@@ -82,7 +83,11 @@ async fn no_secrets(
             Outcome::AuthorizationUnavailable
         ]
     );
-    let mut values: Vec<Vec<u8>> = vec![data.to_vec(), signature, PASSWORD.as_bytes().to_vec()];
+    let mut values: Vec<Vec<u8>> = vec![
+        data.to_vec(),
+        signature,
+        SENTINEL_PASSWORD.as_bytes().to_vec(),
+    ];
     values.extend_from_slice(extra);
     for entry in &entries {
         for text in texts(entry)? {
@@ -97,10 +102,18 @@ async fn no_secrets(
 #[test]
 fn entries_contain_no_secrets() -> TestResult {
     block_on(async {
-        no_secrets("ec", EC_P12, CKM_ECDSA, CKM_RSA_PKCS, &digest(), &[]).await?;
+        no_secrets(
+            "ec",
+            EC_SENTINEL_P12,
+            CKM_ECDSA,
+            CKM_RSA_PKCS,
+            &digest(),
+            &[],
+        )
+        .await?;
         no_secrets(
             "rsa",
-            RSA_P12,
+            RSA_SENTINEL_P12,
             CKM_RSA_PKCS,
             CKM_ECDSA,
             &digest_info(),
@@ -184,11 +197,31 @@ fn child_client() -> TestResult {
     let address = address.to_string_lossy().into_owned();
     block_on(async {
         let client = zbus::connection::Builder::address(address.as_str())
+            .method_timeout(Duration::from_secs(10))
             .build()
             .await?;
         sign(&client, "ec", CKM_ECDSA, &digest()).await?;
         Ok(())
     })
+}
+
+/// Waits for the child up to `limit`, then kills it and fails, so a stuck call cannot hang the run.
+fn wait_bounded(
+    child: &mut std::process::Child,
+    limit: Duration,
+) -> Result<std::process::ExitStatus, Box<dyn std::error::Error>> {
+    let deadline = std::time::Instant::now() + limit;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status);
+        }
+        if std::time::Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Err("child client did not finish in time".into());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 #[test]
@@ -205,7 +238,7 @@ fn entry_names_the_caller_not_the_service() -> TestResult {
             .stdout(std::process::Stdio::null())
             .spawn()?;
         pids.push(child.id());
-        assert!(child.wait()?.success());
+        assert!(wait_bounded(&mut child, Duration::from_secs(30))?.success());
     }
     let entries = sink.entries();
     assert_eq!(entries.len(), 2);

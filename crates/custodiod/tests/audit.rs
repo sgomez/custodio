@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use custodiod::audit::{AuditMechanism, Entry, FailingSink, JournalSink, MemorySink, Outcome};
 use custodiod::credentials::{BusCredentials, CallerCredentials};
+use pkcs8::DecodePrivateKey;
 use zbus::{Connection, block_on};
 
 use bus::{Answer, Fixture, TestResult, call, error_name, sign};
@@ -56,6 +57,16 @@ fn outcome_signed() -> TestResult {
         import(&f, "rsa", RSA_P12).await?;
         let sig = sign(&f.client, "rsa", CKM_RSA_PKCS, &digest_info()).await?;
         assert_eq!(sig.len(), 256);
+        // Verify with the public key of the fixture certificate, not with the service's own code.
+        let key = custodiod::import::parse_p12(
+            RSA_P12,
+            &secrecy::SecretString::from(common::PASSWORD.to_owned()),
+        )?
+        .key;
+        let public =
+            rsa::RsaPrivateKey::from_pkcs8_der(secrecy::ExposeSecret::expose_secret(&key))?
+                .to_public_key();
+        public.verify(rsa::Pkcs1v15Sign::new::<sha2::Sha256>(), &digest(), &sig)?;
         let entries = sink.entries();
         assert_eq!(entries.len(), 1);
         assert_entry(
@@ -175,7 +186,12 @@ fn exactly_one_entry_per_call() -> TestResult {
             } else {
                 &digest()
             };
-            let _ = sign(&f.client, id, *mechanism, data).await;
+            let reply = sign(&f.client, id, *mechanism, data).await;
+            assert_eq!(
+                reply.is_ok(),
+                *outcome == Outcome::Signed,
+                "reply of call {n}"
+            );
             let entries = sink.entries();
             assert_eq!(entries.len(), n + 1);
             let want = if *mechanism == CKM_RSA_PKCS {

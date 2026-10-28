@@ -13,6 +13,10 @@ use super::bus::{Answer, Fixture, TestResult, call};
 pub const EC_P12: &[u8] = include_bytes!("../fixtures/p256.p12");
 pub const RSA_P12: &[u8] = include_bytes!("../fixtures/rsa2048.p12");
 pub const PASSWORD: &str = "test-password";
+/// The same keys as `EC_P12` and `RSA_P12`, protected by `SENTINEL_PASSWORD`.
+pub const EC_SENTINEL_P12: &[u8] = include_bytes!("../fixtures/p256-sentinel.p12");
+pub const RSA_SENTINEL_P12: &[u8] = include_bytes!("../fixtures/rsa2048-sentinel.p12");
+pub const SENTINEL_PASSWORD: &str = "P@ss-sentinel-7f3a91c4";
 pub const CKM_RSA_PKCS: u32 = 0x0001;
 pub const CKM_ECDSA: u32 = 0x1041;
 pub const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
@@ -47,7 +51,11 @@ pub async fn fixture(
 }
 
 pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
-    call(&f.client, "ImportP12", &(id, p12.to_vec(), PASSWORD)).await?;
+    import_with(f, id, p12, PASSWORD).await
+}
+
+pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
+    call(&f.client, "ImportP12", &(id, p12.to_vec(), password)).await?;
     Ok(())
 }
 
