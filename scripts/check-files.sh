@@ -15,6 +15,7 @@ EXCLUDE_PATTERNS=(
   ".agents/skills/*"
   ".claude/skills/*"
   "docs/*"
+  "*.md"
 )
 
 excluded() {
