@@ -132,3 +132,9 @@ with an empty context.
   the tests share one function. `AuditError::ShortSend` is a new variant. `just mutants` not run.
 - Verify: `just check`, `just system-gates` (0.6 SAFE), `cargo test --doc -p custodiod` pass. Unit unchanged.
 - Next session should: start the next feature (F25 wires the sink into `Sign`).
+
+### 2026-10-28 — F24 — attempt 2
+- Done: fixed the evaluator's finding 1: the struct-literal `compile_fail` doctest in `audit.rs` now has all four
+  fields, so only the private-field error remains. Finding 2 (a sibling per case) not blocking; left as is.
+- Verify: `cargo test --doc -p custodiod`, `just check` pass.
+- Next session should: start the next feature.

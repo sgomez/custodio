@@ -30,8 +30,9 @@
 //! A struct literal from outside the module is refused, but the constructor works:
 //!
 //! ```compile_fail
-//! use custodiod::audit::{Entry, Outcome};
-//! let _ = Entry { outcome: Outcome::Denied };
+//! use custodiod::audit::{Caller, Entry, KeyId, Outcome};
+//! let key_id = KeyId::new("k").unwrap();
+//! let _ = Entry { outcome: Outcome::Denied, caller: Caller { uid: 1, pid: 2 }, key_id, mechanism: None };
 //! ```
 //!
 //! ```
