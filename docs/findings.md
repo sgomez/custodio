@@ -129,6 +129,30 @@ Run on 2026-10-27 in an Ubuntu 26.04 GNOME VM (polkit 127, dbus-daemon 1.16.2) w
 - **Fingerprint (acceptance 6): not verified.** No fingerprint reader available.
 - `custodiod` logs nothing per signature; the only trace is polkit's agent helper starting.
 
+## Manual acceptance run (F33, acceptance 11)
+
+Run on 2026-10-29 on Ubuntu 26.04.1 GNOME (Wayland, polkit 127) with `custodio_0.1.0-1_amd64.deb`,
+the RSA 2048 and P-256 keys of `docs/manual-acceptance.md` section 1, and the rFirma 0.17.0
+release. That release predates the M0 workarounds (rFirma `5117853c` is not in `v0.17.0`).
+Each result below was checked against `journalctl -u custodio.service` (key id, outcome, and a
+pid that resolved to `/usr/bin/rfirma`).
+
+- rFirma finds the module by itself through `/usr/share/p11-kit/modules/custodio.module`; both
+  certificates are listed.
+- **RSA 2048, main window: passes.** Every signature showed the polkit dialog, including the second
+  one in a row. Cancelling made `C_Sign` fail with `CKR_FUNCTION_FAILED`, logged as `denied`.
+- **P-256, main window: rFirma cannot sign.** rFirma 0.17.0 (and `main` as of this run) hard-codes
+  `SHA256withRSA` for the main window (`signing/application/cycle.rs`, `ALGORITHM`, ADR-0001), so it
+  asks the EC slot for `CKM_SHA256_RSA_PKCS` and gets "no está entre los mecanismos de la ranura".
+  Custodio is right to refuse: the slot offers only ECDSA mechanisms.
+- **P-256, site flow (`afirma://`, rFirma's `just sede` test page, PAdES): passes.** That flow picks
+  the algorithm from the key type (`site/ports.rs`), so it requests ECDSA-SHA256. Two signatures, each with
+  the dialog; cancelling returned `AOCancelledOperationException` to the page and was logged
+  as `denied`.
+- Before the run, `afirma://` was registered to a local debug build of rFirma (`rfirma-dev.desktop`).
+  It had to point at the installed `rfirma.desktop` first; check with
+  `xdg-mime query default x-scheme-handler/afirma`.
+
 ## SoftHSMv2 and multi-part signing (read for F21, `src/lib/SoftHSM.cpp`, develop branch)
 
 - `AsymSignInit` sets `bAllowMultiPartOp = false` for the raw mechanisms (`CKM_RSA_PKCS`,
