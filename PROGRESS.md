@@ -70,3 +70,14 @@ with an empty context.
 - Decisions: none. Finding 5 (harness commits) is operator work from the BLOCKED round, not touched.
 - Not done / known issues: `just miri` not run (nightly missing).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F22 — attempt 1
+- Done: `C_Login`/`C_Logout` in `ffi/login.rs` (session check via `Module::check_session`, SO →
+  `CKR_SESSION_READ_ONLY_EXISTS`, other types `CKR_USER_TYPE_INVALID`, credential never read),
+  stubs removed. Unit tests `ffi/tests/login.rs`, `module/tests/login.rs` (Fake gained a
+  `listed` counter). Harness: all-method counter in `parent.rs`; scenarios in
+  `tests/cryptoki/login*.rs`. Two expectations changed as the contract names.
+- Decisions: repeated login / session state / SO result entry in `docs/decisions.md`.
+- Not done / known issues: `just miri` not run (nightly missing). `just check` and
+  `just test-integration` pass.
+- Next session should: start the next feature.

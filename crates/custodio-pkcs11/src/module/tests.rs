@@ -11,6 +11,7 @@ use super::*;
 use crate::backend::{BackendError, SignParams};
 
 mod composed;
+mod login;
 mod multipart;
 
 const EC_CERT: &[u8] = include_bytes!("../../tests/p256-cert.der");
@@ -19,10 +20,12 @@ const EC_CERT: &[u8] = include_bytes!("../../tests/p256-cert.der");
 struct Fake {
     result: Result<Vec<u8>, BackendError>,
     signed: AtomicUsize,
+    listed: AtomicUsize,
 }
 
 impl Backend for Fake {
     fn list_certificates(&self) -> Result<Vec<(String, Vec<u8>)>, BackendError> {
+        self.listed.fetch_add(1, Ordering::SeqCst);
         Ok(vec![("ec".into(), EC_CERT.to_vec())])
     }
 
@@ -36,6 +39,7 @@ fn module(result: Result<Vec<u8>, BackendError>) -> (Module<Fake>, CK_SESSION_HA
     let m = Module::new(Fake {
         result,
         signed: AtomicUsize::new(0),
+        listed: AtomicUsize::new(0),
     });
     m.initialize().unwrap_or_default();
     let slots = m.slot_list().unwrap_or_default();
@@ -48,6 +52,7 @@ fn nothing_works_before_initialize() {
     let m = Module::new(Fake {
         result: Ok(vec![]),
         signed: AtomicUsize::new(0),
+        listed: AtomicUsize::new(0),
     });
     assert_eq!(m.slot_list(), Err(CKR_CRYPTOKI_NOT_INITIALIZED));
     assert_eq!(m.initialize(), Ok(()));

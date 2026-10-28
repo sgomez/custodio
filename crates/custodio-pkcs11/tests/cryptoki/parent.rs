@@ -71,6 +71,13 @@ pub(super) struct Recorded {
     pub(super) raw: Vec<u8>,
 }
 
+/// Whether `msg` is a method call to the service, whatever the method.
+fn is_service_call(msg: &zbus::Message) -> bool {
+    let header = msg.header();
+    header.message_type() == zbus::message::Type::MethodCall
+        && header.destination().is_some_and(|d| d.as_str() == BUS_NAME)
+}
+
 fn record(msg: &zbus::Message) -> Option<Recorded> {
     let header = msg.header();
     let to_service = header.destination().is_some_and(|d| d.as_str() == BUS_NAME);
@@ -91,6 +98,8 @@ fn record(msg: &zbus::Message) -> Option<Recorded> {
 }
 
 pub(super) struct Fixture {
+    /// Every method call to the service, of any method.
+    service_calls: Arc<AtomicUsize>,
     signs: Arc<Mutex<Vec<Recorded>>>,
     _bus: Bus,
     state: tempfile::TempDir,
@@ -109,6 +118,8 @@ impl Fixture {
         let state = tempfile::tempdir()?;
         let (ready, wait) = std::sync::mpsc::channel::<Result<(), String>>();
         let signs = Arc::new(Mutex::new(Vec::new()));
+        let service_calls = Arc::new(AtomicUsize::new(0));
+        let counter = service_calls.clone();
         let approve = Arc::new(AtomicBool::new(approve));
         let switch = approve.clone();
         let (address, path, log, recorded) = (
@@ -167,6 +178,9 @@ impl Fixture {
                         while let Some(Ok(msg)) =
                             std::future::poll_fn(|cx| Pin::new(&mut stream).poll_next(cx)).await
                         {
+                            if is_service_call(&msg) {
+                                counter.fetch_add(1, Ordering::SeqCst);
+                            }
                             if let (Some(sign), Ok(mut all)) = (record(&msg), recorded.lock()) {
                                 all.push(sign);
                             }
@@ -184,6 +198,7 @@ impl Fixture {
             address: bus.address.clone(),
             _bus: bus,
             signs,
+            service_calls,
             state,
             asked,
             approve,
@@ -201,6 +216,20 @@ impl Fixture {
 
     pub(super) fn asked(&self) -> usize {
         self.asked.lock().map(|a| a.len()).unwrap_or_default()
+    }
+
+    /// The number of method calls the service received, once it has stopped changing for 200 ms
+    /// (the monitor runs on its own thread, so the last calls may still be on their way).
+    pub(super) fn settled_service_calls(&self) -> usize {
+        let mut last = self.service_calls.load(Ordering::SeqCst);
+        let mut quiet = 0;
+        while quiet < 2 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let now = self.service_calls.load(Ordering::SeqCst);
+            quiet = if now == last { quiet + 1 } else { 0 };
+            last = now;
+        }
+        last
     }
 
     /// The `Sign` calls the service received, once at least `expected` have been seen, plus a

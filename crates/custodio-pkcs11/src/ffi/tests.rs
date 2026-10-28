@@ -5,14 +5,15 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use cryptoki_sys::{
     CK_ATTRIBUTE, CKA_CLASS, CKA_LABEL, CKA_VALUE, CKO_CERTIFICATE, CKR_ATTRIBUTE_TYPE_INVALID,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_FUNCTION_NOT_SUPPORTED,
-    CKR_OBJECT_HANDLE_INVALID, CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
-    CKR_SLOT_ID_INVALID,
+    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_OBJECT_HANDLE_INVALID,
+    CKR_OK, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID, CKR_SLOT_ID_INVALID,
+    CKU_USER,
 };
 
 use super::*;
 
 mod composed;
+mod login;
 mod multipart;
 
 use crate::fake::EC_CERT;
@@ -83,8 +84,12 @@ fn function_list_is_complete_and_null_checked() {
         assert_eq!(C_GetFunctionList(&raw mut list), CKR_OK);
         let list = &*list;
         assert_eq!(
-            list.C_Login.map(|f| f(0, 0, ptr::null_mut(), 0)),
-            Some(CKR_FUNCTION_NOT_SUPPORTED)
+            list.C_Login.map(|f| f(0, CKU_USER, ptr::null_mut(), 0)),
+            Some(CKR_CRYPTOKI_NOT_INITIALIZED)
+        );
+        assert_eq!(
+            list.C_Logout.map(|f| f(0)),
+            Some(CKR_CRYPTOKI_NOT_INITIALIZED)
         );
         assert_eq!(C_GetInfo(ptr::null_mut()), CKR_ARGUMENTS_BAD);
         let mut info = std::mem::MaybeUninit::<CK_INFO>::zeroed();

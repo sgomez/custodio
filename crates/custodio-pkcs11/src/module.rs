@@ -213,6 +213,18 @@ impl<B: Backend> Module<B> {
             .ok_or(CKR_SESSION_HANDLE_INVALID)
     }
 
+    /// Checks that a session exists, without touching it (`C_Login`, `C_Logout`).
+    ///
+    /// # Errors
+    /// `CKR_CRYPTOKI_NOT_INITIALIZED`, `CKR_SESSION_HANDLE_INVALID`.
+    pub fn check_session(&self, session: CK_SESSION_HANDLE) -> Rv<()> {
+        self.ready()?
+            .sessions
+            .contains_key(&session)
+            .then_some(())
+            .ok_or(CKR_SESSION_HANDLE_INVALID)
+    }
+
     /// The attributes an object has, for `C_GetAttributeValue`.
     ///
     /// # Errors

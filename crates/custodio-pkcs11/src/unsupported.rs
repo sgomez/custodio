@@ -8,7 +8,7 @@
 
 use cryptoki_sys::{
     CK_ATTRIBUTE, CK_BYTE, CK_FLAGS, CK_MECHANISM, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE,
-    CK_SLOT_ID, CK_ULONG, CK_USER_TYPE, CK_UTF8CHAR, CKR_FUNCTION_NOT_SUPPORTED,
+    CK_SLOT_ID, CK_ULONG, CK_UTF8CHAR, CKR_FUNCTION_NOT_SUPPORTED,
 };
 
 pub unsafe extern "C" fn InitToken(
@@ -49,19 +49,6 @@ pub unsafe extern "C" fn SetOperationState(
     _: CK_OBJECT_HANDLE,
     _: CK_OBJECT_HANDLE,
 ) -> CK_RV {
-    CKR_FUNCTION_NOT_SUPPORTED
-}
-
-pub unsafe extern "C" fn Login(
-    _: CK_SESSION_HANDLE,
-    _: CK_USER_TYPE,
-    _: *mut CK_UTF8CHAR,
-    _: CK_ULONG,
-) -> CK_RV {
-    CKR_FUNCTION_NOT_SUPPORTED
-}
-
-pub unsafe extern "C" fn Logout(_: CK_SESSION_HANDLE) -> CK_RV {
     CKR_FUNCTION_NOT_SUPPORTED
 }
 

@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Once};
 
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
@@ -60,12 +60,15 @@ fn hex(bytes: &[u8]) -> String {
 mod child;
 mod composed;
 mod composed_child;
+mod login;
+mod login_child;
 mod multipart;
 mod multipart_child;
 mod parent;
 
 use child::*;
 use composed_child::*;
+use login_child::*;
 use multipart_child::*;
 use parent::*;
 
@@ -90,6 +93,12 @@ fn client() -> TestResult {
         "composed_refusals" => composed_refusals(&pkcs11),
         "composed_retry" => composed_retry(&pkcs11),
         "composed_denied" => composed_denied(&pkcs11),
+        "login_baseline" => login_baseline(&pkcs11),
+        "login_variants" => login_variants(&pkcs11),
+        "login_flags" => login_flags(&pkcs11),
+        "login_sign" => login_sign(&pkcs11),
+        "login_open_operation" => login_open_operation(&pkcs11),
+        "login_denied" => login_denied(&pkcs11),
         "multipart_equivalence" => multipart_equivalence(&pkcs11),
         "multipart_large" => multipart_large(&pkcs11),
         "multipart_retry" => multipart_retry(&pkcs11),

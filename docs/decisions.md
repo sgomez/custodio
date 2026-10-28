@@ -140,3 +140,14 @@ Format: a title and three short bullets, a couple of lines each:
   for the first case (docs/findings.md); the project keeps the more telling code.
 - Rejected: keeping the operation open after the conflict (a retry could sign a different
   message); copying SoftHSMv2's code for the first call.
+
+## 2026-10-28 — Repeated login and reported session state
+- Decision: `C_Login` with `CKU_USER` or `CKU_CONTEXT_SPECIFIC` returns `CKR_OK` every time, never
+  `CKR_USER_ALREADY_LOGGED_IN`; `C_GetSessionInfo` keeps reporting `CKS_RO_PUBLIC_SESSION` before
+  and after any login or logout. `CKU_SO` gives `CKR_SESSION_READ_ONLY_EXISTS` (every session is
+  read-only), another user type `CKR_USER_TYPE_INVALID`. Interim: settle it by the manual
+  acceptance clients (SPEC open question).
+- Why: the most tolerant choice that keeps the M0 tests green; no client sees a login error and
+  the reported state is never an error. A login keeps no state, so nothing can go stale.
+- Rejected: `CKR_USER_ALREADY_LOGGED_IN` on a repeat (breaks clients that log in per operation);
+  reporting `CKS_RO_USER_FUNCTIONS` after a login (needs per-session state and a logout rule).

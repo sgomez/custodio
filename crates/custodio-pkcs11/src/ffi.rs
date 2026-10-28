@@ -30,6 +30,7 @@ use cryptoki_sys::{
 mod args;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
+mod login;
 mod sign;
 
 #[cfg(not(any(test, feature = "fuzzing")))]
@@ -39,6 +40,7 @@ use crate::unsupported;
 #[cfg(test)]
 use args::input;
 use args::{guard, out, padded, template, to_ulong, to_usize, write_list};
+use login::{C_Login, C_Logout};
 use sign::{C_Sign, C_SignFinal, C_SignInit, C_SignUpdate};
 
 /// The service behind the global module. Tests (and Miri, which cannot talk to a bus) and the fuzz
@@ -411,8 +413,8 @@ static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_GetSessionInfo: Some(C_GetSessionInfo),
     C_GetOperationState: Some(unsupported::GetOperationState),
     C_SetOperationState: Some(unsupported::SetOperationState),
-    C_Login: Some(unsupported::Login),
-    C_Logout: Some(unsupported::Logout),
+    C_Login: Some(C_Login),
+    C_Logout: Some(C_Logout),
     C_CreateObject: Some(unsupported::CreateObject),
     C_CopyObject: Some(unsupported::CopyObject),
     C_DestroyObject: Some(unsupported::DestroyObject),

@@ -104,9 +104,6 @@ pub(super) fn unsupported(pkcs11: &Pkcs11) -> TestResult {
     for err in [
         session.generate_random_vec(8).expect_err("random"),
         session.destroy_object(key).expect_err("destroy"),
-        session
-            .login(cryptoki::session::UserType::User, None)
-            .expect_err("login"),
     ] {
         assert!(is_rv(&err, RvError::FunctionNotSupported), "{err:?}");
     }
