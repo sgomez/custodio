@@ -210,7 +210,7 @@ status:
 milestone action="list" *args:
     harness/milestone.sh {{action}} {{args}}
 
-# The agents: run, try (at most 3 Claude sessions), stop, resume, unblock ["<answer>"].
+# The agents: run, try (at most 3 Claude sessions), stop, resume, unblock ["<answer>"], fix <id>.
 [positional-arguments]
 harness action="run" *args:
     harness/harness.sh "$@"

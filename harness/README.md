@@ -28,6 +28,7 @@ only a person can check.
 | `just harness stop` / `resume` | Stop the agents, continue |
 | `just harness unblock "<answer>"` | Answer `BLOCKED.md`: an agent applies it, then continue |
 | `just harness unblock` | After applying the answer yourself: commit and continue |
+| `just harness fix <id>` | Fix what stopped `<id>` in an interactive agent session, then continue |
 
 ## A milestone, start to end
 
@@ -48,7 +49,7 @@ only a person can check.
 | `Stopped for review` | Steps 3 or 5 above |
 | `BLOCKED.md found` | Read `BLOCKED.md`, then `just harness unblock "<answer>"`. If the answer changes `SPEC.md` or `features.json`, edit and approve them yourself, then `just harness unblock` |
 | `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`, `just harness run` |
-| `contract not approved` | Same, reading `.harness/state/<id>.contract-review` |
+| `contract not approved` | `just harness fix <id>`: an agent fixes the contract with you, then the evaluator reviews it again |
 | `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just milestone approve features`, `just harness run` |
 | `Reached MAX_SESSIONS` | Budget for this run spent: `just harness run` when you want to spend more |
 | `Uncommitted changes` | Commit or `git stash`, then `just harness run` |

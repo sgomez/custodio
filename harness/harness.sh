@@ -6,6 +6,7 @@
 #   harness/harness.sh resume    # continue after stop
 #   harness/harness.sh unblock   # after deciding what BLOCKED.md asks: commit and continue
 #   harness/harness.sh unblock "<answer>"  # an agent applies the answer, then continue
+#   harness/harness.sh fix <id>  # an interactive session with an agent to fix what stopped <id>
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=harness/lib.sh
@@ -26,5 +27,9 @@ case "${1:-run}" in
     log "Unblocked."
     exec harness/run.sh
     ;;
-  *) die "Usage: just harness [run|try|stop|resume|unblock [\"<answer>\"]]" ;;
+  fix)
+    [ -n "${2:-}" ] || die "Usage: just harness fix <feature id>"
+    exec harness/run.sh harness/fix.sh "$2"
+    ;;
+  *) die "Usage: just harness [run|try|stop|resume|unblock [\"<answer>\"]|fix <id>]" ;;
 esac
