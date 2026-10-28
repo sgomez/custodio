@@ -64,7 +64,7 @@
         "F24"
       ],
       "verify": "just check && just test-integration && cargo test -p custodiod --locked --test audit",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F26",
