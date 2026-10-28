@@ -216,6 +216,61 @@ fn ecdsa_accepts_longer_digests() -> TestResult {
 }
 
 #[test]
+fn ecdsa_long_digest_standard_result() -> TestResult {
+    let key = fixture_key("p256")?;
+    let public = VerifyingKey::from(SigningKey::from_pkcs8_der(key.expose_secret())?);
+    let digests = [
+        Sha384::digest(b"hello").to_vec(),
+        Sha512::digest(b"hello").to_vec(),
+    ];
+    for digest in digests {
+        let sig = Signature::from_slice(&sign(&key, Mechanism::Ecdsa, &digest)?)?;
+        // FIPS 186 / SEC 1: the leftmost 32 bytes; the rightmost ones must not verify.
+        public.verify_prehash(digest.get(..32).unwrap_or_default(), &sig)?;
+        let right = digest.get(digest.len() - 32..).unwrap_or_default();
+        assert!(public.verify_prehash(right, &sig).is_err());
+        if let Some(ok) = openssl_verify(&public, &digest, &sig)? {
+            assert!(ok, "openssl rejects the signature");
+        }
+    }
+    Ok(())
+}
+
+/// `openssl pkeyutl -verify` over the digest; `None` if the binary is missing.
+fn openssl_verify(
+    public: &VerifyingKey,
+    digest: &[u8],
+    sig: &Signature,
+) -> Result<Option<bool>, Box<dyn Error>> {
+    use p256::pkcs8::EncodePublicKey;
+    let dir = tempfile::tempdir()?;
+    let (pem, dgst, sigf) = (
+        dir.path().join("pub.pem"),
+        dir.path().join("digest"),
+        dir.path().join("sig"),
+    );
+    std::fs::write(
+        &pem,
+        public.to_public_key_pem(pkcs8::spki::der::pem::LineEnding::LF)?,
+    )?;
+    std::fs::write(&dgst, digest)?;
+    std::fs::write(&sigf, sig.to_der().as_bytes())?;
+    let status = std::process::Command::new("openssl")
+        .args(["pkeyutl", "-verify", "-pubin", "-inkey"])
+        .arg(&pem)
+        .arg("-in")
+        .arg(&dgst)
+        .arg("-sigfile")
+        .arg(&sigf)
+        .output();
+    Ok(match status {
+        Ok(out) => Some(out.status.success()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.into()),
+    })
+}
+
+#[test]
 fn ecdsa_rejects_empty_data() -> TestResult {
     assert_eq!(
         sign(&fixture_key("p256")?, Mechanism::Ecdsa, &[]),

@@ -15,6 +15,7 @@ compile_error!(
 );
 
 pub mod backend;
+pub mod composed;
 #[cfg(any(test, feature = "fuzzing"))]
 mod fake;
 mod ffi;

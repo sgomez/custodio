@@ -122,3 +122,11 @@ Format: a title and three short bullets, a couple of lines each:
   without any change in the repository.
 - Rejected: a job per recipe (same artifacts rebuilt); every mutant on every push; `check-slow`
   before each push (repeats CI).
+
+## 2026-10-28 — Truncation of SHA-384/512 digests for P-256 happens in the service
+- Decision: the module passes the full SHA-384/512 digest for `CKM_ECDSA_SHA384/512`; the
+  service's `CKM_ECDSA` truncates it to the leftmost 32 bytes (FIPS 186, SEC 1).
+- Why: the service owns the curve and already does it (`ecdsa_long_digest_standard_result`);
+  the module stays a thin mapper and the D-Bus interface does not change.
+- Rejected: truncating in the module (a second place that must know the P-256 order, and a
+  caller of raw `CKM_ECDSA` would still reach the service's truncation).

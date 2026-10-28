@@ -315,12 +315,18 @@ dependencies = [
 name = "custodio-pkcs11"
 version = "0.1.0"
 dependencies = [
+ "const-oid",
  "cryptoki",
  "cryptoki-sys",
  "custodiod",
+ "der",
  "libc",
+ "p256",
  "pkcs1",
+ "rsa",
  "secrecy",
+ "sha2",
+ "spki",
  "tempfile",
  "x509-cert",
  "zbus",
