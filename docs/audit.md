@@ -40,8 +40,7 @@ The text of `MESSAGE` is for people; parse the fields instead.
 
 ## Mechanisms
 
-`rsa_pkcs`, `rsa_pkcs_pss_sha256`, `rsa_pkcs_pss_sha384`, `rsa_pkcs_pss_sha512` and `ecdsa`,
-written as `CUSTODIO_MECHANISM`:
+`CUSTODIO_MECHANISM` holds one of:
 
 - `rsa_pkcs`
 - `rsa_pkcs_pss_sha256`

@@ -206,7 +206,7 @@ fn limits_and_compatibility_documented() -> TestResult {
 fn catalog_format() -> TestResult {
     let catalog = catalog()?;
     let mut lines = catalog.lines().filter(|l| !l.starts_with('#'));
-    assert_eq!(lines.next(), Some(format!("-- {MESSAGE_ID} en").as_str()));
+    assert_eq!(lines.next(), Some(format!("-- {MESSAGE_ID}").as_str()));
     assert!(
         MESSAGE_ID.len() == 32
             && MESSAGE_ID

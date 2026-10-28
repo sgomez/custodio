@@ -1,5 +1,5 @@
 # Journal catalog for the entries custodiod writes. Reference: docs/audit.md.
--- 29c3d30e6c4242406c6db3f120d36401 en
+-- 29c3d30e6c4242406c6db3f120d36401
 Subject: Custodio signing request handled
 Defined-By: custodio
 

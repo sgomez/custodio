@@ -195,3 +195,11 @@ with an empty context.
 - Done: ticked the five contract steps (work was committed in attempt 1). Re-ran `just check`, `just package` and the
   catalog line in `dpkg-deb -c` (mode `-rw-r--r--`): all pass. The `--list-catalog` caveat from attempt 1 stands.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F26 — attempt 3
+- Done: NEXT_FINDINGS 1: the catalog header is now `-- <MESSAGE_ID>` with no language tag (systemd's default-entry
+  convention; the ` en` tag made `--list-catalog` abort). `catalog_format` expects it; the contract's evidence line for
+  it was corrected as the evaluator asked. 2: mechanisms listed once (bullets) in `docs/audit.md`.
+- Verified: `journalctl --root=<tmp> --update-catalog` exits 0 and `--list-catalog <id>` now prints
+  `<id> custodio: Custodio signing request handled`. The feature's `verify` command exits 0.
+- Next session should: start the next feature.
