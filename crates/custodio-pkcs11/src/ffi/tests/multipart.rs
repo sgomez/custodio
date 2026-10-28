@@ -2,6 +2,8 @@
 
 use cryptoki_sys::{CKM_ECDSA_SHA256, CKR_OK, CKR_OPERATION_ACTIVE};
 
+use sha2::{Digest, Sha256};
+
 use super::*;
 
 /// Starts a composed ECDSA operation on the only token.
@@ -63,6 +65,9 @@ fn sign_update_and_final_arguments() {
         assert_eq!(len, 64);
         assert_eq!(C_SignFinal(session, sig.as_mut_ptr(), &raw mut len), CKR_OK);
         assert_eq!((len, sig), (64, [7; 64]));
+        // Only the earlier parts were hashed: the byte 0 and the empty part.
+        let input = crate::fake::LAST_INPUT.lock().map(|g| g.clone());
+        assert_eq!(input.ok(), Some(Sha256::digest([0_u8]).to_vec()));
         // The operation is over.
         assert_eq!(
             C_SignFinal(session, sig.as_mut_ptr(), &raw mut len),

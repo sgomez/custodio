@@ -5,10 +5,10 @@ use std::thread;
 use std::time::Duration;
 
 use cryptoki_sys::{
-    CK_MECHANISM_TYPE, CKG_MGF1_SHA256, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_RSA_PKCS,
-    CKM_RSA_PKCS_PSS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKR_DATA_INVALID, CKR_DEVICE_ERROR,
-    CKR_FUNCTION_FAILED, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
-    CKR_SESSION_HANDLE_INVALID,
+    CK_MECHANISM_TYPE, CKG_MGF1_SHA256, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_ECDSA_SHA384,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKM_SHA384_RSA_PKCS,
+    CKM_SHA512_RSA_PKCS, CKR_DATA_INVALID, CKR_DEVICE_ERROR, CKR_FUNCTION_FAILED,
+    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
 };
 use sha2::{Digest, Sha256};
 
@@ -19,7 +19,12 @@ use crate::composed::DigestHasher;
 
 const ABC_SHA256: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const ABC_SHA384: &str = "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7";
+const ABC_SHA512: &str = "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f";
+// RFC 8017 section 9.2 notes: the `DigestInfo` prefixes.
 const SHA256_PREFIX: &str = "3031300d060960864801650304020105000420";
+const SHA384_PREFIX: &str = "3041300d060960864801650304020205000430";
+const SHA512_PREFIX: &str = "3051300d060960864801650304020305000440";
 
 fn mech(ckm: CK_MECHANISM_TYPE) -> Mechanism {
     Mechanism::new(ckm, None).unwrap_or(Mechanism::RsaPkcs)
@@ -77,15 +82,15 @@ fn multipart_sends_digest_of_concatenation() {
         assert_eq!(m.sign_init(s, mech(ckm), KEY_HANDLE), Ok(()));
         assert!(multipart(&m, s, size, &[b"a", b"", b"bc"]).is_ok());
         assert_eq!(calls(&m).len(), 1);
-        if ckm == CKM_ECDSA_SHA256 {
-            assert_eq!(calls(&m)[0].2, unhex(ABC_SHA256));
-        }
-        if ckm == CKM_SHA256_RSA_PKCS {
-            assert_eq!(
-                calls(&m)[0].2,
-                unhex(&format!("{SHA256_PREFIX}{ABC_SHA256}"))
-            );
-        }
+        let (prefix, digest) = match ckm {
+            CKM_SHA256_RSA_PKCS => (SHA256_PREFIX, ABC_SHA256),
+            CKM_SHA384_RSA_PKCS => (SHA384_PREFIX, ABC_SHA384),
+            CKM_SHA512_RSA_PKCS => (SHA512_PREFIX, ABC_SHA512),
+            CKM_ECDSA_SHA256 => ("", ABC_SHA256),
+            CKM_ECDSA_SHA384 => ("", ABC_SHA384),
+            _ => ("", ABC_SHA512),
+        };
+        assert_eq!(calls(&m)[0].2, unhex(&format!("{prefix}{digest}")));
         assert_eq!(calls(&m)[0].2, single_part_input(cert, ckm, b"abc"));
 
         // A split at a non-block boundary.
@@ -239,7 +244,7 @@ fn multipart_late_return_never_overwrites_a_newer_operation() {
 
 #[test]
 fn multipart_sign_init_while_busy_and_not_aborted() {
-    let (m, a, _) = module_for(EC_CERT);
+    let (m, a, size) = module_for(EC_CERT);
     assert_eq!(m.sign_init(a, mech(CKM_ECDSA_SHA256), KEY_HANDLE), Ok(()));
     let (serial, hasher) = m.begin_update(a).unwrap_or_else(|e| unreachable!("{e}"));
     assert_eq!(
@@ -249,6 +254,8 @@ fn multipart_sign_init_while_busy_and_not_aborted() {
     m.end_update(a, serial, hasher);
     // Operation kept, with the part's effect.
     assert_eq!(m.sign_update(a, b"x"), Ok(()));
+    assert!(m.sign_final(a, Some(size)).is_ok());
+    assert_eq!(calls(&m)[0].2, Sha256::digest(b"x").to_vec());
 }
 
 #[test]

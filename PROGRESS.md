@@ -62,3 +62,11 @@ with an empty context.
 - Decisions: see docs/decisions.md.
 - Not done / known issues: `just miri` not run (nightly missing).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F21 — attempt 3
+- Done: fixed the evaluator's findings. FFI argument-error test now asserts the signed input
+  (fake records `LAST_INPUT` under `cfg(test)`); literal "abc" answers and `DigestInfo` prefixes
+  for all six mechanisms; racer panic no longer maps to `CKR_OK`; busy-init test checks the final.
+- Decisions: none. Finding 5 (harness commits) is operator work from the BLOCKED round, not touched.
+- Not done / known issues: `just miri` not run (nightly missing).
+- Next session should: start the next feature.

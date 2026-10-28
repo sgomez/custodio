@@ -469,7 +469,10 @@ pub(super) fn multipart_threads(pkcs11: &Pkcs11) -> TestResult {
                         })
                     })
                     .collect();
-                racers.into_iter().map(|r| r.join().unwrap_or(0)).collect()
+                racers
+                    .into_iter()
+                    .map(|r| r.join().unwrap_or(CK_RV::MAX))
+                    .collect()
             });
             codes.sort_unstable();
             assert_eq!(codes, [CKR_OK, CKR_OPERATION_NOT_INITIALIZED]);
