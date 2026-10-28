@@ -445,10 +445,13 @@ fn refusing_socket_is_an_error() -> TestResult {
 #[test]
 fn full_socket_is_an_error_without_blocking() -> TestResult {
     let (_d, path, s) = socket()?;
-    let filler = UnixDatagram::unbound()?;
-    filler.set_nonblocking(true)?;
-    let block = vec![0u8; 8192];
-    while filler.send_to(&block, &path).is_ok() {}
+    // A fresh sender per datagram, so the receiver's queue (net.unix.max_dgram_qlen) fills up
+    // before any sender's own buffer does.
+    let full = (0..100_000).find_map(|_| {
+        let filler = UnixDatagram::unbound().and_then(|f| f.set_nonblocking(true).map(|()| f));
+        filler.and_then(|f| f.send_to(b"x", &path)).err()
+    });
+    assert_eq!(full.map(|e| e.kind()), Some(ErrorKind::WouldBlock));
     let (tx, rx) = mpsc::channel();
     let e = entry(Outcome::Signed, None)?;
     let p = path.clone();
