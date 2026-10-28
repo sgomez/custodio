@@ -33,6 +33,7 @@ done
 openssl req -new -newkey rsa:2048 -nodes -keyout "$work/csr.key" -subj "/CN=e2e subject" -out "$work/csr.pem" 2>/dev/null
 openssl req -in "$work/csr.pem" -outform DER -out "$work/csr.der"
 head -c 32 /dev/urandom > "$work/data.bin"
+for kind in rsa ec; do openssl x509 -in "$work/$kind.crt" -pubkey -noout > "$work/$kind.pub"; done
 chmod 644 "$work"/*
 
 # Import as the user, on a pseudo-terminal (the password is only read from /dev/tty).

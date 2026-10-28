@@ -256,3 +256,19 @@ with an empty context.
   sign off on this gate change.** Minor: `EC_FLAGS` as a `const` removes that expression from mutation instead of
   proving the mutant equivalent; `mechanism_info_fits_the_key` pins the value.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F28 — attempt 1
+- Done: Containerfile installs `pkcs11-provider`; `guest.sh` exports `rsa.pub`/`ec.pub` before the chmod; new
+  `e2e/composed.sh` (sourced by `user.sh`, one added line) with the six composed mechanisms (+ cross-digest
+  negative check, deny per family), OpenSSL + pkcs11-provider through the spy (RSA, EC, >1 MiB file, deny) and the
+  four `--login` cases (USER approve/deny, second signature, context-specific) checking `spy.log` for `C_Login`.
+- Research (`docs/findings.md`): `--login --login-type context-specific` always sends `C_Login(CKU_CONTEXT_SPECIFIC)`
+  at session open, before `C_SignInit`, so the case can pass with our keys; no `BLOCKED.md`. The check allows
+  `C_Login` before `C_Sign` and requires it before `C_SignInit` only in the USER cases. Spy format: `N: C_Login`,
+  `[in] userType = CKU_USER`, `Returned:  0 CKR_OK`.
+- Confirmed locally: `pkcs11-tool --help` has `--signature-format`, `--login-type`, `--pin`, `--module`; the spy is at
+  `/usr/lib/x86_64-linux-gnu/pkcs11-spy.so` here. `just lint` and `bash -n` pass; the verify greps pass.
+- NOT exercised (F31 must run it): all of `just e2e`. Unconfirmed: `PKCS11_PROVIDER_MODULE` name and the `pkcs11:`
+  URI attributes in pkcs11-provider (not read), whether it forwards the size query, whether the provider needs a PIN
+  for these tokens, and the exact spy-log line shapes (taken from OpenSC source, not from a run).
+- Next session should: start the next feature.

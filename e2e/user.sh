@@ -95,4 +95,7 @@ nsssign || fail "NSS signing (again) failed"
 [ "$(requests)" -eq $((before + 3)) ] || fail "NSS second signature did not ask again"
 echo "ok: NSS second signature asks again"
 
+# shellcheck source=/dev/null # checked on its own
+source "$(dirname "${BASH_SOURCE[0]}")/composed.sh"
+
 echo "user.sh: passed"
