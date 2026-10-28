@@ -5,96 +5,22 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use cryptoki_sys::{
-    CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CK_ULONG,
-    CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_ECDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS,
-    CKM_SHA256, CKM_SHA384, CKM_SHA512, CKR_ATTRIBUTE_SENSITIVE, CKR_ATTRIBUTE_TYPE_INVALID,
-    CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED, CKR_DATA_INVALID,
-    CKR_DEVICE_ERROR, CKR_FUNCTION_FAILED, CKR_KEY_HANDLE_INVALID, CKR_KEY_TYPE_INCONSISTENT,
-    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_OBJECT_HANDLE_INVALID,
-    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
-    CKR_SLOT_ID_INVALID,
+    CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_SLOT_ID, CKR_ATTRIBUTE_SENSITIVE,
+    CKR_ATTRIBUTE_TYPE_INVALID, CKR_CRYPTOKI_ALREADY_INITIALIZED, CKR_CRYPTOKI_NOT_INITIALIZED,
+    CKR_DATA_INVALID, CKR_DEVICE_ERROR, CKR_FUNCTION_FAILED, CKR_KEY_HANDLE_INVALID,
+    CKR_KEY_TYPE_INCONSISTENT, CKR_OBJECT_HANDLE_INVALID, CKR_OPERATION_ACTIVE,
+    CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID, CKR_SLOT_ID_INVALID,
 };
 
-use crate::backend::{Backend, BackendError, SignParams};
-use crate::token::{Attribute, CERT_HANDLE, KEY_HANDLE, KeyKind, Token, is_sensitive};
+mod mechanism;
+
+use crate::backend::{Backend, BackendError};
+use crate::token::{Attribute, CERT_HANDLE, KEY_HANDLE, Token, is_sensitive};
+use mechanism::hash_message;
+pub use mechanism::{Mechanism, mechanism_info, mechanisms};
 
 /// A PKCS#11 result: the value, or the `CKR_*` code to return.
 pub type Rv<T> = Result<T, CK_RV>;
-
-/// A mechanism the caller asked for, already checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mechanism {
-    RsaPkcs,
-    RsaPkcsPss {
-        hash: CK_MECHANISM_TYPE,
-        salt_len: CK_ULONG,
-    },
-    Ecdsa,
-}
-
-impl Mechanism {
-    /// Checks a mechanism type and the `CK_RSA_PKCS_PSS_PARAMS` that came with it, if any.
-    ///
-    /// # Errors
-    /// `CKR_MECHANISM_INVALID` or `CKR_MECHANISM_PARAM_INVALID`.
-    pub fn new(
-        mechanism: CK_MECHANISM_TYPE,
-        pss: Option<(CK_MECHANISM_TYPE, CK_ULONG, CK_ULONG)>,
-    ) -> Rv<Self> {
-        match (mechanism, pss) {
-            (CKM_RSA_PKCS, None) => Ok(Self::RsaPkcs),
-            (CKM_ECDSA, None) => Ok(Self::Ecdsa),
-            (CKM_RSA_PKCS_PSS, Some((hash, mgf, salt_len))) => {
-                let expected_mgf = match hash {
-                    CKM_SHA256 => CKG_MGF1_SHA256,
-                    CKM_SHA384 => CKG_MGF1_SHA384,
-                    CKM_SHA512 => CKG_MGF1_SHA512,
-                    _ => return Err(CKR_MECHANISM_PARAM_INVALID),
-                };
-                if mgf != expected_mgf || u32::try_from(salt_len).is_err() {
-                    return Err(CKR_MECHANISM_PARAM_INVALID);
-                }
-                Ok(Self::RsaPkcsPss { hash, salt_len })
-            }
-            (CKM_RSA_PKCS | CKM_ECDSA | CKM_RSA_PKCS_PSS, _) => Err(CKR_MECHANISM_PARAM_INVALID),
-            _ => Err(CKR_MECHANISM_INVALID),
-        }
-    }
-
-    fn fits(self, kind: &KeyKind) -> bool {
-        matches!(
-            (self, kind),
-            (Self::RsaPkcs | Self::RsaPkcsPss { .. }, KeyKind::Rsa { .. })
-                | (Self::Ecdsa, KeyKind::EcP256)
-        )
-    }
-
-    fn params(self) -> Rv<SignParams> {
-        let (mechanism, hash, salt_len) = match self {
-            Self::RsaPkcs => (CKM_RSA_PKCS, 0, 0),
-            Self::Ecdsa => (CKM_ECDSA, 0, 0),
-            Self::RsaPkcsPss { hash, salt_len } => (
-                CKM_RSA_PKCS_PSS,
-                u32::try_from(hash).map_err(|_| CKR_MECHANISM_PARAM_INVALID)?,
-                u32::try_from(salt_len).map_err(|_| CKR_MECHANISM_PARAM_INVALID)?,
-            ),
-        };
-        Ok(SignParams {
-            mechanism: u32::try_from(mechanism).map_err(|_| CKR_MECHANISM_INVALID)?,
-            hash,
-            salt_len,
-        })
-    }
-}
-
-/// Mechanisms a token offers.
-#[must_use]
-pub fn mechanisms(token: &Token) -> Vec<CK_MECHANISM_TYPE> {
-    match token.kind {
-        KeyKind::Rsa { .. } => vec![CKM_RSA_PKCS, CKM_RSA_PKCS_PSS],
-        KeyKind::EcP256 => vec![CKM_ECDSA],
-    }
-}
 
 /// Result of `C_Sign`.
 #[derive(Debug, PartialEq, Eq)]
@@ -433,14 +359,18 @@ impl<B: Backend> Module<B> {
             s.sign = None;
             (s.token.clone(), mechanism)
         };
-        let signature = self
-            .backend
-            .sign(&token.id, mechanism.params()?, data)
-            .map_err(|e| match e {
-                BackendError::Denied => CKR_FUNCTION_FAILED,
-                BackendError::Invalid => CKR_DATA_INVALID,
-                BackendError::Unavailable => CKR_DEVICE_ERROR,
-            })?;
+        // Past this point only owned values are used: the guard is gone, so hashing a large
+        // message or waiting for the user never blocks other sessions.
+        let params = mechanism.params()?;
+        let signature = match mechanism {
+            Mechanism::Composed(c) => self.backend.sign(&token.id, params, &hash_message(c, data)),
+            _ => self.backend.sign(&token.id, params, data),
+        }
+        .map_err(|e| match e {
+            BackendError::Denied => CKR_FUNCTION_FAILED,
+            BackendError::Invalid => CKR_DATA_INVALID,
+            BackendError::Unavailable => CKR_DEVICE_ERROR,
+        })?;
         if signature.len() != token.signature_len() {
             return Err(CKR_FUNCTION_FAILED);
         }

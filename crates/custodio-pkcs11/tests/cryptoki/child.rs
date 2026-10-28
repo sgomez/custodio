@@ -8,7 +8,7 @@ pub(super) fn module() -> Result<Pkcs11, Box<dyn Error>> {
     Ok(pkcs11)
 }
 
-fn find(session: &Session, class: ObjectClass) -> Result<ObjectHandle, Box<dyn Error>> {
+pub(super) fn find(session: &Session, class: ObjectClass) -> Result<ObjectHandle, Box<dyn Error>> {
     let found = session.find_objects(&[Attribute::Class(class)])?;
     assert_eq!(found.len(), 1, "one {class:?} per token");
     Ok(found[0])
@@ -44,7 +44,7 @@ pub(super) fn basic(pkcs11: &Pkcs11) -> TestResult {
         );
         let mechs = pkcs11.get_mechanism_list(slot)?;
         if label == "ec" {
-            assert_eq!(mechs, vec![MechanismType::ECDSA]);
+            assert!(mechs.contains(&MechanismType::ECDSA));
             let sig = session.sign(&Mechanism::Ecdsa, key, &[7; 32])?;
             println!("SIG ec ecdsa {}", hex(&sig));
         } else {
@@ -74,14 +74,14 @@ pub(super) fn basic(pkcs11: &Pkcs11) -> TestResult {
     Ok(())
 }
 
-fn first_key(pkcs11: &Pkcs11) -> Result<(Session, ObjectHandle), Box<dyn Error>> {
+pub(super) fn first_key(pkcs11: &Pkcs11) -> Result<(Session, ObjectHandle), Box<dyn Error>> {
     let slot = *pkcs11.get_slots_with_token()?.first().ok_or("no token")?;
     let session = pkcs11.open_ro_session(slot)?;
     let key = find(&session, ObjectClass::PRIVATE_KEY)?;
     Ok((session, key))
 }
 
-fn is_rv(e: &P11Error, rv: RvError) -> bool {
+pub(super) fn is_rv(e: &P11Error, rv: RvError) -> bool {
     matches!(e, P11Error::Pkcs11(got, _) if *got == rv)
 }
 

@@ -1,8 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use cryptoki_sys::{CKR_BUFFER_TOO_SMALL, CKR_OPERATION_ACTIVE};
+use cryptoki_sys::{
+    CK_ULONG, CKG_MGF1_SHA256, CKG_MGF1_SHA384, CKG_MGF1_SHA512, CKM_ECDSA, CKM_RSA_PKCS,
+    CKM_RSA_PKCS_PSS, CKM_SHA256, CKM_SHA512, CKR_BUFFER_TOO_SMALL, CKR_MECHANISM_INVALID,
+    CKR_MECHANISM_PARAM_INVALID, CKR_OPERATION_ACTIVE,
+};
 
 use super::*;
+use crate::backend::SignParams;
+
+mod composed;
 
 const EC_CERT: &[u8] = include_bytes!("../../tests/p256-cert.der");
 

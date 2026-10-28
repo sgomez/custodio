@@ -15,12 +15,11 @@ use cryptoki_sys::{
     CK_OBJECT_HANDLE_PTR, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
     CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
-    CK_UNAVAILABLE_INFORMATION, CK_VERSION, CK_VOID_PTR, CKF_EC_F_P, CKF_EC_NAMEDCURVE,
-    CKF_OS_LOCKING_OK, CKF_RW_SESSION, CKF_SERIAL_SESSION, CKF_SIGN, CKF_TOKEN_INITIALIZED,
-    CKF_TOKEN_PRESENT, CKF_WRITE_PROTECTED, CKM_ECDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS,
-    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CANT_LOCK, CKR_MECHANISM_INVALID,
-    CKR_MECHANISM_PARAM_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_TOKEN_WRITE_PROTECTED,
-    CKS_RO_PUBLIC_SESSION,
+    CK_UNAVAILABLE_INFORMATION, CK_VERSION, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKF_RW_SESSION,
+    CKF_SERIAL_SESSION, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_WRITE_PROTECTED, CKM_ECDSA,
+    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CANT_LOCK,
+    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED,
+    CKR_TOKEN_WRITE_PROTECTED, CKS_RO_PUBLIC_SESSION,
 };
 
 mod args;
@@ -29,7 +28,8 @@ pub mod fuzzing;
 
 #[cfg(not(any(test, feature = "fuzzing")))]
 use crate::backend::DbusBackend;
-use crate::module::{ForkGuard, Mechanism, Module, SignOutcome, mechanisms};
+use crate::composed::Composed;
+use crate::module::{ForkGuard, Mechanism, Module, SignOutcome, mechanism_info, mechanisms};
 use crate::unsupported;
 use args::{guard, input, out, padded, template, to_ulong, to_usize, write_list};
 
@@ -237,15 +237,9 @@ unsafe extern "C" fn C_GetMechanismInfo(
 ) -> CK_RV {
     guard(|| {
         let token = MODULE.token(slot)?;
-        if !mechanisms(&token).contains(&mechanism) {
-            return Err(CKR_MECHANISM_INVALID);
-        }
+        let (bits, flags) = mechanism_info(&token, mechanism).ok_or(CKR_MECHANISM_INVALID)?;
         // SAFETY: checked for null; validity is the caller's promise.
         let info = unsafe { out(info) }?;
-        let (bits, flags) = match mechanism {
-            CKM_ECDSA => (256, CKF_SIGN | CKF_EC_F_P | CKF_EC_NAMEDCURVE),
-            _ => (2048, CKF_SIGN),
-        };
         *info = CK_MECHANISM_INFO {
             ulMinKeySize: bits,
             ulMaxKeySize: bits,
@@ -403,7 +397,10 @@ unsafe extern "C" fn C_SignInit(
             // SAFETY: non-null, aligned and exactly the size of the structure.
             let p = unsafe { &*m.pParameter.cast::<CK_RSA_PKCS_PSS_PARAMS>() };
             Some((p.hashAlg, p.mgf, p.sLen))
-        } else if m.mechanism == CKM_RSA_PKCS || m.mechanism == CKM_ECDSA {
+        } else if m.mechanism == CKM_RSA_PKCS
+            || m.mechanism == CKM_ECDSA
+            || Composed::from_ckm(m.mechanism).is_some()
+        {
             if !m.pParameter.is_null() || m.ulParameterLen != 0 {
                 return Err(CKR_MECHANISM_PARAM_INVALID);
             }

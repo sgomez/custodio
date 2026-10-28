@@ -12,6 +12,8 @@ use cryptoki_sys::{
 
 use super::*;
 
+mod composed;
+
 use crate::fake::EC_CERT;
 
 /// The module is a process-wide global: one test at a time, each starting uninitialized.
@@ -135,7 +137,7 @@ fn list_outputs_respect_the_callers_sizes() {
     let _ = s.open();
     let mut count: CK_ULONG = 0;
     let mut slot: CK_SLOT_ID = 0;
-    let mut mechs = [0 as CK_MECHANISM_TYPE; 4];
+    let mut mechs = [0 as CK_MECHANISM_TYPE; 5];
     // SAFETY: pointers are to live locals; the sizes passed are the real ones.
     unsafe {
         assert_eq!(
@@ -152,14 +154,14 @@ fn list_outputs_respect_the_callers_sizes() {
             C_GetMechanismList(7, mechs.as_mut_ptr(), &raw mut count),
             CKR_SLOT_ID_INVALID
         );
-        count = 4;
+        count = 5;
         assert_eq!(
             C_GetMechanismList(0, mechs.as_mut_ptr(), &raw mut count),
             CKR_OK
         );
-        assert_eq!(count, 1);
+        assert_eq!(count, 4);
         assert_eq!(mechs[0], CKM_ECDSA);
-        assert_eq!(mechs[1], 0, "nothing written past the count");
+        assert_eq!(mechs[4], 0, "nothing written past the count");
         let mut info = std::mem::MaybeUninit::<CK_MECHANISM_INFO>::zeroed();
         assert_eq!(
             C_GetMechanismInfo(0, CKM_RSA_PKCS, info.as_mut_ptr()),

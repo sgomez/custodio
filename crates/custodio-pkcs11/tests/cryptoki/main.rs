@@ -40,6 +40,16 @@ const DATA: &[u8] = b"data to be signed by the custodio test";
 const MODE_VAR: &str = "CUSTODIO_TEST_MODE";
 const MODULE_VAR: &str = "CUSTODIO_TEST_MODULE";
 
+/// Distinctive 16 bytes the composed messages are made of; they must never reach the service.
+const MARKER: &[u8; 16] = b"CUSTODIO-MARKER!";
+const COMPOSED_LEN: usize = 1024;
+const LARGE_LEN: usize = 64 << 20;
+
+/// The marker repeated to `len` bytes.
+fn message(len: usize) -> Vec<u8> {
+    MARKER.iter().copied().cycle().take(len).collect()
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().fold(String::new(), |mut s, b| {
         let _ = write!(s, "{b:02x}");
@@ -48,9 +58,12 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 mod child;
+mod composed;
+mod composed_child;
 mod parent;
 
 use child::*;
+use composed_child::*;
 use parent::*;
 
 /// Entry point of the child scenarios. Without `MODE_VAR` (a plain `cargo test`) it does nothing.
@@ -68,6 +81,12 @@ fn client() -> TestResult {
         "threads" => threads(&pkcs11),
         "forks" => forks(&pkcs11),
         "tasks" => tasks(&pkcs11),
+        "mechanisms" => mechanisms(&pkcs11),
+        "composed_sign" => composed_sign(&pkcs11),
+        "composed_large" => composed_large(&pkcs11),
+        "composed_refusals" => composed_refusals(&pkcs11),
+        "composed_retry" => composed_retry(&pkcs11),
+        "composed_denied" => composed_denied(&pkcs11),
         other => Err(format!("unknown mode {other}").into()),
     }
 }

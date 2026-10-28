@@ -25,6 +25,7 @@ zbus = { version = "6", default-features = false, features = ["comms", "proxy", 
 
 [dev-dependencies]
 cryptoki = "0.12.1"
+libloading = "0.8.9"
 const-oid = { version = "0.10.2", features = ["db"] }
 custodiod = { path = "../custodiod", version = "0.1.0" }
 der = { version = "0.8.3", features = ["alloc", "oid"] }

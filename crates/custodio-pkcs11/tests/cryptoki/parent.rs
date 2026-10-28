@@ -1,5 +1,9 @@
 //! The parent: the private bus, the fake polkit and the service.
 
+use std::pin::Pin;
+
+use zbus::export::futures_core::Stream;
+
 use super::*;
 
 struct Bus {
@@ -55,7 +59,39 @@ impl FakePolkit {
     }
 }
 
+/// A `Sign` call as the service received it on the bus, seen by the monitor.
+#[derive(Clone)]
+pub(super) struct Recorded {
+    pub(super) id: String,
+    pub(super) mechanism: u32,
+    pub(super) hash: u32,
+    pub(super) salt_len: u32,
+    pub(super) data: Vec<u8>,
+    /// The whole message as it went over the wire.
+    pub(super) raw: Vec<u8>,
+}
+
+fn record(msg: &zbus::Message) -> Option<Recorded> {
+    let header = msg.header();
+    let to_service = header.destination().is_some_and(|d| d.as_str() == BUS_NAME);
+    let is_sign = header.member().is_some_and(|m| m.as_str() == "Sign");
+    if header.message_type() != zbus::message::Type::MethodCall || !to_service || !is_sign {
+        return None;
+    }
+    let (id, mechanism, hash, salt_len, data): (String, u32, u32, u32, Vec<u8>) =
+        msg.body().deserialize().ok()?;
+    Some(Recorded {
+        id,
+        mechanism,
+        hash,
+        salt_len,
+        data,
+        raw: msg.data().bytes().to_vec(),
+    })
+}
+
 pub(super) struct Fixture {
+    signs: Arc<Mutex<Vec<Recorded>>>,
     _bus: Bus,
     state: tempfile::TempDir,
     asked: Arc<Mutex<Vec<String>>>,
@@ -71,10 +107,12 @@ impl Fixture {
         let asked = Arc::new(Mutex::new(Vec::new()));
         let state = tempfile::tempdir()?;
         let (ready, wait) = std::sync::mpsc::channel::<Result<(), String>>();
-        let (address, path, log) = (
+        let signs = Arc::new(Mutex::new(Vec::new()));
+        let (address, path, log, recorded) = (
             bus.address.clone(),
             state.path().join("keys"),
             asked.clone(),
+            signs.clone(),
         );
         std::thread::spawn(move || {
             let setup = async {
@@ -107,13 +145,29 @@ impl Fixture {
                     conn.request_name(BUS_NAME).await?;
                     connections.push(conn);
                 }
-                Ok::<_, Box<dyn Error>>(connections)
+                // A second connection that sees every message on the bus, so what the service
+                // receives is recorded as it went over the wire. Failing to become a monitor is
+                // an error of the whole fixture.
+                let monitor = Builder::address(address.as_str()).build().await?;
+                let stream = zbus::MessageStream::from(&monitor);
+                zbus::fdo::MonitoringProxy::new(&monitor)
+                    .await?
+                    .become_monitor(&[], 0)
+                    .await?;
+                connections.push(monitor);
+                Ok::<_, Box<dyn Error>>((connections, stream))
             };
             block_on(async {
                 match setup.await {
-                    Ok(connections) => {
+                    Ok((connections, mut stream)) => {
                         let _ = ready.send(Ok(()));
-                        std::future::pending::<()>().await;
+                        while let Some(Ok(msg)) =
+                            std::future::poll_fn(|cx| Pin::new(&mut stream).poll_next(cx)).await
+                        {
+                            if let (Some(sign), Ok(mut all)) = (record(&msg), recorded.lock()) {
+                                all.push(sign);
+                            }
+                        }
                         drop(connections);
                     }
                     Err(e) => {
@@ -126,6 +180,7 @@ impl Fixture {
         Ok(Self {
             address: bus.address.clone(),
             _bus: bus,
+            signs,
             state,
             asked,
         })
@@ -137,6 +192,20 @@ impl Fixture {
 
     pub(super) fn asked(&self) -> usize {
         self.asked.lock().map(|a| a.len()).unwrap_or_default()
+    }
+
+    /// The `Sign` calls the service received, once at least `expected` have been seen, plus a
+    /// moment for any extra one; fails if fewer arrive.
+    pub(super) fn signs(&self, expected: usize) -> Result<Vec<Recorded>, Box<dyn Error>> {
+        let count = || self.signs.lock().map(|s| s.len()).unwrap_or_default();
+        for _ in 0..100 {
+            if count() >= expected {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        Ok(self.signs.lock().map_err(|_| "poisoned")?.clone())
     }
 
     /// Runs a child scenario; returns whether it passed and its stdout.
