@@ -315,3 +315,16 @@ with an empty context.
   section for the e2e guest). Debian patch sets of client packages and some Firefox/LibreOffice
   areas were not read; marked in the text.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F32 — attempt 1
+- Done: `docs/manual-acceptance.md` with sections 1–9 of the contract (prerequisites and test material, install,
+  import, rFirma build, rFirma run, LibreOffice run, journal comparison, open-question blanks, result form).
+- Checked here: the `openssl` commands (CA-signed RSA 2048 and P-256 certificates verify against the CA, key usage
+  shown, `.p12` readable; `pkcs12 -export` options as in `e2e/guest.sh`); `certutil -A ... -t "C,,"` and
+  `modutil -dbdir sql:DIR -add ... -libfile` / `-list` on a temporary NSS database (with the release build of the
+  library; the installed path does not exist in the dev container); import flags equal `USAGE`; the audit query is copied
+  from `docs/audit.md`; `just check` and the feature's `verify` pass.
+- Marked unverified in the file: `apt install` of the `.deb`, `pkaction`/`systemctl`, `pkcs11-tool --list-objects`
+  on the installed module, `journalctl -o verbose`, `pgrep` process names, all rFirma and LibreOffice menu paths,
+  how rFirma trusts a CA, `pk12util` and `pkcs11-spy` use.
+- Next session should: start the next feature (F33 is the person's run).
