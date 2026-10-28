@@ -40,7 +40,7 @@ only a person can check.
    real. `just milestone approve features`.
 6. `just harness run`. The agents build feature after feature.
 7. Check by hand the features marked `manual`, then `just milestone pass <id>` for each.
-8. `just release`, then `just milestone close`.
+8. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
 
 ## When it stops
 

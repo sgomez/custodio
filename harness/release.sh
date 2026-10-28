@@ -10,6 +10,10 @@ tracked_changes && die "Uncommitted changes to tracked files; commit or stash th
 if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
   die "HEAD is already released as $(git describe --tags --exact-match HEAD)."
 fi
+# Features only run their own gates; the slow ones run in full once, before the release.
+log "Running just check-slow before releasing..."
+if command -v cargo >/dev/null; then just check-slow; else harness/run.sh just check-slow; fi \
+  || die "just check-slow failed; fix it before releasing."
 
 version=$(git cliff --bumped-version 2>/dev/null)
 [ -n "$version" ] || die "git-cliff could not work out the next version."
