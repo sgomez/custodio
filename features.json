@@ -140,7 +140,7 @@
         "F26"
       ],
       "verify": "test -s docs/manual-acceptance.md && for w in rFirma LibreOffice 'RSA 2048' P-256 journalctl polkit; do grep -qF -- \"$w\" docs/manual-acceptance.md || { echo \"missing: $w\" >&2; exit 1; }; done",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F33",
