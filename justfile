@@ -131,8 +131,9 @@ test-integration:
     cargo test -p custodio-pkcs11 --locked --test cryptoki
 
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
-# use a fake service, because Miri cannot talk to a bus. Only `ffi::` tests: every other module forbids
-# `unsafe`, and its pure-Rust crypto tests take tens of minutes under Miri.
+# use a fake service, because Miri cannot talk to a bus. Only `ffi::` tests: the other modules forbid
+# `unsafe` (`unsupported.rs` allows it but only returns an error and has no tests), and their pure-Rust
+# crypto tests take tens of minutes under Miri. See docs/decisions.md.
 miri:
     cargo +{{nightly_toolchain}} miri test -p custodio-pkcs11 --lib --locked ffi::
 

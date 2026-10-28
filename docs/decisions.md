@@ -173,3 +173,11 @@ Format: a title and three short bullets, a couple of lines each:
 - Decision: `Entry::without_caller` entries omit `CUSTODIO_UID`/`CUSTODIO_PID` and say `uid unknown pid unknown`.
 - Why: the bus gave no credentials and nothing may be invented.
 - Rejected: uid/pid 0, or refusing without an entry.
+
+## 2026-10-28 — Miri runs only the ffi tests
+- Decision: `just miri` runs `ffi::` tests only. `module`, `composed`, `token`, `backend`, `fake` and the
+  crate tests all `#![forbid(unsafe_code)]`. `unsupported.rs` allows `unsafe` but its stubs only return
+  `CKR_FUNCTION_NOT_SUPPORTED` without touching their pointers, and it has no tests.
+- Why: the pure-Rust RSA/ECDSA tests took over 14 minutes under Miri and made `just check-slow` too slow;
+  Miri only checks `unsafe` code. Miri no longer covers those safe tests; ASan still runs all of them.
+- Rejected: running every test under Miri; skipping Miri. Widen the filter if a module gains `unsafe`.
