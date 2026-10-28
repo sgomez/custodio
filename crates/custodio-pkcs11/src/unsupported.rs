@@ -3,6 +3,9 @@
 //! Generated from the `CK_C_*` types of `cryptoki-sys`; each one only returns
 //! `CKR_FUNCTION_NOT_SUPPORTED`, so a consumer that does not check for NULL entries still works.
 
+// The functions are `unsafe extern "C"` entries of the function list; they never touch their
+// pointers.
+#![allow(unsafe_code)]
 // PKCS#11 function names are camel case.
 #![allow(non_snake_case)]
 

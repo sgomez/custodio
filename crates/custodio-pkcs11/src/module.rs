@@ -1,5 +1,6 @@
 //! The PKCS#11 logic without any pointers: tokens, sessions, searches and signing, over a
 //! [`Backend`]. `ffi` turns C arguments into calls to this and results back into `CK_RV`.
+#![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};

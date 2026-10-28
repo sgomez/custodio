@@ -54,6 +54,7 @@ lint-fuzz:
 # Unit tests.
 test:
     cargo test --workspace --locked
+    cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
 # Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
@@ -160,7 +161,7 @@ coverage:
 # CRAP gate: fails when a function's CRAP score (complexity² × (1 − coverage)³ + complexity) is above
 # the threshold. Reads the export of `just coverage`.
 crap threshold="30":
-    cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs
+    cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs --exclude crates/custodio-pkcs11/src/ffi/fuzzing/ops.rs
 
 # One .deb in target/debian with the binaries, the unit, the sysusers file, the D-Bus policy and activation file, the polkit action and
 # the p11-kit module (needs cargo-deb).

@@ -6,6 +6,10 @@
 //! forwards `C_Sign` to the `custodiod` service over D-Bus. Every other function returns
 //! `CKR_FUNCTION_NOT_SUPPORTED`.
 
+// Denied here, allowed again in `ffi` and `unsupported` only; the modules without any pointer
+// (`module`, `composed`, `token`, `backend`, `fake`, `tests`) forbid it, which no `allow` can undo.
+#![deny(unsafe_code)]
+
 // The `fuzzing` feature swaps the service for a fake that signs without asking polkit. It must
 // never reach a shipped module: only debug builds (clippy, tests) and cargo-fuzz (`--cfg fuzzing`)
 // may enable it. See docs/decisions.md (FFI safety).

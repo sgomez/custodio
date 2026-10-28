@@ -6,6 +6,7 @@
 //!
 //! SHA-384 and SHA-512 digests on P-256 are passed whole; the service truncates them to the
 //! leftmost 32 bytes (see `docs/decisions.md`).
+#![forbid(unsafe_code)]
 
 use std::fmt;
 

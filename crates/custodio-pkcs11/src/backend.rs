@@ -1,5 +1,6 @@
 //! The service behind the module: a trait, so the logic can be tested without a bus, and the
 //! D-Bus implementation.
+#![forbid(unsafe_code)]
 
 use zbus::{Connection, block_on};
 

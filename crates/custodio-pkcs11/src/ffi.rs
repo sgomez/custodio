@@ -1,6 +1,8 @@
 //! The C side: raw pointers in, `CK_RV` out. Every function checks its pointers, converts them
 //! to safe values and calls [`Module`]; a panic is caught here and becomes `CKR_GENERAL_ERROR`,
 //! because unwinding into C is undefined behaviour.
+// The one place with raw pointers (the PKCS#11 C ABI), with the harness and tests below it.
+#![allow(unsafe_code)]
 // PKCS#11 names its functions and fields in camel case with underscores.
 #![allow(non_snake_case)]
 
@@ -466,4 +468,4 @@ static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
 };
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

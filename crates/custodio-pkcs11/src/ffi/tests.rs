@@ -15,11 +15,12 @@ use super::*;
 mod composed;
 mod login;
 mod multipart;
+mod sanitizers;
 
 use crate::fake::EC_CERT;
 
 /// The module is a process-wide global: one test at a time, each starting uninitialized.
-static SERIAL: Mutex<()> = Mutex::new(());
+pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 
 struct Session {
     _lock: MutexGuard<'static, ()>,

@@ -5,6 +5,10 @@
 //! parameters, attribute types and values, lengths, NULL or not); the buffers behind pointers are
 //! always at least as large as the sizes passed with them, because a caller that lies about those
 //! is undefined behaviour by the PKCS#11 contract, not something the module can detect.
+//!
+//! Session handles only grow while the process lives, so `run` first learns the handle the next
+//! session will get (`first_session`) and the ops that take a session pass `base + (value % 4)`:
+//! the sessions the script opens are handles 1 to 3 of every run, and 0 is never valid.
 
 use std::ffi::c_void;
 use std::ptr;
@@ -12,6 +16,10 @@ use std::ptr;
 use cryptoki_sys::{CK_ATTRIBUTE, CK_C_INITIALIZE_ARGS, CK_FUNCTION_LIST, CK_MECHANISM, CK_ULONG};
 
 use super::C_GetFunctionList;
+
+mod ops;
+#[cfg(test)]
+mod tests;
 
 /// Largest buffer the script allocates for one argument.
 const MAX_BUFFER: usize = 4096;
@@ -68,16 +76,54 @@ pub fn run(data: &[u8]) {
     // Leave the module as found, whatever the script did.
     // SAFETY: NULL is a valid argument.
     unsafe { f.C_Finalize.map(|finalize| finalize(ptr::null_mut())) };
+    // SAFETY: `f` is the module's function list.
+    let base = unsafe { first_session(f) };
     for _ in 0..64 {
         if input.0.is_empty() {
             break;
         }
         // SAFETY: every pointer passed below is NULL or points to a buffer at least as large as
         // the size passed with it (see the module documentation).
-        unsafe { step(f, &mut input) };
+        unsafe { step(f, &mut input, base) };
     }
     // SAFETY: NULL is a valid argument.
     unsafe { f.C_Finalize.map(|finalize| finalize(ptr::null_mut())) };
+}
+
+/// Handle of the session the script's `a`-th `C_OpenSession` creates (`a` from 1 to 3; 0 and
+/// anything above 3 miss or reach later ones).
+fn session(base: CK_ULONG, value: CK_ULONG) -> CK_ULONG {
+    base.wrapping_add(value % 4)
+}
+
+/// The handle the last session of a probe run got: the script's first session is the next one.
+/// 0 if the module does not answer.
+///
+/// # Safety
+/// `f` must be the module's function list.
+unsafe fn first_session(f: &CK_FUNCTION_LIST) -> CK_ULONG {
+    let (mut slot, mut count, mut handle): (CK_ULONG, CK_ULONG, CK_ULONG) = (0, 1, 0);
+    // SAFETY: every pointer is to a live local, NULL where the function allows it.
+    unsafe {
+        if let (Some(init), Some(list), Some(open), Some(finalize)) = (
+            f.C_Initialize,
+            f.C_GetSlotList,
+            f.C_OpenSession,
+            f.C_Finalize,
+        ) {
+            init(ptr::null_mut());
+            list(1, &raw mut slot, &raw mut count);
+            open(
+                slot,
+                cryptoki_sys::CKF_SERIAL_SESSION,
+                ptr::null_mut(),
+                None,
+                &raw mut handle,
+            );
+            finalize(ptr::null_mut());
+        }
+    }
+    handle
 }
 
 /// A pointer to `buf`, or NULL.
@@ -92,8 +138,8 @@ fn maybe(buf: &mut [u8], null: bool) -> *mut u8 {
 /// # Safety
 /// `f` must be the module's function list.
 #[allow(clippy::too_many_lines)] // one arm per PKCS#11 function; splitting would hide the table
-unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
-    let op = input.byte() % 17;
+unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>, base: CK_ULONG) {
+    let op = input.byte() % 21;
     let a = input.ulong();
     let b = input.ulong();
     let null = input.byte().is_multiple_of(5);
@@ -176,8 +222,14 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                 } else {
                     info.as_mut_ptr()
                 };
+                // Sometimes a mechanism the module knows, the composed ones among them.
+                let ckm = if input.byte().is_multiple_of(2) {
+                    ops::known_mechanism(input)
+                } else {
+                    b
+                };
                 if let Some(call) = f.C_GetMechanismInfo {
-                    call(a, b, p);
+                    call(a, ckm, p);
                 }
             }
             7 => {
@@ -307,12 +359,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     ulParameterLen: if null { b % 2 } else { want as CK_ULONG },
                 };
                 if input.byte().is_multiple_of(2) {
-                    // The mechanism types the module knows: RSA_PKCS, RSA_PKCS_PSS, ECDSA.
-                    m.mechanism = [
-                        cryptoki_sys::CKM_RSA_PKCS,
-                        cryptoki_sys::CKM_RSA_PKCS_PSS,
-                        cryptoki_sys::CKM_ECDSA,
-                    ][usize::from(input.byte() % 3)];
+                    m.mechanism = ops::known_mechanism(input);
                 }
                 let mp = if input.byte().is_multiple_of(16) {
                     ptr::null_mut()
@@ -320,7 +367,15 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     &raw mut m
                 };
                 if let Some(call) = f.C_SignInit {
-                    call(b % 4, mp, input.ulong() % 4);
+                    call(session(base, b), mp, input.ulong() % 4);
+                }
+            }
+            17 => ops::sign_update(f, input, session(base, a), b, null),
+            18 => ops::sign_final(f, input, session(base, a), null),
+            19 => ops::login(f, input, session(base, a), b, null),
+            20 => {
+                if let Some(call) = f.C_Logout {
+                    call(session(base, a));
                 }
             }
             _ => {
@@ -335,7 +390,7 @@ unsafe fn step(f: &CK_FUNCTION_LIST, input: &mut Input<'_>) {
                     data.as_mut_ptr()
                 };
                 if let Some(call) = f.C_Sign {
-                    call(a % 4, dp, data_len, sp, &raw mut sig_len);
+                    call(session(base, a), dp, data_len, sp, &raw mut sig_len);
                 }
             }
         }

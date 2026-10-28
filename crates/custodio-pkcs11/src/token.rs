@@ -1,4 +1,5 @@
 //! One token per key: what the module shows to PKCS#11 consumers, built from the certificate.
+#![forbid(unsafe_code)]
 
 use cryptoki_sys::{
     CK_ATTRIBUTE_TYPE, CK_BBOOL, CK_OBJECT_HANDLE, CK_ULONG, CKA_ALWAYS_AUTHENTICATE,

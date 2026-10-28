@@ -228,7 +228,7 @@ fn composed_sign_sends_digest_or_digestinfo() {
 
 #[test]
 fn composed_sign_big_message() {
-    let size = if cfg!(miri) { 1 << 20 } else { 16 << 20 };
+    let size = if cfg!(miri) { 1 << 16 } else { 16 << 20 };
     let message = vec![0_u8; size];
     let (m, s) = rec_module(EC_CERT, Ok(vec![5; 64]));
     let mechanism = Mechanism::new(CKM_ECDSA_SHA256, None).unwrap_or(Mechanism::Ecdsa);

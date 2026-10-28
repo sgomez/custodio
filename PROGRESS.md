@@ -89,3 +89,35 @@ with an empty context.
 - Decisions: none.
 - Not done / known issues: `just miri` not run (nightly missing).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F23 — attempt 1
+- Done: pinned nightly installed (`rustup toolchain install nightly-2026-10-26 …`). `SIGN_CALLS` in
+  `fake.rs` (+ `fake/tests.rs`); `ffi/tests/sanitizers.rs` (6 tests, exact-size and guarded heap
+  buffers); fuzz harness: ops 17-20 (`C_SignUpdate`, `C_SignFinal`, `C_Login`, `C_Logout`) in
+  `ffi/fuzzing/ops.rs`, composed mechanisms in `C_GetMechanismInfo`/`C_SignInit`, tests in
+  `ffi/fuzzing/tests.rs` (reference model, 24 permutations, 2000 random scripts); lint structure
+  (`deny` in `lib.rs`, `allow` in `ffi.rs`/`unsupported.rs`, `forbid` in the rest); justfile `test`
+  line and `crap` exclude of `fuzzing/ops.rs`. ASan, fuzz-build, lint-fuzz, `just lint`, `just check`
+  pass; a 60 s `cargo fuzz run --target x86_64-unknown-linux-gnu` (musl target missing here): 289k runs, no crash.
+- Baseline found Miri failing/unusable on F19-F20 tests, fixed without hiding tests: the
+  `cross_verify_*` unit tests read `.p12` from disk (isolation error) and derive keys (PBKDF2, minutes
+  in Miri): they now embed PKCS#8 keys (`tests/*-key.pk8.der`); `cross_verify_openssl` spawns a process,
+  which Miri cannot, so it moved to `tests/composed_openssl.rs` (still runs in `just test`);
+  `composed_sign_big_message` Miri size 1 MiB -> 64 KiB (1 MiB took ~45 min).
+- Deviations from the contract: tests of fake/fuzzing live in `fake/tests.rs` and `fuzzing/tests.rs`
+  (inline test modules are forbidden by the file gate), so `grep SERIAL fuzzing.rs` finds none; `SERIAL`
+  is `pub(crate)` (and `ffi::tests` too) so `fake::tests` can take it. Harness change: session handles
+  grow for the whole process, so `run` probes the next handle and ops use `base + value % 4`
+  (`C_SignInit` session was `b % 4`). `fuzzing/ops.rs` split out for tidiness; `crap` exclude extended.
+- Mutations (not committed, tree restored): (a) ASan + Miri (named tests) fail; (b) ASan whole lib,
+  ASan `fuzzing::tests::script_reaches_composed_mechanisms` (heap overflow) and Miri
+  `multipart_final_small_buffer_keeps_operation` fail; (c) Miri `ffi::tests::login` and
+  `login_arguments` fail; (d) Miri `login_arguments` fails; (e) ASan/Miri `composed_mechanism_info` and
+  Miri `script_reaches_composed_mechanisms` fail; (f) `login_logout_ops_are_wired` fails for login and
+  logout; (g) `sequences_in_any_order` and `composed_sign_after_update_is_rejected` fail. (a)/(b) were
+  run with named Miri tests rather than a second full `just miri` (it takes an hour).
+- Verify: `just miri` (76 tests, ~40 min), `just asan`, `just fuzz-build`, `just lint-fuzz`, `just lint`, `just check` pass;
+  `fuzzing::` run under Miri (4 tests) and ASan pass.
+- Not done / known issues: none for F23. `scripts/check-files.sh` prints `file:
+  command not found` here (pre-existing); sizes checked by hand.
+- Next session should: start the next feature.
