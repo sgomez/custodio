@@ -86,7 +86,7 @@
         "F25"
       ],
       "verify": "just check-slow",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F28",
