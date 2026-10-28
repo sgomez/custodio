@@ -235,3 +235,16 @@ with an empty context.
 - Verify: `just check`, `just lint`, `just coverage-gate` pass; the `just check-slow` run before the CRAP fixes passed
   mutants and failed only the CRAP gate, now fixed.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F27 — attempt 2
+- Done: NEXT_FINDINGS 1 and 2.
+- Shard timings (`just mutants --shard k/4`, both runs, warm local target; cargo-mutants builds in a scratch copy
+  each run): k=0 154 s, k=1 163 s, k=2 339 s, k=3 155 s, all exit 0. Mutants per shard: custodiod 48, custodio-pkcs11
+  14/14/14/12 (192 and 54 in total). A cold CI build adds roughly the build time of two baselines (~15 s each here
+  incremental; a few minutes cold), so the slowest shard stays far below the 30-minute `timeout-minutes`; not raised.
+- Planted survivor (an untested `pub fn planted_probe() -> bool { true }` in `store.rs`, run with
+  `just mutants --re 'planted_probe|from_ckm'`, reverted): exit 1, `target/mutants/mutants.out/missed.txt` lists the
+  planted mutant, and `target/mutants-pkcs11/mutants.out/outcomes.json` still exists (0 missed there).
+- Note for the commit history: commit 7669fb5 (builder prompt) and the second `cargo llvm-cov --features fuzzing --lib`
+  run in `coverage` are outside the contract's text; the latter only adds the fuzz harness tests to the report.
+- Next session should: start the next feature.
