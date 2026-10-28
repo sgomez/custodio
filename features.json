@@ -108,7 +108,7 @@
         "F28"
       ],
       "verify": "just lint && bash -n e2e/*.sh && grep -rq 'journalctl' e2e && grep -rq '_SYSTEMD_UNIT' e2e && grep -rq 'base64' e2e",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F30",
