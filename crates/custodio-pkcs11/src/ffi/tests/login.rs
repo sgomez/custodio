@@ -271,3 +271,31 @@ fn login_keeps_the_open_operation() {
     assert!(without.is_some());
     assert_eq!(run(true), without);
 }
+
+#[test]
+fn login_leaves_session_unchanged() {
+    let s = Session::new();
+    let session = s.open();
+    let mut m = mechanism(CKM_ECDSA_SHA256, ptr::null_mut(), 0);
+    // SAFETY: pointers are to live locals.
+    assert_eq!(unsafe { C_SignInit(session, &raw mut m, 2) }, CKR_OK);
+    let fields = || MODULE.session_fields(session);
+    let (before, info) = (fields(), session_info(session));
+    assert!(before.is_some());
+    let mut pin = SENTINEL.to_vec();
+    let len = to_ulong(pin.len()).unwrap_or(0);
+    for user in [CKU_USER, CKU_CONTEXT_SPECIFIC, CKU_SO] {
+        // SAFETY: `pin` is a live local with the length given.
+        let _ = unsafe { C_Login(session, user, pin.as_mut_ptr(), len) };
+        assert_eq!(fields(), before);
+        assert_eq!(session_info(session), info);
+    }
+    // SAFETY: no arguments to check.
+    assert_eq!(unsafe { C_Logout(session) }, CKR_OK);
+    let after = fields();
+    assert_eq!(after, before);
+    let text = after.map(|f| f.2).unwrap_or_default();
+    assert!(!text.contains(std::str::from_utf8(SENTINEL).unwrap_or("?")));
+    assert!(!text.contains(&format!("{:?}", SENTINEL.to_vec())));
+    assert!(!text.contains("[115, 101"));
+}

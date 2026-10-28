@@ -81,3 +81,11 @@ with an empty context.
 - Not done / known issues: `just miri` not run (nightly missing). `just check` and
   `just test-integration` pass.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F22 — attempt 2
+- Done: fixed the evaluator's finding. `ffi::tests::login_leaves_session_unchanged` now calls `C_Login`
+  with the sentinel PIN (all user types) and compares session fields (new `cfg(test)`
+  `Module::session_fields`, no new field) and `C_GetSessionInfo`; the module-level test was renamed.
+- Decisions: none.
+- Not done / known issues: `just miri` not run (nightly missing).
+- Next session should: start the next feature.

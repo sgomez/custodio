@@ -225,6 +225,18 @@ impl<B: Backend> Module<B> {
             .ok_or(CKR_SESSION_HANDLE_INVALID)
     }
 
+    /// The session's slot, whether a search is active and the `Debug` text of its sign state, for
+    /// tests that prove a call left the session alone.
+    #[cfg(test)]
+    pub(crate) fn session_fields(
+        &self,
+        session: CK_SESSION_HANDLE,
+    ) -> Option<(CK_SLOT_ID, bool, String)> {
+        let state = self.lock();
+        let s = state.sessions.get(&session)?;
+        Some((s.slot, s.find.is_some(), format!("{:?}", s.sign)))
+    }
+
     /// The attributes an object has, for `C_GetAttributeValue`.
     ///
     /// # Errors

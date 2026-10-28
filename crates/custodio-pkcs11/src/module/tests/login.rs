@@ -16,7 +16,7 @@ fn sign_state(m: &Module<Fake>, s: CK_SESSION_HANDLE) -> (CK_SLOT_ID, bool, Stri
 }
 
 #[test]
-fn login_leaves_session_unchanged() {
+fn checking_the_session_leaves_it_unchanged() {
     let (m, s) = module(Ok(vec![0; 64]));
     assert_eq!(m.sign_init(s, Mechanism::Ecdsa, KEY_HANDLE), Ok(()));
     let before = sign_state(&m, s);
