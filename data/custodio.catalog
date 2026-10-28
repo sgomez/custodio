@@ -1,0 +1,17 @@
+# Journal catalog for the entries custodiod writes. Reference: docs/audit.md.
+-- 29c3d30e6c4242406c6db3f120d36401 en
+Subject: Custodio signing request handled
+Defined-By: custodio
+
+Custodio handled one request to sign with a stored key. There is one entry per request.
+
+`MESSAGE` says what happened, for whom and with which key. `PRIORITY` is 6 for signed,
+5 for denied, 4 for authorization unavailable and 3 for signing failed after approval.
+`CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
+mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
+identifies this kind of entry.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

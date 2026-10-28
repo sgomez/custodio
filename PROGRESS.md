@@ -178,3 +178,15 @@ with an empty context.
   is `Ok` only for `Signed`. 4 (`offload.rs`) stays as a disclosed deviation.
 - Verify: `just check`, `just test-integration`, `cargo test -p custodiod --locked --test audit` pass.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F26 — attempt 1
+- Done: `docs/audit.md`, `data/custodio.catalog` (shipped as `usr/lib/systemd/catalog/custodio.catalog`, mode
+  `-rw-r--r--`), `audit/docs_tests.rs` (9 tests tying code, docs and catalog; exhaustive helpers for `Outcome` and
+  `AuditMechanism`). Drift checked by hand: renaming a field literal, deleting a docs row and removing a field from
+  the catalog each fail `docs_tests`; reverted.
+- Verify: `just check`, `just lint`, `just package` and the catalog line in `dpkg-deb -c` pass.
+- Catalog compile check (journalctl 257, dev container): `journalctl --root=<tmp> --update-catalog` accepts the file
+  (exit 0, database written). `--root=<tmp> --list-catalog <id>` could not show the id ("No such file or directory"; with
+  no argument it hits a systemd assertion in catalog_list), so the "listed" part of the evidence was NOT confirmed here.
+  The evaluator should weigh this.
+- Next session should: start the next feature.

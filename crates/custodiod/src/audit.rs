@@ -362,4 +362,6 @@ impl Entry {
 }
 
 #[cfg(test)]
+mod docs_tests;
+#[cfg(test)]
 mod tests;

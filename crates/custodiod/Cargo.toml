@@ -101,4 +101,9 @@ assets = [
     "usr/share/p11-kit/modules/custodio.module",
     "644",
   ],
+  [
+    "../../data/custodio.catalog",
+    "usr/lib/systemd/catalog/custodio.catalog",
+    "644",
+  ],
 ]
