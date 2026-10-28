@@ -128,3 +128,19 @@ Run on 2026-10-27 in an Ubuntu 26.04 GNOME VM (polkit 127, dbus-daemon 1.16.2) w
   person will see several dialogs in a row.
 - **Fingerprint (acceptance 6): not verified.** No fingerprint reader available.
 - `custodiod` logs nothing per signature; the only trace is polkit's agent helper starting.
+
+## SoftHSMv2 and multi-part signing (read for F21, `src/lib/SoftHSM.cpp`, develop branch)
+
+- `AsymSignInit` sets `bAllowMultiPartOp = false` for the raw mechanisms (`CKM_RSA_PKCS`,
+  `CKM_RSA_X_509`, ...), `true` for the hash-composed ones.
+- `C_SignUpdate` → `AsymSignUpdate` with a raw mechanism: `session->resetOp()` (operation ended)
+  and **`CKR_OPERATION_NOT_INITIALIZED`**. The F21 contract names `CKR_FUNCTION_NOT_SUPPORTED`
+  instead; see `BLOCKED.md`.
+- `C_SignFinal` with a raw mechanism: **`CKR_OPERATION_NOT_INITIALIZED`**, checked in `C_SignFinal`
+  itself, without `resetOp()` (the operation stays).
+- `C_Sign` after `C_SignUpdate` (composed): `AsymSign` finds `getAllowSinglePartOp()` false,
+  calls `resetOp()` and returns `CKR_OPERATION_NOT_INITIALIZED`. F21 returns `CKR_OPERATION_ACTIVE`
+  for this call and also ends the operation (a conservative choice of this project, as the
+  contract says).
+- `C_SignFinal` with a NULL or too-small buffer: sets the length, returns `CKR_OK` or
+  `CKR_BUFFER_TOO_SMALL`, keeps the operation (same for `C_Sign`).

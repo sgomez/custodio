@@ -95,6 +95,7 @@ pub(super) struct Fixture {
     _bus: Bus,
     state: tempfile::TempDir,
     asked: Arc<Mutex<Vec<String>>>,
+    approve: Arc<AtomicBool>,
     address: String,
 }
 
@@ -108,6 +109,8 @@ impl Fixture {
         let state = tempfile::tempdir()?;
         let (ready, wait) = std::sync::mpsc::channel::<Result<(), String>>();
         let signs = Arc::new(Mutex::new(Vec::new()));
+        let approve = Arc::new(AtomicBool::new(approve));
+        let switch = approve.clone();
         let (address, path, log, recorded) = (
             bus.address.clone(),
             state.path().join("keys"),
@@ -123,7 +126,7 @@ impl Fixture {
                     .at(
                         "/org/freedesktop/PolicyKit1/Authority",
                         FakePolkit {
-                            approve: Arc::new(AtomicBool::new(approve)),
+                            approve: switch,
                             asked: log,
                         },
                     )
@@ -183,11 +186,17 @@ impl Fixture {
             signs,
             state,
             asked,
+            approve,
         })
     }
 
     pub(super) fn store(&self) -> Result<KeyStore, Box<dyn Error>> {
         Ok(KeyStore::open(self.state.path().join("keys"))?)
+    }
+
+    /// Makes polkit approve or refuse from now on.
+    pub(super) fn approve(&self, yes: bool) {
+        self.approve.store(yes, Ordering::SeqCst);
     }
 
     pub(super) fn asked(&self) -> usize {

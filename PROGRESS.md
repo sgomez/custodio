@@ -39,3 +39,17 @@ with an empty context.
 - Not done / known issues: `just miri` not run (pinned nightly-2026-10-26 is not installed here).
   `scripts/check-files.sh` prints `file: command not found` in this environment (pre-existing).
 - Next session should: start F21 (`C_SignUpdate`/`C_SignFinal` stay `unsupported::*` until then).
+
+### 2026-10-28 — F21 — attempt 1
+- Done: steps 1-5. `module/signing.rs` (sign_init, sign, sign_update, sign_final; per-session
+  hash state with busy/aborted marks and operation serials), `ffi/sign.rs` (moved the four sign
+  functions out of `ffi.rs` for the file-size gate, added `C_SignUpdate`/`C_SignFinal`), stubs
+  removed. Unit tests `module/tests/multipart.rs`, `ffi/tests/multipart.rs`; integration scenarios
+  `tests/cryptoki/multipart*.rs` (equivalence, large, retry, raw, sign-after-update, denied,
+  tasks and fds, forks, threads). `just check` and `just test-integration` pass.
+- Decisions: none yet; see BLOCKED.md.
+- Not done / known issues: BLOCKED. SoftHSMv2 returns `CKR_OPERATION_NOT_INITIALIZED` for a raw
+  mechanism in `C_SignUpdate`/`C_SignFinal`, the contract says `CKR_FUNCTION_NOT_SUPPORTED`; the
+  contract tells the builder to stop. Step 6 not done. `just miri` not run (nightly missing).
+- Next session should: read the answer to BLOCKED.md, adjust the raw-mechanism code and tests if
+  needed, do step 6 (decisions.md), delete BLOCKED.md, commit.

@@ -150,7 +150,7 @@ pub(super) fn threads(pkcs11: &Pkcs11) -> TestResult {
     Ok(())
 }
 
-fn task_names() -> Vec<String> {
+pub(super) fn task_names() -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir("/proc/self/task")
         .into_iter()
         .flatten()

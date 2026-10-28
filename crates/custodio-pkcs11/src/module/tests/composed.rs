@@ -14,21 +14,22 @@ use sha2::{Digest, Sha256};
 
 use super::*;
 
-const RSA_CERT: &[u8] = include_bytes!("../../../tests/rsa2048-cert.der");
+pub(super) const RSA_CERT: &[u8] = include_bytes!("../../../tests/rsa2048-cert.der");
 
-const RSA_MECHS: [CK_MECHANISM_TYPE; 3] = [
+pub(super) const RSA_MECHS: [CK_MECHANISM_TYPE; 3] = [
     CKM_SHA256_RSA_PKCS,
     CKM_SHA384_RSA_PKCS,
     CKM_SHA512_RSA_PKCS,
 ];
-const EC_MECHS: [CK_MECHANISM_TYPE; 3] = [CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512];
+pub(super) const EC_MECHS: [CK_MECHANISM_TYPE; 3] =
+    [CKM_ECDSA_SHA256, CKM_ECDSA_SHA384, CKM_ECDSA_SHA512];
 
-type Call = (String, SignParams, Vec<u8>);
+pub(super) type Call = (String, SignParams, Vec<u8>);
 
 /// Records `(id, params, data)` of every `sign`, and can run a hook inside the call.
-struct Rec {
+pub(super) struct Rec {
     cert: &'static [u8],
-    result: Mutex<Result<Vec<u8>, BackendError>>,
+    pub(super) result: Mutex<Result<Vec<u8>, BackendError>>,
     calls: Mutex<Vec<Call>>,
     hook: OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
@@ -53,7 +54,7 @@ impl Backend for Rec {
     }
 }
 
-fn rec_module(
+pub(super) fn rec_module(
     cert: &'static [u8],
     result: Result<Vec<u8>, BackendError>,
 ) -> (Arc<Module<Rec>>, CK_SESSION_HANDLE) {
@@ -69,7 +70,7 @@ fn rec_module(
     (m, session)
 }
 
-fn calls(m: &Module<Rec>) -> Vec<Call> {
+pub(super) fn calls(m: &Module<Rec>) -> Vec<Call> {
     m.backend
         .calls
         .lock()
@@ -155,7 +156,7 @@ fn composed_mismatch_is_refused() {
     }
 }
 
-fn unhex(s: &str) -> Vec<u8> {
+pub(super) fn unhex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap_or_default())

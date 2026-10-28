@@ -60,10 +60,13 @@ fn hex(bytes: &[u8]) -> String {
 mod child;
 mod composed;
 mod composed_child;
+mod multipart;
+mod multipart_child;
 mod parent;
 
 use child::*;
 use composed_child::*;
+use multipart_child::*;
 use parent::*;
 
 /// Entry point of the child scenarios. Without `MODE_VAR` (a plain `cargo test`) it does nothing.
@@ -87,6 +90,16 @@ fn client() -> TestResult {
         "composed_refusals" => composed_refusals(&pkcs11),
         "composed_retry" => composed_retry(&pkcs11),
         "composed_denied" => composed_denied(&pkcs11),
+        "multipart_equivalence" => multipart_equivalence(&pkcs11),
+        "multipart_large" => multipart_large(&pkcs11),
+        "multipart_retry" => multipart_retry(&pkcs11),
+        "multipart_raw" => multipart_raw(&pkcs11),
+        "multipart_sign_after_update" => multipart_sign_after_update(&pkcs11),
+        "multipart_denied" => multipart_denied(&pkcs11),
+        "multipart_allowed" => multipart_allowed(&pkcs11),
+        "multipart_tasks" => multipart_tasks(&pkcs11),
+        "multipart_forks" => multipart_forks(&pkcs11),
+        "multipart_threads" => multipart_threads(&pkcs11),
         other => Err(format!("unknown mode {other}").into()),
     }
 }

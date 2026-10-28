@@ -9,29 +9,37 @@ use std::ptr;
 use std::sync::Once;
 
 use cryptoki_sys::{
-    CK_ATTRIBUTE_PTR, CK_BYTE_PTR, CK_C_INITIALIZE_ARGS, CK_FLAGS, CK_FUNCTION_LIST,
-    CK_FUNCTION_LIST_PTR_PTR, CK_INFO, CK_INFO_PTR, CK_MECHANISM, CK_MECHANISM_INFO,
-    CK_MECHANISM_INFO_PTR, CK_MECHANISM_PTR, CK_MECHANISM_TYPE, CK_OBJECT_HANDLE,
-    CK_OBJECT_HANDLE_PTR, CK_RSA_PKCS_PSS_PARAMS, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
+    CK_ATTRIBUTE_PTR, CK_C_INITIALIZE_ARGS, CK_FLAGS, CK_FUNCTION_LIST, CK_FUNCTION_LIST_PTR_PTR,
+    CK_INFO, CK_INFO_PTR, CK_MECHANISM_INFO, CK_MECHANISM_INFO_PTR, CK_MECHANISM_TYPE,
+    CK_OBJECT_HANDLE, CK_OBJECT_HANDLE_PTR, CK_RV, CK_SESSION_HANDLE, CK_SESSION_HANDLE_PTR,
     CK_SESSION_INFO, CK_SESSION_INFO_PTR, CK_SLOT_ID, CK_SLOT_ID_PTR, CK_SLOT_INFO,
     CK_SLOT_INFO_PTR, CK_TOKEN_INFO, CK_TOKEN_INFO_PTR, CK_ULONG, CK_ULONG_PTR,
     CK_UNAVAILABLE_INFORMATION, CK_VERSION, CK_VOID_PTR, CKF_OS_LOCKING_OK, CKF_RW_SESSION,
-    CKF_SERIAL_SESSION, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_WRITE_PROTECTED, CKM_ECDSA,
-    CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CANT_LOCK,
-    CKR_MECHANISM_INVALID, CKR_MECHANISM_PARAM_INVALID, CKR_SESSION_PARALLEL_NOT_SUPPORTED,
-    CKR_TOKEN_WRITE_PROTECTED, CKS_RO_PUBLIC_SESSION,
+    CKF_SERIAL_SESSION, CKF_TOKEN_INITIALIZED, CKF_TOKEN_PRESENT, CKF_WRITE_PROTECTED,
+    CKR_ARGUMENTS_BAD, CKR_BUFFER_TOO_SMALL, CKR_CANT_LOCK, CKR_MECHANISM_INVALID,
+    CKR_SESSION_PARALLEL_NOT_SUPPORTED, CKR_TOKEN_WRITE_PROTECTED, CKS_RO_PUBLIC_SESSION,
+};
+
+// What the tests reach through `use super::*`.
+#[cfg(test)]
+use cryptoki_sys::{
+    CK_MECHANISM, CK_RSA_PKCS_PSS_PARAMS, CKM_ECDSA, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS,
+    CKR_MECHANISM_PARAM_INVALID,
 };
 
 mod args;
 #[cfg(feature = "fuzzing")]
 pub mod fuzzing;
+mod sign;
 
 #[cfg(not(any(test, feature = "fuzzing")))]
 use crate::backend::DbusBackend;
-use crate::composed::Composed;
-use crate::module::{ForkGuard, Mechanism, Module, SignOutcome, mechanism_info, mechanisms};
+use crate::module::{ForkGuard, Module, mechanism_info, mechanisms};
 use crate::unsupported;
-use args::{guard, input, out, padded, template, to_ulong, to_usize, write_list};
+#[cfg(test)]
+use args::input;
+use args::{guard, out, padded, template, to_ulong, to_usize, write_list};
+use sign::{C_Sign, C_SignFinal, C_SignInit, C_SignUpdate};
 
 /// The service behind the global module. Tests (and Miri, which cannot talk to a bus) and the fuzz
 /// target use a fake.
@@ -379,73 +387,6 @@ unsafe extern "C" fn C_FindObjectsFinal(session: CK_SESSION_HANDLE) -> CK_RV {
     guard(|| MODULE.find_final(session))
 }
 
-unsafe extern "C" fn C_SignInit(
-    session: CK_SESSION_HANDLE,
-    mechanism: CK_MECHANISM_PTR,
-    key: CK_OBJECT_HANDLE,
-) -> CK_RV {
-    guard(|| {
-        // SAFETY: checked for null; validity is the caller's promise.
-        let m: &CK_MECHANISM = unsafe { mechanism.as_ref() }.ok_or(CKR_ARGUMENTS_BAD)?;
-        let pss = if m.mechanism == CKM_RSA_PKCS_PSS {
-            if m.pParameter.is_null()
-                || to_usize(m.ulParameterLen)? != size_of::<CK_RSA_PKCS_PSS_PARAMS>()
-                || !m.pParameter.cast::<CK_RSA_PKCS_PSS_PARAMS>().is_aligned()
-            {
-                return Err(CKR_MECHANISM_PARAM_INVALID);
-            }
-            // SAFETY: non-null, aligned and exactly the size of the structure.
-            let p = unsafe { &*m.pParameter.cast::<CK_RSA_PKCS_PSS_PARAMS>() };
-            Some((p.hashAlg, p.mgf, p.sLen))
-        } else if m.mechanism == CKM_RSA_PKCS
-            || m.mechanism == CKM_ECDSA
-            || Composed::from_ckm(m.mechanism).is_some()
-        {
-            if !m.pParameter.is_null() || m.ulParameterLen != 0 {
-                return Err(CKR_MECHANISM_PARAM_INVALID);
-            }
-            None
-        } else {
-            return Err(CKR_MECHANISM_INVALID);
-        };
-        MODULE.sign_init(session, Mechanism::new(m.mechanism, pss)?, key)
-    })
-}
-
-unsafe extern "C" fn C_Sign(
-    session: CK_SESSION_HANDLE,
-    data: CK_BYTE_PTR,
-    data_len: CK_ULONG,
-    signature: CK_BYTE_PTR,
-    signature_len: CK_ULONG_PTR,
-) -> CK_RV {
-    guard(|| {
-        // SAFETY: checked for null; validity is the caller's promise.
-        let signature_len = unsafe { out(signature_len) }?;
-        // SAFETY: the caller promises `data_len` readable bytes at `data`.
-        let data = unsafe { input(data, data_len) }?;
-        let capacity = if signature.is_null() {
-            None
-        } else {
-            Some(to_usize(*signature_len)?)
-        };
-        match MODULE.sign(session, data, capacity)? {
-            SignOutcome::Length(n) => *signature_len = to_ulong(n)?,
-            SignOutcome::TooSmall(n) => {
-                *signature_len = to_ulong(n)?;
-                return Err(CKR_BUFFER_TOO_SMALL);
-            }
-            SignOutcome::Signature(bytes) => {
-                // SAFETY: `sign` only returns a signature when `capacity` (the caller's buffer
-                // size at the non-null `signature`) is at least its length.
-                unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), signature, bytes.len()) };
-                *signature_len = to_ulong(bytes.len())?;
-            }
-        }
-        Ok(())
-    })
-}
-
 /// The function list: the calls above, and `CKR_FUNCTION_NOT_SUPPORTED` for every other entry.
 static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     version: CK_VERSION {
@@ -496,8 +437,8 @@ static FUNCTION_LIST: CK_FUNCTION_LIST = CK_FUNCTION_LIST {
     C_DigestFinal: Some(unsupported::DigestFinal),
     C_SignInit: Some(C_SignInit),
     C_Sign: Some(C_Sign),
-    C_SignUpdate: Some(unsupported::SignUpdate),
-    C_SignFinal: Some(unsupported::SignFinal),
+    C_SignUpdate: Some(C_SignUpdate),
+    C_SignFinal: Some(C_SignFinal),
     C_SignRecoverInit: Some(unsupported::SignRecoverInit),
     C_SignRecover: Some(unsupported::SignRecover),
     C_VerifyInit: Some(unsupported::VerifyInit),

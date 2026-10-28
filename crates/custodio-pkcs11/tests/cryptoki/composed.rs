@@ -16,7 +16,7 @@ use super::*;
 const CKM_RSA_PKCS: u32 = 0x1;
 const CKM_ECDSA: u32 = 0x1041;
 
-fn unhex(s: &str) -> Vec<u8> {
+pub(super) fn unhex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap_or_default())
@@ -24,7 +24,7 @@ fn unhex(s: &str) -> Vec<u8> {
 }
 
 /// `(label, name, bytes)` of every `tag` line, in the order the child printed them.
-fn printed(stdout: &str, tag: &str) -> Vec<(String, String, Vec<u8>)> {
+pub(super) fn printed(stdout: &str, tag: &str) -> Vec<(String, String, Vec<u8>)> {
     let mut out = Vec::new();
     for l in lines(stdout, tag) {
         let name = if l.len() == 3 { l[1] } else { "" };
@@ -44,7 +44,7 @@ fn digest(name: &str, msg: &[u8]) -> Vec<u8> {
 }
 
 /// What the service must have been sent for `name` over `msg`: the digest, or prefix + digest.
-fn expected_input(name: &str, msg: &[u8]) -> Vec<u8> {
+pub(super) fn expected_input(name: &str, msg: &[u8]) -> Vec<u8> {
     let d = digest(name, msg);
     if !name.starts_with("rsa") {
         return d;
@@ -96,7 +96,7 @@ fn verify_ec(cert: &[u8], name: &str, msg: &[u8], sig: &[u8]) -> Result<bool, Bo
 }
 
 /// Checks one signature: valid over `msg`, invalid over anything else.
-fn check_signature(cert: &[u8], name: &str, msg: &[u8], sig: &[u8]) -> TestResult {
+pub(super) fn check_signature(cert: &[u8], name: &str, msg: &[u8], sig: &[u8]) -> TestResult {
     let verify = if name.starts_with("rsa") {
         verify_rsa
     } else {
@@ -135,7 +135,7 @@ fn check_signature(cert: &[u8], name: &str, msg: &[u8], sig: &[u8]) -> TestResul
 
 /// The recorded call matches the printed signature's entry: raw mechanism, no hash/salt
 /// parameters, only the digest or `DigestInfo`, and the message nowhere in the message bytes.
-fn check_recorded(rec: &Recorded, label: &str, name: &str, msg: &[u8]) {
+pub(super) fn check_recorded(rec: &Recorded, label: &str, name: &str, msg: &[u8]) {
     let raw = if name.starts_with("rsa") {
         CKM_RSA_PKCS
     } else {
@@ -156,7 +156,7 @@ fn check_recorded(rec: &Recorded, label: &str, name: &str, msg: &[u8]) {
 }
 
 /// Checks the child's `CERT` and `SIG` lines against the recorded calls, in order.
-fn check_run(f: &Fixture, out: &str, msg: &[u8], expected: usize) -> TestResult {
+pub(super) fn check_run(f: &Fixture, out: &str, msg: &[u8], expected: usize) -> TestResult {
     let certs: HashMap<String, Vec<u8>> = printed(out, "CERT")
         .into_iter()
         .map(|(l, _, c)| (l, c))

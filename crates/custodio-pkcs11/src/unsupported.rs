@@ -207,18 +207,6 @@ pub unsafe extern "C" fn DigestFinal(
     CKR_FUNCTION_NOT_SUPPORTED
 }
 
-pub unsafe extern "C" fn SignUpdate(_: CK_SESSION_HANDLE, _: *mut CK_BYTE, _: CK_ULONG) -> CK_RV {
-    CKR_FUNCTION_NOT_SUPPORTED
-}
-
-pub unsafe extern "C" fn SignFinal(
-    _: CK_SESSION_HANDLE,
-    _: *mut CK_BYTE,
-    _: *mut CK_ULONG,
-) -> CK_RV {
-    CKR_FUNCTION_NOT_SUPPORTED
-}
-
 pub unsafe extern "C" fn SignRecoverInit(
     _: CK_SESSION_HANDLE,
     _: *mut CK_MECHANISM,

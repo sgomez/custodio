@@ -27,7 +27,7 @@ pub(super) fn composed_for(label: &str) -> [(Mechanism<'static>, &'static str); 
 }
 
 /// Opens a session on every token and hands the label, session and key to `each`.
-fn each_token(
+pub(super) fn each_token(
     pkcs11: &Pkcs11,
     mut each: impl FnMut(&str, &Session, ObjectHandle, &[u8]) -> TestResult,
 ) -> TestResult {
@@ -151,13 +151,13 @@ pub(super) fn composed_refusals(pkcs11: &Pkcs11) -> TestResult {
 }
 
 /// The module's own function list, to call `C_Sign` with a NULL or short buffer.
-struct Raw {
-    list: CK_FUNCTION_LIST,
+pub(super) struct Raw {
+    pub(super) list: CK_FUNCTION_LIST,
     _library: libloading::Library,
 }
 
 impl Raw {
-    fn load() -> Result<Self, Box<dyn Error>> {
+    pub(super) fn load() -> Result<Self, Box<dyn Error>> {
         // SAFETY: loads the module the scenario already loaded; `C_GetFunctionList` has this type.
         unsafe {
             let library = libloading::Library::new(std::env::var(MODULE_VAR)?)?;
@@ -172,7 +172,12 @@ impl Raw {
         }
     }
 
-    fn init(&self, session: &Session, key: ObjectHandle, mechanism: CK_MECHANISM_TYPE) -> CK_RV {
+    pub(super) fn init(
+        &self,
+        session: &Session,
+        key: ObjectHandle,
+        mechanism: CK_MECHANISM_TYPE,
+    ) -> CK_RV {
         let mut m = CK_MECHANISM {
             mechanism,
             pParameter: std::ptr::null_mut(),
@@ -183,7 +188,7 @@ impl Raw {
         unsafe { f(session.handle(), &raw mut m, key.handle()) }
     }
 
-    fn sign(
+    pub(super) fn sign(
         &self,
         session: &Session,
         data: &[u8],

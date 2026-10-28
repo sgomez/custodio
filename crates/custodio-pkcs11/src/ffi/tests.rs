@@ -13,6 +13,7 @@ use cryptoki_sys::{
 use super::*;
 
 mod composed;
+mod multipart;
 
 use crate::fake::EC_CERT;
 
