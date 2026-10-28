@@ -1,0 +1,141 @@
+{
+  "milestone": "M1",
+  "features": [
+    {
+      "id": "F19",
+      "title": "Composed-mechanism core: hashing, DigestInfo and mechanism mapping",
+      "description": "Pure Rust code in custodio-pkcs11, with no FFI, for the six composed mechanisms (CKM_SHA256/384/512_RSA_PKCS, CKM_ECDSA_SHA256/384/512). It maps each one to its hash and its raw service mechanism (CKM_RSA_PKCS over the DigestInfo, or CKM_ECDSA over the digest) and to the key type it needs (RSA or P-256). It hashes the data and builds the RFC 8017 section 9.2 DigestInfo for SHA-256/384/512. Hash state is an incremental hasher that can be cloned, so a later multi-part path can retry after CKR_BUFFER_TOO_SMALL without losing state. The builder decides whether the module or the service truncates a SHA-384/512 digest to the P-256 order, records it in docs/decisions.md, and makes the service accept that input if needed; the signature must not depend on the choice. Unit tests: known-answer tests showing each DigestInfo prefix matches RFC 8017 byte for byte. Cross-verification tests: for every composed mechanism, a signature made through the mapping with a test RSA 2048 or P-256 key verifies with an independent verifier (a separate crate or OpenSSL) over the original message.",
+      "depends_on": [],
+      "verify": "just check",
+      "passes": false
+    },
+    {
+      "id": "F20",
+      "title": "Composed mechanisms in C_GetMechanismList, C_GetMechanismInfo, C_SignInit and single-part C_Sign",
+      "description": "Through the built module, each token lists and describes, besides the raw M0 mechanisms, only the composed mechanisms that fit its key: an RSA token has no ECDSA mechanism and a P-256 token has no RSA mechanism. C_SignInit with a composed mechanism that has a parameter, or with a key and mechanism that do not match, fails and does not ask polkit. C_Sign with a composed mechanism hashes the data in the module and sends the service only the digest or its DigestInfo; data size is limited only by client memory. A length query (NULL buffer) or a buffer that is too small returns the length and CKR_BUFFER_TOO_SMALL without asking polkit and without ending the operation. The next call with a large enough buffer asks polkit exactly once and returns a signature that verifies over the original message. Any other failure ends the operation. The cryptoki integration test (just test-integration) covers all of this, including an assertion on the input the service receives that shows the message never reaches it (acceptance 4). The raw-mechanism signing tests from M0 pass unchanged.",
+      "depends_on": ["F19"],
+      "verify": "just check && just test-integration",
+      "passes": false
+    },
+    {
+      "id": "F21",
+      "title": "Multi-part C_SignUpdate and C_SignFinal for composed mechanisms",
+      "description": "For the composed mechanisms the module supports C_SignUpdate called any number of times, then C_SignFinal. The hash state belongs to the session; the module keeps no thread, connection or lock past a call. A length query or a too-small buffer in C_SignFinal does not ask polkit and keeps the hash state, so the retry asks polkit exactly once and signs once. Any other failure ends the operation. C_SignUpdate after C_SignInit with a raw mechanism fails and ends the operation, so raw mechanisms stay single-part only. C_Sign after C_SignUpdate in the same operation is rejected as PKCS#11 says. The cryptoki integration tests show that signing one message with C_Sign and with C_SignUpdate in several parts plus C_SignFinal gives signatures that both verify, and that are byte-identical for RSA PKCS#1 v1.5 (acceptance 2 and 3). The fork and thread tests are extended to an open multi-part operation: a child after fork and other threads cannot corrupt or finish it, and the module stays fork-safe.",
+      "depends_on": ["F20"],
+      "verify": "just check && just test-integration",
+      "passes": false
+    },
+    {
+      "id": "F22",
+      "title": "C_Login and C_Logout as no-ops",
+      "description": "C_Login on a valid session with CKU_USER or CKU_CONTEXT_SPECIFIC returns CKR_OK with a NULL, empty or arbitrary PIN. It does not contact the service or polkit. The PIN is never stored, forwarded, logged or put in an error message. C_Login on an invalid session handle fails with the PKCS#11 code. CKU_SO fails, the spec's proposed default. A repeated login and the session state that C_GetSessionInfo reports follow the open question's interim rule (the most tolerant behaviour that keeps the M0 tests green), recorded in docs/decisions.md. C_Logout returns CKR_OK. Token flags do not change: CKF_LOGIN_REQUIRED and CKF_PROTECTED_AUTHENTICATION_PATH stay unset and CKA_ALWAYS_AUTHENTICATE stays false. Cryptoki integration tests (just test-integration) prove acceptance 6, including that a signature after a login still asks polkit and that a denial still makes it fail.",
+      "depends_on": [],
+      "verify": "just check && just test-integration",
+      "passes": false
+    },
+    {
+      "id": "F23",
+      "title": "Miri, AddressSanitizer and fuzzing for the new FFI entry points",
+      "description": "The module's unit tests that run under Miri (just miri) and AddressSanitizer (just asan) cover the new and changed FFI entry points through the fake service: C_GetMechanismList and C_GetMechanismInfo with the composed mechanisms, C_SignInit and C_Sign with composed mechanisms, including length queries and too-small buffers, C_SignUpdate, C_SignFinal, C_Login and C_Logout, including NULL and empty PIN pointers. The PKCS#11 fuzz target covers the new mechanisms, arbitrary multi-part call sequences (init, update, final, sign, in any order and with any sizes) and arbitrary C_Login arguments. It builds with just fuzz-build and passes just lint-fuzz. forbid(unsafe_code) still holds outside the FFI layer.",
+      "depends_on": ["F21", "F22"],
+      "verify": "just miri && just asan && just fuzz-build && just lint-fuzz",
+      "passes": false
+    },
+    {
+      "id": "F24",
+      "title": "Audit sink interface and native journal protocol writer in custodiod",
+      "description": "custodiod has an audit interface that tests can replace, and a production implementation that sends one entry per call to journald over the Native Journal Protocol (systemd.io), using an existing crate allowed by cargo-deny or a small writer of our own. An entry is a human-readable MESSAGE plus structured fields: a fixed MESSAGE_ID (a 128-bit id chosen once), the caller's uid and pid, the key id, the outcome (approved and signed; approved but signing failed; denied; authorization not possible), optionally the mechanism, and a PRIORITY per outcome. The fields are typed, so key material, passwords, data, digests, DigestInfo, signatures and strings that failed validation cannot be put in an entry. Submission returns an error the caller must handle; it never fails silently. Unit tests check the wire encoding, including values with newlines, against a datagram socket the test owns, and check that a socket that is missing or refuses the entry gives an error. The service unit's hardening does not loosen: just system-gates (security score threshold 10) passes, and the unit keeps dropping every capability.",
+      "depends_on": [],
+      "verify": "just check",
+      "passes": false
+    },
+    {
+      "id": "F25",
+      "title": "One journal entry per Sign call that reaches authorization, failing closed",
+      "description": "The service's Sign method takes the caller's uid and pid from the bus daemon's connection credentials for the same sender that polkit is asked about, never from the method arguments. If the bus cannot provide them, the signature is refused and the entry records that authorization was not possible. Every Sign call that reaches the authorization step produces exactly one entry through the F24 interface once the outcome is known, for each of the four outcomes. If the entry cannot be submitted, Sign returns an error and no signature (fail closed). Calls refused earlier, during argument validation, are not required to leave an entry (open question). Integration tests on the private bus with fake polkit and a replaced sink, in crates/custodiod/tests/audit.rs and run by just test-integration, show for every outcome: exactly one entry per call; the test process's uid and pid; the right key and outcome; none of the signed input, its hex or base64, the signature or the import password anywhere in the entry; and that a failing sink withholds the signature (acceptance 7 and 9 at integration level, 8 for entry content).",
+      "depends_on": ["F24"],
+      "verify": "just check && just test-integration && cargo test -p custodiod --locked --test audit",
+      "passes": false
+    },
+    {
+      "id": "F26",
+      "title": "Audit documentation for administrators and the journal catalog entry",
+      "description": "docs/audit.md documents, as a stable interface, the MESSAGE_ID, every field name and its meaning, the outcome values, the priorities, and what is not guaranteed (identity of a person, pid reuse, rate limiting, volatile storage, imitation by other processes). It gives a journalctl query that matches only entries written by custodio.service, using journald's trusted fields (such as _SYSTEMD_UNIT and _UID), and example queries by uid, key and outcome. A journal catalog file for the MESSAGE_ID ships in the .deb under the systemd catalog directory. A unit test checks that the MESSAGE_ID and every field name in the code appear in docs/audit.md and in the catalog file, so code and docs cannot drift.",
+      "depends_on": ["F25"],
+      "verify": "just check && test -s docs/audit.md && grep -q MESSAGE_ID docs/audit.md && grep -q _SYSTEMD_UNIT docs/audit.md && just package && dpkg-deb -c target/debian/*.deb | grep -q 'systemd/catalog/'",
+      "passes": false
+    },
+    {
+      "id": "F27",
+      "title": "Mutation testing and CRAP gate cover the M1 code",
+      "description": "just mutants also mutates the service's audit path (the audit sink, credential lookup and the Sign code that records the outcome) and the module's mechanism mapping, hashing and DigestInfo construction, with no surviving mutant. If a second cargo-mutants run for custodio-pkcs11 is needed, it belongs in the same recipe, and the CI mutants workflow runs it too. The coverage report and the CRAP gate (threshold 30) pass on the new code. just check-slow passes as a whole, with no threshold lowered.",
+      "depends_on": ["F21", "F23", "F25"],
+      "verify": "just check-slow",
+      "passes": false
+    },
+    {
+      "id": "F28",
+      "title": "End-to-end: composed mechanisms, multi-part client and C_Login",
+      "description": "The e2e suite (just e2e, Debian 13 systemd container with the .deb and real polkit) adds: signing with each of the six composed mechanisms through pkcs11-tool (RSA 2048 for the RSA ones, P-256 for the ECDSA ones) after the test agent approves, each verified by OpenSSL over the original message with the certificate's public key (acceptance 1); signing through OpenSSL with pkcs11-provider, which uses C_SignUpdate/C_SignFinal, verified by OpenSSL (acceptance 2); and a pkcs11-tool signature with --login and a PIN before signing, which still asks polkit (acceptance 6). Every M0 e2e check still runs unchanged (acceptance 10). The dev container cannot run just e2e, so verify checks only that the suite is linted and contains these cases; F31 runs it for real.",
+      "depends_on": ["F21", "F22"],
+      "verify": "just lint && bash -n e2e/*.sh && for m in SHA256-RSA-PKCS SHA384-RSA-PKCS SHA512-RSA-PKCS ECDSA-SHA256 ECDSA-SHA384 ECDSA-SHA512 pkcs11-provider --login; do grep -rqF -- \"$m\" e2e || { echo \"missing in e2e: $m\" >&2; exit 1; }; done",
+      "passes": false
+    },
+    {
+      "id": "F29",
+      "title": "End-to-end: journal entries of custodio.service",
+      "description": "The e2e suite checks the real journal with the documented query from docs/audit.md. Exactly one entry per approved signature, per denied signature and per signature while polkit is unavailable, each with the uid and pid of the signing process, the key and the outcome (acceptance 7). Neither the raw bytes, hex nor base64 of the signed data, digest, DigestInfo, signature or import password appears anywhere in the custodio.service journal (acceptance 8). The dev container cannot run just e2e, so verify checks only that the suite is linted and contains the journal checks; F31 runs it for real.",
+      "depends_on": ["F26", "F28"],
+      "verify": "just lint && bash -n e2e/*.sh && grep -rq 'journalctl' e2e && grep -rq '_SYSTEMD_UNIT' e2e && grep -rq 'base64' e2e",
+      "passes": false
+    },
+    {
+      "id": "F30",
+      "title": "Research the M1 open questions that do not need the manual clients",
+      "description": "docs/findings.md gains an M1 section that answers, with each claim marked verified or inferred: whether rFirma, LibreOffice/NSS, pkcs11-provider or pkcs11-tool ever send C_Login with CKU_SO; what caller detail the bus daemons on the supported targets expose beyond uid and pid (connection credentials, pidfd, process security label) without loosening the unit's ProtectProc=/ProcSubset= hardening; and how journald's per-service rate limit would affect real entries if calls refused before authorization were logged, with a recommendation (no entry, per-call entry or aggregate). Code changes that follow from the answers are not part of this feature.",
+      "depends_on": ["F22", "F25"],
+      "verify": "grep -qE '^#+ .*M1' docs/findings.md && grep -q 'CKU_SO' docs/findings.md && grep -qi 'rate limit' docs/findings.md && grep -qiE 'pidfd|connection credentials' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F31",
+      "title": "Run just e2e on a host with a container engine",
+      "description": "A person runs just e2e on a host with podman or docker that can run privileged systemd containers, as in M0, and every check passes: the M1 checks from F28 and F29 and every M0 check (acceptance 1, 2, 6, 7, 8 and 10 against the real system). Fixes found on that run are committed and recorded in PROGRESS.md.",
+      "depends_on": ["F28", "F29"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F32",
+      "title": "Written manual acceptance steps",
+      "description": "docs/manual-acceptance.md gives the steps a person follows in a graphical Debian 13 or Ubuntu 26.04 session for acceptance 11 to 13: installing the .deb; importing an RSA 2048 and a P-256 key; getting an rFirma build without the two M0 workarounds (docs/findings.md section 4); registering the module in the NSS database LibreOffice uses; signing and cancelling in rFirma and in LibreOffice with each key; reopening the ODF document to check the signature; and running the documented journalctl query to compare entries against the steps taken. It says what to record for the open questions (PIN dialog in LibreOffice, LibreOffice with ECDSA, repeated login and session state).",
+      "depends_on": ["F26"],
+      "verify": "test -s docs/manual-acceptance.md && for w in rFirma LibreOffice 'RSA 2048' P-256 journalctl polkit; do grep -qF -- \"$w\" docs/manual-acceptance.md || { echo \"missing: $w\" >&2; exit 1; }; done",
+      "passes": false
+    },
+    {
+      "id": "F33",
+      "title": "Acceptance 11 by hand: unmodified rFirma",
+      "description": "Following docs/manual-acceptance.md, an rFirma build without the M0 workarounds lists the custodied certificate and signs a document with an RSA 2048 key and with a P-256 key. Each signature shows the polkit dialog, a second signature asks again, and cancelling makes the signature fail.",
+      "depends_on": ["F31", "F32"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F34",
+      "title": "Acceptance 12 by hand: LibreOffice",
+      "description": "Following docs/manual-acceptance.md, LibreOffice with the module registered in its NSS database signs an ODF document with an RSA 2048 key and with a P-256 key. Each signature shows the polkit dialog, and LibreOffice reports the signature as valid after the document is reopened. Whether a PIN dialog appeared, and whether ECDSA worked, is recorded in docs/findings.md. If ECDSA cannot work, the person approving the milestone decides whether RSA alone meets this step.",
+      "depends_on": ["F31", "F32"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F35",
+      "title": "Acceptance 13 by hand: the journal after the manual runs",
+      "description": "After F33 and F34, an administrator runs the documented journalctl query and sees one entry for each signature and each cancellation in those steps, with the person's uid, the pid of rFirma or LibreOffice, and the key used.",
+      "depends_on": ["F33", "F34"],
+      "manual": true,
+      "passes": false
+    }
+  ]
+}
