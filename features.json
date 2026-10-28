@@ -35,7 +35,7 @@
       "description": "C_Login on a valid session with CKU_USER or CKU_CONTEXT_SPECIFIC returns CKR_OK with a NULL, empty or arbitrary PIN. It does not contact the service or polkit. The PIN is never stored, forwarded, logged or put in an error message. C_Login on an invalid session handle fails with the PKCS#11 code. CKU_SO fails, the spec's proposed default. A repeated login and the session state that C_GetSessionInfo reports follow the open question's interim rule (the most tolerant behaviour that keeps the M0 tests green), recorded in docs/decisions.md. C_Logout returns CKR_OK. Token flags do not change: CKF_LOGIN_REQUIRED and CKF_PROTECTED_AUTHENTICATION_PATH stay unset and CKA_ALWAYS_AUTHENTICATE stays false. Cryptoki integration tests (just test-integration) prove acceptance 6, including that a signature after a login still asks polkit and that a denial still makes it fail.",
       "depends_on": [],
       "verify": "just check && just test-integration",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F23",
