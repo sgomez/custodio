@@ -119,7 +119,7 @@
         "F25"
       ],
       "verify": "grep -qE '^#+ .*M1' docs/findings.md && grep -q 'CKU_SO' docs/findings.md && grep -qi 'rate limit' docs/findings.md && grep -qiE 'pidfd|connection credentials' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F31",
