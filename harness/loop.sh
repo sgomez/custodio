@@ -178,7 +178,7 @@ Approved contract: $c"
   fi
   log "$id: evaluating"
   run_claude evaluator "$LOG_DIR/$stamp-eval.log" --agent evaluator \
-    "Mode: implementation. Feature: $feature. Contract: $c. Changes: git diff $(cat "$STATE/$id.base")..HEAD"
+    "Mode: implementation. Feature: $feature. Contract: $c. Changes: git diff $(cat "$STATE/$id.base")..HEAD. Verify log: $LOG_DIR/$stamp-verify.log"
 
   stash_leftovers "$stamp-eval"
 

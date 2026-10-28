@@ -38,7 +38,9 @@ Rules:
 - Size each feature for one to three agent sessions. Split anything bigger.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
-  Never use a command that always succeeds.
+  Never use a command that always succeeds. Use `just check` plus only the slow gates the feature
+  touches (e.g. `just miri` for FFI code, `just mutants` for files in its recipe), never
+  `just check-slow`: the release runs it in full.
 - An acceptance item that only a person can check (a GUI dialog, hardware, a third-party app) is a
   feature with `"manual": true` and no `verify`.
 - Every `passes` is `false`.
