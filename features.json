@@ -97,7 +97,7 @@
         "F22"
       ],
       "verify": "just lint && bash -n e2e/*.sh && for m in SHA256-RSA-PKCS SHA384-RSA-PKCS SHA512-RSA-PKCS ECDSA-SHA256 ECDSA-SHA384 ECDSA-SHA512 pkcs11-provider --login; do grep -rqF -- \"$m\" e2e || { echo \"missing in e2e: $m\" >&2; exit 1; }; done",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F29",
