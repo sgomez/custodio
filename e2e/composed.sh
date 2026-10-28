@@ -2,7 +2,7 @@
 # Sourced by user.sh after the M0 checks: composed mechanisms (acceptance 1), the multi-part client
 # OpenSSL + pkcs11-provider (acceptance 2) and C_Login before signing (acceptance 6).
 # Uses WORK, MODULE, E2E_DIR and the helpers fail and requests of user.sh.
-# shellcheck disable=SC2154 # WORK, MODULE, E2E_DIR and sig are set by user.sh, which sources this file
+sig=${sig:?set by user.sh, which sources this file}
 
 pub_rsa=$WORK/rsa.pub
 pub_ec=$WORK/ec.pub
@@ -13,13 +13,18 @@ spy=/usr/lib/x86_64-linux-gnu/pkcs11-spy.so
 [ -f "$spy" ] || spy=$(find /usr/lib -name pkcs11-spy.so 2>/dev/null | head -n 1)
 if [ -z "$spy" ] || [ ! -f "$spy" ]; then fail "pkcs11-spy.so (OpenSC) not found"; fi
 
-# p11sign_composed key mechanism [extra pkcs11-tool args]: signs data.bin into $sig.
+# Over 1024 bytes, so pkcs11-tool goes straight to C_SignUpdate/C_SignFinal and a denial asks polkit once.
+# A failing one-shot C_Sign makes pkcs11-tool (OpenSC 0.26.1) retry with C_SignUpdate/C_SignFinal, which
+# for a composed mechanism is a second signature and a second request.
+head -c 2000 /dev/urandom > "$WORK/deny.bin"
+
+# p11sign_composed key mechanism [extra pkcs11-tool args]: signs $input (data.bin) into $sig.
 p11sign_composed() {
     local key=$1 mech=$2
     shift 2
     rm -f "$sig"
     pkcs11-tool --module "$MODULE" --token-label "$key" --label "$key" --type privkey --sign \
-        --mechanism "$mech" --input-file "$WORK/data.bin" --output-file "$sig" "$@" >"$WORK/p11.log" 2>&1
+        --mechanism "$mech" --input-file "${input:-$WORK/data.bin}" --output-file "$sig" "$@" >"$WORK/p11.log" 2>&1
 }
 
 # verify_openssl pubkey digest sig [message]: succeeds when OpenSSL verifies the signature.
@@ -44,7 +49,7 @@ for m in SHA256-RSA-PKCS SHA384-RSA-PKCS SHA512-RSA-PKCS; do
 done
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
-if p11sign_composed rsa1 SHA256-RSA-PKCS; then fail "a denied SHA256-RSA-PKCS signature succeeded"; fi
+if input=$WORK/deny.bin p11sign_composed rsa1 SHA256-RSA-PKCS; then fail "a denied SHA256-RSA-PKCS signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied SHA256-RSA-PKCS signature produced output"
 [ "$(requests)" -eq $((before + 1)) ] || fail "SHA256-RSA-PKCS deny: expected exactly one request"
 echo "ok: SHA256-RSA-PKCS deny"
@@ -64,7 +69,7 @@ for m in ECDSA-SHA256 ECDSA-SHA384 ECDSA-SHA512; do
 done
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
-if p11sign_composed ec1 ECDSA-SHA256 --signature-format openssl; then fail "a denied ECDSA-SHA256 signature succeeded"; fi
+if input=$WORK/deny.bin p11sign_composed ec1 ECDSA-SHA256 --signature-format openssl; then fail "a denied ECDSA-SHA256 signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied ECDSA-SHA256 signature produced output"
 [ "$(requests)" -eq $((before + 1)) ] || fail "ECDSA-SHA256 deny: expected exactly one request"
 echo "ok: ECDSA-SHA256 deny"
@@ -149,6 +154,9 @@ check_login_log() {
     if [ -z "$init_at" ] || [ -z "$sign_at" ]; then fail "login case: no C_SignInit/C_Sign in the spy log"; fi
     [ "$init_at" -lt "$sign_at" ] || fail "login case: C_Sign before C_SignInit"
     [ "$login_at" -lt "$sign_at" ] || fail "login case: C_Login after C_Sign"
+    if [ "$1" = CKU_USER ]; then
+        [ "$login_at" -lt "$init_at" ] || fail "login case: C_Login after C_SignInit"
+    fi
 }
 
 export PKCS11SPY=$MODULE
@@ -160,7 +168,6 @@ login_sign rsa1 SHA256-RSA-PKCS || { cat "$WORK/p11.log" >&2; fail "login + SHA2
 [ "$(requests)" -eq $((before + 1)) ] || fail "login + SHA256-RSA-PKCS: expected exactly one request"
 verify_openssl "$pub_rsa" sha256 "$sig" || fail "OpenSSL did not verify the signature made after --login"
 check_login_log CKU_USER
-[ "$(spy_line '^[0-9]+: C_Login$')" -lt "$(spy_line '^[0-9]+: C_SignInit$')" ] || fail "login case: C_Login after C_SignInit"
 echo "ok: --login approve (RSA)"
 
 before=$(requests)
@@ -179,7 +186,9 @@ echo deny > "$E2E_DIR/mode"
 before=$(requests)
 if login_sign rsa1 SHA256-RSA-PKCS; then fail "a denied signature after --login succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied signature after --login produced output"
-[ "$(requests)" -eq $((before + 1)) ] || fail "--login deny: expected exactly one request, the login authorized nothing"
+# Two requests: the denied one-shot C_Sign makes pkcs11-tool retry with C_SignUpdate/C_SignFinal, and each
+# attempt is its own signature that asks polkit. Neither is authorized by the login.
+[ "$(requests)" -eq $((before + 2)) ] || fail "--login deny: expected exactly two requests, the login authorized nothing"
 check_login_log CKU_USER
 echo "ok: --login deny"
 

@@ -153,9 +153,15 @@ Run on 2026-10-27 in an Ubuntu 26.04 GNOME VM (polkit 127, dbus-daemon 1.16.2) w
 - In `sign_data()` a second context-specific login happens only for a private key with
   `CKA_ALWAYS_AUTHENTICATE` true, after `C_SignInit` and before `C_Sign`/`C_SignUpdate`. Our keys have none, so
   the context-specific e2e case sees exactly one `C_Login`, before `C_SignInit`. It can pass, so no `BLOCKED.md`.
-- Input of at most 1024 bytes (`in_buffer[1025]`): one-shot `C_Sign`, first as a size query (NULL buffer), then
-  the real call. Larger input, or a failing one-shot, goes to `C_SignInit` again + `C_SignUpdate` loop +
-  `C_SignFinal` (size query, then real). The mechanism does not matter.
+- Input of at most 1024 bytes (`in_buffer[1025]`): one-shot `C_Sign`. Larger input, or a failing one-shot,
+  goes to `C_SignInit` again + `C_SignUpdate` loop + `C_SignFinal`. The mechanism does not matter. Checked
+  against 0.26.1 (Debian trixie, read by the attempt-2 reviewer): there is **no size query**; it sets
+  `sig_len = sizeof(sig_buffer)` and calls `C_Sign` / `C_SignFinal` once. (The master-based "size query"
+  note in the first version of this entry was wrong for the shipped version.)
+- Polkit consequence: a denied one-shot `C_Sign` of a composed mechanism falls back to
+  `C_SignUpdate`/`C_SignFinal`, and `sign_final` signs again, so polkit is asked twice (`before + 2`). Raw
+  `RSA-PKCS` does not, since `C_SignUpdate` fails with `CKR_OPERATION_NOT_INITIALIZED`. Deny cases that must
+  ask once sign more than 1024 bytes.
 - Spy log format: a blank line, `N: C_Login`, `P:<pid>; T:0x<tid> <date>`, `[in] hSession = 0x1`,
   `[in] userType = CKU_USER` (or `CKU_CONTEXT_SPECIFIC`), the PIN dump (the log shows the PIN in clear), then
   `Returned:  0 CKR_OK` (two spaces).

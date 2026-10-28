@@ -272,3 +272,16 @@ with an empty context.
   URI attributes in pkcs11-provider (not read), whether it forwards the size query, whether the provider needs a PIN
   for these tokens, and the exact spy-log line shapes (taken from OpenSC source, not from a run).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F28 — attempt 2
+- Done: NEXT_FINDINGS 1-5. Composed deny cases (RSA, ECDSA) sign `deny.bin` (2000 bytes) so pkcs11-tool goes
+  straight to multi-part and asks once. The `--login` deny case needs `C_Sign` in the spy log (contract), so it
+  expects `before + 2` (denied one-shot, then the fallback is a second signature that asks again); commented in
+  the script. `check_login_log` checks `C_Login` < `C_SignInit` in every CKU_USER case. The blanket SC2154
+  disable is replaced by `sig=${sig:?...}`. `docs/findings.md` corrected for 0.26.1 (no size query; fallback
+  polkit consequence). Finding 6 (`file` missing in the dev image) is a harness issue, not touched.
+- NOT run, F31 must check: all of `just e2e`; whether pkcs11-provider needs a PIN or `C_Login` for these
+  tokens (a PIN prompt or denial would change the `+1` provider checks); `PKCS11_PROVIDER_MODULE` and the
+  `pkcs11:` URI attributes; the exact spy-log line shapes; whether the `--login` deny really takes `+2`
+  (if it is `+1`, relax that one check).
+- Next session should: start the next feature.
