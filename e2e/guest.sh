@@ -5,6 +5,9 @@ set -euo pipefail
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 
+# The checks of the journal checker come first; a broken checker would make the later checks worthless.
+bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
+start=$(date +%s) # journal checks only look at entries since here
 dpkg -i /pkg/custodio.deb >/dev/null
 systemctl daemon-reload
 systemctl reload dbus # restart would drop logind and polkit off the bus
@@ -45,6 +48,19 @@ rm -f "$work"/*.key "$work"/*.p12
 
 # User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session.
 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
+
+# Polkit unavailable: stopped and masked, so that D-Bus activation cannot start it either. The trap only
+# restores it if the explicit restore below was not reached.
+restore_polkit() { systemctl unmask --runtime polkit && systemctl start polkit; }
+trap 'restore_polkit >/dev/null 2>&1 || true' EXIT
+total=$(wc -l < "$work/agent/requests") # requests of the agent so far: one per signature up to here
+systemctl stop polkit
+systemctl mask --runtime polkit >/dev/null 2>&1
+if systemctl is-active --quiet polkit; then fail "polkit still active"; fi
+timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/unavailable.sh" || fail "unavailable.sh failed"
+restore_polkit || fail "polkit could not be restored"
+systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
+WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
 
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"

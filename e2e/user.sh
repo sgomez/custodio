@@ -98,4 +98,7 @@ echo "ok: NSS second signature asks again"
 # shellcheck source=/dev/null # checked on its own
 source "$(dirname "${BASH_SOURCE[0]}")/composed.sh"
 
+# shellcheck source=/dev/null # checked on its own
+source "$(dirname "${BASH_SOURCE[0]}")/journal-cases.sh"
+
 echo "user.sh: passed"

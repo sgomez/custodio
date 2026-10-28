@@ -285,3 +285,22 @@ with an empty context.
   `pkcs11:` URI attributes; the exact spy-log line shapes; whether the `--login` deny really takes `+2`
   (if it is `+1`, relax that one check).
 - Next session should: start the next feature.
+
+### 2026-10-28 — F29 — attempt 1
+- Done: `e2e/journal.py` (entries check and secret sweep, pure function of its inputs), `journal-selftest.sh`
+  (185 synthetic cases: the entry checks, and every planted form x secret x audit/non-audit/`UNIT=`-only entry;
+  I also mutated `journal.py` to confirm the self-test notices), `journal-cases.sh` (five signatures, each by its
+  own wrapper pid, ledger `$WORK/journal.cases`, kept in `$WORK/evidence`), `unavailable.sh`, `journal-check.sh`.
+  `guest.sh` runs the self-test first, stops and masks polkit around `unavailable.sh`, restores it, then runs the
+  check; `user.sh` and `guest.sh` only got added lines. Locally: `journalctl` has `-o export`, `--since`, `--sync`;
+  `python3 -I` and `shellcheck` run; `just lint`, `bash -n e2e/*.sh`, the self-test and `verify` pass.
+- Sweep scope: only what is on disk (F29 signatures, last `sig.bin`, `issued.der`, `data.bin`, `deny.bin`,
+  `big.bin`); earlier M0/F28 signatures were overwritten and are not swept. Files over 4 KiB are searched by their
+  first and last KiB. Two documented simplifications: the whole-run count (`TOTAL + 1`) assumes one agent request
+  per signature, and `--forbid-pidless` is used together with it, not as a fallback.
+- NOT run, F31 must check: all of `just e2e`; that stopping and masking polkit gives `authorization_unavailable`
+  and no hang (D-Bus activation of a masked unit); that the wrapper's pid is what the bus reports; that
+  `journalctl --sync` works in the container; that the export of the service journal is small enough to read; the
+  unit name `polkit` for stop/mask; what the provider and `pkcs11-tool` signatures look like on disk (DER vs r||s);
+  that the whole-run count matches (F28's `--login` deny case counts +2 in both).
+- Next session should: start the next feature.
