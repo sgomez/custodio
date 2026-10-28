@@ -7,8 +7,8 @@ use std::time::Duration;
 use cryptoki_sys::{
     CK_MECHANISM_TYPE, CKG_MGF1_SHA256, CKM_ECDSA, CKM_ECDSA_SHA256, CKM_RSA_PKCS,
     CKM_RSA_PKCS_PSS, CKM_SHA256, CKM_SHA256_RSA_PKCS, CKR_DATA_INVALID, CKR_DEVICE_ERROR,
-    CKR_FUNCTION_FAILED, CKR_FUNCTION_NOT_SUPPORTED, CKR_OPERATION_ACTIVE,
-    CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
+    CKR_FUNCTION_FAILED, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
+    CKR_SESSION_HANDLE_INVALID,
 };
 use sha2::{Digest, Sha256};
 
@@ -342,7 +342,7 @@ fn multipart_raw_mechanism_ends() {
                 1 => m.sign_final(s, None),
                 _ => m.sign_final(s, Some(size)),
             };
-            assert_eq!(r, Err(CKR_FUNCTION_NOT_SUPPORTED));
+            assert_eq!(r, Err(CKR_OPERATION_NOT_INITIALIZED));
             assert_eq!(
                 m.sign(s, b"x", Some(size)),
                 Err(CKR_OPERATION_NOT_INITIALIZED)

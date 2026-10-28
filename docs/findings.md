@@ -134,8 +134,8 @@ Run on 2026-10-27 in an Ubuntu 26.04 GNOME VM (polkit 127, dbus-daemon 1.16.2) w
 - `AsymSignInit` sets `bAllowMultiPartOp = false` for the raw mechanisms (`CKM_RSA_PKCS`,
   `CKM_RSA_X_509`, ...), `true` for the hash-composed ones.
 - `C_SignUpdate` → `AsymSignUpdate` with a raw mechanism: `session->resetOp()` (operation ended)
-  and **`CKR_OPERATION_NOT_INITIALIZED`**. The F21 contract names `CKR_FUNCTION_NOT_SUPPORTED`
-  instead; see `BLOCKED.md`.
+  and **`CKR_OPERATION_NOT_INITIALIZED`**. F21 first named `CKR_FUNCTION_NOT_SUPPORTED`; a person
+  chose this code instead, and that `C_SignFinal` with a raw mechanism ends the operation too.
 - `C_SignFinal` with a raw mechanism: **`CKR_OPERATION_NOT_INITIALIZED`**, checked in `C_SignFinal`
   itself, without `resetOp()` (the operation stays).
 - `C_Sign` after `C_SignUpdate` (composed): `AsymSign` finds `getAllowSinglePartOp()` false,

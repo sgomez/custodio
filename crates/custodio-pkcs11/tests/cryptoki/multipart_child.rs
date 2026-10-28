@@ -4,8 +4,8 @@ use std::sync::Barrier;
 
 use cryptoki_sys::{
     CK_MECHANISM_TYPE, CK_OBJECT_HANDLE, CK_RV, CK_SESSION_HANDLE, CK_ULONG, CKM_ECDSA,
-    CKM_ECDSA_SHA256, CKM_SHA256_RSA_PKCS, CKR_BUFFER_TOO_SMALL, CKR_FUNCTION_FAILED,
-    CKR_FUNCTION_NOT_SUPPORTED, CKR_OK, CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
+    CKM_ECDSA_SHA256, CKM_SHA256_RSA_PKCS, CKR_BUFFER_TOO_SMALL, CKR_FUNCTION_FAILED, CKR_OK,
+    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED,
 };
 
 use super::composed_child::{Raw, composed_for, each_token};
@@ -167,7 +167,7 @@ pub(super) fn multipart_raw(pkcs11: &Pkcs11) -> TestResult {
     let mut len: CK_ULONG = 64;
     // Update first.
     assert_eq!(raw.init_handle(handle, key, CKM_ECDSA), CKR_OK);
-    assert_eq!(raw.update(handle, b"x"), CKR_FUNCTION_NOT_SUPPORTED);
+    assert_eq!(raw.update(handle, b"x"), CKR_OPERATION_NOT_INITIALIZED);
     assert_eq!(
         raw.finish(handle, Some(&mut out), &mut len),
         CKR_OPERATION_NOT_INITIALIZED
@@ -176,13 +176,13 @@ pub(super) fn multipart_raw(pkcs11: &Pkcs11) -> TestResult {
     assert_eq!(raw.init_handle(handle, key, CKM_ECDSA), CKR_OK);
     assert_eq!(
         raw.finish(handle, None, &mut len),
-        CKR_FUNCTION_NOT_SUPPORTED
+        CKR_OPERATION_NOT_INITIALIZED
     );
     assert_eq!(raw.update(handle, b"x"), CKR_OPERATION_NOT_INITIALIZED);
     assert_eq!(raw.init_handle(handle, key, CKM_ECDSA), CKR_OK);
     assert_eq!(
         raw.finish(handle, Some(&mut out), &mut len),
-        CKR_FUNCTION_NOT_SUPPORTED
+        CKR_OPERATION_NOT_INITIALIZED
     );
     // A raw single-part signature still works.
     assert_eq!(raw.init_handle(handle, key, CKM_ECDSA), CKR_OK);

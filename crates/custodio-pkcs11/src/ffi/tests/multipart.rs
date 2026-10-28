@@ -1,6 +1,6 @@
 //! `C_SignUpdate` and `C_SignFinal` through the `extern "C"` functions.
 
-use cryptoki_sys::{CKM_ECDSA_SHA256, CKR_FUNCTION_NOT_SUPPORTED, CKR_OK, CKR_OPERATION_ACTIVE};
+use cryptoki_sys::{CKM_ECDSA_SHA256, CKR_OK, CKR_OPERATION_ACTIVE};
 
 use super::*;
 
@@ -99,7 +99,7 @@ fn sign_update_rules_through_the_c_functions() {
         assert_eq!(C_SignInit(session, &raw mut raw, 2), CKR_OK);
         assert_eq!(
             C_SignUpdate(session, &raw mut byte, 1),
-            CKR_FUNCTION_NOT_SUPPORTED
+            CKR_OPERATION_NOT_INITIALIZED
         );
         assert_eq!(
             C_SignFinal(session, sig.as_mut_ptr(), &raw mut len),

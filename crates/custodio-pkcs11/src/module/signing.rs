@@ -3,8 +3,8 @@
 
 use cryptoki_sys::{
     CK_OBJECT_HANDLE, CK_SESSION_HANDLE, CKR_DATA_INVALID, CKR_DEVICE_ERROR, CKR_FUNCTION_FAILED,
-    CKR_FUNCTION_NOT_SUPPORTED, CKR_KEY_HANDLE_INVALID, CKR_KEY_TYPE_INCONSISTENT,
-    CKR_OPERATION_ACTIVE, CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
+    CKR_KEY_HANDLE_INVALID, CKR_KEY_TYPE_INCONSISTENT, CKR_OPERATION_ACTIVE,
+    CKR_OPERATION_NOT_INITIALIZED, CKR_SESSION_HANDLE_INVALID,
 };
 
 use super::mechanism::hash_message;
@@ -171,7 +171,7 @@ impl<B: Backend> Module<B> {
         let op = s.sign.as_mut().ok_or(CKR_OPERATION_NOT_INITIALIZED)?;
         let Mechanism::Composed(c) = op.mechanism else {
             s.sign = None;
-            return Err(CKR_FUNCTION_NOT_SUPPORTED);
+            return Err(CKR_OPERATION_NOT_INITIALIZED);
         };
         match &op.hash {
             Hash::Busy => {
@@ -208,8 +208,8 @@ impl<B: Backend> Module<B> {
     /// `C_SignUpdate`.
     ///
     /// # Errors
-    /// `CKR_OPERATION_NOT_INITIALIZED`, `CKR_FUNCTION_NOT_SUPPORTED` for a raw mechanism (the
-    /// operation ends), `CKR_OPERATION_ACTIVE` when another call is hashing a part of the same
+    /// `CKR_OPERATION_NOT_INITIALIZED`, also for a raw mechanism (the operation ends),
+    /// `CKR_OPERATION_ACTIVE` when another call is hashing a part of the same
     /// session (the operation ends).
     pub fn sign_update(&self, session: CK_SESSION_HANDLE, part: &[u8]) -> Rv<()> {
         let (serial, mut hasher) = self.begin_update(session)?;
@@ -222,7 +222,8 @@ impl<B: Backend> Module<B> {
     /// query or a small buffer keeps the hash and does not reach the service.
     ///
     /// # Errors
-    /// As [`Module::sign`]; `CKR_FUNCTION_NOT_SUPPORTED` for a raw mechanism (the operation ends).
+    /// As [`Module::sign`]; also `CKR_OPERATION_NOT_INITIALIZED` for a raw mechanism (the operation
+    /// ends).
     pub fn sign_final(
         &self,
         session: CK_SESSION_HANDLE,
@@ -237,7 +238,7 @@ impl<B: Backend> Module<B> {
             let (mechanism, _) = settle(s)?;
             let Mechanism::Composed(composed) = mechanism else {
                 s.sign = None;
-                return Err(CKR_FUNCTION_NOT_SUPPORTED);
+                return Err(CKR_OPERATION_NOT_INITIALIZED);
             };
             let needed = s.token.signature_len();
             match capacity {
