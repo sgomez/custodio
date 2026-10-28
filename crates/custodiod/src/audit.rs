@@ -13,7 +13,7 @@
 //! | `MESSAGE_ID` | [`MESSAGE_ID`], 32 lower-case hex digits |
 //! | `PRIORITY` | `6` signed, `5` denied, `4` authorization unavailable, `3` signing failed |
 //! | `SYSLOG_IDENTIFIER` | `custodiod` |
-//! | `CUSTODIO_UID`, `CUSTODIO_PID` | the caller, decimal |
+//! | `CUSTODIO_UID`, `CUSTODIO_PID` | the caller, decimal; omitted when the bus gave none |
 //! | `CUSTODIO_KEY_ID` | the key id |
 //! | `CUSTODIO_OUTCOME` | `signed`, `signing_failed`, `denied` or `authorization_unavailable` |
 //! | `CUSTODIO_MECHANISM` | only when known: `rsa_pkcs`, `rsa_pkcs_pss_sha256`, `rsa_pkcs_pss_sha384`, `rsa_pkcs_pss_sha512`, `ecdsa` |
@@ -269,11 +269,11 @@ impl From<&Mechanism> for AuditMechanism {
     }
 }
 
-/// One audit entry. Built only by [`Entry::new`].
+/// One audit entry. Built only by [`Entry::new`] and [`Entry::without_caller`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     outcome: Outcome,
-    caller: Caller,
+    caller: Option<Caller>,
     key_id: KeyId,
     mechanism: Option<AuditMechanism>,
 }
@@ -288,7 +288,19 @@ impl Entry {
     ) -> Self {
         Self {
             outcome,
-            caller,
+            caller: Some(caller),
+            key_id,
+            mechanism,
+        }
+    }
+
+    /// An entry for a call whose caller the bus could not name: the outcome is always
+    /// [`Outcome::AuthorizationUnavailable`] and no uid or pid is written (none is invented).
+    #[must_use]
+    pub const fn without_caller(key_id: KeyId, mechanism: Option<AuditMechanism>) -> Self {
+        Self {
+            outcome: Outcome::AuthorizationUnavailable,
+            caller: None,
             key_id,
             mechanism,
         }
@@ -300,7 +312,7 @@ impl Entry {
     }
 
     #[must_use]
-    pub const fn caller(&self) -> Caller {
+    pub const fn caller(&self) -> Option<Caller> {
         self.caller
     }
 
@@ -317,11 +329,13 @@ impl Entry {
     /// The text of `MESSAGE`, built only from typed values.
     #[must_use]
     pub fn message(&self) -> String {
+        let who = self.caller.map_or_else(
+            || "uid unknown pid unknown".to_owned(),
+            |c| format!("uid {} pid {}", c.uid, c.pid),
+        );
         format!(
-            "{}: uid {} pid {} key {}",
+            "{}: {who} key {}",
             self.outcome.phrase(),
-            self.caller.uid,
-            self.caller.pid,
             self.key_id.as_str()
         )
     }
@@ -333,11 +347,13 @@ impl Entry {
             ("MESSAGE_ID", MESSAGE_ID.to_owned()),
             ("PRIORITY", self.outcome.priority().to_string()),
             ("SYSLOG_IDENTIFIER", crate::SERVICE_NAME.to_owned()),
-            ("CUSTODIO_UID", self.caller.uid.to_string()),
-            ("CUSTODIO_PID", self.caller.pid.to_string()),
-            ("CUSTODIO_KEY_ID", self.key_id.as_str().to_owned()),
-            ("CUSTODIO_OUTCOME", self.outcome.name().to_owned()),
         ];
+        if let Some(c) = self.caller {
+            f.push(("CUSTODIO_UID", c.uid.to_string()));
+            f.push(("CUSTODIO_PID", c.pid.to_string()));
+        }
+        f.push(("CUSTODIO_KEY_ID", self.key_id.as_str().to_owned()));
+        f.push(("CUSTODIO_OUTCOME", self.outcome.name().to_owned()));
         if let Some(m) = self.mechanism {
             f.push(("CUSTODIO_MECHANISM", m.name().to_owned()));
         }

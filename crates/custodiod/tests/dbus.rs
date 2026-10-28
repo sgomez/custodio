@@ -7,6 +7,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use custodiod::audit::MemorySink;
+use custodiod::credentials::BusCredentials;
 use custodiod::dbus::{BUS_NAME, CKM_ECDSA, CKM_RSA_PKCS, Custodio, OBJECT_PATH};
 use custodiod::polkit::PolkitAuthorizer;
 use custodiod::store::KeyStore;
@@ -122,7 +124,12 @@ impl Fixture {
             .object_server()
             .at(
                 OBJECT_PATH,
-                Custodio::new(store, PolkitAuthorizer::new(service.clone())),
+                Custodio::new(
+                    store,
+                    PolkitAuthorizer::new(service.clone()),
+                    BusCredentials::new(service.clone()),
+                    Arc::new(MemorySink::default()),
+                ),
             )
             .await?;
         service.request_name(BUS_NAME).await?;

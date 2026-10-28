@@ -22,6 +22,8 @@ use cryptoki::mechanism::{Mechanism, MechanismType};
 use cryptoki::object::{Attribute, AttributeType, ObjectClass, ObjectHandle};
 use cryptoki::session::Session;
 use cryptoki::types::Ulong;
+use custodiod::audit::MemorySink;
+use custodiod::credentials::BusCredentials;
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
 use custodiod::import::import_p12;
 use custodiod::polkit::PolkitAuthorizer;

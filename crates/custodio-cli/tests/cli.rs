@@ -12,6 +12,8 @@ use custodio_cli::{
     ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, parse_args, read_secret_line,
     run_import,
 };
+use custodiod::audit::MemorySink;
+use custodiod::credentials::BusCredentials;
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
 use custodiod::polkit::{AuthError, Authorizer};
 use custodiod::store::KeyStore;
@@ -250,7 +252,15 @@ fn serve(bus: &Bus, store: Arc<KeyStore>) -> Result<zbus::Connection, Box<dyn Er
     Ok(block_on(async {
         let conn = Builder::address(bus.address.as_str()).build().await?;
         conn.object_server()
-            .at(OBJECT_PATH, Custodio::new(store, Deny))
+            .at(
+                OBJECT_PATH,
+                Custodio::new(
+                    store,
+                    Deny,
+                    BusCredentials::new(conn.clone()),
+                    Arc::new(MemorySink::default()),
+                ),
+            )
             .await?;
         conn.request_name(BUS_NAME).await?;
         Ok::<_, zbus::Error>(conn)

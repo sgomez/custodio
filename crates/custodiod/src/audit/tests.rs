@@ -464,3 +464,42 @@ fn size_limit_is_exact() -> TestResult {
     would_block(&s)?;
     Ok(())
 }
+
+#[test]
+fn without_caller_entry_has_no_uid_or_pid() -> TestResult {
+    let (_d, path, s) = socket()?;
+    let e = Entry::without_caller(key("k9")?, Some(AuditMechanism::Ecdsa));
+    assert_eq!(e.outcome(), Outcome::AuthorizationUnavailable);
+    assert_eq!(e.caller(), None);
+    assert_eq!(e.key_id().as_str(), "k9");
+    assert_eq!(e.mechanism(), Some(AuditMechanism::Ecdsa));
+    assert_eq!(
+        e.message(),
+        "authorization unavailable, no signature: uid unknown pid unknown key k9"
+    );
+    JournalSink::new(&path).record(&e)?;
+    let got = decode(&recv(&s)?)?;
+    let names: Vec<&str> = got.iter().map(|(k, _)| k.as_str()).collect();
+    assert!(!names.contains(&"CUSTODIO_UID") && !names.contains(&"CUSTODIO_PID"));
+    let get = |n: &str| got.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone());
+    assert_eq!(get("PRIORITY"), Some(b"4".to_vec()));
+    assert_eq!(get("CUSTODIO_KEY_ID"), Some(b"k9".to_vec()));
+    assert_eq!(
+        get("CUSTODIO_OUTCOME"),
+        Some(b"authorization_unavailable".to_vec())
+    );
+    Ok(())
+}
+
+#[test]
+fn entry_with_caller_exposes_it() -> TestResult {
+    let e = entry(Outcome::Denied, None)?;
+    assert_eq!(
+        e.caller(),
+        Some(Caller {
+            uid: 1_234_567,
+            pid: 7_654_321
+        })
+    );
+    Ok(())
+}

@@ -127,7 +127,7 @@ bus-policy:
 # Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
 # The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
 test-integration:
-    cargo test -p custodiod --locked --test dbus --test polkit
+    cargo test -p custodiod --locked --test dbus --test polkit --test audit
     cargo test -p custodio-pkcs11 --locked --test cryptoki
 
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
@@ -148,7 +148,7 @@ asan:
 [positional-arguments]
 mutants *args:
     mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
-    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --no-shuffle --colors never --output target/mutants "$@"
+    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.

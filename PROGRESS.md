@@ -145,3 +145,19 @@ with an empty context.
   `Entry::mechanism()` asserted in `memory_sink_records_entries`.
 - Verify: `cargo test -p custodiod --lib audit` and `just check` pass.
 - Next session should: start the next feature.
+
+### 2026-10-28 — F25 — attempt 1
+- Done: `credentials.rs` (`CallerCredentials`, `BusCredentials` via `GetConnectionCredentials`, pure `caller_from`);
+  `Entry::without_caller` and `caller() -> Option<Caller>` (decision recorded); `Custodio<A, C>::new(store, authorizer,
+  credentials, sink)`; `Custodio::sign_call` holds the logic (the D-Bus `Sign` passes the header's sender): validate,
+  credentials, polkit for the same sender, sign, one entry, then the reply. Any sink error gives `Failed("audit
+  unavailable")`. `main.rs` builds via `build_service` (journal sink, bus credentials). Call sites and `justfile`
+  (`--test audit`, mutants list) updated. Tests: `tests/audit.rs` + `tests/audit/*.rs`, `dbus/tests.rs::sign_call`,
+  `main_tests.rs::wiring`, `credentials/tests.rs`.
+- Deviations: the sink runs on its own thread (`offload.rs`, no new dependency) because zbus's executor is shared by
+  the connection and a blocking sink would stall it; `entry_is_recorded_before_the_reply` uses zbus's own executor
+  (tokio is not a dependency). The scanned import password is the fixtures' `test-password`, not a new sentinel
+  fixture. `sign_call` is `pub` (the no-sender test calls it).
+- Verify: `just check`, `just test-integration`, `cargo test -p custodiod --locked --test audit`, `just lint`,
+  `just system-gates` (0.6 SAFE) pass; `just mutants`: 192 mutants, 149 caught, 43 unviable, 0 missed; `Cargo.lock` unchanged.
+- Next session should: start the next feature.

@@ -133,3 +133,180 @@ fn store_errors_map_to_distinct_dbus_errors() {
     assert_eq!(msg(StoreError::NotFound), "no such key");
     assert_eq!(msg(StoreError::TooLarge), "key store error");
 }
+
+mod sign_call {
+    use std::future::{Future, ready};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+    use crate::audit::{FailingSink, MemorySink};
+    use crate::credentials::CredentialsError;
+
+    struct Counting {
+        result: fn() -> Result<(), AuthError>,
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl Authorizer for Counting {
+        fn authorize(&self, _: &str) -> impl Future<Output = Result<(), AuthError>> + Send {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            ready((self.result)())
+        }
+    }
+
+    struct Creds(Arc<AtomicUsize>);
+
+    impl CallerCredentials for Creds {
+        fn credentials(
+            &self,
+            _: &str,
+        ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            ready(Ok(Caller { uid: 11, pid: 22 }))
+        }
+    }
+
+    struct Rig {
+        service: Custodio<Counting, Creds>,
+        sink: Arc<MemorySink>,
+        auth_calls: Arc<AtomicUsize>,
+        cred_calls: Arc<AtomicUsize>,
+        _dir: tempfile::TempDir,
+    }
+
+    fn rig(result: fn() -> Result<(), AuthError>) -> Result<Rig, Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
+        let auth_calls = Arc::new(AtomicUsize::new(0));
+        let cred_calls = Arc::new(AtomicUsize::new(0));
+        let sink = Arc::new(MemorySink::default());
+        let service = Custodio::new(
+            store,
+            Counting {
+                result,
+                calls: auth_calls.clone(),
+            },
+            Creds(cred_calls.clone()),
+            sink.clone(),
+        );
+        Ok(Rig {
+            service,
+            sink,
+            auth_calls,
+            cred_calls,
+            _dir: dir,
+        })
+    }
+
+    fn err_name(e: &fdo::Error) -> &str {
+        match e {
+            fdo::Error::AccessDenied(_) => "denied",
+            fdo::Error::Failed(_) => "failed",
+            fdo::Error::InvalidArgs(_) => "invalid",
+            _ => "other",
+        }
+    }
+
+    #[test]
+    fn sign_without_sender_records_unavailable() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        let got = zbus::block_on(r.service.sign_call(None, "k", CKM_ECDSA, 0, 0, b"x"));
+        assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+        assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(r.cred_calls.load(Ordering::SeqCst), 0);
+        let entries = r.sink.entries();
+        assert_eq!(entries.len(), 1);
+        let e = entries.first().ok_or("no entry")?;
+        assert_eq!(e.outcome(), Outcome::AuthorizationUnavailable);
+        assert_eq!(e.caller(), None);
+        assert_eq!(e.key_id().as_str(), "k");
+        assert_eq!(e.mechanism(), Some(AuditMechanism::Ecdsa));
+        Ok(())
+    }
+
+    #[test]
+    fn bad_sender_and_unavailable_are_unavailable() -> Result<(), Box<dyn std::error::Error>> {
+        for result in [
+            (|| Err(AuthError::BadSender)) as fn() -> Result<(), AuthError>,
+            || Err(AuthError::Unavailable("x".into())),
+        ] {
+            let r = rig(result)?;
+            let got = zbus::block_on(
+                r.service
+                    .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
+            );
+            assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+            let entries = r.sink.entries();
+            let e = entries.first().ok_or("no entry")?;
+            assert_eq!(entries.len(), 1);
+            assert_eq!(e.outcome(), Outcome::AuthorizationUnavailable);
+            assert_eq!(e.caller(), Some(Caller { uid: 11, pid: 22 }));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn denied_and_missing_key_are_distinct() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Err(AuthError::Denied))?;
+        let got = zbus::block_on(
+            r.service
+                .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
+        );
+        assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+        let r2 = rig(|| Ok(()))?;
+        let got = zbus::block_on(
+            r2.service
+                .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
+        );
+        assert!(got.is_err());
+        let outcomes = |r: &Rig| {
+            r.sink
+                .entries()
+                .iter()
+                .map(Entry::outcome)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(outcomes(&r), [Outcome::Denied]);
+        assert_eq!(outcomes(&r2), [Outcome::SigningFailed]);
+        Ok(())
+    }
+
+    #[test]
+    fn refused_arguments_never_reach_credentials() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        let got = zbus::block_on(
+            r.service
+                .sign_call(Some(":1.1"), "a/b", CKM_ECDSA, 0, 0, b"x"),
+        );
+        assert_eq!(got.as_ref().map_err(err_name), Err("invalid"));
+        assert_eq!(r.cred_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn sign_with_unconstructible_key_id_is_refused() {
+        let got = audit_parts("bad/id", &Mechanism::Ecdsa);
+        assert_eq!(got.as_ref().map_err(err_name).err(), Some("failed"));
+        let ok = audit_parts("good", &Mechanism::RsaPkcs).map(|(k, m)| (k.as_str().to_owned(), m));
+        assert_eq!(ok.ok(), Some(("good".to_owned(), AuditMechanism::RsaPkcs)));
+    }
+
+    #[test]
+    fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
+        let service = Custodio::new(
+            store,
+            Counting {
+                result: || Err(AuthError::Denied),
+                calls: Arc::default(),
+            },
+            Creds(Arc::default()),
+            Arc::new(FailingSink),
+        );
+        let got = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
+        assert_eq!(got.as_ref().map_err(err_name), Err("failed"));
+        Ok(())
+    }
+}

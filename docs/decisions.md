@@ -168,3 +168,8 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: a stuck journal must not hang a signing request; the caller (F25) turns the error into a refused
   signature.
 - Rejected: blocking send, or retrying and dropping the entry.
+
+## 2026-10-28 — Audit entries may have no caller
+- Decision: `Entry::without_caller` entries omit `CUSTODIO_UID`/`CUSTODIO_PID` and say `uid unknown pid unknown`.
+- Why: the bus gave no credentials and nothing may be invented.
+- Rejected: uid/pid 0, or refusing without an entry.

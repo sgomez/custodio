@@ -4,7 +4,7 @@
 FROM debian:trixie
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential clang lld pkg-config libssl-dev git curl ca-certificates sudo jq \
+      build-essential clang lld pkg-config libssl-dev git curl ca-certificates sudo jq procps \
       dbus dbus-daemon polkitd systemd p11-kit opensc libnss3-tools \
       just shellcheck nodejs npm python3 \
     && rm -rf /var/lib/apt/lists/*

@@ -153,7 +153,12 @@ impl Fixture {
                     conn.object_server()
                         .at(
                             OBJECT_PATH,
-                            Custodio::new(store, PolkitAuthorizer::new(conn.clone())),
+                            Custodio::new(
+                                store,
+                                PolkitAuthorizer::new(conn.clone()),
+                                BusCredentials::new(conn.clone()),
+                                Arc::new(MemorySink::default()),
+                            ),
                         )
                         .await?;
                     conn.request_name(BUS_NAME).await?;
