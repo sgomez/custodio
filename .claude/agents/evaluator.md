@@ -31,7 +31,10 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
 1. Read the contract, the feature's entry in `features.json` and the parts of `SPEC.md` it
    touches.
 2. Read the diff you were pointed to.
-3. Run the feature's `verify` command yourself, and every piece of evidence the contract lists.
+3. Do not re-run the feature's `verify` command: the loop ran it just before you and it passed.
+   Its output is the newest `.harness/logs/*-verify.log`, and results it wrote under `target/`
+   (e.g. `target/mutants*/mutants.out/`) are from that run. Run every other piece of evidence
+   the contract lists, reusing those results where the evidence is the same command.
 4. Check:
    - Every step and every piece of evidence in the contract is delivered, and nothing outside it
      was started.
