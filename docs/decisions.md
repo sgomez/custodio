@@ -130,3 +130,13 @@ Format: a title and three short bullets, a couple of lines each:
   the module stays a thin mapper and the D-Bus interface does not change.
 - Rejected: truncating in the module (a second place that must know the P-256 order, and a
   caller of raw `CKM_ECDSA` would still reach the service's truncation).
+
+## 2026-10-28 — Multi-part sign: a conflicting call ends the operation
+- Decision: `C_Sign` after `C_SignUpdate`, and a second call on a session while a part is being
+  hashed, return `CKR_OPERATION_ACTIVE` and end the operation; later calls give
+  `CKR_OPERATION_NOT_INITIALIZED`. The hash state is dropped, never half-used.
+- Why: SPEC ends an operation on any failure but a small buffer; a caller racing itself must not
+  be able to sign a message it did not intend. SoftHSMv2 returns `CKR_OPERATION_NOT_INITIALIZED`
+  for the first case (docs/findings.md); the project keeps the more telling code.
+- Rejected: keeping the operation open after the conflict (a retry could sign a different
+  message); copying SoftHSMv2's code for the first call.

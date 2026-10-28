@@ -53,3 +53,12 @@ with an empty context.
   contract tells the builder to stop. Step 6 not done. `just miri` not run (nightly missing).
 - Next session should: read the answer to BLOCKED.md, adjust the raw-mechanism code and tests if
   needed, do step 6 (decisions.md), delete BLOCKED.md, commit.
+
+### 2026-10-28 — F21 — attempt 2
+- Done: BLOCKED answered earlier (raw `C_SignUpdate`/`C_SignFinal` give
+  `CKR_OPERATION_NOT_INITIALIZED` and end the operation; code and tests already changed). Step 6:
+  decisions.md entry for the conflicting-call rule; the raw-mechanism code stays in findings.md
+  only (it follows SoftHSMv2).
+- Decisions: see docs/decisions.md.
+- Not done / known issues: `just miri` not run (nightly missing).
+- Next session should: start the next feature.
