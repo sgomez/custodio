@@ -22,7 +22,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --component 
 RUN curl -L --proto '=https' --tlsv1.2 -sSf \
       https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash \
     && cargo binstall -y cargo-deny cargo-machete cargo-mutants cargo-llvm-cov cargo-fuzz cargo-deb \
-         taplo-cli typos-cli zizmor git-cliff
+         taplo-cli zizmor git-cliff
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
 WORKDIR /work
