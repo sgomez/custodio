@@ -2,7 +2,7 @@
 # Milestones: the unit of work the harness plans and builds.
 #   harness/milestone.sh list    # closed milestones and the open one
 #   harness/milestone.sh close   # archive the finished milestone in docs/milestones/<name>
-#   harness/milestone.sh open    # start the next one from a new IDEA.md and PROGRESS.md
+#   harness/milestone.sh open    # start the next one on a milestone/<name> branch from main
 #   harness/milestone.sh approve spec|features   # approve what you reviewed
 #   harness/milestone.sh pass <id>               # mark a manual feature as checked
 set -euo pipefail
@@ -77,12 +77,16 @@ close() {
 }
 
 open() {
-  local name first
+  local name branch first
   [ -f features.json ] || [ -f SPEC.md ] || [ -f IDEA.md ] \
     && die "Milestone $(current) is still open. Finish it and run: just milestone close"
   tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+  [ "$(git branch --show-current)" = main ] || die "Open a milestone from main."
   name="M$(( $(last_closed) + 1 ))"
+  branch="milestone/m${name#M}"
+  git show-ref --quiet "refs/heads/$branch" && die "Branch $branch already exists."
   first=$(printf 'F%02d' $(( $(last_feature) + 1 )))
+  git switch -q -c "$branch"
   cat > IDEA.md <<EOF
 Milestone: $name
 
@@ -113,7 +117,7 @@ with an empty context.
 EOF
   fi
   commit "docs: open milestone $name" IDEA.md PROGRESS.md
-  log "Opened $name. Write IDEA.md, then: just harness run"
+  log "Opened $name on $branch. Write IDEA.md, then: just harness run"
 }
 
 pass() {

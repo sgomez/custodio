@@ -33,7 +33,7 @@ only a person can check.
 
 ## A milestone, start to end
 
-1. `just milestone open`, then write the idea in `IDEA.md` (replace the `TODO` line).
+1. `just milestone open` (from `main`; it creates the `milestone/mN` branch), then write the idea in `IDEA.md` (replace the `TODO` line).
 2. `just harness run`. A planner writes `SPEC.md` and stops.
 3. Read `SPEC.md`, fix what you don't like, `just milestone approve spec`.
 4. `just harness run`. An initializer splits the spec into `features.json` and stops.
