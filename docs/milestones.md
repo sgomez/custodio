@@ -23,20 +23,22 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 
 Build and test the packages; publishing them waits for M5.
 
-- `.rpm` for Fedora and RHEL/Alma 10. Check that SELinux lets the service run without a policy of
+- Supported: the versions whose bus has `ProcessFD` and that their distribution still maintains.
+  Debian 13, Ubuntu 26.04, Fedora 44, RHEL/Alma 10 and Arch. Out: Debian 12, Ubuntu 22.04, RHEL 9
+  and openSUSE Leap (no `ProcessFD`), Ubuntu 25.10 and Fedora 43 and earlier.
+- `.rpm` for Fedora 44 and RHEL/Alma 10. Check that SELinux lets the service run without a policy of
   its own.
 - Packages built with nfpm from one file list, replacing `cargo deb`: the `.deb`, the `.rpm` and an
   Arch `.pkg.tar.zst`, all from `just package` on the host.
 - Arch package installed with `pacman -U`. Acceptance on Omarchy 4, whose polkit agent is the
   Quickshell one inside `omarchy-shell`, not polkit-gnome.
 - rpm-ostree layering of the `.rpm` on an atomic Fedora (Bazzite).
-- End-to-end suite on every supported target in `docs/findings.md`, not only Debian 13.
+- End-to-end suite on every supported target, not only Debian 13; Alma 10 only there.
 - Upgrade and removal: keys survive a package upgrade and the service restarts with them. Decide
   what removal and purge do with the state directory: keys cannot be exported, so deleting it
   destroys them.
-- Distributions left out or at the edge: Ubuntu 24.04 (require `dbus-broker`, refuse to install,
-  or document it) and those without `ProcessFD` (Debian 12, Ubuntu 22.04, RHEL 9, openSUSE Leap: a
-  PID-based subject with its reuse risk, or leave them out).
+- Ubuntu 24.04: require `dbus-broker`, tried on the `ubuntu2404` VM; refuse to install if switching
+  the system bus breaks something. Never install on `dbus-daemon`.
 - Firefox on Fedora and Arch: confirm that the system NSS sees the module through p11-kit without
   manual registration.
 
