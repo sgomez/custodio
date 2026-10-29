@@ -5,7 +5,7 @@
 Proves the idea: a system service holds the key, a PKCS#11 module forwards to it over D-Bus, and
 every signature asks polkit. Scope and acceptance in `docs/milestones/SPEC.md`; results in `docs/findings.md`.
 
-## M1 — PKCS#11 compatibility and audit
+## M1 — PKCS#11 compatibility and audit (done)
 
 Make Custodio work with clients as they are, instead of clients adapting to it.
 
@@ -22,6 +22,8 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 ## M2 — Packaging and distributions
 
 - `.rpm` for Fedora and RHEL/Alma 10.
+- `PKGBUILD` for Arch, published in the AUR. Acceptance on Omarchy 4, whose polkit agent is the
+  Quickshell one inside `omarchy-shell`, not polkit-gnome.
 - End-to-end suite on every supported target in `docs/findings.md`, not only Debian 13.
 - Ubuntu 24.04: decide between requiring `dbus-broker`, refusing to install, or documenting it.
 - Firefox on Fedora: confirm that the system NSS sees the module through p11-kit without manual
