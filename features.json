@@ -162,7 +162,7 @@
         "F32"
       ],
       "manual": true,
-      "passes": false
+      "passes": true
     },
     {
       "id": "F35",
