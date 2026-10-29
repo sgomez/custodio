@@ -153,6 +153,26 @@ pid that resolved to `/usr/bin/rfirma`).
   It had to point at the installed `rfirma.desktop` first; check with
   `xdg-mime query default x-scheme-handler/afirma`.
 
+## Manual acceptance run (F34, acceptance 12)
+
+Run on 2026-10-29 on Ubuntu 26.04.1 GNOME (Wayland, polkit 127) with `custodio_0.1.0-1_amd64.deb`,
+LibreOffice 26.2.6.3 and the keys of `docs/manual-acceptance.md` section 1. Each result below was
+checked against `journalctl -u custodio.service` (uid, key id, outcome, a `soffice.bin` pid).
+
+- LibreOffice used a dedicated NSS database (`certutil -N --empty-password`, then `modutil -add`),
+  set in Tools > Options > LibreOffice > Security > Certificate Path. Without it LibreOffice picks
+  the Firefox profile's database.
+- **RSA 2048: passes.** Certificate listed, polkit dialog on signing, `rsa-sha256` signature valid
+  after reopening. Cancelling added no signature, logged as `denied`.
+- **P-256: passes.** Same steps; the document holds an `ecdsa-sha256` signature, valid after
+  reopening, journal mechanism `ecdsa`. So LibreOffice signs with ECDSA through Custodio.
+- **PIN dialog: none.** Only the polkit dialog appeared, for both keys. This contradicts the
+  inference in section 1 that `GetPasswordFunction` always shows a dialog; with
+  `CKF_LOGIN_REQUIRED` unset NSS does not ask for a password (inferred).
+- With the CA trusted as `C,,` the signature showed "at least one certificate could not be
+  validated": `certutil -V -u S` reported the issuer as not trusted. `C,C,C` fixed it; the
+  manual page now says so.
+
 ## SoftHSMv2 and multi-part signing (read for F21, `src/lib/SoftHSM.cpp`, develop branch)
 
 - `AsymSignInit` sets `bAllowMultiPartOp = false` for the raw mechanisms (`CKM_RSA_PKCS`,

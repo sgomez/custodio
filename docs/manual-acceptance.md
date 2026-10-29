@@ -55,11 +55,12 @@ the CA in the NSS database it uses (found in section 6; command checked here aga
 database):
 
 ```sh
-certutil -A -d sql:<nssdb dir> -n "Custodio test CA" -t "C,," -i ca.crt
+certutil -A -d sql:<nssdb dir> -n "Custodio test CA" -t "C,C,C" -i ca.crt
 certutil -L -d sql:<nssdb dir>
 ```
 
-Expected: the CA is listed with trust `C,,`. How rFirma trusts a CA (its own store or the
+Expected: the CA is listed with trust `C,C,C`. LibreOffice checks the signer as S/MIME (the
+middle flag); with `C,,` it reports the signature as not valid. How rFirma trusts a CA (its own store or the
 system's) is **unverified**; use what the rFirma documentation says and record it.
 
 ## 2. Install the .deb
