@@ -22,7 +22,7 @@ only a person can check.
 | `just milestone list` | Milestones, closed and open |
 | `just milestone open` / `close` | Start a milestone, finish it |
 | `just milestone approve spec` / `approve features` | Approve what you reviewed |
-| `just milestone pass <id>` | Mark a manual feature as checked |
+| `just milestone pass <id>` | Mark a manual feature as checked; commits pending `docs/` changes first |
 | **Agents** | |
 | `just harness run` | Run the agents, or continue after a stop |
 | `just harness try` | Same, at most 3 Claude sessions |

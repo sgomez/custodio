@@ -120,12 +120,19 @@ pass() {
   local id=${1:-}
   [ -n "$id" ] || die "Usage: just milestone pass <id of a manual feature>"
   [ -f features.json ] || die "No open milestone (no features.json)."
-  tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+  git status --porcelain --untracked-files=no | cut -c4- | grep -qv '^docs/' \
+    && die "Uncommitted changes outside docs/; commit or stash them first."
   jq -e --arg id "$id" 'any(.features[]; .id == $id)' features.json >/dev/null || die "No feature $id."
   jq -e --arg id "$id" 'any(.features[]; .id == $id and (.manual // false))' features.json >/dev/null \
     || die "$id is not a manual feature; the loop marks the others."
   jq -e --arg id "$id" 'any(.features[]; .id == $id and .passes)' features.json >/dev/null \
     && die "$id already passes."
+  # The notes of the manual run go in their own commit, before the mark.
+  if tracked_changes; then
+    git add -u -- docs/
+    git commit -q -m "docs($id): record the manual acceptance run"
+    log "Committed the docs/ changes for $id."
+  fi
   jq --arg id "$id" '(.features[] | select(.id == $id) | .passes) = true' features.json > features.json.tmp
   mv features.json.tmp features.json
   commit "chore($id): mark as passing (manual acceptance)" features.json
