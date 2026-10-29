@@ -21,14 +21,24 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 
 ## M2 — Packaging and distributions
 
-- `.rpm` for Fedora and RHEL/Alma 10.
-- `PKGBUILD` for Arch, published in the AUR. Acceptance on Omarchy 4, whose polkit agent is the
+Build and test the packages; publishing them waits for M5.
+
+- `.rpm` for Fedora and RHEL/Alma 10. Check that SELinux lets the service run without a policy of
+  its own.
+- Packages built with nfpm from one file list, replacing `cargo deb`: the `.deb`, the `.rpm` and an
+  Arch `.pkg.tar.zst`, all from `just package` on the host.
+- Arch package installed with `pacman -U`. Acceptance on Omarchy 4, whose polkit agent is the
   Quickshell one inside `omarchy-shell`, not polkit-gnome.
+- rpm-ostree layering of the `.rpm` on an atomic Fedora (Bazzite).
 - End-to-end suite on every supported target in `docs/findings.md`, not only Debian 13.
-- Ubuntu 24.04: decide between requiring `dbus-broker`, refusing to install, or documenting it.
-- Firefox on Fedora: confirm that the system NSS sees the module through p11-kit without manual
-  registration.
-- Package repositories next to rFirma's channel on `rfirma.com`.
+- Upgrade and removal: keys survive a package upgrade and the service restarts with them. Decide
+  what removal and purge do with the state directory: keys cannot be exported, so deleting it
+  destroys them.
+- Distributions left out or at the edge: Ubuntu 24.04 (require `dbus-broker`, refuse to install,
+  or document it) and those without `ProcessFD` (Debian 12, Ubuntu 22.04, RHEL 9, openSUSE Leap: a
+  PID-based subject with its reuse risk, or leave them out).
+- Firefox on Fedora and Arch: confirm that the system NSS sees the module through p11-kit without
+  manual registration.
 
 ## M3 — rFirma integration
 
@@ -56,6 +66,7 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 - Written threat model and security policy (`SECURITY.md`, how to report a vulnerability).
 - External review of the authorization path and the FFI layer.
 - Repository made public, user README, release notes.
+- Packages published in repositories next to rFirma's channel on `rfirma.com`.
 
 ## Unassigned
 
@@ -67,9 +78,7 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
   sites. A short grace window would conflict with "never cache an authorization".
 - **Document details in the dialog:** what polkit can show safely, and whether it is worth it when
   the hash cannot be proven.
-- **Older distributions without `ProcessFD`** (Debian 12, Ubuntu 22.04, RHEL 9, openSUSE Leap):
-  support them with a PID-based subject and its reuse risk, or leave them out.
-- **Snap and immutable distributions** (systemd-sysext, rpm-ostree layering).
+- **Snap and systemd-sysext** packages.
 - **More key types:** RSA 3072/4096, P-384.
 - **Fingerprint acceptance:** M0's SPEC acceptance 6 on a machine with a reader.
 - **RSA-PSS:** `CKM_RSA_PKCS_PSS` and the composed variants, once a target client needs it.
