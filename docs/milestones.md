@@ -42,8 +42,12 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 
 - Import keys with `TPM2_Import` (`tss-esapi`); the service keeps the wrapped blob and the
   certificate in its state directory.
-- Fall back to file storage when there is no TPM or it lacks the algorithm.
+- Fall back to a file encrypted with `systemd-creds` when there is no TPM or it lacks the
+  algorithm: bound to the TPM when there is one, to the host key otherwise. Weaker than
+  `TPM2_Import`, because the key is decrypted in the service's memory to sign and root can take it.
 - Migration of existing file keys into the TPM.
+- Imported keys cannot leave the TPM: empty `authPolicy`, so `TPM2_Duplicate` fails. Grades and
+  checks in `docs/reports/polkit-custodian-linux.md` section 8.
 
 ## M5 — Public release
 
@@ -69,5 +73,8 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 - **RSA-PSS:** `CKM_RSA_PKCS_PSS` and the composed variants, once a target client needs it.
 - **Key lifecycle:** listing and deleting keys, replacing a renewed certificate, and what happens to
   the keys when the disk dies (no export by design).
+- **Keys born in the TPM:** `C_GenerateKeyPair` and a CSR, so the key never exists outside the TPM
+  (`fixedTPM`, `fixedParent`), as in Windows Hello. Depends on whether the CA's enrolment tool (the
+  FNMT Configurador) can generate the key in a system PKCS#11 token.
 - **Presence without polkit:** the service talking to `fprintd` or a FIDO key directly, so the
   barrier does not depend on the system PAM stack.

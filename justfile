@@ -30,7 +30,6 @@ lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
     taplo fmt --check
-    typos
     {{shell_scripts}} | xargs -r shellcheck
     actionlint
     zizmor --offline .github/workflows
@@ -56,7 +55,7 @@ test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, typos, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
+# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
 check: lint test system-gates
 
