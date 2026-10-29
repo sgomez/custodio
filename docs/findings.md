@@ -173,6 +173,23 @@ checked against `journalctl -u custodio.service` (uid, key id, outcome, a `soffi
   validated": `certutil -V -u S` reported the issuer as not trusted. `C,C,C` fixed it; the
   manual page now says so.
 
+## Manual acceptance run (F35, acceptance 13)
+
+Run on 2026-10-29 after F33 and F34, by an account in `adm`, with the query of
+`docs/manual-acceptance.md` section 7 (`--since today`).
+
+- 11 entries, all `CUSTODIO_UID=1000`; the query without `_UID` returns the same 11.
+- rFirma RSA 2048: 2 `signed`, 1 `denied` (one pid, an `app-gnome-rfirma-<pid>` scope). rFirma P-256
+  site flow: 2 `signed`, 1 `denied`, mechanism `ecdsa` (one pid). LibreOffice: 1 `signed` and 1
+  `denied` per key, a new pid per step (LibreOffice was restarted), each a `libreoffice-soffice`
+  AppArmor process.
+- One extra `signed` RSA 2048 entry from an earlier rFirma window: a try before the recorded run,
+  confirmed by the person.
+- rFirma P-256 in the main window left no entry: the module refuses `CKM_SHA256_RSA_PKCS` before
+  calling the service.
+- `-o verbose` shows the four `CUSTODIO_*` fields in every entry (section 7 marked it unverified).
+- **Passes.**
+
 ## SoftHSMv2 and multi-part signing (read for F21, `src/lib/SoftHSM.cpp`, develop branch)
 
 - `AsymSignInit` sets `bAllowMultiPartOp = false` for the raw mechanisms (`CKM_RSA_PKCS`,

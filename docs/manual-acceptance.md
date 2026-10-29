@@ -184,8 +184,7 @@ journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3
 ```
 
 `-o verbose` shows the fields `CUSTODIO_UID`, `CUSTODIO_PID`, `CUSTODIO_KEY_ID`,
-`CUSTODIO_OUTCOME`. (`-o verbose` is unverified here; `journalctl` has no journal in the build
-environment.) By key, add `CUSTODIO_KEY_ID=rsa2048`.
+`CUSTODIO_OUTCOME` (verified in the F35 run). By key, add `CUSTODIO_KEY_ID=rsa2048`.
 
 Fill in one row per step of sections 5 and 6, and one per journal entry found:
 
