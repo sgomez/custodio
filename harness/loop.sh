@@ -162,6 +162,8 @@ $(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
     # Every step ticked and this HEAD never evaluated: nothing for a builder to do, go to the gate.
     if (( $(open_steps "$c") > 0 )) || [ "$(cat "$STATE/$id.evaluated" 2>/dev/null)" = "$head_before" ]; then
+      # A second idle session in a row will not do better: stop instead of burning the budget.
+      (( $(bump "$id.idle") < 2 )) || die "$id: two builder sessions in a row made no commit. Stopping for a human." 2
       no_commit="The previous session made no commit. Commit your work at the end of every session."
       # Keep the evaluator's findings; replacing them leaves the next builder nothing to fix.
       prev=$(tail -n +3 NEXT_FINDINGS.md 2>/dev/null | grep -vxF "$no_commit" | sed "/./,\$!d" || true)
@@ -169,9 +171,12 @@ $(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)"
       continue
     fi
     log "$id: no commit and no open steps; going to the gate"
-  elif bad_commits "$id" > "$STATE/$id.commits"; then
-    findings "$id" "commit messages" < "$STATE/$id.commits"
-    continue
+  else
+    rm -f "$STATE/$id.idle"
+    if bad_commits "$id" > "$STATE/$id.commits"; then
+      findings "$id" "commit messages" < "$STATE/$id.commits"
+      continue
+    fi
   fi
 
   if [ "$(contract_hash "$c")" != "$(cat "$STATE/$id.contract")" ]; then

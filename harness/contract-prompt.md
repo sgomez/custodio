@@ -14,6 +14,8 @@ What will be built, and what is explicitly left for other features.
 
 ## Steps
 - [ ] One step per line, each small enough for one session, in the order you will build them.
+- [ ] A conditional step starts with its condition ("Outcome B only: ..."); if it does not hold, the
+      builder marks it `- [-]`.
 
 ## Evidence
 - <requirement> → <test name or command> → <expected result>

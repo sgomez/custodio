@@ -7,8 +7,9 @@ Follow "Every session" in CLAUDE.md:
    contract (named below), and `git log --oneline -15`. If NEXT_FINDINGS.md exists, the previous
    attempt was rejected: fix every finding in it first.
 2. Work on the next unchecked steps of the contract, tests first. Tick a step (`- [ ]` → `- [x]`)
-   only when it is done and its evidence passes. Change nothing else in the contract, except
-   through an amendment (below).
+   only when it is done and its evidence passes. A step whose own condition (e.g. "Outcome B
+   only") does not hold is marked `- [-]` instead, and PROGRESS.md says why. Change nothing else
+   in the contract, except through an amendment (below).
 3. When every step is ticked, run the feature's `verify` command and every piece of evidence in
    the contract until they pass.
    Mutants: run `just mutants-diff <id>`; the full `just mutants` only when the `verify` runs it,
