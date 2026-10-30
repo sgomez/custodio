@@ -68,17 +68,21 @@ expect_fail needed-unknown "$FX_DIR/out/needed-unknown" "$REAL" libq.so.6 deb: r
 
 # The lifecycle script set per format.
 case_fail deb-no-postinst deb: postinst -- script-del deb postinstall
-case_fail deb-preinst deb: preinst -- script-add deb preinstall
+case_fail deb-no-preinst deb: preinst -- script-del deb preinstall
 case_fail deb-prerm deb: prerm -- script-add deb preremove
 case_fail deb-postrm deb: postrm -- script-add deb postremove
 case_fail rpm-no-post rpm: post -- script-del rpm postinstall
-case_fail rpm-pre rpm: pre -- script-add rpm preinstall
+case_fail rpm-no-pre rpm: pre -- script-del rpm preinstall
 case_fail rpm-preun rpm: preun -- script-add rpm preremove
 case_fail rpm-postun rpm: postun -- script-add rpm postremove
 case_fail arch-no-post-install arch: post_install -- script-del archlinux postinstall
 case_fail arch-no-post-upgrade arch: post_upgrade -- script-del archlinux postupgrade
-case_fail arch-pre-install arch: pre_install -- script-add archlinux preinstall
-case_fail arch-pre-upgrade arch: pre_upgrade -- script-add archlinux preupgrade
+case_fail arch-no-pre-install arch: pre_install -- script-del archlinux preinstall
+case_fail arch-no-pre-upgrade arch: pre_upgrade -- script-del archlinux preupgrade
+case_fail arch-no-hook arch: custodio-bus-check.hook -- drop /usr/share/libalpm/hooks/custodio-bus-check.hook
+case_fail arch-no-hook-script arch: libalpm/scripts/custodio-bus-check -- drop /usr/share/libalpm/scripts/custodio-bus-check
+case_fail hook-in-every-format deb: libalpm -- unpackager /usr/share/libalpm/hooks/custodio-bus-check.hook
+case_fail hook-mode arch: custodio-bus-check -- mode /usr/share/libalpm/scripts/custodio-bus-check 0644
 case_fail arch-post-remove arch: post_remove -- script-add archlinux postremove
 
 # Versions: the three formats carry the same version, and a pre-release sorts below its release.

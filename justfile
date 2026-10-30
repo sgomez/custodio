@@ -57,9 +57,10 @@ test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
+# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
+# ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
-check: lint test system-gates package-gate-test shell-scripts-test
+check: lint test system-gates package-gate-test shell-scripts-test test-scripts
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-hardening unit-verify bus-policy
@@ -73,6 +74,16 @@ package-gate-test:
     scripts/test-glibc-ceiling.sh
     scripts/test-package-lint.sh
     scripts/test-package-lint-lists.sh
+
+# The install-time check that the system bus provides ProcessFD (F42): the copies in the pre-install scripts equal the source, the check
+# against a private dbus-daemon, a stub bus without ProcessFD and no bus (as the source and as the scripts extracted from fixture
+# packages, with dash and bash), and the real dpkg, rpm and pacman refusing, installing or warning. The pacman cases run in the Arch
+# image of the namcap lint and need a container engine; CUSTODIO_SKIP_ARCH_INSTALL=1 skips them with a message.
+test-scripts:
+    scripts/check-bus-check-sync.sh
+    scripts/test-bus-check-sync.sh
+    scripts/test-bus-check.sh
+    scripts/test-install-real.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:

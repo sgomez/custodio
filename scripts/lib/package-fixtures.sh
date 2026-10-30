@@ -60,15 +60,20 @@ fx_file() { # NAME FORMAT: path of the package of that format
 # rpm reads its database from /var/lib/rpm by default, which a plain user cannot open.
 fx_rpm() { rpm --dbpath "$FX_DIR/rpmdb" "$@"; }
 
-# fx_script NAME FORMAT DIR: write the lifecycle script(s) of a package into DIR, as files: deb postinst, rpm post, arch .INSTALL.
+# fx_scripts NAME FORMAT DIR: write the lifecycle scripts of a package into DIR, as files: deb preinst and postinst (and the control
+# directory ctl), rpm pre and post, arch INSTALL (all functions) and hook-check (the script of the alpm hook) and hook.
 fx_scripts() {
     local pkg
     pkg=$(fx_file "$1" "$2")
     mkdir -p "$3"
     case $2 in
-    deb) dpkg-deb -e "$pkg" "$3/ctl" && cp "$3/ctl/postinst" "$3/postinst" ;;
-    rpm) fx_rpm -qp --qf '%{POSTIN}' "$pkg" > "$3/post" ;;
-    archlinux) bsdtar -xOf "$pkg" .INSTALL > "$3/INSTALL" ;;
+    deb) dpkg-deb -e "$pkg" "$3/ctl" && cp "$3/ctl/postinst" "$3/ctl/preinst" "$3/" ;;
+    rpm) fx_rpm -qp --qf '%{POSTIN}' "$pkg" > "$3/post" && fx_rpm -qp --qf '%{PREIN}' "$pkg" > "$3/pre" ;;
+    archlinux)
+        bsdtar -xOf "$pkg" .INSTALL > "$3/INSTALL"
+        bsdtar -xOf "$pkg" usr/share/libalpm/scripts/custodio-bus-check > "$3/hook-check"
+        bsdtar -xOf "$pkg" usr/share/libalpm/hooks/custodio-bus-check.hook > "$3/hook"
+        ;;
     esac
 }
 

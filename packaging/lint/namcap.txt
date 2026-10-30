@@ -18,6 +18,10 @@ incorrect-owner | usr/share/licenses/custodio/LICENSE (0:0) | nfpm writes numeri
 incorrect-owner | usr/share/man/man1/custodio.1.gz (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/p11-kit/modules/custodio.module (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/polkit-1/actions/com.rfirma.custodio.policy (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/share/libalpm/hooks/custodio-bus-check.hook (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/share/libalpm/scripts/custodio-bus-check (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+library-no-package-associated | sh ['usr/share/libalpm/scripts/custodio-bus-check'] | the alpm hook script (F42) is a POSIX sh script; sh comes with bash, which every Arch system has (base)
+script-link-detected | sh in ['usr/share/libalpm/scripts/custodio-bus-check'] | the alpm hook script (F42) is a POSIX sh script; sh comes with bash, which every Arch system has (base)
 libdepends-missing-provides | ld-linux-x86-64.so=2-64 glibc (['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so']) | information: glibc's package does not declare sonames; the dependency on glibc is written by name
 libdepends-missing-provides | libc.so=6-64 glibc (['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so']) | information: glibc's package does not declare sonames; the dependency on glibc is written by name
 link-level-dependence | glibc in * | information about the dependencies namcap found by linking; the package depends on glibc by name

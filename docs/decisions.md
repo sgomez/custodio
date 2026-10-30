@@ -191,3 +191,11 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: Arch has no `/usr/libexec`, and one path keeps one file list. A real `Exec=` in the activation file would start the
   service outside the unit's hardening; with `/bin/false`, activation fails instead of bypassing it.
 - Rejected: `/usr/libexec` with an Arch-only override (two lists, two units); an `Exec=` pointing at the binary.
+
+## 2026-10-30 — The install-time ProcessFD check refuses when it has no tool to ask with
+- Decision: the check (`packaging/bus-check.sh`) asks with `busctl`, else `dbus-send`. A bus socket that exists with neither tool
+  installed is refused, with a message to install one; only an absent socket (or nothing listening) is "no bus" and installs with a notice.
+- Why: a deb `preinst` can rely on Essential packages only, so neither tool is guaranteed; installing silently would hide a bus without
+  ProcessFD, which the check exists to catch.
+- Rejected: treating a missing tool as "no bus" (silent install); adding `Pre-Depends` on systemd or dbus (the dependency gate and the
+  minimal-install goal); querying the bus with a tool of our own (nothing may be added to the package for a script that runs before it).

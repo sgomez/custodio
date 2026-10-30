@@ -1,7 +1,7 @@
 """Derive a throwaway nfpm config from packaging/nfpm.yaml for a fixture case (run as `python3 -I`).
 
 usage: nfpm_edit.py SRC DST OP [ARG...]
-Ops: none | drop DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
+Ops: none | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
      | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY
 """
@@ -15,11 +15,13 @@ contents = cfg["contents"]
 
 
 def entry(path):
-    return next(e for e in contents if e["dst"] == path)
+    return next(e for e in contents if e["dst"] == path)  # the first one: the Arch-only paths come once
 
 
 if op == "drop":
     contents.remove(entry(args[0]))
+elif op == "unpackager":  # an Arch-only file listed for every format
+    entry(args[0]).pop("packager")
 elif op == "mode":
     entry(args[0])["file_info"]["mode"] = int(args[1], 8)
 elif op in ("owner", "group"):
@@ -49,7 +51,7 @@ elif op == "dep-set":
     deps[deps.index(args[1])] = args[2]
 elif op == "script-del":
     ov = cfg["overrides"][args[0]]
-    (ov["archlinux"]["scripts"] if args[1] == "postupgrade" else ov["scripts"]).pop(args[1])
+    (ov["archlinux"]["scripts"] if args[1] in ("preupgrade", "postupgrade") else ov["scripts"]).pop(args[1])
 elif op == "script-add":  # a script file of the real set, under a key the gate does not allow
     ov = cfg["overrides"][args[0]]
     target = ov["archlinux"].setdefault("scripts", {}) if args[1] in ("preupgrade", "postupgrade") else ov["scripts"]

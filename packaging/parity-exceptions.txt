@@ -1,5 +1,7 @@
-# Differences between the .deb, .rpm and Arch package that scripts/check-parity.sh accepts. Expected to hold no entry
-# after F36. One entry per line, four fields separated by " | ":
+# Differences between the .deb, .rpm and Arch package that scripts/check-parity.sh accepts. Since F42 only the Arch alpm hook files are
+# listed. One entry per line, four fields separated by " | ":
 #   PATH | PACKAGES | FIELD | REASON
 # PACKAGES: one or two of deb, rpm, arch, separated by commas; they may differ from the others on FIELD (the packages
 # not named must agree). FIELD: presence, kind, mode, owner, group or target. REASON must not be empty.
+/usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence | pacman ignores a failing pre_install, so only an alpm hook shipped in the package can refuse an upgrade or reinstall (F42); deb and rpm refuse in their pre-install script
+/usr/share/libalpm/scripts/custodio-bus-check | arch | presence | the check that hook runs (F42); deb and rpm embed the same check in their pre-install script

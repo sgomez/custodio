@@ -193,3 +193,21 @@ with an empty context.
 - Nothing to build: outcome A holds, so contract steps 4 and 5 (outcome B only) are marked `- [-]` and skipped. `verify` passes, one
   `Verdict: A`, no "not pinned down", no `BLOCKED.md`, `packaging`/`e2e`/`docs/milestones.md` untouched, `just check` passes.
 - Next session should: nothing for F41; the evaluator decides.
+
+### 2026-10-30 — F42 — session 1
+- Done (all eight steps): the check is `packaging/bus-check.sh` (busctl, else dbus-send; `GetConnectionCredentials` on the bus itself, `ProcessFD`
+  read only from a successful reply); `scripts/embed-bus-check.sh` writes deb `preinst`, rpm `pre`, Arch `pre_install`/`pre_upgrade` and the hook
+  script `packaging/arch/custodio-bus-check`; `scripts/check-bus-check-sync.sh` (+ its test) fails on any drift. Arch also ships
+  `custodio-bus-check.hook` (PreTransaction, AbortOnFail, Upgrade of `custodio`) via nfpm `packager: archlinux`; `package_expected.ARCH_ONLY_FILES`,
+  two parity exceptions and four namcap exceptions (all with reasons) cover them; gates/fixture tests updated for the new scripts.
+- Tests: `just test-scripts` (new, in `check`): `test-bus-check.sh` (source and scripts extracted from fixture packages, dash/bash, private dbus-daemon,
+  stub bus `scripts/lib/stub-bus.py` with/without/error, absent socket, dead socket, no tool, dbus-send only, default address trace, fake os-release in a
+  mount namespace) and `test-install-real.sh` (real `dpkg`, `rpm -i/-U` in a chroot of a user namespace; `pacman -U` in the Arch image). Mutants of the
+  check (`|| true`, no rc test, wrong down-detection, missing AbortOnFail) fail the suite. `docs/findings.md`: deb/rpm answers; `docs/decisions.md`: missing tool.
+- Decisions: socket present but neither busctl nor dbus-send => refuse. The Arch cases fail (not skip) without a container engine unless
+  `CUSTODIO_SKIP_ARCH_INSTALL=1`; `verify` ran them (no SKIPPED line). Check messages are format-neutral (no "nothing was installed", since Arch goes on).
+- For a person: SPEC.md and the F42 line of features.json say the installation fails on a bus without ProcessFD; on Arch the first installation only warns
+  (pacman ignores pre_install) and the hook refuses later upgrades/reinstalls. CI (`.github/workflows/ci.yml`) was not changed to run `test-scripts`:
+  it needs user namespaces and a container engine, which ubuntu-24.04 runners may restrict (AppArmor); decide whether to add it.
+- No Rust changed, so `just mutants-diff F42` has nothing to mutate. `just check`, `just test-scripts`, `just package`, `just package-lint` pass.
+- Next session should: nothing for F42; the evaluator decides.

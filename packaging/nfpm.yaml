@@ -55,6 +55,14 @@ contents:
   - src: LICENSE
     dst: /usr/share/licenses/custodio/LICENSE
     file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/arch/custodio-bus-check.hook
+    dst: /usr/share/libalpm/hooks/custodio-bus-check.hook
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/arch/custodio-bus-check
+    dst: /usr/share/libalpm/scripts/custodio-bus-check
+    packager: archlinux
+    file_info: {mode: 0755, owner: root, group: root}
   - src: packaging/copyright
     dst: /usr/share/doc/custodio/copyright
     file_info: {mode: 0644, owner: root, group: root}
@@ -76,6 +84,7 @@ overrides:
       - dbus-system-bus
       - p11-kit
     scripts:
+      preinstall: packaging/deb/preinst
       postinstall: packaging/deb/postinst
   rpm:
     depends:
@@ -86,6 +95,7 @@ overrides:
       - dbus
       - p11-kit
     scripts:
+      preinstall: packaging/rpm/pre
       postinstall: packaging/rpm/post
   archlinux:
     depends:
@@ -96,7 +106,9 @@ overrides:
       - dbus
       - p11-kit
     scripts:
+      preinstall: packaging/arch/pre_install
       postinstall: packaging/arch/post_install
     archlinux:
       scripts:
+        preupgrade: packaging/arch/pre_upgrade
         postupgrade: packaging/arch/post_upgrade

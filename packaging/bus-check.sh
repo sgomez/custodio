@@ -49,7 +49,7 @@ custodio_bus_check() {
         return 1
     fi
     if [ "$cbc_rc" -ne 0 ]; then
-        printf '%s\n' "custodio: the system bus could not be queried for ProcessFD ($cbc_tool exited with status $cbc_rc); nothing was installed." >&2
+        printf '%s\n' "custodio: the system bus could not be queried for ProcessFD ($cbc_tool exited with status $cbc_rc)." >&2
         printf '%s\n' "custodio: $cbc_out" >&2
         printf '%s\n' "custodio: see docs/install.md." >&2
         return 1
@@ -60,7 +60,7 @@ custodio_bus_check() {
     else
         printf '%s\n' "$cbc_out" | awk '/string "ProcessFD"/ { f = 1; next } f && /file descriptor/ { ok = 1 } { f = 0 } END { exit !ok }' && return 0
     fi
-    printf '%s\n' "custodio: the system bus does not provide ProcessFD, which custodiod needs to identify its callers; nothing was installed." >&2
+    printf '%s\n' "custodio: the system bus does not provide ProcessFD, which custodiod needs to identify its callers." >&2
     printf '%s\n' "custodio: switch to a bus that does (on Ubuntu 24.04: install dbus-broker and reboot). See docs/install.md." >&2
     return 1
 }

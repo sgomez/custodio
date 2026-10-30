@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The lifecycle scripts of the three packages do only what the M1 postinst did: three recorded calls, each with `|| true`.
-# Builds fixture packages with nfpm and runs the extracted scripts with recording stubs for systemd-sysusers and systemctl.
+# The post scripts of the three packages do only what the M1 postinst did: three recorded calls, each with `|| true`. The pre-install
+# scripts are the ProcessFD check of F42 (scripts/test-bus-check.sh runs them). Builds fixture packages with nfpm and runs the extracted
+# scripts with recording stubs for systemd-sysusers and systemctl.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib/package-fixtures.sh
@@ -36,21 +37,24 @@ fx_build real 0.1.0 "" none
 for fmt in "${FORMATS[@]}"; do fx_scripts real "$fmt" "$tmp/$fmt"; done
 
 # Source files and rendered scripts are valid shell and pass shellcheck.
-for f in packaging/deb/postinst packaging/rpm/post packaging/arch/post_install packaging/arch/post_upgrade; do
+for f in packaging/deb/postinst packaging/rpm/post packaging/arch/post_install packaging/arch/post_upgrade \
+    packaging/deb/preinst packaging/rpm/pre packaging/arch/pre_install packaging/arch/pre_upgrade packaging/arch/custodio-bus-check; do
     head -n 1 "$ROOT/$f" | grep -qx '#!/bin/sh' || bad "$f does not start with #!/bin/sh"
     sh -n "$ROOT/$f" || bad "$f: sh -n failed"
     shellcheck "$ROOT/$f" || bad "$f: shellcheck failed"
 done
-[ "$(find "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$ROOT/packaging/arch" -mindepth 1 -type f | wc -l)" -eq 4 ] || bad "the four script files are not distinct paths"
-for f in "$tmp/deb/postinst" "$tmp/rpm/post"; do sh -n "$f" || bad "rendered $f: sh -n failed"; done
+# Eight lifecycle script files, the hook script and the hook definition, each its own path.
+[ "$(find "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$ROOT/packaging/arch" -mindepth 1 -type f | wc -l)" -eq 10 ] || bad "the script files are not ten distinct paths"
+for f in "$tmp/deb/postinst" "$tmp/rpm/post" "$tmp/deb/preinst" "$tmp/rpm/pre" "$tmp/archlinux/hook-check"; do sh -n "$f" || bad "rendered $f: sh -n failed"; done
 bash -n "$tmp/archlinux/INSTALL" || bad "rendered .INSTALL: bash -n failed"
-shellcheck -s bash "$tmp/archlinux/INSTALL" "$tmp/deb/postinst" "$tmp/rpm/post" || bad "rendered scripts: shellcheck failed"
+shellcheck -s bash "$tmp/archlinux/INSTALL" "$tmp/deb/postinst" "$tmp/rpm/post" "$tmp/deb/preinst" "$tmp/rpm/pre" "$tmp/archlinux/hook-check" || bad "rendered scripts: shellcheck failed"
 
 # The exact set of scripts per format.
-for f in preinst prerm postrm; do [ ! -e "$tmp/deb/ctl/$f" ] || bad "deb has a $f"; done
-[ "$(grep -oE '^(function )?[a-z_]+\(\)' "$tmp/archlinux/INSTALL" | sed 's/^function //; s/()//' | sort | tr '\n' ' ')" = "post_install post_upgrade " ] \
-    || bad ".INSTALL does not define exactly post_install and post_upgrade"
-for tag in PREIN PREUN POSTUN PRETRANS POSTTRANS; do
+for f in prerm postrm; do [ ! -e "$tmp/deb/ctl/$f" ] || bad "deb has a $f"; done
+# The embedded check is a function of its own; the others are the four lifecycle functions.
+[ "$(grep -oE '^ *(function )?[a-z_]+\(\)' "$tmp/archlinux/INSTALL" | sed 's/^ *//; s/^function //; s/()//' | sort | tr '\n' ' ')" = "custodio_bus_check custodio_bus_check post_install post_upgrade pre_install pre_upgrade " ] \
+    || bad ".INSTALL does not define exactly pre_install, pre_upgrade, post_install and post_upgrade (and the check twice)"
+for tag in PREUN POSTUN PRETRANS POSTTRANS; do
     [ -z "$(fx_rpm -qp --qf "%{$tag}" "$(fx_file real rpm)" | grep -v '(none)' || true)" ] || bad "rpm has a $tag scriptlet"
 done
 

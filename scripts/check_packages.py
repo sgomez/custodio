@@ -82,17 +82,23 @@ def check_config():
         if dst in seen:
             fail("nfpm.yaml", f"{dst} is listed twice")
         seen[dst] = info.get("mode")
+        packager = item.get("packager")
+        if packager not in (None, "archlinux") or (packager and dst not in expected.ARCH_ONLY_FILES):
+            fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files may be")
+        if dst in expected.ARCH_ONLY_FILES and packager != "archlinux":
+            fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
         if not dst.startswith("/usr/"):
             fail("nfpm.yaml", f"{dst} is not under /usr")
         if item.get("type", "file") != "file":
             fail("nfpm.yaml", f"{dst} has type {item['type']}")
         if info.get("owner") != "root" or info.get("group") != "root":
             fail("nfpm.yaml", f"{dst} is not owned by root:root")
-    for dst in expected.FILES.keys() - seen.keys():
+    every = {**expected.FILES, **expected.ARCH_ONLY_FILES}
+    for dst in every.keys() - seen.keys():
         fail("nfpm.yaml", f"{dst} is missing from the file list")
-    for dst in seen.keys() - expected.FILES.keys():
+    for dst in seen.keys() - every.keys():
         fail("nfpm.yaml", f"{dst} is not in the expected file list")
-    for dst, mode in expected.FILES.items():
+    for dst, mode in every.items():
         if dst in seen and seen[dst] != mode:
             fail("nfpm.yaml", f"{dst} has mode {seen[dst]:o}, expected {mode:o}")
     for fmt, block in (cfg.get("overrides") or {}).items():
@@ -123,12 +129,13 @@ def check_package(label, nfpm_name, pattern):
             files[path] = mode
         elif kind != "d":
             fail(label, f"{path} is not a regular file or directory (type {kind})")
-    for path, mode in expected.FILES.items():
+    wanted = {**expected.FILES, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
+    for path, mode in wanted.items():
         if path not in files:
             fail(label, f"{path} is missing from the package")
         elif files[path] != mode:
             fail(label, f"{path} has mode {files[path]:o}, expected {mode:o}")
-    for path in files.keys() - expected.FILES.keys():
+    for path in files.keys() - wanted.keys():
         fail(label, f"{path} is not in the expected file list")
     check_unit(label, files)
     # Config-typed entries do not show in the listing of a .deb (conffiles) or an Arch package (backup).
@@ -191,7 +198,7 @@ def check_scripts(label, pkg):
         want = expected.RPM_SCRIPTS
     else:
         install = run(["bsdtar", "-xOf", pkg, ".INSTALL"], optional=True)
-        got = set(re.findall(r"^\s*(?:function\s+)?(\w+)\s*\(\)", install, re.M))
+        got = set(re.findall(r"^\s*(?:function\s+)?(\w+)\s*\(\)", install, re.M)) - expected.ARCH_HELPERS
         want = expected.ARCH_FUNCTIONS
     if got != want:
         fail(label, f"lifecycle scripts are {sorted(got)}, expected {sorted(want)}")

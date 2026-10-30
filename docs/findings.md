@@ -666,4 +666,15 @@ Mechanisms tried for an abort from inside the package:
   the hook of the package being installed is not there yet. It can only protect a later upgrade or reinstall, never the first installation
   (reasoned from the libalpm hook order, not run).
 
-deb and rpm were not run in this session (work stopped at this finding); see `BLOCKED.md`.
+deb and rpm (run in the build session that followed, with the real tools and the fixture packages of `scripts/lib/package-fixtures.sh`):
+a failing pre-install script does stop the installation. `dpkg --root R -i` runs `preinst install` before unpacking; exit status 1 gives
+`dpkg: error processing archive ... new custodio package pre-installation script subprocess returned error exit status 1`, exit 1, no file
+in R and `dpkg -L custodio` says the package is not installed. `rpm --root R -i` runs `%pre` before the payload is written; exit status 1
+gives `error: %prein(custodio-0.1.0-1.x86_64) scriptlet failed, exit status 1` and `install failed`, exit 1, no file in R and `rpm -q`
+says not installed. An upgrade (`dpkg -i` of a newer .deb: `preinst upgrade`; `rpm -U`: `%pre` with 2) is refused the same way and leaves
+the installed version. `scripts/test-install-real.sh` repeats all of this on every `just check`. Setup that works unprivileged: the tools
+run as root of a user namespace (`unshare --map-root-user --mount`) and chroot into a small root that holds dash, grep, awk and busctl with
+their libraries (`bf_mkroot`); the stub buses are bind-mounted at `/run/bus` there. Without the namespace `dpkg --root` fails on its
+chroot and `rpm --root` on its scriptlet chroot. Arch: as above (pacman goes on); the PreTransaction hook of the installed package aborts a
+reinstall and an upgrade (`pacman -U` exits 1, files and version unchanged) and sees `DBUS_SYSTEM_BUS_ADDRESS` of the pacman process.
+

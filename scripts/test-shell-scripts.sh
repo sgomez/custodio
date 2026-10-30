@@ -26,7 +26,8 @@ want=$(printf '%s\n' pkg/deb/postinst pkg/dash-script pkg/post_install plain.sh 
 
 # Every maintainer script of the repository is covered.
 repo=$(cd "$ROOT" && scripts/list-shell-scripts.sh)
-for f in packaging/deb/postinst packaging/rpm/post packaging/arch/post_install packaging/arch/post_upgrade; do
+for f in packaging/deb/postinst packaging/rpm/post packaging/arch/post_install packaging/arch/post_upgrade \
+    packaging/deb/preinst packaging/rpm/pre packaging/arch/pre_install packaging/arch/pre_upgrade packaging/arch/custodio-bus-check packaging/bus-check.sh; do
     grep -qx "$f" <<<"$repo" || bad "$f is not covered"
 done
 

@@ -1,0 +1,59 @@
+#!/bin/sh
+# Refuse to install while the system bus lacks ProcessFD (F42). The check below is packaging/bus-check.sh, embedded by
+# scripts/embed-bus-check.sh. It is the first thing this scriptlet does; it runs on install ($1 = 1) and upgrade ($1 = 2).
+# >>> custodio-bus-check
+custodio_bus_check() {
+    cbc_addr=${DBUS_SYSTEM_BUS_ADDRESS:-unix:path=/run/dbus/system_bus_socket}
+    cbc_path=
+    case $cbc_addr in
+    unix:path=*) cbc_path=${cbc_addr#unix:path=}; cbc_path=${cbc_path%%,*} ;;
+    esac
+    cbc_tool=
+    cbc_rc=0
+    cbc_out=
+    if command -v busctl >/dev/null 2>&1; then
+        cbc_tool=busctl
+        cbc_out=$(LC_ALL=C busctl --address="$cbc_addr" call org.freedesktop.DBus /org/freedesktop/DBus \
+            org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus 2>&1) || cbc_rc=$?
+    elif command -v dbus-send >/dev/null 2>&1; then
+        cbc_tool=dbus-send
+        cbc_out=$(LC_ALL=C DBUS_SYSTEM_BUS_ADDRESS=$cbc_addr dbus-send --system --print-reply --dest=org.freedesktop.DBus \
+            /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionCredentials string:org.freedesktop.DBus 2>&1) || cbc_rc=$?
+    fi
+    # No bus: the tool could not connect (no socket, or nothing listens), or there is no tool and no socket.
+    # Any other failure is a bus that cannot be trusted and is refused below.
+    cbc_down=0
+    if [ -z "$cbc_tool" ]; then
+        if [ -n "$cbc_path" ] && [ ! -S "$cbc_path" ]; then cbc_down=1; fi
+    elif [ "$cbc_rc" -ne 0 ]; then
+        if printf '%s\n' "$cbc_out" | grep -Eq 'Failed to (connect|open connection)' \
+            && printf '%s\n' "$cbc_out" | grep -Eq 'No such file or directory|Connection refused'; then cbc_down=1; fi
+    fi
+    if [ "$cbc_down" -eq 1 ]; then
+        printf '%s\n' "custodio: notice: no system bus is running, so ProcessFD support was not checked." >&2
+        printf '%s\n' "custodio: notice: the service will refuse to sign until a bus with ProcessFD runs. See docs/install.md." >&2
+        return 0
+    fi
+    if [ -z "$cbc_tool" ]; then
+        printf '%s\n' "custodio: cannot check that the system bus provides ProcessFD: neither busctl nor dbus-send is installed." >&2
+        printf '%s\n' "custodio: install one of them (package systemd or dbus) and retry. See docs/install.md." >&2
+        return 1
+    fi
+    if [ "$cbc_rc" -ne 0 ]; then
+        printf '%s\n' "custodio: the system bus could not be queried for ProcessFD ($cbc_tool exited with status $cbc_rc)." >&2
+        printf '%s\n' "custodio: $cbc_out" >&2
+        printf '%s\n' "custodio: see docs/install.md." >&2
+        return 1
+    fi
+    # Only a successful reply is read, and only its ProcessFD entry: the key with a file descriptor as value.
+    if [ "$cbc_tool" = busctl ]; then
+        printf '%s\n' "$cbc_out" | grep -Eq '"ProcessFD" h([[:space:]]|$)' && return 0
+    else
+        printf '%s\n' "$cbc_out" | awk '/string "ProcessFD"/ { f = 1; next } f && /file descriptor/ { ok = 1 } { f = 0 } END { exit !ok }' && return 0
+    fi
+    printf '%s\n' "custodio: the system bus does not provide ProcessFD, which custodiod needs to identify its callers." >&2
+    printf '%s\n' "custodio: switch to a bus that does (on Ubuntu 24.04: install dbus-broker and reboot). See docs/install.md." >&2
+    return 1
+}
+# <<< custodio-bus-check
+custodio_bus_check || exit 1

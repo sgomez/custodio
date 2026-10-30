@@ -1,0 +1,12 @@
+# Refuses an upgrade or reinstall of custodio while the system bus lacks ProcessFD (F42). pacman loads hooks before the transaction, so
+# this hook (read from the installed package) cannot guard the first installation; pre_install only warns there.
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = custodio
+
+[Action]
+Description = Checking that the system bus provides ProcessFD
+When = PreTransaction
+Exec = /usr/share/libalpm/scripts/custodio-bus-check
+AbortOnFail
