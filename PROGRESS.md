@@ -248,3 +248,8 @@ with an empty context.
   not changed. No Rust changed, so `just mutants-diff F44` has nothing to mutate.
 - `just check`, `just package`, `just package-lint` pass (`test-scripts` ran inside `check`).
 - Next session should: nothing until BLOCKED.md is answered.
+
+### 2026-10-30 — F44 — session 2
+- BLOCKED.md was answered (deviation recorded in `SPEC_DEVIATIONS.md`, contract amended). Last step done: ran `verify` in full: `just check`,
+  `just test-scripts` (no SKIPPED line), `just package`, `just package-lint` (61 findings, all excepted, 0 stale) pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F44; the evaluator decides. A person reviews the pending F44 deviation before the milestone closes.
