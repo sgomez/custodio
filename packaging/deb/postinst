@@ -4,5 +4,5 @@ set -e
 if [ "$1" = configure ]; then
     systemd-sysusers custodio.conf || true
     systemctl daemon-reload || true
-    systemctl reload dbus || true
+    deb-systemd-invoke reload dbus.service || true
 fi

@@ -1,16 +1,14 @@
-scripts/package-lint.sh
 package-lint: ran lintian 2.122.0 container profile 2.122.0
-lintian | initial-upload-closes-no-bugs | usr/share/doc/custodio/changelog.Debian.gz:1  (excepted: /work/packaging/lint/lintian.txt:14)
-lintian | maintainer-script-calls-systemctl | postinst:7  (excepted: /work/packaging/lint/lintian.txt:4)
-lintian | extra-license-file | usr/share/licenses/custodio/LICENSE  (excepted: /work/packaging/lint/lintian.txt:6)
-lintian | hardening-no-fortify-functions | usr/bin/custodio  (excepted: /work/packaging/lint/lintian.txt:8)
-lintian | hardening-no-fortify-functions | usr/lib/custodio/custodiod  (excepted: /work/packaging/lint/lintian.txt:9)
-lintian | hardening-no-fortify-functions | usr/lib/custodio/libcustodio_pkcs11.so  (excepted: /work/packaging/lint/lintian.txt:10)
-lintian | package-contains-documentation-outside-usr-share-doc | usr/share/licenses/custodio/LICENSE  (excepted: /work/packaging/lint/lintian.txt:7)
+lintian | initial-upload-closes-no-bugs | usr/share/doc/custodio/changelog.Debian.gz:1  (excepted: /work/packaging/lint/lintian.txt:13)
+lintian | extra-license-file | usr/share/licenses/custodio/LICENSE  (excepted: /work/packaging/lint/lintian.txt:5)
+lintian | hardening-no-fortify-functions | usr/bin/custodio  (excepted: /work/packaging/lint/lintian.txt:7)
+lintian | hardening-no-fortify-functions | usr/lib/custodio/custodiod  (excepted: /work/packaging/lint/lintian.txt:8)
+lintian | hardening-no-fortify-functions | usr/lib/custodio/libcustodio_pkcs11.so  (excepted: /work/packaging/lint/lintian.txt:9)
+lintian | package-contains-documentation-outside-usr-share-doc | usr/share/licenses/custodio/LICENSE  (excepted: /work/packaging/lint/lintian.txt:6)
 lintian | executable-in-usr-lib | usr/lib/custodio/custodiod  (excepted: /work/packaging/lint/lintian.txt:3)
-lintian | spelling-error-in-binary | onthe on the [usr/bin/custodio]  (excepted: /work/packaging/lint/lintian.txt:11)
-lintian | spelling-error-in-binary | onthe on the [usr/lib/custodio/custodiod]  (excepted: /work/packaging/lint/lintian.txt:12)
-lintian | spelling-error-in-binary | onthe on the [usr/lib/custodio/libcustodio_pkcs11.so]  (excepted: /work/packaging/lint/lintian.txt:13)
+lintian | spelling-error-in-binary | onthe on the [usr/bin/custodio]  (excepted: /work/packaging/lint/lintian.txt:10)
+lintian | spelling-error-in-binary | onthe on the [usr/lib/custodio/custodiod]  (excepted: /work/packaging/lint/lintian.txt:11)
+lintian | spelling-error-in-binary | onthe on the [usr/lib/custodio/libcustodio_pkcs11.so]  (excepted: /work/packaging/lint/lintian.txt:12)
 package-lint: ran rpmlint 2.8.0 container configs /usr/lib/python3.14/site-packages/rpmlint/configdefaults.toml /lint/rpmlint-empty.toml
 rpmlint | spelling-error | ('polkit', '%description -l en_US polkit -> pol kit, pol-kit, toolkit')  (excepted: /work/packaging/lint/rpmlint.txt:2)
 rpmlint | not-listed-as-documentation | /usr/share/doc/custodio/changelog.Debian.gz  (excepted: /work/packaging/lint/rpmlint.txt:11)
@@ -57,8 +55,8 @@ namcap | dependency-not-needed | systemd  (excepted: /work/packaging/lint/namcap
 namcap | dependency-not-needed | dbus  (excepted: /work/packaging/lint/namcap.txt:35)
 namcap | dependency-not-needed | p11-kit  (excepted: /work/packaging/lint/namcap.txt:36)
 namcap | dependency-detected-satisfied | glibc (libraries-needed ['usr/lib/ld-linux-x86-64.so.2', 'usr/lib/libc.so.6'] ['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so'])  (excepted: /work/packaging/lint/namcap.txt:37)
-namcap | depends-by-namcap-sight | depends=(libgcc glibc)  (excepted: /work/packaging/lint/namcap.txt:28)
-package-lint: 3 linters, 56 findings, 56 excepted, 0 stale exceptions
+namcap | depends-by-namcap-sight | depends=(glibc libgcc)  (excepted: /work/packaging/lint/namcap.txt:28)
+package-lint: 3 linters, 55 findings, 55 excepted, 0 stale exceptions
 
 # rpmlint with the stock Fedora fedora.toml on the same .rpm (not the gate): findings are filtered, among them no-signature and
 # spelling-error, which the run above reports (rpmlint | no-signature).

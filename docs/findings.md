@@ -570,10 +570,12 @@ Listed (reasons in the lists): lintian `executable-in-usr-lib` (decided by a per
 `type: doc` from deb and Arch, which share one file list: tried, the parity gate failed), `manpage-not-compressed bz2`, `invalid-license`,
 `no-changelogname-tag`; namcap: owner `0:0` (nfpm writes numeric ids only), `external-hooks`, and the informational dependency lines.
 
-Path `/usr/lib/custodio/custodiod` (the open question from F36): rpmlint and namcap draw no finding about its path; the only findings that
-name it are the ones every ELF file gets (unstripped, now fixed; owner 0:0 for namcap, listed for all files; fortify, listed). lintian reports
-the experimental `executable-in-usr-lib` (decided by a person: one literal entry). Amendment: the same literal treatment for
-`hardening-no-fortify-functions` on that path (see the contract).
+Path `/usr/lib/custodio/custodiod` (the open question from F36): the run with the path as built (`-m`, in `reports/package-lint-container.txt`)
+draws ten (linter, tag, subject) findings that name it, all decided by the person's answer (option 1: accept the path and list the findings
+as literal pairs): lintian `executable-in-usr-lib`, `hardening-no-fortify-functions` and `spelling-error-in-binary` (`onthe`, from a dependency); namcap
+`incorrect-owner` (0:0), `unused-sodepend`, and the bracketed dependency findings `libdepends-missing-provides` (two),
+`libdepends-detected-not-included`, `dependency-implicitly-satisfied` and `dependency-detected-satisfied`. rpmlint draws no finding about the path. Each is a literal entry in the committed lists
+(see the contract amendment), none is a wildcard over the path.
 
 lintian profile: `debian/main` in lintian 2.122.0 has `Enable-Tags-From-Check: *` and no `Disable-Tags`; with `--no-cfg` nothing else applies.
 The gate prints `profile 2.122.0` (the package version, as there is no separate data version).

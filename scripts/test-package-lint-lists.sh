@@ -102,9 +102,9 @@ assert not [e for e in entries["rpmlint"] if path in e[1]], "rpmlint.txt names t
 PY
 # No committed list holds a line without a reason (the parser also rejects it; this is the plain check).
 for l in lintian rpmlint namcap; do
-    grep -v '^#' "$ROOT/packaging/lint/$l.txt" | grep -v '^$' | while IFS= read -r line; do
+    while IFS= read -r line; do
         case $line in *" | "*" | "?*) ;; *) bad "$l.txt: a line without a reason: $line";; esac
-    done
+    done < <(grep -v '^#' "$ROOT/packaging/lint/$l.txt" | grep -v '^$')
 done
 
 exit "$fail"

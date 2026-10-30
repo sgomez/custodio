@@ -42,6 +42,14 @@ mkdpkgquery() { # DIR: dpkg-query printing DIR/lintian.profile
     printf '#!/bin/sh\ncat "%s/lintian.profile"\n' "$1" > "$1/dpkg-query"
     chmod +x "$1/dpkg-query"
 }
+mkpkgquery() { # DIR: rpm -q and pacman -Q printing the package versions in DIR/rpmlint.pkg and DIR/namcap.pkg
+    printf '#!/bin/sh\ncat "%s/rpmlint.pkg"\n' "$1" > "$1/rpm"
+    # shellcheck disable=SC2016 # the stub expands the command substitution itself
+    printf '#!/bin/sh\necho "namcap $(cat "%s/namcap.pkg")"\n' "$1" > "$1/pacman"
+    pin rpmlint > "$1/rpmlint.pkg"
+    pin namcap > "$1/namcap.pkg"
+    chmod +x "$1/rpm" "$1/pacman"
+}
 # mkrt NAME: a stub podman or docker; `run` executes the command that follows the image with $T/cont first on PATH.
 mkrt() {
     cat > "$T/rt/$1" <<EOF
@@ -87,6 +95,7 @@ reset() { # [HOSTLINTERS...]: fresh lists, stubs at the pinned versions; the nam
         mkstub "$T/host" "$l"
     done
     mkdpkgquery "$T/host"
+    mkpkgquery "$T/host"
     mkrt podman
     FORCE=
 }
@@ -206,6 +215,12 @@ echo 1.9.9 > "$T/host/namcap.version"
 echo 2.7.0 > "$T/host/rpmlint.version"
 ok "host rpmlint and namcap with other versions"
 { [ ! -e "$T/host/namcap.calls" ] && [ ! -e "$T/host/rpmlint.calls" ]; } || bad "a host linter at the wrong version was used"
+# The release counts too: the same upstream version with another release is not the pin.
+reset lintian rpmlint namcap
+echo 2.8.0-1.fc43 > "$T/host/rpmlint.pkg"
+echo 3.6.0-2 > "$T/host/namcap.pkg"
+ok "host rpmlint and namcap with other releases"
+{ [ ! -e "$T/host/namcap.calls" ] && [ ! -e "$T/host/rpmlint.calls" ]; } || bad "a host linter with another release was used"
 # ... and without a runtime that is a failure.
 rm -f "$T/rt/podman"
 no "wrong host version, no runtime" "no container runtime" -- "$PKG" "$LINT"

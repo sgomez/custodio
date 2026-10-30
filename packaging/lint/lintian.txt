@@ -1,7 +1,6 @@
 # Exceptions for lintian (F38). One per line: TAG | SUBJECT-GLOB | REASON. The subject is lintian's text without the enclosing
 # brackets when the whole rest is bracketed. Only '*' and '?' are wildcards in a glob; '[' is literal.
 executable-in-usr-lib | usr/lib/custodio/custodiod | Arch has no /usr/libexec and the three packages share one file list (SPEC "Arch and /usr/libexec"); decided by a person
-maintainer-script-calls-systemctl | postinst:7 | the maintainer script is a hand-written file because nfpm does not run debhelper (dh_installsystemd); it reloads systemd for the new unit
 
 extra-license-file | usr/share/licenses/custodio/LICENSE | the Arch package must hold the license under /usr/share/licenses (namcap errors without it) and the three packages share one file list
 package-contains-documentation-outside-usr-share-doc | usr/share/licenses/custodio/LICENSE | same file as the extra-license-file entry: Arch wants it under /usr/share/licenses

@@ -130,3 +130,12 @@ with an empty context.
   `just package-lint` on a clean tree: all exit 0 (56 findings, 56 excepted, 0 stale).
 - Outcomes (as stated before): rpmlint outcome (b) (Fedora 44 container always), namcap branch 2 (container only), lintian host in the dev image.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F38 — session 6 (NEXT_FINDINGS fixes)
+- Fixed all four findings: (1) `packaging/deb/postinst` reloads the bus with `deb-systemd-invoke reload dbus.service`, so the lintian
+  `maintainer-script-calls-systemctl` entry is gone (55 findings, 0 stale; `test-package-scripts.sh` stubs the new call); (2) the
+  `docs/findings.md` paragraph on the daemon path lists the ten findings and cites option 1; (3) the reason check in
+  `test-package-lint-lists.sh` now reads through process substitution, so it can fail; (4) a host rpmlint/namcap whose printed version is only
+  the upstream part is accepted only when `rpm -q`/`pacman -Q` reports the full pin (test with another release added).
+- `reports/package-lint-container.txt` regenerated. `just check`, `just package`, `just package-lint` pass.
+- Next session should: nothing for F38; the evaluator decides.

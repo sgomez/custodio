@@ -130,6 +130,27 @@ def version_matches(found, pin):
     return found == pin or pin.startswith(found + "-")
 
 
+PACKAGE_QUERY = {
+    "rpmlint": ["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}", "rpmlint"],
+    "namcap": ["pacman", "-Q", "namcap"],
+}
+
+
+def host_package_version(linter):
+    """Full package version (with release) the host's package manager reports, or None when it reports none."""
+    cmd = PACKAGE_QUERY.get(linter)
+    if not cmd:
+        return None
+    try:
+        done = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    except OSError:
+        return None
+    out = done.stdout.strip()
+    if done.returncode != 0 or not out:
+        return None
+    return out.split()[-1]
+
+
 def execute(cmd, runner_prefix=(), env=None):
     """(status, merged output); a missing command or a launch failure exits."""
     try:
@@ -150,7 +171,11 @@ def probe(linter, runner_prefix, env, pins, where, strict):
         if strict:
             die(f"{linter}: cannot read the version in the {where} run (status {status}): {out.strip()[:200]}")
         return None
-    if not version_matches(found, pin):
+    mismatch = not version_matches(found, pin)
+    if not mismatch and not strict and found != pin:
+        # The host printed only the upstream version: the release must match too, from the package manager.
+        mismatch = host_package_version(linter) != pin
+    if mismatch:
         if strict:
             die(f"{linter}: version {found} in the {where} run differs from the pin {pin}")
         return None

@@ -14,12 +14,13 @@ bad() { echo "test-package-scripts: $*" >&2; fail=1; }
 
 # Stubs record "name args" lines in $tmp/calls; with STUB_EXIT=1 they fail.
 mkdir "$tmp/stubs"
-for s in systemd-sysusers systemctl; do
+for s in systemd-sysusers systemctl deb-systemd-invoke; do
     # shellcheck disable=SC2016 # the stub expands $CALLS and $STUB_EXIT itself
     printf '#!/bin/sh\necho "%s $*" >> "$CALLS"\nexit "${STUB_EXIT:-0}"\n' "$s" > "$tmp/stubs/$s"
     chmod +x "$tmp/stubs/$s"
 done
 expected=$'systemd-sysusers custodio.conf\nsystemctl daemon-reload\nsystemctl reload dbus'
+expected_deb=$'systemd-sysusers custodio.conf\nsystemctl daemon-reload\ndeb-systemd-invoke reload dbus.service'
 
 # run_case LABEL EXPECTED_CALLS STUB_EXIT COMMAND...: run the command with the stubs first on PATH.
 run_case() {
@@ -55,7 +56,7 @@ done
 
 for stub_exit in 0 1; do
     suffix=; [ "$stub_exit" = 0 ] || suffix=" (every stub fails)"
-    run_case "deb postinst configure$suffix" "$expected" $stub_exit sh "$tmp/deb/postinst" configure
+    run_case "deb postinst configure$suffix" "$expected_deb" $stub_exit sh "$tmp/deb/postinst" configure
     run_case "deb postinst abort-upgrade$suffix" "" $stub_exit sh "$tmp/deb/postinst" abort-upgrade
     run_case "rpm post 1$suffix" "$expected" $stub_exit sh "$tmp/rpm/post" 1
     run_case "rpm post 2$suffix" "$expected" $stub_exit sh "$tmp/rpm/post" 2
