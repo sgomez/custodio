@@ -71,6 +71,7 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
   for each feature whose dependencies pass:
     builder writes contracts/<id>.md ──evaluator: APPROVED / REVISE──┐ (up to 3 rounds)
     builder sessions tick the contract's steps, one fresh context each ◀┘
+      (an amendment to the contract goes back to the evaluator first)
     verify command (no LLM) ──▶ evaluator: PASS / NEEDS_WORK ──▶ loop marks it passing
 ```
 
@@ -83,6 +84,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `MAX_CONTRACT_ROUNDS` | 3 | contract drafts per feature |
 | `MAX_FEATURE_SESSIONS` | 8 | builder sessions per feature |
 | `MAX_ATTEMPTS` | 3 | rejected implementations per feature |
+| `MAX_AMENDMENTS` | 3 | contract amendments per feature |
 
 | File | Written by |
 |---|---|
@@ -90,7 +92,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `SPEC.md` | the planner, then you |
 | `features.json` | the initializer, then you; `passes` by the loop |
 | `APPROVALS` | `just milestone approve` |
-| `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps; the unblocker applies your answer to it |
+| `contracts/<id>.md` | a builder, approved by the evaluator; builders tick its steps or amend it, and the evaluator approves each amendment; the unblocker applies your answer to it |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
 | `BLOCKED.md` | any session that needs a person |

@@ -26,6 +26,23 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 
 Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to change.
 
+## Mode: amendment
+
+The builder changed the approved contract while building. Read the diff you were pointed to, the
+whole contract, the feature's entry in `features.json`, the parts of `SPEC.md` it touches and the
+findings the amendment cites. Approve only if all of these hold:
+
+- The reason is a fact found while building (a tool's behaviour, a test, a research finding in
+  `docs/findings.md`), not convenience.
+- Every point of the feature and of `SPEC.md` still has evidence that would fail if the feature
+  were wrong, and every ticked step is still true.
+- No gate gets weaker: no dropped flag or check, no exception or glob wider than the finding
+  needs, no evidence moved to CI or to a person.
+- It does not contradict `SPEC.md`. If it must, reply `REVISE` and say the builder has to write
+  `BLOCKED.md`.
+
+Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to change.
+
 ## Mode: implementation
 
 1. Read the contract, the feature's entry in `features.json` and the parts of `SPEC.md` it

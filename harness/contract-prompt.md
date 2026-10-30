@@ -19,6 +19,10 @@ What will be built, and what is explicitly left for other features.
 - <requirement> → <test name or command> → <expected result>
 ```
 
+Say what must be proven, not how to build it: flags, paths and tool choices belong to the builder
+unless SPEC.md or `docs/decisions.md` fixes them. Do not forbid outright something nobody has
+researched yet; if a step researches it, let that step decide within limits the contract states.
+
 Every point in the feature description must appear under Evidence, with evidence that would fail
 if the feature were wrong. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.

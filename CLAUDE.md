@@ -17,8 +17,9 @@ Everything in this repository is in English: code, comments, docs, commit messag
    `git log --oneline -15`. Run `just check` once it exists; if the tree is red, fix that before
    anything else.
 2. **Build one feature, following its contract.** Only the feature you were given; do not start the
-   next one, even if you have context left. Tick contract steps as they are done and change
-   nothing else in the contract. A feature may take several sessions.
+   next one, even if you have context left. Tick contract steps as they are done. Change the
+   rest of the contract only by an amendment the evaluator approves (`harness/builder-prompt.md`).
+   A feature may take several sessions.
 3. **Tests first.** Write the failing test, then the code. When every step is ticked, run the
    feature's `verify` command and the contract's evidence until they pass.
 4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a
@@ -51,5 +52,6 @@ Everything in this repository is in English: code, comments, docs, commit messag
   at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
   the commit; research in `docs/findings.md`.
 - If you cannot continue without a human (a decision the spec does not cover and that is hard to
-  undo, missing credentials, a `verify` command that cannot work), write `BLOCKED.md` with the
-  question and the options, commit your work so far, and stop.
+  undo, missing credentials, a change to the dev container or the host, a contradiction with
+  `SPEC.md`, a `verify` command that cannot work), write `BLOCKED.md` with the question and the
+  options, commit your work so far, and stop. A contract that cannot hold is amended instead.

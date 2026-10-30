@@ -2,6 +2,7 @@
 # Build loop. For each feature whose dependencies pass:
 #   1. contract: the builder writes contracts/<id>.md, the evaluator approves or sends it back;
 #   2. build: fresh builder sessions tick the contract's steps, as many sessions as it takes;
+#      a builder may amend the contract, and the evaluator approves the amendment first;
 #   3. gate: the feature's verify command, then the evaluator against the contract;
 #   4. only then the loop marks the feature as passing.
 # Every claude call is a fresh context. Stop it any time with `touch AGENT_STOP`.
@@ -14,6 +15,7 @@ MAX_SESSIONS=${MAX_SESSIONS:-40}                # claude sessions in this run, a
 MAX_ATTEMPTS=${MAX_ATTEMPTS:-3}                 # rejected implementations per feature
 MAX_CONTRACT_ROUNDS=${MAX_CONTRACT_ROUNDS:-3}   # contract drafts per feature
 MAX_FEATURE_SESSIONS=${MAX_FEATURE_SESSIONS:-8} # builder sessions per feature
+MAX_AMENDMENTS=${MAX_AMENDMENTS:-3}             # contract amendments per feature
 LOG_DIR=.harness/logs
 STATE=.harness/state
 mkdir -p "$LOG_DIR" "$STATE" contracts
@@ -153,10 +155,23 @@ Approved contract: $c"
   fi
 
   if [ "$(contract_hash "$c")" != "$(cat "$STATE/$id.contract")" ]; then
-    bump "$id.attempts" >/dev/null
-    echo "contracts/$id.md changed beyond ticking checkboxes. Restore the approved text (\`git log -p $c\`) and only tick steps." \
-      | findings "$id" "contract text changed"
-    continue
+    n=$(bump "$id.amendments")
+    (( n <= MAX_AMENDMENTS )) || die "$id: more than $MAX_AMENDMENTS contract amendments. Stopping for a human." 2
+    approved_head=$(cat "$STATE/$id.contract-head")
+    log "$id: contract amended, evaluating the amendment"
+    run_claude evaluator "$LOG_DIR/$stamp-amend.log" --agent evaluator \
+      "Mode: amendment. Feature: $feature. Contract: $c. Amendment: git diff $approved_head..HEAD -- $c"
+    stash_leftovers "$stamp-amend"
+    if [ "$(verdict "$LOG_DIR/$stamp-amend.log")" != APPROVED ]; then
+      # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
+      { printf 'The evaluator rejected the amendment to %s. Revise it, or restore the approved text (`git show %s:%s`).\n\n' \
+          "$c" "$approved_head" "$c"
+        cat "$LOG_DIR/$stamp-amend.log"; } | findings "$id" "amendment rejected"
+      continue
+    fi
+    contract_hash "$c" > "$STATE/$id.contract"
+    git rev-parse HEAD > "$STATE/$id.contract-head"
+    log "$id: amendment approved"
   fi
   left=$(open_steps "$c")
   if (( left > 0 )); then
