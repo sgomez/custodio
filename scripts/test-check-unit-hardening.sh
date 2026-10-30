@@ -20,14 +20,17 @@ unit_case() { # LABEL SED-EXPRESSION
     sed "$2" "$UNIT" > "$dir/u.service"
     expect_fail "$1" "$dir/u.service" "$JUST"
 }
+unit_case "spaced ProtectProc = default" 's/^ProtectProc=.*/ProtectProc = default/'
 unit_case "ProtectProc=default" 's/^ProtectProc=.*/ProtectProc=default/'
 unit_case "ProcSubset=all" 's/^ProcSubset=.*/ProcSubset=all/'
 unit_case "PrivateUsers=no" 's/^PrivateUsers=.*/PrivateUsers=no/'
 for key in ProtectProc ProcSubset PrivateUsers; do
     unit_case "$key missing" "/^$key=/d"
 done
-for dup in ProtectProc=default ProcSubset=all PrivateUsers=no ProtectProc=invisible; do
-    { cat "$UNIT"; echo "$dup"; } > "$dir/u.service"
+for dup in ProtectProc=default ProcSubset=all PrivateUsers=no ProtectProc=invisible \
+    "ProtectProc = default" "ProcSubset = all" "PrivateUsers = no" "ProtectProc = invisible"; do
+    sed "/^\[Install\]/i $dup" "$UNIT" > "$dir/u.service"
+    grep -qxF "$dup" "$dir/u.service" || bad "fixture for '$dup' was not written"
     expect_fail "duplicate $dup" "$dir/u.service" "$JUST"
 done
 

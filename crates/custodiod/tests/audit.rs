@@ -399,9 +399,7 @@ fn sign_refused_with_pidfd_of_another_process() -> TestResult {
     // Opened up front so a failure fails the test instead of dropping `ProcessFD`.
     let fd = pidfd(parent)?;
     refused_for_process_fd(move |m| {
-        if let Ok(v) = fd.try_clone() {
-            m.insert("ProcessFD".to_owned(), v);
-        }
+        insert_pidfd(m, &fd);
     })
 }
 
@@ -434,6 +432,15 @@ fn reaped_pidfd() -> Result<zbus::OwnedVariant, Box<dyn std::error::Error>> {
     Ok(fd)
 }
 
+/// A failed clone must fail the test, or the mismatch case silently becomes the missing case.
+#[allow(clippy::expect_used)] // test helper; a panic is the intended failure
+fn insert_pidfd(
+    m: &mut std::collections::HashMap<String, zbus::OwnedVariant>,
+    fd: &zbus::OwnedVariant,
+) {
+    m.insert("ProcessFD".to_owned(), fd.try_clone().expect("clone pidfd"));
+}
+
 fn assert_refused_like_missing(
     mismatch: impl Fn(&mut std::collections::HashMap<String, zbus::OwnedVariant>)
     + Sync
@@ -458,9 +465,7 @@ fn mismatch_is_refused_identically_to_missing_process_fd() -> TestResult {
     assert_ne!(parent, std::process::id());
     let fd = pidfd(parent)?;
     assert_refused_like_missing(move |m| {
-        if let Ok(v) = fd.try_clone() {
-            m.insert("ProcessFD".to_owned(), v);
-        }
+        insert_pidfd(m, &fd);
     })
 }
 
@@ -468,9 +473,7 @@ fn mismatch_is_refused_identically_to_missing_process_fd() -> TestResult {
 fn reaped_pidfd_is_refused_identically_to_missing_process_fd() -> TestResult {
     let fd = reaped_pidfd()?;
     assert_refused_like_missing(move |m| {
-        if let Ok(v) = fd.try_clone() {
-            m.insert("ProcessFD".to_owned(), v);
-        }
+        insert_pidfd(m, &fd);
     })
 }
 
@@ -488,9 +491,7 @@ fn mismatching_pidfd_reaches_the_journal_as_authorization_unavailable() -> TestR
             Answer::Yes,
             move |_: &Connection| {
                 Reply(move |m: &mut std::collections::HashMap<_, _>| {
-                    if let Ok(v) = fd.try_clone() {
-                        m.insert("ProcessFD".to_owned(), v);
-                    }
+                    insert_pidfd(m, &fd);
                 })
             },
             Arc::new(JournalSink::new(&path)),

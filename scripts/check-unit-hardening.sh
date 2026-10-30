@@ -11,8 +11,9 @@ fail=0
 
 for want in ProtectProc=invisible ProcSubset=pid PrivateUsers=yes; do
     key=${want%%=*}
-    total=$(grep -c "^[[:space:]]*$key=" "$unit" || true)
-    exact=$(grep -c "^${want}[[:space:]]*\$" "$unit" || true)
+    total=$(grep -c "^[[:space:]]*${key}[[:space:]]*=" "$unit" || true)
+    # Strip whitespace around '=' and at the line ends before the exact comparison.
+    exact=$(sed 's/^[[:space:]]*\([A-Za-z]*\)[[:space:]]*=[[:space:]]*/\1=/; s/[[:space:]]*$//' "$unit" | grep -cx "$want" || true)
     if [ "$total" != 1 ] || [ "$exact" != 1 ]; then
         echo "unit-hardening: $unit must have '$want' exactly once and no other $key= line" >&2
         fail=1

@@ -171,3 +171,10 @@ with an empty context.
   `credential_reading_leaks_no_fd`. Call restored.
 - `just check`, `just test-integration`, `just mutants` pass (0 missed, 0 timeout). Not exercised under the unit's hardened /proc (see contract).
 - Next session should: nothing for F40; the evaluator decides.
+
+### 2026-10-30 — F40 — session 2 (NEXT_FINDINGS fixes)
+- `check-unit-hardening.sh` now accepts `Key = value` (counts `^\s*Key\s*=`, normalizes whitespace before the exact match);
+  `test-check-unit-hardening.sh` inserts duplicates inside `[Service]` (before `[Install]`) and adds spaced variants for all three keys.
+- `tests/audit.rs`: a failed pidfd clone now panics via `insert_pidfd` (justified `#[allow(clippy::expect_used)]`).
+- `just check`, `just test-integration`, `just mutants` pass (0 missed, 0 timeout).
+- Next session should: nothing for F40; the evaluator decides.
