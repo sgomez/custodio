@@ -103,8 +103,15 @@ $(cat "$STATE/$id.contract-review")"
       mv "$STATE/$id.commits" "$STATE/$id.contract-review"
       continue
     fi
-    run_claude evaluator "$LOG_DIR/$stamp-review.log" --agent evaluator \
-      "Mode: contract. Review contracts/$id.md for this feature: $feature"
+    prompt="Mode: contract. Review contracts/$id.md for this feature: $feature"
+    if [ -f "$STATE/$id.contract-eval" ]; then
+      prompt="$prompt
+
+Your previous review:
+$(cat "$STATE/$id.contract-eval")"
+    fi
+    run_claude evaluator "$LOG_DIR/$stamp-review.log" --agent evaluator "$prompt"
+    cp "$LOG_DIR/$stamp-review.log" "$STATE/$id.contract-eval"
     if [ "$(verdict "$LOG_DIR/$stamp-review.log")" = APPROVED ]; then
       contract_hash "$c" > "$STATE/$id.contract"
       git rev-parse HEAD > "$STATE/$id.contract-head"
@@ -146,7 +153,10 @@ while true; do
 Feature:
 $feature
 
-Approved contract: $c"
+Approved contract: $c
+
+The evaluator's notes on the contract:
+$(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)"
   [ -e BLOCKED.md ] && continue
   stash_leftovers "$stamp"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then

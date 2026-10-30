@@ -24,7 +24,16 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
   is not evidence.
 - Each step fits in one session, and nothing outside the feature is planned.
 
-Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to change.
+Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
+with the feature wrong or fail with it right, a step too big for a session, or scope outside the
+feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
+list it; the builder reads it.
+
+If the task includes your previous review, this is a re-review: check that each blocking point was
+addressed, and do not reopen what you accepted. Raise a new point only if it is blocking and the
+revision introduced it, or it would let a wrong feature pass.
+
+Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines: blocking points, then notes.
 
 ## Mode: amendment
 
