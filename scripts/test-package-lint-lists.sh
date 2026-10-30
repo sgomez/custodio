@@ -42,30 +42,63 @@ done
 
 # ---- the committed lists ---------------------------------------------------------------------------------------------------
 python3 -I -B - "$ROOT" <<'PY' || bad "the committed lists: $?"
-import os, sys
+import os, re, sys
 sys.path.insert(0, os.path.join(sys.argv[1], "scripts"))
 import package_lint as g
-lint = os.path.join(sys.argv[1], "packaging", "lint")
-paths = ("usr/lib/custodio/custodiod", "/usr/lib/custodio/custodiod")
+root = sys.argv[1]
+lint = os.path.join(root, "packaging", "lint")
 path = "usr/lib/custodio/custodiod"
-allowed = ("executable-in-usr-lib", "hardening-no-fortify-functions")  # literal entries, at most one each (F38 amendments)
-seen = []
-for name in ("lintian", "rpmlint", "namcap"):
-    for entry in g.read_exceptions(os.path.join(lint, name + ".txt")):
-        tag, glob, reason, where = entry
+files = "['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so']"
+# The (linter, tag, subject) pairs a person decided for the path (F38 contract, option 1 of the BLOCKED.md); subjects as the gate prints them.
+decided = {
+    ("lintian", "executable-in-usr-lib", path),
+    ("lintian", "hardening-no-fortify-functions", path),
+    ("lintian", "spelling-error-in-binary", f"onthe on the [{path}]"),
+    ("namcap", "incorrect-owner", f"{path} (0:0)"),
+    ("namcap", "unused-sodepend", f"/usr/lib64/ld-linux-x86-64.so.2 {path}"),
+    ("namcap", "libdepends-missing-provides", f"ld-linux-x86-64.so=2-64 glibc ({files})"),
+    ("namcap", "libdepends-missing-provides", f"libc.so=6-64 glibc ({files})"),
+    ("namcap", "libdepends-detected-not-included", f"libgcc_s.so=1-64 libgcc ({files})"),
+    ("namcap", "dependency-implicitly-satisfied", f"libgcc (libraries-needed ['usr/lib/libgcc_s.so.1'] {files})"),
+    ("namcap", "dependency-detected-satisfied",
+     f"glibc (libraries-needed ['usr/lib/ld-linux-x86-64.so.2', 'usr/lib/libc.so.6'] {files})"),
+}
+entries = {n: g.read_exceptions(os.path.join(lint, n + ".txt")) for n in ("lintian", "rpmlint", "namcap")}
+for name, lst in entries.items():
+    for tag, glob, reason, where in lst:
         assert reason, where
-        for p in (path, "/" + path):
+# Every finding of the real run whose subject names the path.
+named = set()
+with open(os.path.join(root, "reports", "package-lint-container.txt")) as f:
+    for line in f:
+        m = re.fullmatch(r"(lintian|rpmlint|namcap) \| (\S+) \| (.*?)  \((?:excepted: [^)]*|NOT excepted)\)\n?", line)
+        if m and path in m[3]:
+            named.add((m[1], m[2], m[3]))
+assert named == decided, f"findings naming the path differ from the decided pairs: extra {sorted(named - decided)}, missing {sorted(decided - named)}"
+for linter, tag, subject in sorted(named):
+    covering = [e for e in entries[linter] if g.covers(e, tag, subject)]
+    assert len(covering) == 1, f"{linter} | {tag} | {subject}: covered by {len(covering)} entries"
+    assert covering[0][1] == subject and not any(c in subject for c in "*?"), covering[0][3]
+    for other, lst in entries.items():
+        if other != linter:
+            assert not any(g.covers(e, tag, subject) for e in lst), f"{other} covers {subject}"
+# No entry covers the path beyond the decided pairs, whatever its glob, as the path or as a decided subject.
+for linter, lst in entries.items():
+    for entry in lst:
+        tag, glob, reason, where = entry
+        for p in (path, "/" + path, f"onthe on the [{path}]"):
             if g.covers(entry, tag, p):
-                assert name == "lintian" and tag in allowed and glob == path, f"{where} covers {p}"
-                assert not any(c in glob for c in "*?["), where
-                if p == path:
-                    seen.append(tag)
-assert len(seen) == len(set(seen)), "a decided entry is listed more than once"
-for tag in seen:
-    entry = (tag, path, "r", "t")
-    assert not g.covers(entry, "some-other-tag", path)
-    assert not g.covers(entry, tag, path + "x")
-    assert not g.covers(entry, tag, "usr/lib/custodio/libcustodio_pkcs11.so")
+                assert (linter, tag, p) in decided and glob == p, f"{where} covers {p}"
+        for l, t, subject in decided:
+            if g.covers(entry, t, subject):
+                assert l == linter and t == tag and glob == subject, f"{where} covers {subject}"
+# A decided entry covers neither another tag, nor another path, nor a longer subject.
+for linter, tag, subject in decided:
+    entry = (tag, subject, "r", "t")
+    assert not g.covers(entry, "some-other-tag", subject)
+    assert not g.covers(entry, tag, subject + "x")
+    assert not g.covers(entry, tag, subject.replace(path, "usr/lib/custodio/libcustodio_pkcs11.so"))
+assert not [e for e in entries["rpmlint"] if path in e[1]], "rpmlint.txt names the path"
 PY
 # No committed list holds a line without a reason (the parser also rejects it; this is the plain check).
 for l in lintian rpmlint namcap; do

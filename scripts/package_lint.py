@@ -7,6 +7,7 @@ version of LINT_DIR/pins.txt and otherwise in a container built from LINT_DIR/<l
 covered by an entry of LINT_DIR/<linter>.txt (`TAG | SUBJECT-GLOB | REASON`), and every entry must cover a finding. Exit statuses
 are not trusted: every output line is parsed, and a line that is not understood fails the gate.
 """
+import ast
 import fnmatch
 import glob
 import hashlib
@@ -70,7 +71,8 @@ def read_exceptions(path):
 
 
 def covers(entry, tag, subject):
-    return entry[0] == tag and fnmatch.fnmatchcase(subject, entry[1])
+    # Only '*' and '?' are wildcards; '[' is literal because lintian and namcap print brackets in their subjects.
+    return entry[0] == tag and fnmatch.fnmatchcase(subject, entry[1].replace("[", "[[]"))
 
 
 def find_package(linter, pkg_dir):
@@ -282,6 +284,17 @@ def subject_of(rest):
     return rest or "-"
 
 
+def sort_lists(subject):
+    """namcap prints Python lists in a different order on each run; sort their elements so that a subject is stable."""
+    def one(m):
+        try:
+            items = ast.literal_eval(m[0])
+        except (ValueError, SyntaxError):
+            return m[0]
+        return repr(sorted(items)) if all(isinstance(i, str) for i in items) else m[0]
+    return re.sub(r"\[[^\[\]]*\]", one, subject)
+
+
 def parse(linter, output, status):
     """[(severity, tag, subject)]; exits on a line it does not understand or a counts mismatch."""
     findings, summary = [], None
@@ -297,7 +310,7 @@ def parse(linter, output, status):
         elif linter == "namcap":
             m = re.fullmatch(r"(\S+) ([EWI]): (\S+)(?: (.*))?", text)
             if m:
-                findings.append((m[2], m[3], subject_of(m[4])))
+                findings.append((m[2], m[3], sort_lists(subject_of(m[4]))))
                 continue
         else:
             m = re.fullmatch(r"(\S+): ([EW]): (\S+)(?: (.*))?", text)
