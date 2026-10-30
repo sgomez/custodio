@@ -124,3 +124,9 @@ with an empty context.
   `reports/package-lint-container.txt` (force-added; `reports/.gitignore` ignores `*`) and asserts exactly the decided pairs, each covered by one literal entry.
   Report regenerated: `PACKAGE_LINT_FORCE_CONTAINER=1 just package-lint` exit 0, 56 findings, 0 stale.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F38 — session 5 (re-verification after an empty attempt)
+- No code change needed: all contract steps were already ticked and committed. Re-ran `just check`, `just package` and
+  `just package-lint` on a clean tree: all exit 0 (56 findings, 56 excepted, 0 stale).
+- Outcomes (as stated before): rpmlint outcome (b) (Fedora 44 container always), namcap branch 2 (container only), lintian host in the dev image.
+- Next session should: nothing for F38; the evaluator decides.
