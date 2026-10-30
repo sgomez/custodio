@@ -188,3 +188,8 @@ with an empty context.
 - Limit recorded in the findings: `check_authorization_sync` was not traced line by line.
 - `just check` and the `verify` command pass.
 - Next session should: nothing for F41; the evaluator decides.
+
+### 2026-10-30 — F41 — session 2
+- Nothing to build: outcome A holds, so contract steps 4 and 5 (outcome B only) are marked `- [-]` and skipped. `verify` passes, one
+  `Verdict: A`, no "not pinned down", no `BLOCKED.md`, `packaging`/`e2e`/`docs/milestones.md` untouched, `just check` passes.
+- Next session should: nothing for F41; the evaluator decides.
