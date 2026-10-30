@@ -9,3 +9,5 @@ manpage-not-compressed | bz2 /usr/share/man/man1/custodio.1.gz | the manual page
 invalid-license | EUPL-1.2 | EUPL-1.2 is the SPDX identifier of SPEC's license; rpmlint's built-in list does not know it
 no-changelogname-tag | - | the changelog is the shared file /usr/share/doc/custodio/changelog.Debian.gz; nfpm writes an rpm changelog only from a second, differently formatted list that would also replace the Debian one
 not-listed-as-documentation | /usr/share/doc/custodio/changelog.Debian.gz | nfpm marks %doc only for the .rpm and drops the file from the other formats, which share one file list
+dangerous-command-in-%pre | rm | `rm -f /run/custodio-restart-after-upgrade` clears a stale restart marker (F44); the path is fixed, in /run, and never under the state directory
+dangerous-command-in-%post | rm | `rm -f /run/custodio-restart-after-upgrade` consumes the restart marker before the one restart of an upgrade (F44); the path is fixed, in /run

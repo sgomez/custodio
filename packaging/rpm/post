@@ -1,5 +1,16 @@
 #!/bin/sh
-# Create the static `custodio` account the D-Bus policy names, and let systemd see the new unit.
-systemd-sysusers custodio.conf || true
+# Make systemd and the bus see the new unit and policy, register the journal catalog and, after an upgrade of a running service,
+# restart it once (F44; SPEC design section 2). The account was created by %pre. $1 is 1 on install and 2 on upgrade. The unit is
+# never enabled, started or preset here (the systemd macros are not used): D-Bus activation starts it. Nothing here touches the state directory.
+# Every reload tolerates failure: there is no live systemd in a chroot, an image build or rpm-ostree.
 systemctl daemon-reload || true
-systemctl reload dbus || true
+systemctl reload dbus.service || true
+journalctl --update-catalog || true
+# %pre left the marker only if the service was running before this upgrade (rpm runs it before this scriptlet, and the %preun and
+# %postun of the old package after it, so nothing from the old package is needed). Without it the service is left alone and D-Bus
+# activation starts the new binary on the next call.
+if [ "${1:-0}" -ge 2 ] && [ -e /run/custodio-restart-after-upgrade ]; then
+    rm -f /run/custodio-restart-after-upgrade
+    systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+fi
+exit 0

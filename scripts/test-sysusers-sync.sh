@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests of scripts/check-sysusers-sync.sh (F43): it passes on the tree, ignores comments in the conf, and fails when the embedded
-# text or the conf is edited, when the embedded text is gone, and when the conf has no entry.
+# Tests of scripts/check-sysusers-sync.sh (F43, F44): it passes on the tree, ignores comments in the conf, and fails when the text
+# embedded in the deb preinst or in the rpm %pre, or the conf, is edited, when the embedded text is gone, and when the conf has no entry.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 GATE=$ROOT/scripts/check-sysusers-sync.sh
@@ -12,7 +12,7 @@ bad() { echo "test-sysusers-sync: $*" >&2; fail=1; }
 fresh() {
     rm -rf "$tmp/tree"
     mkdir -p "$tmp/tree/packaging" "$tmp/tree/data"
-    cp -r "$ROOT/packaging/deb" "$tmp/tree/packaging/"
+    cp -r "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$tmp/tree/packaging/"
     cp -r "$ROOT/data/sysusers.d" "$tmp/tree/data/"
 }
 gate() { "$GATE" "$tmp/tree" > "$tmp/out" 2>&1; }
@@ -31,6 +31,15 @@ expect_fail "embedded account name edited"
 fresh
 sed -i 's/Custodio signing service/Custodio signing servicf/' "$tmp/tree/packaging/deb/preinst"
 expect_fail "embedded description edited"
+fresh
+sed -i 's/^u custodio/u custodiX/' "$tmp/tree/packaging/rpm/pre"
+expect_fail "rpm: embedded account name edited"
+fresh
+sed -i 's/Custodio signing service/Custodio signing servicf/' "$tmp/tree/packaging/rpm/pre"
+expect_fail "rpm: embedded description edited"
+fresh
+sed -i "/<<'CUSTODIO_SYSUSERS'\$/,/^CUSTODIO_SYSUSERS\$/d" "$tmp/tree/packaging/rpm/pre"
+expect_fail "rpm: embedded text removed"
 fresh
 sed -i 's/^u custodio - /u custodio 995 /' "$tmp/tree/data/sysusers.d/custodio.conf"
 expect_fail "conf edited"

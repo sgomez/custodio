@@ -75,7 +75,8 @@ package-gate-test:
     scripts/test-package-lint.sh
     scripts/test-package-lint-lists.sh
 
-# The install-time scripts. F43: the account text in the deb preinst equals the sysusers file, every maintainer script and action of the
+# The install-time scripts. F44: the same for the four scriptlets of the .rpm (stubbed, static, and under the real rpm in a user-namespace root).
+# F43: the account text in the deb preinst equals the sysusers file, every maintainer script and action of the
 # .deb runs in a stubbed root, and the real dpkg installs, upgrades, removes and purges. F42: the copies in the pre-install scripts equal the source, the check
 # against a private dbus-daemon, a stub bus without ProcessFD and no bus (as the source and as the scripts extracted from fixture
 # packages, with dash and bash), and the real dpkg, rpm and pacman refusing, installing or warning. The pacman cases run in the Arch
@@ -90,6 +91,9 @@ test-scripts:
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
     scripts/test-deb-lifecycle-real.sh
+    scripts/test-rpm-scripts-static.sh
+    scripts/test-rpm-lifecycle.sh
+    scripts/test-rpm-lifecycle-real.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:

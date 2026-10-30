@@ -678,3 +678,37 @@ their libraries (`bf_mkroot`); the stub buses are bind-mounted at `/run/bus` the
 chroot and `rpm --root` on its scriptlet chroot. Arch: as above (pacman goes on); the PreTransaction hook of the installed package aborts a
 reinstall and an upgrade (`pacman -U` exits 1, files and version unchanged) and sees `DBUS_SYSTEM_BUS_ADDRESS` of the pacman process.
 
+
+## F44: rpm scriptlets, research (2026-10-30)
+
+Checked on rpm 4.20.1 and nfpm 2.48.0 in the dev container (logging packages under `unshare -r rpm --root`), plus source reading of systemd's
+`src/rpm/macros.systemd.in`, `triggers.systemd.in`, `src/update-helper/update-helper.c`, rpm's `lib/order.c` and `lib/psm.c`, and rpm-ostree's
+`src/libpriv/rpmostree-scripts.cxx`, `rpmostree-core.cxx`, `rust/src/core.rs` and `docs/treefile.md` (main, Oct 2026). **Verified** unless marked.
+
+- **Order and `$1` across `rpm -U` (verified, measured).** New `%pre` (2), new files, new `%post` (2), old `%preun` (1), old files removed,
+  old `%postun` (1), new `%posttrans` (2). Install: `%pre` 1, `%post` 1. Erase: `%preun` 0, `%postun` 0. During the new `%post` and the old
+  `%postun` the rpmdb holds both headers, so a version query at the restart cannot tell the new package from the old; the call log order is the
+  evidence instead.
+- **The Fedora macros (verified in the systemd source).** `%systemd_post` runs `systemd-update-helper install-system-units` on `$1 -eq 1` (it
+  enables and presets); `%systemd_preun` runs `remove-system-units` on `$1 -eq 0`; `%systemd_postun` is empty; `%systemd_postun_with_restart`
+  only marks the unit (`mark-restart-system-units`) on `$1 -ge 1`, and a file trigger of systemd restarts the marked units at the end of the
+  transaction (a try-restart: stopped units stay stopped). `%sysusers_create_compat` is gone; its successor is `%sysusers_create_package`.
+  Their decisions are copied, their text is not (nfpm writes the script as it is, so a macro would stay unexpanded). Differences: no enable
+  or preset (SPEC: D-Bus activation starts the unit), the restart happens in the new `%post` from a marker (docs/decisions.md).
+- **Account before `%pre` (verified).** rpm 4.19+ turns `user(NAME) = BASE64(sysusers line)` provides into a `systemd-sysusers -` call that runs
+  before `%pre`; nfpm can write the provide. Not used: it would create the account before the F42 check, and SPEC says the check runs before
+  anything changes. On classic rpm the packaged sysusers file is not on disk yet in `%pre`, so the scriptlet pipes the line on stdin (as the deb).
+- **nfpm and `Requires(pre)` (verified).** `rpm.requires` has only `post`; `pre:` is "field not found"; a `(pre)` suffix in a name is literal.
+  Plain `Requires: systemd` (already there) orders systemd before the package's `%pre` (`order.c`, `addSingleRelation`: every non-weak Requires
+  is an edge; the pre flag matters only for breaking loops, and nothing requires custodio). The contract was amended for this.
+- **rpm-ostree (verified in source).** It runs `%pre`, `%post`, `%posttrans` and file triggers of packages being added, in bubblewrap on a
+  temporary root: no network, no D-Bus, no systemd (`SYSTEMD_OFFLINE=1`), `/run` a fresh tmpfs, `/var` read-only apart from `/var/tmp` and
+  `/var/lib/rpm-state`, `/usr` and `/etc` writable. It never runs `%preun`, `%postun` or the triggers of removal ("not running *un scripts for
+  removals yet"; only install, update and downgrade are handled). **So `rpm-ostree uninstall` runs no scriptlet of the removed package: the stop
+  (it ends with the reboot into the deployment without the package) and the notice SPEC asks for cannot come from the package's scriptlets.**
+  No other mechanism that runs at uninstall time exists in the package: see BLOCKED.md. Users: rpm-ostree runs sysusers once on the whole tree
+  before the `%pre` scripts if the image's rpm sets `%__systemd_sysusers`, and turns `useradd` calls of `%pre` into sysusers fragments; a
+  shipped `/usr/lib/sysusers.d/custodio.conf` is enough there (inferred; not run: F45 and later).
+- **Local finding in the deb (F43), not changed here.** `: > /run/custodio-restart-after-upgrade || true` in `preinst` ends a dash `sh` when the
+  redirection fails (a redirection error on a special builtin is fatal, whatever follows `||`); on a read-only `/run` the upgrade would fail.
+  The rpm `%pre` writes the marker in a subshell for this reason.

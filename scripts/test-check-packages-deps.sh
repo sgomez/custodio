@@ -79,8 +79,8 @@ case_fail deb-no-prerm deb: prerm -- script-del deb preremove
 case_fail deb-no-postrm deb: postrm -- script-del deb postremove
 case_fail rpm-no-post rpm: post -- script-del rpm postinstall
 case_fail rpm-no-pre rpm: pre -- script-del rpm preinstall
-case_fail rpm-preun rpm: preun -- script-add rpm preremove
-case_fail rpm-postun rpm: postun -- script-add rpm postremove
+case_fail rpm-no-preun rpm: preun -- script-del rpm preremove
+case_fail rpm-no-postun rpm: postun -- script-del rpm postremove
 case_fail arch-no-post-install arch: post_install -- script-del archlinux postinstall
 case_fail arch-no-post-upgrade arch: post_upgrade -- script-del archlinux postupgrade
 case_fail arch-no-pre-install arch: pre_install -- script-del archlinux preinstall

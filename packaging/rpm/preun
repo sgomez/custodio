@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stop the service when the package is erased (F44). $1 is 0 on erase and 1 on the %preun of the old package during an upgrade, which
+# does not stop it: %post of the new package restarts it once, after the new files and the bus policy are in place. The systemd macros are not used:
+# the unit is never enabled by the package, so there is nothing to disable. Nothing here touches the state directory.
+if [ "${1:-1}" -eq 0 ]; then
+    systemctl stop custodio.service || true
+fi
+exit 0

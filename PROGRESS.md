@@ -229,3 +229,22 @@ with an empty context.
   test uses 0.1.1 for the nfpm package. No Rust changed, so `just mutants-diff F43` has nothing to mutate.
 - `just check`, `just package`, `just package-lint` pass (`test-scripts` ran inside `check`).
 - Next session should: nothing for F43; the evaluator decides.
+
+### 2026-10-30 — F44 — session 1
+- Done (steps 1-8): rpm scriptlets `pre` (F42 check, then `systemd-sysusers -` from the embedded sysusers text, then the restart marker in `/run` on `$1 -ge 2`),
+  `post` (daemon-reload, `reload dbus.service`, catalog, one restart only with `$1 -ge 2` and the marker), `preun 0` (stop), `postun 0` (reloads, stop if active,
+  notice on stderr, same text as the deb); upgrades do nothing in `preun 1`/`postun 1`. No macros, no `%posttrans`, no `user()` provide. `scripts/embed-bus-check.sh`
+  renders the rpm `pre` and shares the account function with the deb; `check-sysusers-sync.sh` checks both copies. Research and decisions: `docs/findings.md`
+  ("F44: rpm scriptlets"), `docs/decisions.md`.
+- Amendment (commit alone): nfpm cannot write `Requires(pre)`; the plain `Requires: systemd` orders it. The evaluator should look at it.
+- Tests in `test-scripts`: `test-rpm-scripts-static.sh` (state-path allowlist, forbidden commands, macros in source and in `rpm -qp --scripts`, controls),
+  `test-rpm-lifecycle.sh` (every `$1`, offline variants with read-only `/var` and `/run`, parity with the deb scripts, 7 controls, 38 mutants),
+  `test-rpm-lifecycle-real.sh` (real `rpm --root` in a user namespace: logging package proves the `$1` rpm passes, install, upgrade from this tree and from an F42-era
+  package, active and inactive, erase, offline, refusing bus, failing sysusers, 11 mutant packages incl. account moved to `%post` seen as "present").
+  Gates updated (inverted): `RPM_SCRIPTS`, `test-package-scripts.sh`, `test-check-packages-deps.sh`. rpmlint: two exceptions for `rm -f` of the marker.
+- **BLOCKED.md written**: `rpm-ostree uninstall` runs no scriptlet of the removed package, so the notice SPEC asks for has no mechanism (options in the file). The last
+  step and the evidence item "rpm-ostree uninstall meets SPEC" stay open. The evaluator's note 1 (rpmdb version) is followed: the order of the call log is the evidence.
+- For a person: the deb `preinst` writes its marker with `: > file || true`, which ends a dash `sh` when `/run` is read-only (documented in findings); F43 was
+  not changed. No Rust changed, so `just mutants-diff F44` has nothing to mutate.
+- `just check`, `just package`, `just package-lint` pass (`test-scripts` ran inside `check`).
+- Next session should: nothing until BLOCKED.md is answered.

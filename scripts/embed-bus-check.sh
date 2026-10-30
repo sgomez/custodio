@@ -9,6 +9,25 @@ SRC=$ROOT/packaging/bus-check.sh
 block() { sed -n '/^# >>> custodio-bus-check$/,/^# <<< custodio-bus-check$/p' "$SRC"; }
 [ "$(block | wc -l)" -gt 2 ] || { echo "embed-bus-check: no marked block in $SRC" >&2; exit 1; }
 
+# account_fn: the account creation shared by the deb preinst and the rpm %pre (F43, F44); scripts/check-sysusers-sync.sh reads its heredoc.
+account_fn() {
+    cat <<'TEXT'
+custodio_create_account() {
+    if ! command -v systemd-sysusers >/dev/null 2>&1; then
+        printf '%s\n' "custodio: systemd-sysusers is not installed, so the custodio account cannot be created. Nothing was changed." >&2
+        return 1
+    fi
+    if ! systemd-sysusers - <<'CUSTODIO_SYSUSERS'
+u custodio - "Custodio signing service" -
+CUSTODIO_SYSUSERS
+    then
+        printf '%s\n' "custodio: systemd-sysusers failed to create the custodio account. Nothing was changed." >&2
+        return 1
+    fi
+}
+TEXT
+}
+
 # render KIND: the whole script of one kind; the caller redirects it to the file.
 render() {
     case $1 in
@@ -25,19 +44,9 @@ set -e
 TEXT
         block
         cat <<'TEXT'
-custodio_create_account() {
-    if ! command -v systemd-sysusers >/dev/null 2>&1; then
-        printf '%s\n' "custodio: systemd-sysusers is not installed, so the custodio account cannot be created. Nothing was changed." >&2
-        return 1
-    fi
-    if ! systemd-sysusers - <<'CUSTODIO_SYSUSERS'
-u custodio - "Custodio signing service" -
-CUSTODIO_SYSUSERS
-    then
-        printf '%s\n' "custodio: systemd-sysusers failed to create the custodio account. Nothing was changed." >&2
-        return 1
-    fi
-}
+TEXT
+        account_fn
+        cat <<'TEXT'
 # The marker is in /run, never under the state directory; postinst removes it.
 custodio_note_running() {
     rm -f /run/custodio-restart-after-upgrade
@@ -57,11 +66,30 @@ TEXT
     rpm)
         cat <<'TEXT'
 #!/bin/sh
-# Refuse to install while the system bus lacks ProcessFD (F42). The check below is packaging/bus-check.sh, embedded by
-# scripts/embed-bus-check.sh. It is the first thing this scriptlet does; it runs on install ($1 = 1) and upgrade ($1 = 2).
+# Refuse to install while the system bus lacks ProcessFD (F42), then create the custodio account (F44) and, on an upgrade, note
+# whether the service is running so that %post restarts it only then. The check below is packaging/bus-check.sh, embedded by
+# scripts/embed-bus-check.sh; it is the first thing this scriptlet does. It runs on install ($1 = 1) and upgrade ($1 = 2).
+# The account comes from the sysusers text below (scripts/check-sysusers-sync.sh keeps it equal to data/sysusers.d/custodio.conf):
+# it is created here, before the package manager unpacks the bus policy, and a %pre scriptlet cannot read a packaged file. The package requires systemd,
+# which provides systemd-sysusers, and a plain Requires is ordered before the %pre of the package that has it. The package has no user()
+# provide: the package manager would create the account with it before this scriptlet, so before the check.
 TEXT
         block
-        echo 'custodio_bus_check || exit 1'
+        account_fn
+        cat <<'TEXT'
+# The marker is in /run, never under the state directory; %post removes it. A failing write (read-only /run) is not an error: the
+# subshell keeps a failed redirection from ending a sh that treats it as fatal.
+custodio_note_running() {
+    rm -f /run/custodio-restart-after-upgrade
+    if [ "${1:-0}" -ge 2 ] && systemctl is-active --quiet custodio.service 2>/dev/null; then
+        ( : > /run/custodio-restart-after-upgrade ) 2>/dev/null || true
+    fi
+}
+custodio_bus_check || exit 1
+custodio_create_account || exit 1
+custodio_note_running "$1"
+exit 0
+TEXT
         ;;
     arch-install | arch-upgrade)
         cat <<'TEXT'

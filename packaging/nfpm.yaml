@@ -102,6 +102,8 @@ overrides:
     scripts:
       preinstall: packaging/rpm/pre
       postinstall: packaging/rpm/post
+      preremove: packaging/rpm/preun
+      postremove: packaging/rpm/postun
   archlinux:
     depends:
       - glibc

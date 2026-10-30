@@ -137,3 +137,28 @@ lc_run() {
 # lc_calls ROOT: the recorded calls, one per line.
 lc_calls() { cat "$1/recorded-calls" 2> /dev/null || true; }
 lc_reset() { rm -f "$1/recorded-calls" "$1/fs-calls"; }
+
+# shellcheck disable=SC2034 # rc, out and err are the results the tests read
+# lc_run_offline ROOT SCRIPT ARGS...: like lc_run, with the directories named in LC_RO (default "var run") bind-mounted read-only over
+# themselves first: what rpm-ostree gives a scriptlet (a read-only /var, a /run without the marker) and an image build on a read-only tree.
+lc_run_offline() {
+    local r=$1 script=$2
+    shift 2
+    cp "$script" "$r/scripts/$(basename "$script")"
+    rc=0
+    # shellcheck disable=SC2016 # the inner shell expands $r, $d and $@
+    bf_in_root "$r" sh -c 'r=$1; ro=$2; shift 2; for d in $ro; do mount --bind "$r/$d" "$r/$d" && mount -o remount,ro,bind "$r/$d" || exit 99; done; exec "$@"' \
+        sh "$r" "${LC_RO:-var run}" env -i PATH=/usr/bin DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket \
+        "$(command -v chroot)" "$r" /bin/sh "/scripts/$(basename "$script")" "$@" > "$BF_DIR/lc.out" 2> "$BF_DIR/lc.err" || rc=$?
+    out=$(cat "$BF_DIR/lc.out")
+    err=$(cat "$BF_DIR/lc.err")
+}
+
+# lc_bus_without_processfd ROOT / lc_bus_down ROOT: replace the busctl stub of the root by a bus that answers without ProcessFD, or by
+# one that is not there (the F42 check refuses the first and prints a notice for the second).
+lc_bus_without_processfd() {
+    printf '#!/bin/sh\necho "busctl $*" >> /recorded-calls\necho "a{sv} 1 \\"UnixUserID\\" u 0"\n' > "$1/usr/bin/busctl"
+}
+lc_bus_down() {
+    printf '#!/bin/sh\necho "busctl $*" >> /recorded-calls\necho "Failed to connect to bus: No such file or directory" >&2\nexit 1\n' > "$1/usr/bin/busctl"
+}

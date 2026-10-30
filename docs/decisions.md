@@ -224,3 +224,17 @@ Format: a title and three short bullets, a couple of lines each:
   maintainer scripts can carry debconf's protocol; the second stop covers a D-Bus activation between `prerm` and the removal of the files.
 - Rejected: `try-restart` in `postinst` (restarts a service that was started after `preinst`, and cannot tell a stale state); the marker under
   `/var/lib` (state directory); one notice per transaction (needs another marker).
+
+## 2026-10-30 — Rpm scriptlets: account in %pre from stdin, restart by marker, no systemd macros
+- Decision: `%pre` runs the F42 check, then `systemd-sysusers -` with the sysusers line embedded in the scriptlet (kept equal to the sysusers
+  file by `scripts/check-sysusers-sync.sh`), then on an upgrade notes `is-active` in `/run/custodio-restart-after-upgrade`; the new `%post`
+  reloads, updates the catalog and restarts once if the marker exists. The rpm has no `user()` provide, no `%posttrans`, no `Requires(pre)`
+  (nfpm cannot write it; the plain `Requires: systemd` orders it), and no `%systemd_*` or `%sysusers_*` macro (nfpm leaves them unexpanded).
+  `%preun 0` stops the service; `%postun 0` reloads, stops it again if active, and prints the notice on stderr (as the deb).
+- Why: the old package's `%preun`/`%postun` run after the new `%post`, and the old package may have none (the first nfpm rpm replaces the M1 rpm),
+  so only the new package's own scriptlets can decide; `%systemd_postun_with_restart` marks for a try-restart by a file trigger at the end of
+  the transaction and does nothing in a chroot or an image build, and the same `try-restart` was rejected for the deb (F43). A `user()`
+  provide would make rpm create the account before the F42 check.
+- Rejected: `%posttrans` for the restart (its `$1` cannot tell install from upgrade, and it would restart after the old files are removed); the
+  helper `systemd-update-helper` (absent in a chroot, enables and presets on install); a `useradd` fallback (see the deb entry).
+- Not decided here: the notice for `rpm-ostree uninstall` (no scriptlet of the removed package runs there): BLOCKED.md.

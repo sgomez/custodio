@@ -63,7 +63,7 @@ ELF_FILES = ("/usr/lib/custodio/custodiod", "/usr/bin/custodio", "/usr/lib/custo
 
 # Lifecycle scripts per format: exactly these exist (deb maintainer scripts, rpm scriptlet tags, Arch .INSTALL functions).
 DEB_SCRIPTS = {"preinst", "postinst", "prerm", "postrm"}
-RPM_SCRIPTS = {"pre", "post"}
+RPM_SCRIPTS = {"pre", "post", "preun", "postun"}
 ARCH_FUNCTIONS = {"pre_install", "pre_upgrade", "post_install", "post_upgrade"}
 # The check embedded in the pre scripts is a function of its own in the .INSTALL (F42); it is not a lifecycle function.
 ARCH_HELPERS = {"custodio_bus_check"}

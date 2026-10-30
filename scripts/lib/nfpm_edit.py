@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | predep-add DEP | predep-del DEP | predep-to-depends DEP
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | predep-add DEP | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
 """
 import sys
 
@@ -63,6 +63,8 @@ elif op == "script-add":  # a script file of the real set, under a key the gate 
     ov = cfg["overrides"][args[0]]
     target = ov["archlinux"].setdefault("scripts", {}) if args[1] in ("preupgrade", "postupgrade") else ov["scripts"]
     target[args[1]] = ov["scripts"].get("postinstall", "packaging/deb/postinst")
+elif op == "script-set":  # a script file of the test, under a key the real set has
+    cfg["overrides"][args[0]]["scripts"][args[1]] = args[2]
 elif op != "none":
     sys.exit("nfpm_edit: unknown op " + op)
 yaml.safe_dump(cfg, open(dst, "w"), sort_keys=False)
