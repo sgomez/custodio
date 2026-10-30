@@ -158,3 +158,16 @@ with an empty context.
 - `sign_refused_with_pidfd_of_another_process` now opens the parent's pidfd up front with `?` and asserts the parent pid differs from
   ours, so it cannot pass as a copy of the no-`ProcessFD` test. Test-only change; `just check` and `just test-integration` pass.
 - Next session should: nothing for F39; the evaluator decides.
+
+### 2026-10-30 — F40 — session 1
+- F39's cross-check stays (docs/findings.md M1.2); no unit change, no decisions.md entry. Added: unit tests for reaped child (own pid and old
+  pid → `Missing`) and zombie (accepted, recorded as current behaviour); `tests/audit.rs` comparisons of mismatch vs missing `ProcessFD`
+  (error name, message, `asked()`, whole entries; parent's pidfd and reaped pidfd) and a journal wire test; fd_leak covers both paths;
+  `unit-hardening` gate (`scripts/check-unit-hardening.sh`, in `system-gates`) with `scripts/test-check-unit-hardening.sh` in `shell-scripts-test`.
+- Manual removal of the `check_pidfd_info` call: failing tests were `credentials::tests::{pidfd_of_another_process_is_refused,
+  pidfd_of_reaped_child_is_refused, pidfd_of_reaped_child_is_refused_for_own_pid, process_fd_that_is_not_a_pidfd_is_refused}`, audit
+  `{mismatch_is_refused_identically_to_missing_process_fd, reaped_pidfd_is_refused_identically_to_missing_process_fd,
+  mismatching_pidfd_reaches_the_journal_as_authorization_unavailable, sign_refused_with_pidfd_of_another_process}` and fd_leak
+  `credential_reading_leaks_no_fd`. Call restored.
+- `just check`, `just test-integration`, `just mutants` pass (0 missed, 0 timeout). Not exercised under the unit's hardened /proc (see contract).
+- Next session should: nothing for F40; the evaluator decides.

@@ -87,6 +87,69 @@ fn pidfd_of_another_process_is_refused() -> R {
     Ok(())
 }
 
+/// A pidfd of a child that has exited, with the child's pid. With `reap` the child is waited for
+/// (fdinfo shows `Pid: -1`); without it the child stays a zombie, returned so it is reaped on drop.
+fn exited_child(
+    reap: bool,
+) -> Result<(u32, OwnedVariant, std::process::Child), Box<dyn std::error::Error>> {
+    let mut child = std::process::Command::new("true").spawn()?;
+    let pid = child.id();
+    let fd = pidfd_of(pid)?;
+    if reap {
+        child.wait()?;
+    } else {
+        loop {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))?;
+            if stat.rsplit(") ").next().is_some_and(|r| r.starts_with('Z')) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    Ok((pid, fd, child))
+}
+
+#[test]
+fn pidfd_of_reaped_child_is_refused() -> R {
+    // After `wait()` the fdinfo shows `Pid: -1`.
+    let (pid, fd, _child) = exited_child(true)?;
+    let m = full(|m| {
+        m.insert("ProcessID".to_owned(), num(pid));
+        m.insert("ProcessFD".to_owned(), fd);
+    })?;
+    assert_eq!(caller_from(&m), Err(CredentialsError::Missing));
+    Ok(())
+}
+
+#[test]
+fn pidfd_of_reaped_child_is_refused_for_own_pid() -> R {
+    let (_, fd, _child) = exited_child(true)?;
+    let m = full(|m| {
+        m.insert("ProcessFD".to_owned(), fd);
+    })?;
+    assert_eq!(caller_from(&m), Err(CredentialsError::Missing));
+    Ok(())
+}
+
+#[test]
+fn pidfd_of_zombie_child_is_accepted_for_its_pid() -> R {
+    // Current behaviour, not a requirement: an exited but not reaped process still shows its
+    // pid in fdinfo. Refusing it would need PIDFD_GET_INFO or /proc access.
+    let (pid, fd, _child) = exited_child(false)?;
+    let m = full(|m| {
+        m.insert("ProcessID".to_owned(), num(pid));
+        m.insert("ProcessFD".to_owned(), fd);
+    })?;
+    assert_eq!(
+        caller_from(&m),
+        Ok(Caller {
+            uid: 1_234_567,
+            pid
+        })
+    );
+    Ok(())
+}
+
 #[test]
 fn process_fd_that_is_not_a_pidfd_is_refused() -> R {
     // /dev/null has no `Pid:` line in its fdinfo.

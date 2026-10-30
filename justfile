@@ -62,7 +62,7 @@ test:
 check: lint test system-gates package-gate-test shell-scripts-test
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
-system-gates: security-score unit-verify bus-policy
+system-gates: security-score unit-hardening unit-verify bus-policy
 
 # The tests of the package gates and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd, gcc).
 package-gate-test:
@@ -77,6 +77,7 @@ package-gate-test:
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
     scripts/test-shell-scripts.sh
+    scripts/test-check-unit-hardening.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
@@ -91,6 +92,11 @@ security-score threshold="10":
         echo "security-score: a bare unit passed the gate" >&2
         exit 1
     fi
+
+# The unit keeps ProtectProc=invisible, ProcSubset=pid and PrivateUsers=yes (each once) and the security-score threshold stays 10, so the
+# pidfd cross-check is not paid for by loosening the unit.
+unit-hardening:
+    scripts/check-unit-hardening.sh
 
 # The unit parses cleanly: `systemd-analyze verify` exits 0 on unknown or invalid settings, so any output fails. ExecStart is
 # replaced by a stub because the binary is installed by packaging.

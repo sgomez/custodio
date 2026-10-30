@@ -50,8 +50,23 @@ fn credential_reading_leaks_no_fd() -> TestResult {
                 ]))
             };
         caller_from(&refused(std::process::id())?).err(); // warm-up
+        // A reaped child's pidfd (fdinfo `Pid: -1`) is refused too.
+        let reaped =
+            |own: bool| -> Result<HashMap<String, OwnedVariant>, Box<dyn std::error::Error>> {
+                let mut child = std::process::Command::new("true").spawn()?;
+                let fd = pidfd_of(child.id())?;
+                child.wait()?;
+                let pid = if own { std::process::id() } else { child.id() };
+                Ok(HashMap::from([
+                    ("UnixUserID".to_owned(), OwnedVariant::from(1u32)),
+                    ("ProcessID".to_owned(), OwnedVariant::from(pid)),
+                    ("ProcessFD".to_owned(), fd),
+                ]))
+            };
         let before = open_fds()?;
         for _ in 0..200 {
+            assert_eq!(caller_from(&reaped(true)?), Err(CredentialsError::Missing));
+            assert_eq!(caller_from(&reaped(false)?), Err(CredentialsError::Missing));
             assert!(creds.credentials(&me).await.is_ok());
             assert_eq!(
                 caller_from(&refused(std::process::id())?),
