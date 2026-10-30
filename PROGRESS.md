@@ -76,3 +76,15 @@ with an empty context.
 - Disclosure: step 5 is ticked without the evidence of a stub `scripts/check-packages.sh` that exits 1 (not done in
   session 2); the negative cases assert failure and the good set asserts success, so the tests discriminate.
 - Next session should: nothing for F36; the evaluator decides.
+
+### 2026-10-30 — F37 — attempt 1 (session 1)
+- Done: all five steps. `packaging/glibc-ceiling.txt` (ceiling 2.39 and six targets with sources), `packaging/parity-exceptions.txt`
+  (no entries), `scripts/check-glibc-ceiling.sh` + `check_glibc_ceiling.py`, `scripts/check-parity.sh` + `check_parity.py`,
+  shared `scripts/package_tree.py`, tests `test-glibc-ceiling.sh` and `test-check-parity.sh` in `package-gate-test`
+  (fixture ops `link` and `dir` added to `nfpm_edit.py`, `elf_patch.py` for the byte patches), recipes `package-parity`,
+  `glibc-ceiling`, `package-gates` (in `check-slow`), two named steps in the CI `package` job. `just check`, `just package`,
+  both gates and `package-gates` pass; mutating the numeric compare and the exception scoping makes the tests fail.
+- Decisions: exception line format `PATH | PACKAGES | FIELD | REASON`; named packages may deviate, the others must agree.
+  Findings are in docs/findings.md. CI actionlint/zizmor ran within `just check` locally (green).
+- Not done: nothing known. The `GLIBC_PRIVATE` fixture is not yet proven on the ubuntu-24.04 runner (CI will).
+- Next session should: nothing for F37; the evaluator decides.

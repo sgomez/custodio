@@ -2,7 +2,7 @@
 
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | drop DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
-     | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
+     | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
      | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY
 """
 import sys
@@ -29,6 +29,11 @@ elif op == "dup":
 elif op == "add":
     mode = int(args[1], 8) if len(args) > 1 else 0o644
     contents.append({"src": "data/custodio.module", "dst": args[0], "file_info": {"mode": mode, "owner": "root", "group": "root"}})
+elif op == "link":  # a symlink DST pointing at TARGET
+    contents.append({"src": args[1], "dst": args[0], "type": "symlink", "file_info": {"owner": "root", "group": "root"}})
+elif op == "dir":  # an explicit directory DST
+    owner = args[2] if len(args) > 2 else "root"
+    contents.append({"dst": args[0], "type": "dir", "file_info": {"mode": int(args[1], 8), "owner": owner, "group": owner}})
 elif op == "type":
     entry(args[0])["type"] = args[1]
 elif op == "override-contents":

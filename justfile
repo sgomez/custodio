@@ -57,18 +57,20 @@ test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests, taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
+# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
 check: lint test system-gates package-gate-test shell-scripts-test
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-verify bus-policy
 
-# The tests of the package gate and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd).
+# The tests of the package gates and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd, gcc).
 package-gate-test:
     scripts/test-package-scripts.sh
     scripts/test-check-packages.sh
     scripts/test-check-packages-deps.sh
+    scripts/test-check-parity.sh
+    scripts/test-glibc-ceiling.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -206,15 +208,27 @@ package version="":
     NFPM_VERSION=${base}${pre:+_$pre} NFPM_PRERELEASE= nfpm package -f packaging/nfpm.yaml -p archlinux -t target/packages >/dev/null
     scripts/check-packages.sh target/packages packaging/nfpm.yaml
 
+# The gates on the packages: `just package` (which checks their contents), then the same files, modes and owners in all three
+# (packaging/parity-exceptions.txt lists accepted differences) and no glibc symbol version above the ceiling. Later package gates join here.
+package-gates: package package-parity glibc-ceiling
+
+# Fails when the .deb, .rpm and Arch package in target/packages differ in installed paths, modes, owners or symlink targets.
+package-parity:
+    scripts/check-parity.sh
+
+# Fails when an ELF file in a package in target/packages needs a glibc symbol version above the ceiling of packaging/glibc-ceiling.txt.
+glibc-ceiling:
+    scripts/check-glibc-ceiling.sh
+
 # End-to-end tests: boots a systemd container (podman or docker, privileged), installs the .deb with the real polkit, and signs with
 # pkcs11-tool and NSS (modutil, certutil) while a test authentication agent approves or denies. Not part of `check-slow`: it needs a
 # container engine that can run systemd, which the dev container does not have.
 e2e: package
     bash e2e/run.sh
 
-# Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, and coverage with the CRAP
-# gate. The integration tests run under coverage. CI runs each of these as its own job.
-check-slow: check nightly mutants coverage-gate
+# Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP
+# gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.
+check-slow: check nightly mutants coverage-gate package-gates
 
 # Miri, ASan, the fuzz targets building and their lints.
 nightly: miri asan fuzz-build lint-fuzz

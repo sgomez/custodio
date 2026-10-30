@@ -238,6 +238,10 @@ jobs:
           echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
           sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
       - run: just package
+      - name: just package-parity
+        run: just package-parity
+      - name: just glibc-ceiling
+        run: just glibc-ceiling
 
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:
