@@ -145,3 +145,11 @@ with an empty context.
   list" case, and every negative list case asserts `(NOT excepted)`; added a namcap case where an unsorted bracketed list is covered by
   the sorted literal entry (and an unsorted entry is not). Mutations (`covers` always true, prefix glob, no `sort_lists`) now fail the suite.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F39 — session 1
+- `caller_from` now needs `ProcessFD` (borrowed from the map, no dup) and cross-checks the `Pid:` line of `/proc/self/fdinfo/<fd>` against
+  `ProcessID` (`check_pidfd_info`); any failure is `CredentialsError::Missing` → `AuthorizationUnavailable`, polkit not asked. Safe code only.
+- Tests: unit (`credentials/tests.rs`), `tests/audit.rs` (no fd, wrong type, other process's pidfd, journal wire value), `tests/fd_leak.rs` (own binary).
+- Optional "why" field: not added (conservative); `docs/audit.md` only extends the outcome's meaning text.
+- `just check`, `just test-integration`, `just mutants` pass; zero missed/timeout in `target/mutants`.
+- Next session should: nothing for F39; the evaluator decides.
