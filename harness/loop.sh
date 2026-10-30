@@ -145,11 +145,16 @@ Approved contract: $c"
   [ -e BLOCKED.md ] && continue
   stash_leftovers "$stamp"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
-    echo "The previous session made no commit. Commit your work at the end of every session." \
-      | findings "$id" "no commit"
-    continue
-  fi
-  if bad_commits "$id" > "$STATE/$id.commits"; then
+    # Every step ticked and this HEAD never evaluated: nothing for a builder to do, go to the gate.
+    if (( $(open_steps "$c") > 0 )) || [ "$(cat "$STATE/$id.evaluated" 2>/dev/null)" = "$head_before" ]; then
+      no_commit="The previous session made no commit. Commit your work at the end of every session."
+      # Keep the evaluator's findings; replacing them leaves the next builder nothing to fix.
+      prev=$(tail -n +3 NEXT_FINDINGS.md 2>/dev/null | grep -vxF "$no_commit" | sed "/./,\$!d" || true)
+      printf '%s\n\n%s\n' "$no_commit" "$prev" | findings "$id" "no commit"
+      continue
+    fi
+    log "$id: no commit and no open steps; going to the gate"
+  elif bad_commits "$id" > "$STATE/$id.commits"; then
     findings "$id" "commit messages" < "$STATE/$id.commits"
     continue
   fi
@@ -183,6 +188,7 @@ Approved contract: $c"
   # 3. Gate: verify, then evaluator
   attempts=$(bump "$id.attempts")
   (( attempts <= MAX_ATTEMPTS )) || die "$id was rejected $MAX_ATTEMPTS times; see NEXT_FINDINGS.md. Stopping for a human." 2
+  git rev-parse HEAD > "$STATE/$id.evaluated"
   log "$id: verify ($verify)"
   if ! bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1; then
     # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
