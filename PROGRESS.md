@@ -178,3 +178,13 @@ with an empty context.
 - `tests/audit.rs`: a failed pidfd clone now panics via `insert_pidfd` (justified `#[allow(clippy::expect_used)]`).
 - `just check`, `just test-integration`, `just mutants` pass (0 missed, 0 timeout).
 - Next session should: nothing for F40; the evaluator decides.
+
+### 2026-10-30 — F41 — session 1
+- Outcome A applied. A subagent read polkit tag `124` (commit 82f0924) and Ubuntu noble `policykit-1 124-2ubuntu1.24.04.4`: links 1-4
+  verified, link 5 is a visible non-pinned PID path; noble patches touch none of the cited code. Result in `docs/findings.md` section 3a
+  (`Verdict: A`); the section 3 "not pinned down" sentence is corrected. Nothing else changed: packages keep `>= 124`, no `BLOCKED.md`.
+- Ubuntu 24.04 stays "Only with dbus-broker installed" (dbus-daemon 1.14.10 has no `ProcessFD`, inferred). Step 4/5 (outcome B) do not apply
+  and stay unticked.
+- Limit recorded in the findings: `check_authorization_sync` was not traced line by line.
+- `just check` and the `verify` command pass.
+- Next session should: nothing for F41; the evaluator decides.

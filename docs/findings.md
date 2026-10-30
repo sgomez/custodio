@@ -73,8 +73,9 @@ Why the minimums: polkit 124 added pidfd support (`pidfd` parameter in `CheckAut
 polkit NEWS, verified). dbus 1.15.8 added `ProcessFD` to `GetConnectionCredentials` (dbus NEWS,
 verified); stable releases are 1.16.0 and later. dbus-broker 34 added it (NEWS, verified). polkit's
 own code uses it: `polkitsystembusname.c` calls `GetConnectionCredentials` and reads the
-`ProcessFD` key into a pidfd (polkit `main`, read 2026-10-27, verified). Which polkit release
-first did this is not pinned down; 124 is taken from its NEWS. So polkit 124+ on a bus that
+`ProcessFD` key into a pidfd (polkit `main`, read 2026-10-27, verified). polkit 124 does
+this too: its source was read at tag `124` and in the Ubuntu 24.04 package (see "polkit 124 and
+ProcessFD" below). Releases before 124 were not read. So polkit 124+ on a bus that
 exposes `ProcessFD` is enough; on a bus without it polkit falls back to the PID, which is
 what makes the older rows unsafe against PID reuse.
 
@@ -103,6 +104,69 @@ Consequence: supported targets are Debian 13, Ubuntu 25.10 and later, Fedora 41 
 RHEL/Alma 10 and Arch. Ubuntu 24.04 works only with `dbus-broker`. Debian 12, Ubuntu 22.04,
 RHEL 9 and Leap are out. The only package built is the Debian 13 `.deb`; the end-to-end suite
 runs on trixie (polkit 126, dbus-daemon 1.16.2).
+
+## 3a. polkit 124 and ProcessFD (F41, 2026-10-30)
+
+Question (SPEC.md open question): does polkit 124 take the pidfd of a system-bus-name subject from
+the `ProcessFD` key of `GetConnectionCredentials`, or fall back to the PID? Read by a subagent.
+
+Sources:
+- Upstream tag `124`, commit `82f0924dc0eb23b9df68e88dbaf9e07c81940a5a` ("Release 124"):
+  `git clone https://gitlab.freedesktop.org/polkit/polkit.git && git -C polkit checkout 124`.
+- Ubuntu noble source package `policykit-1` (binary `polkitd`), version `124-2ubuntu1.24.04.4`
+  (Updates and Security, published 2026-09-15). Found with
+  `curl -sL "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=policykit-1&distro_series=https://api.launchpad.net/1.0/ubuntu/noble&exact_match=true&status=Published"`.
+  Files under `https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/policykit-1/124-2ubuntu1.24.04.4/`:
+  `policykit-1_124.orig.tar.gz` (sha256 `72457d96a0538fd03a3ca96a6bf9b7faf82184d4d67c793eb759168e4fd49e20`),
+  `policykit-1_124-2ubuntu1.24.04.4.debian.tar.xz` (sha256 `9383eaad67e9a33bf0955d8acbd553f041c3b1960c4eed1a9cfabf36024e1716`).
+- Ubuntu patch list (`debian/patches/series`): `02_gettext.patch`, `08_chdir_root.patch`,
+  `Turn-local-modifications-of-mocklibc-into-patches-and-app.patch`, `debian/01_pam_polkit.patch`,
+  `debian/50-default.rules-Replace-wheel-group-with-sudo-group.patch`,
+  `debian/Don-t-use-PrivateNetwork-yes-for-the-systemd-unit.patch`, `git-action-directories.patch`,
+  `CVE-2025-7519.patch`, `CVE-2026-4897.patch`, `CVE-2026-85498.patch`.
+  Of the files cited below only `polkitbackendinteractiveauthority.c` is touched, by
+  `git-action-directories.patch` (one hunk near line 291, action directories). No patch touches the
+  other cited files and none mentions pidfd or ProcessFD. In `policykit-1_124.orig.tar.gz` (the
+  unpatched upstream release tarball) the cited files are byte-identical to tag `124` (`cmp`).
+
+Chain (line numbers at tag `124`):
+1. `GetConnectionCredentials` is called: `src/polkit/polkitsystembusname.c`,
+   `polkit_system_bus_name_get_creds_sync`, lines 486-530 (call at 516-527, through
+   `g_dbus_connection_call_with_unix_fd_list_sync`, so the reply's fd list is received). Verified.
+   Only `UnknownMethod` falls back to the PID-only `polkit_system_bus_name_get_creds_fallback` (line 394).
+2. The `ProcessFD` key is extracted: same function, lines 565-569 (`g_strcmp0 (key, "ProcessFD")`,
+   `g_unix_fd_list_get`), returned through `*out_pidfd` at 580-583. Verified.
+3. The pidfd reaches the `PolkitUnixProcess` subject: `polkit_system_bus_name_get_process_sync`,
+   lines 636-640 (`pidfd >= 0` → `polkit_unix_process_new_pidfd`);
+   `src/polkit/polkitunixprocess.c` `polkit_unix_process_new_pidfd` 815-825, `polkit_unix_process_constructed`
+   337-377 (a pidfd it did not open itself is marked `pidfd_is_safe`, 345-346). Verified.
+4. The backend's identity check uses the pidfd rather than the pid: `polkit_unix_process_get_pid`
+   (`polkitunixprocess.c` 604-617) returns, whenever a pidfd is set, the pid parsed from
+   `/proc/self/fdinfo/<pidfd>` (`get_pid_from_pidfd`, 282-334), or -1 if the process is gone; the stored
+   pid is not consulted. `polkit_unix_process_get_racy_uid__` (1145-1259) starts from that pid (1169) and
+   compares the start time (1253-1257). The backend uses it in `polkitbackendsessionmonitor-systemd.c`
+   `polkit_backend_session_monitor_get_user_for_subject` (266-301); `subject_equal_for_authz` in
+   `polkitbackendinteractiveauthority.c` (about 3095-3135) compares by pid taken from the pidfd; the
+   duktape authority (`polkitbackendduktapeauthority.c` 403-404, 497-510) fails with "Process changed
+   pid" if it differs. Verified. Limits: for a bus-name subject, `get_user_for_subject` returns the
+   uid from the bus reply with `matches = TRUE` (about line 306) and does not run the racy-uid check;
+   the full call path of `check_authorization_sync` was not traced line by line (only the uses above).
+   Neither limit changes the claim: every pid the backend derives for the process comes from the pidfd.
+5. Key absent: `get_process_sync` takes `polkit_unix_process_new_for_owner (pid, 0, uid)` (639-640)
+   with `ProcessID` and `UnixUserID`. In `constructed` (348-359) polkit then opens a pidfd itself with
+   `pidfd_open (pid)`; that pidfd is `pidfd_is_safe = FALSE` (racy), so the systemd-unit lookup is
+   skipped (`polkitbackendduktapeauthority.c:491`) and the subject is not serialised with a pidfd
+   (`polkitsubject.c:322`). It is a visible, non-pinned PID path, not a failure. Verified.
+   A failing `g_unix_fd_list_get` (line 568) also degrades to this path (error set, `pidfd = -1`).
+
+NEWS for 124 ("PIDFDs are used if available to track processes") agrees but is not the evidence.
+
+Runtime condition: pinning needs a bus that returns `ProcessFD` (dbus-daemon 1.15.7+ per the source
+comment at 509-514, dbus-broker 34+). Ubuntu 24.04 ships dbus-daemon 1.14.10, which most likely does not
+(inferred), so there polkit 124 takes the link 5 path unless `dbus-broker` is installed. The table row
+in section 3 stays "Only with dbus-broker installed".
+
+Verdict: A
 
 ## 4. Manual acceptance run (M01)
 
