@@ -1,0 +1,235 @@
+{
+  "milestone": "M2",
+  "features": [
+    {
+      "id": "F36",
+      "title": "Build the .deb, .rpm and Arch package with nfpm from one file list",
+      "description": "`just package` builds the release binaries and then exactly one .deb, one .rpm and one .pkg.tar.zst (x86_64) into target/packages from a single nfpm configuration that lists every installed file once (source, destination, mode, owner): the service, the CLI, the PKCS#11 module, the systemd unit, the sysusers file, the D-Bus policy and activation files, the polkit action, the p11-kit module file and the journal catalog, all under /usr and nothing in /etc or /var. The service moves from /usr/libexec/custodiod to /usr/lib/custodio/custodiod in all three formats (open question 'Arch and /usr/libexec', option (a), which the person approving this list confirms), with the unit and the D-Bus activation file updated, so there is one unit and one activation file. Per-format overrides hold only metadata, dependency names (polkitd on the .deb, polkit on .rpm and Arch; systemd, the system bus, p11-kit and every shared library the binaries link, since nfpm does not compute them like cargo deb's $auto did) and, where the format can express it, polkit >= 124. Each format has its own lifecycle script files; until F43 and F44 they only do what the M1 postinst does. The recipe fails if any package is missing or if any file of the list is missing from a package. Versions: Debian revision, RPM release and Arch pkgrel are derived from the workspace version, and the recipe accepts a version override so a test can build an N+1 package from the same tree; recorded in docs/decisions.md. nfpm is pinned in mise.toml (with a checksum where mise supports one) and installed in harness/Containerfile; cargo-deb, the [package.metadata.deb] section, data/debian and every use of `cargo deb` leave the repository, mise.toml, the dev image and CI. The `shell_scripts` list that `just lint` passes to shellcheck covers the maintainer scripts whatever their file names.",
+      "depends_on": [],
+      "verify": "just check && just package && test $(ls target/packages/*.deb | wc -l) -eq 1 && test $(ls target/packages/*.rpm | wc -l) -eq 1 && test $(ls target/packages/*.pkg.tar.zst | wc -l) -eq 1 && ! grep -rqs 'package.metadata.deb' crates Cargo.toml && ! grep -rqsE 'cargo[- ]deb' justfile mise.toml harness/Containerfile .github && ! grep -rqs '/usr/libexec' data",
+      "passes": false
+    },
+    {
+      "id": "F37",
+      "title": "Package parity and C library ceiling gates",
+      "description": "Two new recipes, also run by `just package-gates` (which `check-slow` and CI include, each package gate as its own CI job or step): `just package-parity` lists the installed paths, modes and owners of the three packages in target/packages and fails if they differ, apart from the differences listed in a committed file in the repository where each entry has a reason (expected to be empty after F36). `just glibc-ceiling` reads every ELF file in every package and fails if any of them needs a glibc symbol version newer than the oldest glibc among the targets the packages install on, including Ubuntu 24.04 and Alma 10 (2.39 unless the builder finds otherwise; the ceiling and its source are recorded in the repository). How the build meets the ceiling is the builder's choice, and it must work in the dev container. Each gate has a self-test that a fabricated difference or a too-new symbol version makes it fail.",
+      "depends_on": [
+        "F36"
+      ],
+      "verify": "just check && just package && just package-parity && just glibc-ceiling",
+      "passes": false
+    },
+    {
+      "id": "F38",
+      "title": "Package linters with justified exception lists",
+      "description": "`just package-lint` (part of `just package-gates`) runs lintian on the .deb, rpmlint on the .rpm and namcap on the .pkg.tar.zst. The three linters are installed in the dev image (harness/Containerfile), pinned where the source allows; on a host that lacks one, the recipe runs it in a container of the target distribution. Any finding fails the check unless it is in a committed exception list for that linter where each entry has a reason. The findings are fixed in the packaging where possible rather than listed; the path chosen in F36 is confirmed to be accepted by namcap and rpmlint, or the open question is reported in BLOCKED.md.",
+      "depends_on": [
+        "F36"
+      ],
+      "verify": "just check && just package && just package-lint",
+      "passes": false
+    },
+    {
+      "id": "F39",
+      "title": "custodiod refuses a Sign call whose bus credentials lack ProcessFD",
+      "description": "When custodiod reads the caller's connection credentials for a Sign call it also asks for ProcessFD. If the bus does not return it, the signature is refused before polkit is asked, and the call leaves exactly one M1 journal entry with the 'authorization not possible' outcome. No D-Bus interface or audit field name changes; any added field follows the additive-change rule of docs/audit.md. Integration tests (in `just test-integration`) show that a Sign call whose credentials lack ProcessFD returns no signature, does not ask the fake polkit authority, and leaves exactly one journal entry with that outcome. The credential-reading code stays in the files `just mutants` covers, with no surviving mutant.",
+      "depends_on": [],
+      "verify": "just check && just test-integration && just mutants",
+      "passes": false
+    },
+    {
+      "id": "F40",
+      "title": "Cross-check that the caller's pidfd and pid name the same process",
+      "description": "Where it can be done without loosening custodio.service, custodiod checks that the pidfd from ProcessFD and the reported pid name the same process (docs/findings.md M1.2), and a mismatch is refused exactly like missing ProcessFD (no polkit query, one 'authorization not possible' entry), with tests. The exposure gate keeps its threshold. If the cross-check cannot be done within the current hardening, the presence check of F39 alone stays the requirement and the reason is recorded in docs/decisions.md, with a test or check that the unit was not loosened.",
+      "depends_on": [
+        "F39"
+      ],
+      "verify": "just check && just test-integration && just mutants",
+      "passes": false
+    },
+    {
+      "id": "F41",
+      "title": "Confirm whether polkit 124 reads ProcessFD from the bus",
+      "description": "Before any Ubuntu 24.04 work, polkit 124's system-bus-name subject code is read (through a subagent) to establish whether it takes the pidfd from the bus's ProcessFD credential or falls back to the PID. The result, with the source files and versions read, goes in docs/findings.md under a section naming polkit 124 and ProcessFD. If 124 falls short, the minimum polkit declared by the packages is raised to the first release that does read it, Ubuntu 24.04 is dropped from the supported set in the docs and the e2e matrix, and BLOCKED.md asks the person approving the milestone to confirm.",
+      "depends_on": [],
+      "verify": "grep -qE '^#+ .*polkit 124' docs/findings.md && grep -q 'ProcessFD' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F42",
+      "title": "Install-time check that the system bus provides ProcessFD",
+      "description": "Before a package changes anything, its pre-install script (the same POSIX shell check shared by the three formats) asks the running system bus for its own connection credentials and fails the installation if ProcessFD is missing, with a message that names the missing ProcessFD support and points to the installation documentation (docs/install.md, written in F51; on Ubuntu 24.04: switch to dbus-broker and reboot). It tests the capability, never the daemon name or distribution. When no system bus is running (chroot, image build, rpm-ostree), it installs anyway and prints a notice that the service will refuse to sign until a bus with ProcessFD runs (open question 'Installing without a running bus', proposed answer). `just test-scripts` (new recipe, part of `just check`) tests the check against a private dbus-daemon of the dev container (which has ProcessFD, so it passes), against a bus or stub that omits ProcessFD (refused, non-zero exit, message), and with no bus (notice, success).",
+      "depends_on": [
+        "F36"
+      ],
+      "verify": "just check && just test-scripts && just package && just package-lint",
+      "passes": false
+    },
+    {
+      "id": "F43",
+      "title": "Lifecycle scripts of the .deb: install, upgrade, remove, purge",
+      "description": "The .deb's preinst, postinst, prerm and postrm implement SPEC design section 2 with Debian's conventions (behaviour of dh_installsystemd and dh_installsysusers, not their text): on install, create the custodio account from the sysusers file before the bus policy is loaded, daemon-reload, reload the bus, update the journal catalog, never enable or start the unit, never touch the state directory; on upgrade, keep the state directory and account and restart the service once the new files and bus policy are in place only if it was running; on remove and on purge, stop the service, keep the state directory and the account, and print where the keys are and that deleting them by hand destroys them for good. No script deletes, chowns, chmods, reads, copies or prints anything under the state directory, or widens the bus policy, polkit action or unit hardening. Upgrading from the last cargo-deb .deb (whose only script is the M1 postinst) is handled as a normal upgrade. `just test-scripts` runs each script with stubbed systemctl, systemd-sysusers, journalctl and bus tools on a temporary root, and asserts the calls made and that a populated state directory is byte-identical with the same owner and modes after upgrade, remove and purge.",
+      "depends_on": [
+        "F42"
+      ],
+      "verify": "just check && just test-scripts && just package && just package-lint",
+      "passes": false
+    },
+    {
+      "id": "F44",
+      "title": "Lifecycle scripts of the .rpm and the Arch package",
+      "description": "The .rpm scriptlets (behaviour of %systemd_post, %systemd_preun, %systemd_postun_with_restart and Fedora's sysusers handling) and the Arch install script (behaviour of systemd's pacman hooks, without duplicating what the hooks already do) implement the same install, upgrade and removal decisions as F43: account before the bus policy, daemon-reload, bus reload, catalog update, no enable or start, restart on upgrade only if running, state directory and account kept on removal (including rpm-ostree uninstall) with the same notice, and no script touching the state directory or widening the policy, action or hardening. Scriptlets must tolerate running offline (rpm-ostree: no bus, read-only /var). `just test-scripts` covers them like the .deb scripts, including the RPM argument counts for install, upgrade and erase.",
+      "depends_on": [
+        "F42"
+      ],
+      "verify": "just check && just test-scripts && just package && just package-lint",
+      "passes": false
+    },
+    {
+      "id": "F45",
+      "title": "End-to-end harness per target, with Debian 13 and Ubuntu 26.04",
+      "description": "`just e2e <target>` (or `just e2e all`, the default) builds the packages, boots a privileged systemd container of the target from e2e/targets/<target>/Containerfile with the distribution's real polkit and its default system bus daemon, installs the package with the target's own tool (apt/dpkg here; never by copying files, and the image never contains the package) and runs the existing suite through one shared guest script. Each run prints and saves which bus daemon and polkit version it used. Targets debian13 and ubuntu2604 exist; adding a target is a new directory. Each target has a committed skip list (case and reason); the suite fails if any case is skipped that is not on that target's list, and `just test-scripts` tests that enforcement. The suite includes the journalctl -x check that a custodio.service entry shows the explanation from Custodio's journal catalog. The default journald storage of each target is checked in the container and recorded in docs/findings.md.",
+      "depends_on": [
+        "F43"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/ubuntu2604/Containerfile && grep -rq 'journalctl -x' e2e && grep -rqi 'polkit' e2e/targets",
+      "passes": false
+    },
+    {
+      "id": "F46",
+      "title": "End-to-end targets Fedora 44 and Alma 10",
+      "description": "Targets fedora44 and alma10 (the RHEL 10 stand-in) run the suite of F45 with dnf installing the .rpm. Whether pkcs11-provider, OpenSC, the NSS tools and the Python D-Bus bindings are available from the base repositories (and AppStream on Alma) is settled while building the images; each gap becomes an entry on that target's skip list with a reason, EPEL is used only if BLOCKED.md got the approver's consent, and the result is recorded in docs/findings.md with each target's journald default.",
+      "depends_on": [
+        "F44",
+        "F45"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -q 'fedora:44' e2e/targets/fedora44/Containerfile && grep -qi 'alma' e2e/targets/alma10/Containerfile && test -f e2e/targets/fedora44/skip.list && test -f e2e/targets/alma10/skip.list",
+      "passes": false
+    },
+    {
+      "id": "F47",
+      "title": "End-to-end target Arch",
+      "description": "Target arch runs the suite of F45 with pacman -U installing the .pkg.tar.zst. Gaps in test tools become skip-list entries with reasons. The bus daemon Arch runs by default is recorded from the container, and docs/findings.md section 3 is corrected if it is not dbus-daemon; the journald default is recorded too.",
+      "depends_on": [
+        "F44",
+        "F45"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -qi 'archlinux' e2e/targets/arch/Containerfile && test -f e2e/targets/arch/skip.list",
+      "passes": false
+    },
+    {
+      "id": "F48",
+      "title": "End-to-end upgrade cases on every target",
+      "description": "`just e2e` also runs the upgrade case on each of debian13, ubuntu2604, fedora44, alma10 and arch: keys are imported with package version N, a package N+1 built from the same tree with only the version raised is installed with the target's tool, and the test checks that the key files are byte-identical with the same owner and modes, the same keys are listed and sign with polkit asked, the service if running before runs the new binary afterwards (checked by its executable's identity, not only its state), and no manual step was needed. On debian13 the same case runs from the last .deb built by cargo deb to the first nfpm .deb; the old package is produced reproducibly from the last M1 commit without putting cargo-deb back in mise.toml, the dev image or CI.",
+      "depends_on": [
+        "F46",
+        "F47"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rqi 'upgrade' e2e && grep -rq 'sha256sum\\|cmp ' e2e",
+      "passes": false
+    },
+    {
+      "id": "F49",
+      "title": "End-to-end removal, purge and reinstall cases on every target",
+      "description": "`just e2e` also runs, on every target of F48, removal with the target's tool (and apt purge on debian13 and ubuntu2604), checking that the service is not running, no packaged file remains, com.rfirma.Custodio1 cannot be activated, the state directory and key files are present and unchanged, the custodio account still exists, and the removal output said where the keys are; then reinstalls and checks that the same keys are listed and sign without a new import.",
+      "depends_on": [
+        "F46",
+        "F47"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rq 'purge' e2e && grep -rqiE 'reinstall' e2e",
+      "passes": false
+    },
+    {
+      "id": "F50",
+      "title": "End-to-end refusal on Ubuntu 24.04 with dbus-daemon",
+      "description": "Target ubuntu2404 boots Ubuntu 24.04 on its default dbus-daemon and runs only the refusal case: installing the .deb with apt fails with a message naming the missing ProcessFD support, and afterwards no Custodio file is installed, dpkg does not list the package as configured, and nothing listens on com.rfirma.Custodio1. `just e2e all` includes it.",
+      "depends_on": [
+        "F41",
+        "F45"
+      ],
+      "verify": "just check && bash -n e2e/*.sh && grep -qi 'ubuntu:24.04\\|noble' e2e/targets/ubuntu2404/Containerfile && grep -rq 'ProcessFD' e2e",
+      "passes": false
+    },
+    {
+      "id": "F51",
+      "title": "Administrator documentation for installing and removing",
+      "description": "docs/install.md explains: installing on Debian 13, Ubuntu 26.04, Fedora 44, RHEL/Alma 10 and Arch with each system's tool, and on rpm-ostree systems by layering; why a bus without ProcessFD is refused; how to switch Ubuntu 24.04 to dbus-broker and reboot (unless F41 dropped Ubuntu 24.04); what removal and purge leave behind (state directory, keys, custodio account) and the manual command that destroys the keys deliberately, with the warning that deletion is not secure erasure; that a signature waiting for polkit during an upgrade fails closed; and how to check that journald storage is persistent and why it matters for the audit trail (the package does not change journald's configuration). README.md links to it.",
+      "depends_on": [
+        "F41",
+        "F43",
+        "F44"
+      ],
+      "verify": "for w in 'Debian 13' 'Ubuntu 26.04' 'Fedora 44' 'Alma' 'Arch' 'rpm-ostree' 'dbus-broker' 'ProcessFD' 'purge' 'Storage=persistent' 'journalctl'; do grep -qF -- \"$w\" docs/install.md || { echo \"missing: $w\" >&2; exit 1; }; done && grep -q 'docs/install.md' README.md",
+      "passes": false
+    },
+    {
+      "id": "F52",
+      "title": "Written manual acceptance steps for the M2 machines",
+      "description": "docs/manual-acceptance.md gains the M2 steps for fedora44 (SELinux enforcing, Fedora's Firefox, ausearch for denials), bazzite (rpm-ostree layering, replacing the layered package, OS update, reboots), omarchy (pacman -U, Quickshell polkit agent, Firefox, recording whether manual registration was needed) and ubuntu2404 (refusal before the switch, switching to dbus-broker, what to check afterwards), each run recording the OS release, kernel, bus daemon and version, polkit version and package file names.",
+      "depends_on": [
+        "F51"
+      ],
+      "verify": "for w in fedora44 bazzite omarchy ubuntu2404 rpm-ostree Quickshell dbus-broker SELinux ausearch 'pacman -U' 'polkit version'; do grep -qF -- \"$w\" docs/manual-acceptance.md || { echo \"missing: $w\" >&2; exit 1; }; done",
+      "passes": false
+    },
+    {
+      "id": "F53",
+      "title": "Run the end-to-end matrix on a host with a container engine",
+      "description": "On a host with podman or docker able to run systemd, `just e2e all` passes for debian13, ubuntu2604, fedora44, alma10 and arch (install, the full M1 suite, the catalog check, upgrade, removal, purge, reinstall) and the ubuntu2404 refusal case, with only listed skips; the recorded bus daemon and polkit version of each run go in docs/findings.md. `just package-gates` and the M0 and M1 gates pass with unchanged thresholds. Acceptance 1 to 11.",
+      "depends_on": [
+        "F37",
+        "F38",
+        "F40",
+        "F48",
+        "F49",
+        "F50"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F54",
+      "title": "Acceptance 12 by hand: fedora44 with SELinux enforcing",
+      "description": "Following docs/manual-acceptance.md on fedora44: the .rpm installs with dnf and a .p12 imports; Fedora's packaged Firefox lists the certificate without manual registration and uses it for TLS client authentication, each signature shows the polkit dialog and cancelling makes it fail; the audit log shows no SELinux denial involving the service, polkit or the module during import, signing and denial; the documented journalctl query shows one entry per signature and per cancellation. The run is recorded in docs/findings.md.",
+      "depends_on": [
+        "F52",
+        "F53"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F55",
+      "title": "Acceptance 13 by hand: bazzite with the .rpm layered",
+      "description": "Following docs/manual-acceptance.md on bazzite: the .rpm is layered with rpm-ostree and after a reboot a .p12 imports; a signature through the module from the host shows the polkit dialog and cancelling makes it fail; after the layered package is replaced by a newer version and a reboot, and after an OS update and a reboot, the same keys still sign; no SELinux denial involves the service. The run is recorded in docs/findings.md.",
+      "depends_on": [
+        "F52",
+        "F53"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F56",
+      "title": "Acceptance 14 by hand: omarchy",
+      "description": "Following docs/manual-acceptance.md on omarchy: the .pkg.tar.zst installs with pacman -U; Omarchy's Quickshell polkit agent shows the dialog for each signature, a second signature asks again and cancelling makes it fail; Firefox lists the certificate and uses it for TLS client authentication. If Firefox needs manual registration, the run records it and the person approving the milestone settles the open question. The run is recorded in docs/findings.md.",
+      "depends_on": [
+        "F52",
+        "F53"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F57",
+      "title": "Acceptance 15 by hand: ubuntu2404 with dbus-broker",
+      "description": "Following docs/manual-acceptance.md on ubuntu2404: before the switch to dbus-broker the .deb is refused as in acceptance 8; after the documented switch and a reboot, the desktop session, logind, the polkit agent and NetworkManager work, and anything that broke is recorded; the .deb then installs, imports a .p12 and signs with the polkit dialog on every signature, and cancelling makes it fail. The run is recorded in docs/findings.md and settles the open question on refusing Ubuntu 24.04 altogether.",
+      "depends_on": [
+        "F52",
+        "F53"
+      ],
+      "manual": true,
+      "passes": false
+    }
+  ]
+}
