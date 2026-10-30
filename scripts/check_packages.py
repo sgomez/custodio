@@ -23,12 +23,14 @@ def fail(label, msg):
     problems.append(f"{label}: {msg}")
 
 
-def run(cmd):
+def run(cmd, optional=False):
     try:
         return subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
     except FileNotFoundError:
         sys.exit(f"check-packages: required tool '{cmd[0]}' is not installed")
     except subprocess.CalledProcessError as err:
+        if optional:
+            return ""
         sys.exit(f"check-packages: {' '.join(cmd)} failed: {err.stderr.strip()}")
 
 
@@ -134,6 +136,78 @@ def check_package(label, nfpm_name, pattern):
         fail(label, "the package has conffiles")
     if label == "arch" and re.search(r"^backup = ", run(["bsdtar", "-xOf", found[0], ".PKGINFO"]), re.M):
         fail(label, "the package has backup (config) files")
+    check_deps(label, found[0])
+    check_needed(label, found[0], files)
+    check_scripts(label, found[0])
+    return versions(label, found[0])
+
+
+def squash(text):
+    return re.sub(r"\s+", " ", text.strip())
+
+
+def dependencies(label, pkg):
+    if label == "deb":
+        return [squash(d) for d in run(["dpkg-deb", "-f", pkg, "Depends"]).split(",") if d.strip()]
+    if label == "rpm":
+        lines = run(["rpm", "--dbpath", f"{extract_dir}/rpmdb", "-qpR", pkg]).splitlines()
+        return [squash(d) for d in lines if d.strip() and not d.startswith(("rpmlib(", "/"))]
+    return [squash(m[1]) for m in re.finditer(r"^depend = (.*)$", run(["bsdtar", "-xOf", pkg, ".PKGINFO"]), re.M)]
+
+
+def check_deps(label, pkg):
+    have = dependencies(label, pkg)
+    for dep in expected.DEPS[label]:
+        if dep not in have:
+            fail(label, f"dependency '{dep}' is missing (has: {', '.join(have) or 'none'})")
+    for dep in have:
+        if re.split(r"[ (<>=]", dep)[0] in expected.FORBIDDEN_DEPS[label]:
+            fail(label, f"dependency '{dep}' is not allowed")
+
+
+def check_needed(label, pkg, files):
+    index = ("deb", "rpm", "arch").index(label)
+    have = set(dependencies(label, pkg))
+    for path in expected.ELF_FILES:
+        full = os.path.join(extract_dir, label) + path
+        if path not in files or not os.path.exists(full):
+            continue  # already reported as missing
+        for soname in re.findall(r"Shared library: \[(.*?)\]", run(["readelf", "-d", full])):
+            if soname in expected.NEEDED_EXEMPT:
+                continue
+            if soname not in expected.NEEDED:
+                fail(label, f"{path} needs {soname}, which is not in the soname table")
+            elif expected.NEEDED[soname][index] not in have:
+                fail(label, f"{path} needs {soname}, so '{expected.NEEDED[soname][index]}' must be a dependency")
+
+
+def check_scripts(label, pkg):
+    if label == "deb":
+        got = {n for n in ("preinst", "postinst", "prerm", "postrm") if os.path.exists(f"{extract_dir}/deb-control/{n}")}
+        want = expected.DEB_SCRIPTS
+    elif label == "rpm":
+        tags = {"PREIN": "pre", "POSTIN": "post", "PREUN": "preun", "POSTUN": "postun", "PRETRANS": "pretrans", "POSTTRANS": "posttrans"}
+        got = {n for t, n in tags.items() if run(["rpm", "--dbpath", f"{extract_dir}/rpmdb", "-qp", "--qf", f"%{{{t}}}", pkg]) != "(none)"}
+        want = expected.RPM_SCRIPTS
+    else:
+        install = run(["bsdtar", "-xOf", pkg, ".INSTALL"], optional=True)
+        got = set(re.findall(r"^\s*(?:function\s+)?(\w+)\s*\(\)", install, re.M))
+        want = expected.ARCH_FUNCTIONS
+    if got != want:
+        fail(label, f"lifecycle scripts are {sorted(got)}, expected {sorted(want)}")
+
+
+def versions(label, pkg):
+    """The version-release string of the package, with the pre-release marker of the format turned into '_'."""
+    if label == "deb":
+        text = run(["dpkg-deb", "-f", pkg, "Version"]).strip()
+    elif label == "rpm":
+        text = run(["rpm", "--dbpath", f"{extract_dir}/rpmdb", "-qp", "--qf", "%{VERSION}-%{RELEASE}", pkg]).strip()
+    else:
+        text = re.search(r"^pkgver = (.*)$", run(["bsdtar", "-xOf", pkg, ".PKGINFO"]), re.M)[1]
+    if not text.endswith("-1"):
+        fail(label, f"version {text} does not end in the packaging revision -1")
+    return text.replace("~", "_")
 
 
 def check_unit(label, files):
@@ -157,8 +231,11 @@ def check_unit(label, files):
 
 
 check_config()
+seen_versions = {}
 for label, nfpm_name, pattern in expected.FORMATS:
-    check_package(label, nfpm_name, pattern)
+    seen_versions[label] = check_package(label, nfpm_name, pattern)
+if len({v for v in seen_versions.values() if v}) > 1:
+    fail("versions", f"the packages differ in version: {seen_versions}")
 
 for problem in problems:
     print("check-packages: FAIL " + problem, file=sys.stderr)

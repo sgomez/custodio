@@ -7,7 +7,16 @@ set -euo pipefail
 ROOT=${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 FORMATS=(deb rpm archlinux)
 
+# fx_require: fail, naming the tool, when a tool the fixtures need is not installed.
+fx_require() {
+    local tool
+    for tool in nfpm rpm bsdtar zstd python3; do
+        command -v "$tool" >/dev/null || { echo "package-fixtures: required tool '$tool' is not installed" >&2; return 1; }
+    done
+}
+
 fx_init() {
+    fx_require || exit 1
     FX_DIR=$(mktemp -d)
     mkdir -p "$FX_DIR/target/release"
     cp /bin/true "$FX_DIR/target/release/custodiod"
@@ -66,3 +75,7 @@ fx_mix() {
     rm -f "$(fx_file "$1" "$3")"
     cp "$(fx_file "$4" "$3")" "$FX_DIR/out/$1/"
 }
+
+# fx_elf_needed OLD NEW: replace a NEEDED soname (same length) in the fixture binary custodiod; fx_elf_restore undoes it.
+fx_elf_needed() { sed -i "s/$1/$2/" "$FX_DIR/target/release/custodiod"; }
+fx_elf_restore() { cp /bin/true "$FX_DIR/target/release/custodiod"; }

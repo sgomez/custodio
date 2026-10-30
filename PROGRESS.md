@@ -40,3 +40,14 @@ with an empty context.
 - Not done: steps 6-11. Part (a) tests were not run against a failing stub first (negative cases all assert failure).
 - Next session should: step 6 (deps, NEEDED table, scripts set, versions, missing-tool tests) in
   `scripts/test-check-packages-deps.sh`, extending `check_packages.py`/`package_expected.py`.
+
+### 2026-10-30 — F36 — attempt 1 (session 3)
+- Done: step 6. `scripts/test-check-packages-deps.sh` (deps, NEEDED, script set, versions, six missing tools) in
+  `package-gate-test`; gate extended in `check_packages.py`/`package_expected.py`; fixture ops `script-add`, `fx_require`,
+  `fx_elf_needed`. Tests were seen failing against the part (a) gate first. `just check` green.
+- Decisions: libc and libgcc are always required (listed in `DEPS`) besides the NEEDED-mapped ones; the gate also fails when
+  the three packages differ in version (`~` and `_` equal) or the revision is not `-1`. `CHECK_PACKAGES_SKIP_TOOL_CHECK=1`
+  skips the shell tool loop so tests reach the helper's missing-tool message (rpm, readelf).
+- Not done: steps 7-11. Step 7 must add any extra `NEEDED` soname of the release binaries to `NEEDED` (findings: only
+  libgcc_s, libc, ld-linux so far).
+- Next session should: step 7 (`package` recipe, version override, e2e/manual-acceptance paths).

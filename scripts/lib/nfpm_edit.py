@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | drop DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY
 """
 import sys
 
@@ -45,6 +45,10 @@ elif op == "dep-set":
 elif op == "script-del":
     ov = cfg["overrides"][args[0]]
     (ov["archlinux"]["scripts"] if args[1] == "postupgrade" else ov["scripts"]).pop(args[1])
+elif op == "script-add":  # a script file of the real set, under a key the gate does not allow
+    ov = cfg["overrides"][args[0]]
+    target = ov["archlinux"].setdefault("scripts", {}) if args[1] in ("preupgrade", "postupgrade") else ov["scripts"]
+    target[args[1]] = ov["scripts"].get("postinstall", "packaging/deb/postinst")
 elif op != "none":
     sys.exit("nfpm_edit: unknown op " + op)
 yaml.safe_dump(cfg, open(dst, "w"), sort_keys=False)

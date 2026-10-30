@@ -7,7 +7,9 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DIR=${1:-$ROOT/target/packages}
 CONFIG=${2:-$ROOT/packaging/nfpm.yaml}
 
+# CHECK_PACKAGES_SKIP_TOOL_CHECK=1 skips this loop, so the tests can reach the helper's own missing-tool message.
 for tool in dpkg-deb rpm bsdtar readelf python3; do
+    [ -z "${CHECK_PACKAGES_SKIP_TOOL_CHECK:-}" ] || break
     command -v "$tool" >/dev/null || { echo "check-packages: required tool '$tool' is not installed" >&2; exit 1; }
 done
 
