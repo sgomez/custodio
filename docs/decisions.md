@@ -181,3 +181,13 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: the pure-Rust RSA/ECDSA tests took over 14 minutes under Miri and made `just check-slow` too slow;
   Miri only checks `unsafe` code. Miri no longer covers those safe tests; ASan still runs all of them.
 - Rejected: running every test under Miri; skipping Miri. Widen the filter if a module gains `unsafe`.
+
+## 2026-10-30 — Package version scheme and the service under /usr/lib/custodio
+- Decision: the version comes from the workspace; `X.Y.Z-pre` becomes `X.Y.Z~pre-1` (.deb), release `1` with `~pre` (.rpm)
+  and `X.Y.Z_pre` with pkgrel 1 (Arch, which forbids `-` in pkgver and where nfpm drops the prerelease). `just package
+  version=...` overrides it so a test can build an N+1 package. The service moved from `/usr/libexec/custodiod` to
+  `/usr/lib/custodio/custodiod` in all three formats; the unit's `ExecStart` follows. The D-Bus activation file keeps
+  `Exec=/bin/false`, so only the unit starts the service and there is one unit and one activation file.
+- Why: Arch has no `/usr/libexec`, and one path keeps one file list. A real `Exec=` in the activation file would start the
+  service outside the unit's hardening; with `/bin/false`, activation fails instead of bypassing it.
+- Rejected: `/usr/libexec` with an Arch-only override (two lists, two units); an `Exec=` pointing at the binary.

@@ -143,11 +143,6 @@ checksum_source = "mise-versions"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-pc-windows-msvc.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471599057"
 
-[[tools."cargo:cargo-deb"]]
-version = "3.8.0"
-backend = "cargo:cargo-deb"
-specifiers = ["3.8.0"]
-
 [[tools."cargo:cargo-fuzz"]]
 version = "0.13.2"
 backend = "cargo:cargo-fuzz"

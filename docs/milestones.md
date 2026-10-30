@@ -28,7 +28,7 @@ Build and test the packages; publishing them waits for M5.
   and openSUSE Leap (no `ProcessFD`), Ubuntu 25.10 and Fedora 43 and earlier.
 - `.rpm` for Fedora 44 and RHEL/Alma 10. Check that SELinux lets the service run without a policy of
   its own.
-- Packages built with nfpm from one file list, replacing `cargo deb`: the `.deb`, the `.rpm` and an
+- Packages built with nfpm from one file list, replacing the M1 .deb-only tooling: the `.deb`, the `.rpm` and an
   Arch `.pkg.tar.zst`, all from `just package` on the host.
 - Arch package installed with `pacman -U`. Acceptance on Omarchy 4, whose polkit agent is the
   Quickshell one inside `omarchy-shell`, not polkit-gnome.

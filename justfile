@@ -2,7 +2,7 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-shell_scripts := "git ls-files '*.sh'"
+shell_scripts := "scripts/list-shell-scripts.sh"
 # Pinned so CI can cache the nightly builds; bump by hand.
 nightly_toolchain := "nightly-2026-10-26"
 
@@ -57,7 +57,7 @@ test:
 
 # Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests, taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
-check: lint test system-gates package-gate-test
+check: lint test system-gates package-gate-test shell-scripts-test
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-verify bus-policy
@@ -67,6 +67,10 @@ package-gate-test:
     scripts/test-package-scripts.sh
     scripts/test-check-packages.sh
     scripts/test-check-packages-deps.sh
+
+# The shellcheck file list covers scripts by extension or shebang.
+shell-scripts-test:
+    scripts/test-shell-scripts.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.

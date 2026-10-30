@@ -60,3 +60,11 @@ with an empty context.
   the e2e `find` is tested in `scripts/test-check-packages.sh`. `just check` green.
 - Not done: steps 8-11 (remove cargo-deb everywhere, shell_scripts + test, decisions.md, final verify).
 - Next session should: step 8.
+
+### 2026-10-30 — F36 — attempt 1 (session 5)
+- Done: steps 8-11. cargo-deb removed (Cargo.toml metadata, data/debian, mise.toml/lock, Containerfile, docs);
+  `scripts/list-shell-scripts.sh` (shebang or `.sh`) is the `shell_scripts` recipe value, `scripts/test-shell-scripts.sh`
+  (seen failing first) runs as `shell-scripts-test` in `check`; decisions.md entry. `just check` and `just package`
+  green, `verify` and the evidence greps pass, `version=0.1.1` rebuild leaves one of each.
+- Not done: nothing known.
+- Next session should: nothing for F36; the evaluator decides.

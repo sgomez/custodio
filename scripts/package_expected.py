@@ -1,4 +1,4 @@
-"""What the package gate expects (see check_packages.py). Taken from M1's [package.metadata.deb] assets, not from nfpm.yaml."""
+"""What the package gate expects (see check_packages.py). Taken from the assets of M1's .deb, not from nfpm.yaml."""
 
 # Installed files of every package: path -> mode. /usr/lib/custodio/custodiod is the only path that moved from M1.
 FILES = {
