@@ -83,7 +83,7 @@
         "F42"
       ],
       "verify": "just check && just test-scripts && just package && just package-lint",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F58",
