@@ -35,7 +35,7 @@
       "description": "When custodiod reads the caller's connection credentials for a Sign call it also asks for ProcessFD. If the bus does not return it, the signature is refused before polkit is asked, and the call leaves exactly one M1 journal entry with the 'authorization not possible' outcome. No D-Bus interface or audit field name changes; any added field follows the additive-change rule of docs/audit.md. Integration tests (in `just test-integration`) show that a Sign call whose credentials lack ProcessFD returns no signature, does not ask the fake polkit authority, and leaves exactly one journal entry with that outcome. The credential-reading code stays in the files `just mutants` covers, with no surviving mutant.",
       "depends_on": [],
       "verify": "just check && just test-integration && just mutants",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F40",
