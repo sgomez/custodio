@@ -495,3 +495,60 @@ There is no podman or docker installed yet. Decision from a person (answer to `B
 podman, installed with `sudo` (rootless podman needs subuid/subgid entries for `dev`, and `/dev/fuse` or the vfs storage driver). The
 host socket is never mounted. The linters then run in containers as the contract describes, so step 2 (raw findings on the real
 packages, the `/usr/lib/custodio/custodiod` outcome, `reports/package-lint-container.txt`) is produced in the dev container.
+
+## F38: raw linter findings on the real packages, before any fix (2026-10-30)
+
+Run in the dev container with the images from `packaging/lint/*.Containerfile` (versions from `pins.txt`: lintian 2.122.0, rpmlint 2.8.0,
+namcap 3.6.0-3) on `target/packages` from `just package` (0.1.0-1), `--network none`, package directory read-only. Nothing is fixed or
+listed yet. Flags: lintian `--no-cfg --profile debian/main --display-info --display-experimental --pedantic --show-overrides
+--tag-display-limit 0`; rpmlint with its defaults (the image has no `/etc/xdg/rpmlint/*.toml`: the "configuration:" list shows only
+`configdefaults.toml`); namcap `-i`.
+
+### lintian
+```
+E: custodio: no-changelog usr/share/doc/custodio/changelog.Debian.gz (non-native package)
+E: custodio: no-copyright-file
+E: custodio: unstripped-binary-or-object [usr/bin/custodio]   (also usr/lib/custodio/custodiod, usr/lib/custodio/libcustodio_pkcs11.so)
+W: custodio: maintainer-script-calls-systemctl [postinst:7]
+W: custodio: no-manual-page [usr/bin/custodio]
+W: custodio: synopsis-too-long
+I: custodio: extended-description-is-probably-too-short
+I: custodio: hardening-no-fortify-functions [usr/bin/custodio]   (also custodiod, libcustodio_pkcs11.so)
+X: custodio: executable-in-usr-lib [usr/lib/custodio/custodiod]
+X: custodio: spelling-error-in-binary onthe on the [usr/bin/custodio]   (also custodiod, libcustodio_pkcs11.so)
+```
+### rpmlint
+```
+W: unstripped-binary-or-object /usr/bin/custodio   (also custodiod, libcustodio_pkcs11.so)
+E: summary-too-long ...            E: description-line-too-long ...
+E: spelling-error ('polkit', ...)  (Summary and %description)
+E: no-signature                    E: no-group-tag                 E: no-changelogname-tag
+E: explicit-lib-dependency libgcc  W: no-manual-page-for-binary custodio
+W: no-documentation                W: invalid-license EUPL-1.2
+```
+No rpmlint finding has `/usr/lib/custodio/custodiod` as its subject except `unstripped-binary-or-object` (a strip question, not a path one).
+### namcap
+```
+W: ELF file ('usr/bin/custodio') is unstripped.   (also custodiod, libcustodio_pkcs11.so)
+W: .INSTALL file runs a command (systemd-sysusers) provided by hooks.
+E: File (<each path, also .PKGINFO .MTREE .INSTALL>) is owned by 0:0     <- tar has no user/group names (nfpm writes numeric only)
+E: Uncommon license identifiers such as 'EUPL-1.2' require license files below /usr/share/licenses/custodio/
+W: Unused shared library '/usr/lib64/ld-linux-x86-64.so.2' by file (usr/bin/custodio, usr/lib/custodio/custodiod)
+W: Dependency libgcc detected and implicitly satisfied ...   W: Dependency included, but may not be needed ('gcc-libs' 'polkit' 'systemd' 'dbus' 'p11-kit')
+I: Soname 'ld-linux-x86-64.so=2-64' / 'libc.so=6-64' is not specified as provides by glibc yet
+I: Link-level dependence (glibc / libgcc) ...   I: Soname dependency 'libgcc_s.so=1-64' provided by libgcc detected and not included
+I: Soname depends / Provides / Depends as namcap sees them ...   I: Dependency glibc detected and satisfied
+```
+Open question (path): namcap draws no finding about `usr/lib/custodio/custodiod` other than the unstripped and ownership ones that apply to
+every file. rpmlint none. **lintian's experimental tag `executable-in-usr-lib [usr/lib/custodio/custodiod]` does name the path**: it
+suggests `/usr/libexec`, which Arch does not have (decisions.md, SPEC "Arch and `/usr/libexec`"). See BLOCKED.md.
+
+### Nested podman in the dev container (what worked)
+`apt-get install podman uidmap`; the dev container maps a single uid (`/proc/self/uid_map`), so `newuidmap` fails with the subuid ranges: empty
+`/etc/subuid` and `/etc/subgid`, `~/.config/containers/storage.conf` with `driver = "vfs"` and `ignore_chown_errors`, and
+`~/.config/containers/containers.conf` with `default_sysctls = []`, `netns = "host"`, `pidns = "host"`, `utsns = "host"` (the mounts of
+`/proc` and `sethostname` are refused otherwise). `--network none` and a read-only mount then work; `--user 1000:1000` does not (only uid 0
+exists in the namespace, and that is the unprivileged `dev` outside), so the gate must use `--user 0:0` under rootless podman. Image builds need
+`APT::Sandbox::User=root` (apt), a `dpkg-statoverride` for `/var/cache/man` (man-db) and `pacman --disable-sandbox`; the bases are pulled as
+`docker.io/library/<name>@digest` (the digests in `pins.txt` are Docker Hub's; registry.fedoraproject.org does not know the Fedora one). The
+Debian base has no CA bundle, so the snapshot source is `http://` (apt verifies the signed Release file).
