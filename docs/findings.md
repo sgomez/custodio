@@ -488,7 +488,10 @@ Dependency names (read from distro metadata, 2026-10-30):
   a real pacman database to resolve dependencies, so a Debian build would report different findings than on Arch.
 - Base digests (2026-10-30): see `pins.txt`.
 
-## F38: blocked on the sandbox (2026-10-30)
+## F38: container runtime in the dev container (2026-10-30)
 
-The session runs as uid 1000 without sudo and with neither podman nor docker. None of the three linters can be run, so step 2 (raw
-findings on the real packages, the `/usr/lib/custodio/custodiod` outcome, `reports/package-lint-container.txt`) cannot be produced.
+The session runs as uid 1000 and `dev` has passwordless `sudo` (NOPASSWD); an earlier note here saying there was no sudo was wrong.
+There is no podman or docker installed yet. Decision from a person (answer to `BLOCKED.md`): the dev container gets a nested rootless
+podman, installed with `sudo` (rootless podman needs subuid/subgid entries for `dev`, and `/dev/fuse` or the vfs storage driver). The
+host socket is never mounted. The linters then run in containers as the contract describes, so step 2 (raw findings on the real
+packages, the `/usr/lib/custodio/custodiod` outcome, `reports/package-lint-container.txt`) is produced in the dev container.
