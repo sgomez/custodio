@@ -71,6 +71,8 @@ package-gate-test:
     scripts/test-check-packages-deps.sh
     scripts/test-check-parity.sh
     scripts/test-glibc-ceiling.sh
+    scripts/test-package-lint.sh
+    scripts/test-package-lint-lists.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -200,8 +202,13 @@ package version="":
     base=${v%%-*}
     pre=""
     [ "$v" = "$base" ] || pre=${v#*-}
-    rm -rf target/packages
-    mkdir -p target/packages
+    rm -rf target/packages target/man
+    mkdir -p target/packages target/man
+    gzip -9n < packaging/custodio.1 > target/man/custodio.1.gz
+    mkdir -p target/doc
+    sed "s/@VERSION@/${base}${pre:+~$pre}-1/" packaging/changelog.Debian | gzip -9n > target/doc/changelog.Debian.gz
+    # rustc leaves a .comment section in the binaries (lintian: binary-has-unneeded-section).
+    strip --remove-section=.comment target/release/custodiod target/release/custodio-cli target/release/libcustodio_pkcs11.so
     NFPM_VERSION=$base NFPM_PRERELEASE=$pre nfpm package -f packaging/nfpm.yaml -p deb -t target/packages >/dev/null
     NFPM_VERSION=$base NFPM_PRERELEASE=$pre nfpm package -f packaging/nfpm.yaml -p rpm -t target/packages >/dev/null
     # Arch forbids "-" in pkgver and nfpm drops the prerelease there: the pre-release goes into the version with "_".
@@ -209,8 +216,15 @@ package version="":
     scripts/check-packages.sh target/packages packaging/nfpm.yaml
 
 # The gates on the packages: `just package` (which checks their contents), then the same files, modes and owners in all three
-# (packaging/parity-exceptions.txt lists accepted differences) and no glibc symbol version above the ceiling. Later package gates join here.
-package-gates: package package-parity glibc-ceiling
+# (packaging/parity-exceptions.txt lists accepted differences), no glibc symbol version above the ceiling, and the linters on the packages. Later package gates join here.
+package-gates: package package-parity glibc-ceiling package-lint
+
+# Fails on any lintian finding on the .deb, rpmlint finding on the .rpm or namcap finding on the Arch package in target/packages that is not in
+# the list of packaging/lint/<linter>.txt with a reason, and on a list entry that matches nothing. A linter runs on the host when it has the
+# pinned version of packaging/lint/pins.txt and otherwise in a container of the target distribution (podman or docker).
+# PACKAGE_LINT_FORCE_CONTAINER=1 always uses the container.
+package-lint:
+    scripts/package-lint.sh
 
 # Fails when the .deb, .rpm and Arch package in target/packages differ in installed paths, modes, owners or symlink targets.
 package-parity:

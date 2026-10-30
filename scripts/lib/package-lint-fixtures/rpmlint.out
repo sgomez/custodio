@@ -1,0 +1,15 @@
+============================ rpmlint session starts ============================
+rpmlint: 2.8.0
+configuration:
+    /usr/lib/python3.14/site-packages/rpmlint/configdefaults.toml
+checks: 27, packages: 1
+
+custodio.x86_64: E: spelling-error ('polkit', '%description -l en_US polkit -> pol kit, pol-kit, toolkit')
+custodio.x86_64: E: not-listed-as-documentation /usr/share/doc/custodio/copyright
+custodio.x86_64: E: not-listed-as-documentation /usr/share/man/man1/custodio.1.gz
+custodio.x86_64: E: no-signature
+custodio.x86_64: W: no-documentation
+custodio.x86_64: W: manpage-not-compressed bz2 /usr/share/man/man1/custodio.1.gz
+custodio.x86_64: W: invalid-license EUPL-1.2
+custodio.x86_64: E: explicit-lib-dependency libgcc
+ 1 packages and 0 specfiles checked; 5 errors, 3 warnings, 0 filtered, 5 badness; has taken 0.3 s 

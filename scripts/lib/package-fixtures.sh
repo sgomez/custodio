@@ -22,7 +22,11 @@ fx_init() {
     cp /bin/true "$FX_DIR/target/release/custodiod"
     cp /bin/true "$FX_DIR/target/release/custodio-cli"
     cp /bin/true "$FX_DIR/target/release/libcustodio_pkcs11.so"
-    cp -r "$ROOT/data" "$ROOT/packaging" "$FX_DIR/"
+    mkdir -p "$FX_DIR/target/man"
+    gzip -9n < "$ROOT/packaging/custodio.1" > "$FX_DIR/target/man/custodio.1.gz"
+    mkdir -p "$FX_DIR/target/doc"
+    sed 's/@VERSION@/0.1.0-1/' "$ROOT/packaging/changelog.Debian" | gzip -9n > "$FX_DIR/target/doc/changelog.Debian.gz"
+    cp -r "$ROOT/data" "$ROOT/packaging" "$ROOT/LICENSE" "$FX_DIR/"
 }
 
 fx_cleanup() { rm -rf "${FX_DIR:?}"; }

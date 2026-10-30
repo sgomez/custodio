@@ -1,0 +1,11 @@
+# Exceptions for rpmlint (F38). One per line: TAG | SUBJECT-GLOB | REASON. rpmlint runs with its built-in defaults only (no distribution filters).
+spelling-error | ('polkit', *) | polkit is the name of the software the package asks; it is not a misspelling
+no-signature | - | the package is signed at release, outside the build; `just package` builds unsigned packages
+explicit-lib-dependency | libgcc | nfpm does not compute shared-library dependencies, so the libgcc dependency is written by hand (F36 requires it)
+not-listed-as-documentation | /usr/share/doc/custodio/copyright | nfpm marks %doc only for the .rpm and drops the file from the other formats, which share one file list
+not-listed-as-documentation | /usr/share/man/man1/custodio.1.gz | nfpm marks %doc only for the .rpm and drops the file from the other formats, which share one file list
+no-documentation | - | no file is marked %doc, for the same reason as not-listed-as-documentation
+manpage-not-compressed | bz2 /usr/share/man/man1/custodio.1.gz | the manual page is gzip-compressed as Debian and Arch expect; rpmlint's default asks for bz2
+invalid-license | EUPL-1.2 | EUPL-1.2 is the SPDX identifier of SPEC's license; rpmlint's built-in list does not know it
+no-changelogname-tag | - | the changelog is the shared file /usr/share/doc/custodio/changelog.Debian.gz; nfpm writes an rpm changelog only from a second, differently formatted list that would also replace the Debian one
+not-listed-as-documentation | /usr/share/doc/custodio/changelog.Debian.gz | nfpm marks %doc only for the .rpm and drops the file from the other formats, which share one file list

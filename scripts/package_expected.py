@@ -12,6 +12,10 @@ FILES = {
     "/usr/share/polkit-1/actions/com.rfirma.custodio.policy": 0o644,
     "/usr/share/p11-kit/modules/custodio.module": 0o644,
     "/usr/lib/systemd/catalog/custodio.catalog": 0o644,
+    "/usr/share/licenses/custodio/LICENSE": 0o644,
+    "/usr/share/doc/custodio/copyright": 0o644,
+    "/usr/share/man/man1/custodio.1.gz": 0o644,
+    "/usr/share/doc/custodio/changelog.Debian.gz": 0o644,
 }
 
 UNIT = "/usr/lib/systemd/system/custodio.service"

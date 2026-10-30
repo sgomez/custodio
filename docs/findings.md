@@ -552,3 +552,36 @@ exists in the namespace, and that is the unprivileged `dev` outside), so the gat
 `APT::Sandbox::User=root` (apt), a `dpkg-statoverride` for `/var/cache/man` (man-db) and `pacman --disable-sandbox`; the bases are pulled as
 `docker.io/library/<name>@digest` (the digests in `pins.txt` are Docker Hub's; registry.fedoraproject.org does not know the Fedora one). The
 Debian base has no CA bundle, so the snapshot source is `http://` (apt verifies the signed Release file).
+
+## F38: findings fixed in the packaging, findings listed, and what the gate guarantees (2026-10-30, session 2)
+
+Raw findings are in the section above ("before any fix"). What was done with each; the committed lists in `packaging/lint/*.txt` hold only
+the "listed" ones, each with its reason.
+
+Fixed in the packaging: unstripped binaries (`[profile.release] strip = "symbols"` plus `strip --remove-section=.comment` in `just package`;
+rustc leaves `.comment`); no copyright file (`packaging/copyright`, DEP-5, in all three packages); no changelog (`packaging/changelog.Debian`,
+written with the package version by `just package` and gzipped; also fixes rpmlint's incoherent-version); no manual page (`packaging/custodio.1`,
+gzipped by `just package`); synopsis too long, summary too long and description line too long (the first description line is now a short
+summary); no `Group` tag (`rpm: group:`); license text missing for Arch (`/usr/share/licenses/custodio/LICENSE` in all three).
+Listed (reasons in the lists): lintian `executable-in-usr-lib` (decided by a person), `hardening-no-fortify-functions` x3 and
+`spelling-error-in-binary` x3 (Rust; the string "onthe" is in a dependency), `maintainer-script-calls-systemctl`, `extra-license-file` and
+`package-contains-documentation-outside-usr-share-doc` (LICENSE under /usr/share/licenses), `initial-upload-closes-no-bugs`; rpmlint
+`spelling-error` (polkit), `no-signature`, `explicit-lib-dependency`, `not-listed-as-documentation` x3 / `no-documentation` (nfpm drops
+`type: doc` from deb and Arch, which share one file list: tried, the parity gate failed), `manpage-not-compressed bz2`, `invalid-license`,
+`no-changelogname-tag`; namcap: owner `0:0` (nfpm writes numeric ids only), `external-hooks`, and the informational dependency lines.
+
+Path `/usr/lib/custodio/custodiod` (the open question from F36): rpmlint and namcap draw no finding about its path; the only findings that
+name it are the ones every ELF file gets (unstripped, now fixed; owner 0:0 for namcap, listed for all files; fortify, listed). lintian reports
+the experimental `executable-in-usr-lib` (decided by a person: one literal entry). Amendment: the same literal treatment for
+`hardening-no-fortify-functions` on that path (see the contract).
+
+lintian profile: `debian/main` in lintian 2.122.0 has `Enable-Tags-From-Check: *` and no `Disable-Tags`; with `--no-cfg` nothing else applies.
+The gate prints `profile 2.122.0` (the package version, as there is no separate data version).
+
+rpmlint and the distro config: the stock `fedora.toml` (77 filters) hides `no-signature`, `spelling-error` and `manpage-not-compressed` on the same
+.rpm; the gate's rpmlint reports them. `reports/package-lint-container.txt` holds the gate run (all three "ran ... container" lines; the rpmlint
+line lists only `configdefaults.toml` and the committed empty config) followed by the stock-config run showing `3 filtered`.
+
+Outcomes for the dev image: rpmlint outcome (b) (container only, none installed), namcap branch 2 (container only), lintian installed at
+the pin from the snapshot (takes effect when the dev image is rebuilt; until then the host has no lintian and the gate uses the container).
+Under the nested rootless podman of the dev container the run uses `--user 0:0` (the unprivileged caller; no other uid exists there).

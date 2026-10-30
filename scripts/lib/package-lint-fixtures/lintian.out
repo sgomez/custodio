@@ -1,0 +1,12 @@
+running with root privileges is not recommended!
+W: custodio: maintainer-script-calls-systemctl [postinst:7]
+W: custodio: syntax-error-in-debian-changelog "not a Debian changelog" [usr/share/doc/custodio/changelog.Debian.gz:1]
+I: custodio: extra-license-file [usr/share/licenses/custodio/LICENSE]
+I: custodio: hardening-no-fortify-functions [usr/bin/custodio]
+I: custodio: hardening-no-fortify-functions [usr/lib/custodio/custodiod]
+I: custodio: hardening-no-fortify-functions [usr/lib/custodio/libcustodio_pkcs11.so]
+I: custodio: package-contains-documentation-outside-usr-share-doc [usr/share/licenses/custodio/LICENSE]
+X: custodio: executable-in-usr-lib [usr/lib/custodio/custodiod]
+X: custodio: spelling-error-in-binary onthe on the [usr/bin/custodio]
+X: custodio: spelling-error-in-binary onthe on the [usr/lib/custodio/custodiod]
+X: custodio: spelling-error-in-binary onthe on the [usr/lib/custodio/libcustodio_pkcs11.so]

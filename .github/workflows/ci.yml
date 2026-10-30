@@ -242,6 +242,11 @@ jobs:
         run: just package-parity
       - name: just glibc-ceiling
         run: just glibc-ceiling
+      # ubuntu's apt cannot install Debian 13's lintian or Fedora's rpmlint: all three linters run in their distribution's container.
+      - name: just package-lint
+        run: just package-lint
+        env:
+          PACKAGE_LINT_FORCE_CONTAINER: "1"
 
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:

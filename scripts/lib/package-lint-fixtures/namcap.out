@@ -1,0 +1,34 @@
+custodio W: external-hooks systemd-sysusers
+custodio E: incorrect-owner usr/bin/custodio (0:0)
+custodio E: incorrect-owner usr/lib/custodio/custodiod (0:0)
+custodio E: incorrect-owner usr/lib/custodio/libcustodio_pkcs11.so (0:0)
+custodio E: incorrect-owner usr/lib/systemd/catalog/custodio.catalog (0:0)
+custodio E: incorrect-owner usr/lib/systemd/system/custodio.service (0:0)
+custodio E: incorrect-owner usr/lib/sysusers.d/custodio.conf (0:0)
+custodio E: incorrect-owner usr/share/dbus-1/system-services/com.rfirma.Custodio1.service (0:0)
+custodio E: incorrect-owner usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf (0:0)
+custodio E: incorrect-owner usr/share/doc/custodio/copyright (0:0)
+custodio E: incorrect-owner usr/share/licenses/custodio/LICENSE (0:0)
+custodio E: incorrect-owner usr/share/man/man1/custodio.1.gz (0:0)
+custodio E: incorrect-owner usr/share/p11-kit/modules/custodio.module (0:0)
+custodio E: incorrect-owner usr/share/polkit-1/actions/com.rfirma.custodio.policy (0:0)
+custodio E: incorrect-owner .PKGINFO (0:0)
+custodio E: incorrect-owner .MTREE (0:0)
+custodio E: incorrect-owner .INSTALL (0:0)
+custodio I: libdepends-missing-provides ld-linux-x86-64.so=2-64 glibc (['usr/lib/custodio/libcustodio_pkcs11.so', 'usr/bin/custodio', 'usr/lib/custodio/custodiod'])
+custodio I: libdepends-missing-provides libc.so=6-64 glibc (['usr/lib/custodio/libcustodio_pkcs11.so', 'usr/bin/custodio', 'usr/lib/custodio/custodiod'])
+custodio I: link-level-dependence glibc in ['usr/lib/libc.so.6', 'usr/lib/ld-linux-x86-64.so.2']
+custodio I: link-level-dependence libgcc in ['usr/lib/libgcc_s.so.1']
+custodio I: libdepends-detected-not-included libgcc_s.so=1-64 libgcc (['usr/lib/custodio/libcustodio_pkcs11.so', 'usr/bin/custodio', 'usr/lib/custodio/custodiod'])
+custodio I: libdepends-by-namcap-sight depends=(glibc libgcc_s.so=1-64)
+custodio I: libprovides-by-namcap-sight provides=()
+custodio W: unused-sodepend /usr/lib64/ld-linux-x86-64.so.2 usr/bin/custodio
+custodio W: unused-sodepend /usr/lib64/ld-linux-x86-64.so.2 usr/lib/custodio/custodiod
+custodio W: dependency-implicitly-satisfied libgcc (libraries-needed ['usr/lib/libgcc_s.so.1'] ['usr/lib/custodio/libcustodio_pkcs11.so', 'usr/bin/custodio', 'usr/lib/custodio/custodiod'])
+custodio W: dependency-not-needed gcc-libs
+custodio W: dependency-not-needed polkit
+custodio W: dependency-not-needed systemd
+custodio W: dependency-not-needed dbus
+custodio W: dependency-not-needed p11-kit
+custodio I: dependency-detected-satisfied glibc (libraries-needed ['usr/lib/libc.so.6', 'usr/lib/ld-linux-x86-64.so.2'] ['usr/lib/custodio/libcustodio_pkcs11.so', 'usr/bin/custodio', 'usr/lib/custodio/custodiod'])
+custodio I: depends-by-namcap-sight depends=(glibc libgcc)

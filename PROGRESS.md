@@ -94,3 +94,19 @@ with an empty context.
   namcap branch 2 (container only); lintian_profile = lintian package version.
 - Not done: steps 2-7. BLOCKED.md: no root and no container runtime in the session, so no linter can run.
 - Next session should: read BLOCKED.md; once a runtime exists, step 2.
+
+### 2026-10-30 — F38 — attempt 1 (session 2)
+- Done: steps 2-7. `scripts/package-lint.sh` + `package_lint.py` (host linter at the pin, else a container; every line parsed; lists
+  `packaging/lint/{lintian,rpmlint,namcap}.txt`, all with reasons), `package-lint` in `package-gates`, CI step, `rpmlint-empty.toml`, dev image
+  installs lintian at the pin and podman. Packaging fixes: strip, copyright, Debian changelog, man page, LICENSE, short synopsis, rpm group.
+  Tests `test-package-lint.sh` (stubs; seen failing against an `exit 0` stub first) and `test-package-lint-lists.sh` in `package-gate-test`.
+  `just check`, `just package`, `just package-lint` and `just package-gates` pass; `reports/package-lint-container.txt` holds the container run.
+- Outcomes: rpmlint outcome (b) (always the Fedora 44 container, none in the dev image); namcap branch 2 (container only); lintian host once
+  the dev image is rebuilt. The dev container lost podman between sessions: reinstall with `sudo apt-get install podman uidmap` and the
+  `~/.config/containers` files of docs/findings.md. Nested rootless podman needs `--user 0:0` (the gate picks it when `/etc/subuid` has no entry).
+- Contract amendment (commit 3541d16, for the evaluator): literal `hardening-no-fortify-functions` entry for the daemon path, `--user` rule,
+  namcap `-m`. Path question: namcap and rpmlint draw no path finding on `/usr/lib/custodio/custodiod` (docs/findings.md).
+- Disclosure: the dev image (`harness/Containerfile`) change was checked by running its lintian lines in a Debian container, not by a full
+  image build. Package changes added files to all three packages (`package_expected.py`, fixtures updated). `git commit -- <path>` breaks the
+  commit hook (GIT_INDEX_FILE leaks into test-shell-scripts); commit with the index instead.
+- Next session should: nothing for F38; the evaluator decides.
