@@ -14,3 +14,11 @@ Format:
 - Instead: what is built, and its evidence in the contract.
 - Status: <pending when added; accepted or rejected by a person>
 ```
+
+## F44 — removal notice and stop on `rpm-ostree uninstall`
+- SPEC: section 2, Removal: "Stop the service ... Print a notice saying that the keys are still on disk" for `rpm-ostree uninstall`.
+- Proof: `docs/findings.md` (F44 research, rpm-ostree source): it runs no scriptlet of a package it removes (`%preun`, `%postun` and
+  removal triggers are not run: "not running *un scripts for removals yet").
+- Instead: on rpm-ostree the notice is documentation only. `docs/install.md` (F51) says where the keys are and that removal keeps them.
+  The service stops with the reboot into the deployment without the package. `dnf remove` and `rpm -e` still stop, keep and print.
+- Status: pending
