@@ -139,3 +139,9 @@ with an empty context.
   the upstream part is accepted only when `rpm -q`/`pacman -Q` reports the full pin (test with another release added).
 - `reports/package-lint-container.txt` regenerated. `just check`, `just package`, `just package-lint` pass.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F38 — session 7 (NEXT_FINDINGS fixes)
+- Fixed both findings in `scripts/test-package-lint.sh`: the stale `rpmlint.txt` entry is cleared after the "listed only in the rpmlint
+  list" case, and every negative list case asserts `(NOT excepted)`; added a namcap case where an unsorted bracketed list is covered by
+  the sorted literal entry (and an unsorted entry is not). Mutations (`covers` always true, prefix glob, no `sort_lists`) now fail the suite.
+- Next session should: nothing for F38; the evaluator decides.
