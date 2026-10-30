@@ -116,3 +116,11 @@ with an empty context.
   no subuid entry) and namcap `-i -m`, with matching Evidence (committed alone as the amendment). Added tests that `0:0` is not passed to a
   caller with a subuid range (`PACKAGE_LINT_SUBUID` overrides the file in tests). `just check` green.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F38 — session 4 (BLOCKED.md answered: option 1)
+- Applied the person's answer only: contract path rule now lists ten literal (linter, tag, subject) pairs (commit ce6fdae, alone). The lists
+  hold exactly those entries for the path (no `*` covers it); the gate sorts bracketed lists in namcap subjects (namcap's order varies per run)
+  and treats `[` as literal in a glob. `test-package-lint-lists.sh` now reads every finding naming the path in the committed
+  `reports/package-lint-container.txt` (force-added; `reports/.gitignore` ignores `*`) and asserts exactly the decided pairs, each covered by one literal entry.
+  Report regenerated: `PACKAGE_LINT_FORCE_CONTAINER=1 just package-lint` exit 0, 56 findings, 0 stale.
+- Next session should: nothing for F38; the evaluator decides.
