@@ -28,4 +28,4 @@ extract deb '*.deb'
 extract rpm '*.rpm'
 extract arch '*.pkg.tar.zst'
 
-exec python3 -I "$ROOT/scripts/check_packages.py" "$DIR" "$CONFIG" "$tmp"
+exec python3 -I -B "$ROOT/scripts/check_packages.py" "$DIR" "$CONFIG" "$tmp"

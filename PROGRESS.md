@@ -68,3 +68,11 @@ with an empty context.
   green, `verify` and the evidence greps pass, `version=0.1.1` rebuild leaves one of each.
 - Not done: nothing known.
 - Next session should: nothing for F36; the evaluator decides.
+
+### 2026-10-30 — F36 — attempt 2 (session 6)
+- Fixed NEXT_FINDINGS: removed the committed `scripts/__pycache__/*.pyc`, added `__pycache__/` to `.gitignore`, and
+  `scripts/check-packages.sh` now runs `python3 -I -B`, so a gate run writes nothing into the tree. CI step runs
+  `shell-scripts-test` as well.
+- Disclosure: step 5 is ticked without the evidence of a stub `scripts/check-packages.sh` that exits 1 (not done in
+  session 2); the negative cases assert failure and the good set asserts success, so the tests discriminate.
+- Next session should: nothing for F36; the evaluator decides.
