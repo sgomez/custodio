@@ -27,7 +27,7 @@
         "F36"
       ],
       "verify": "just check && just package && just package-lint",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F39",
