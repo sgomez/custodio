@@ -35,8 +35,9 @@ M0 and M1's threat model still holds. M2 changes it as follows.
 - **In scope:**
   - **Installing where authorization is weak.** If the package installs on a system whose bus lacks
     `ProcessFD`, polkit quietly falls back to PID subjects, and those can be raced. The package must
-    refuse such a system, and the service must refuse to sign on one even if it got installed
-    anyway.
+    refuse such a system where the package manager allows it (on Arch it can only warn on the first
+    installation; see design section 2), and the service must refuse to sign on one even if it got
+    installed anyway.
   - **Losing the keys, or exposing them, through the package lifecycle.** An upgrade, reinstall,
     removal or purge must not delete, rewrite, re-own or loosen the permissions of the state
     directory or the key files. If it did, the store would reject the keys (`docs/decisions.md`,
@@ -64,7 +65,8 @@ M0 and M1's threat model still holds. M2 changes it as follows.
 On each supported distribution, one command on the build host produces a package that the system's
 own package manager installs, upgrades and removes. The full end-to-end suite passes on that system,
 and the keys survive every lifecycle step except one that a person performs deliberately by hand.
-The package refuses, and the service fails closed, on any system whose bus cannot give polkit a
+The package refuses (on Arch: warns on the first installation and refuses upgrades and reinstalls),
+and the service fails closed, on any system whose bus cannot give polkit a
 pidfd.
 
 ## Design
@@ -123,6 +125,11 @@ The behaviours below are decisions. Each format implements them with its own con
   check the daemon's name or the distribution: `dbus-daemon` 1.16 on Debian 13 passes, and
   `dbus-daemon` 1.14 on Ubuntu 24.04 fails. Open questions covers what happens when no bus is
   running (chroot, image build, rpm-ostree).
+  On Arch, pacman installs the package even when `pre_install` fails, and a hook shipped in the
+  package does not run on its own first installation. So on Arch `pre_install` and `pre_upgrade`
+  print the same message and the first installation goes on, and a `PreTransaction` hook with
+  `AbortOnFail` runs the check and refuses every later upgrade and reinstall. The runtime refusal of
+  design section 3 is what keeps that first installation safe (`docs/findings.md`, F42).
 - **The package never switches the system bus itself.** Switching affects the whole system and
   takes effect only after a reboot. The documentation describes how to switch on Ubuntu 24.04.
 - **Upgrade.**
