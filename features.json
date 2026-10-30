@@ -77,8 +77,18 @@
     },
     {
       "id": "F44",
-      "title": "Lifecycle scripts of the .rpm and the Arch package",
-      "description": "The .rpm scriptlets (behaviour of %systemd_post, %systemd_preun, %systemd_postun_with_restart and Fedora's sysusers handling) and the Arch install script (behaviour of systemd's pacman hooks, without duplicating what the hooks already do) implement the same install, upgrade and removal decisions as F43: account before the bus policy, daemon-reload, bus reload, catalog update, no enable or start, restart on upgrade only if running, state directory and account kept on removal (including rpm-ostree uninstall) with the same notice, and no script touching the state directory or widening the policy, action or hardening. Scriptlets must tolerate running offline (rpm-ostree: no bus, read-only /var). `just test-scripts` covers them like the .deb scripts, including the RPM argument counts for install, upgrade and erase.",
+      "title": "Lifecycle scripts of the .rpm",
+      "description": "The .rpm scriptlets (behaviour of %systemd_post, %systemd_preun, %systemd_postun_with_restart and Fedora's sysusers handling) implement the same install, upgrade and removal decisions as F43: account before the bus policy, daemon-reload, bus reload, catalog update, no enable or start, restart on upgrade only if running, state directory and account kept on removal (including rpm-ostree uninstall) with the same notice, and no script touching the state directory or widening the policy, action or hardening. Scriptlets must tolerate running offline (rpm-ostree: no bus, read-only /var). `just test-scripts` covers them like the .deb scripts, including the RPM argument counts for install, upgrade and erase.",
+      "depends_on": [
+        "F42"
+      ],
+      "verify": "just check && just test-scripts && just package && just package-lint",
+      "passes": false
+    },
+    {
+      "id": "F58",
+      "title": "Lifecycle scripts of the Arch package",
+      "description": "The Arch install script (behaviour of systemd's pacman hooks, without duplicating what the hooks already do) implements the same install, upgrade and removal decisions as F43: account before the bus policy, daemon-reload, bus reload, catalog update, no enable or start, restart on upgrade only if running, state directory and account kept on removal with the same notice, and no script touching the state directory or widening the policy, action or hardening. It keeps F42's pre_install and pre_upgrade check and PreTransaction hook. `just test-scripts` covers post_install, post_upgrade, pre_remove and post_remove like the .deb scripts.",
       "depends_on": [
         "F42"
       ],
@@ -87,12 +97,22 @@
     },
     {
       "id": "F45",
-      "title": "End-to-end harness per target, with Debian 13 and Ubuntu 26.04",
-      "description": "`just e2e <target>` (or `just e2e all`, the default) builds the packages, boots a privileged systemd container of the target from e2e/targets/<target>/Containerfile with the distribution's real polkit and its default system bus daemon, installs the package with the target's own tool (apt/dpkg here; never by copying files, and the image never contains the package) and runs the existing suite through one shared guest script. Each run prints and saves which bus daemon and polkit version it used. Targets debian13 and ubuntu2604 exist; adding a target is a new directory. Each target has a committed skip list (case and reason); the suite fails if any case is skipped that is not on that target's list, and `just test-scripts` tests that enforcement. The suite includes the journalctl -x check that a custodio.service entry shows the explanation from Custodio's journal catalog. The default journald storage of each target is checked in the container and recorded in docs/findings.md.",
+      "title": "End-to-end harness per target, with Debian 13",
+      "description": "`just e2e <target>` (or `just e2e all`, the default) builds the packages, boots a privileged systemd container of the target from e2e/targets/<target>/Containerfile with the distribution's real polkit and its default system bus daemon, installs the package with the target's own tool (apt/dpkg here; never by copying files, and the image never contains the package) and runs the existing suite through one shared guest script. Each run prints and saves which bus daemon and polkit version it used. Target debian13 exists; adding a target is a new directory. Each target has a committed skip list (case and reason); the suite fails if any case is skipped that is not on that target's list, and `just test-scripts` tests that enforcement.",
       "depends_on": [
         "F43"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/ubuntu2604/Containerfile && grep -rq 'journalctl -x' e2e && grep -rqi 'polkit' e2e/targets",
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/debian13/skip.list && grep -rqi 'polkit' e2e/targets",
+      "passes": false
+    },
+    {
+      "id": "F59",
+      "title": "End-to-end target Ubuntu 26.04 and the journal catalog check",
+      "description": "Target ubuntu2604 runs the suite of F45 with apt installing the .deb. The suite includes the journalctl -x check that a custodio.service entry shows the explanation from Custodio's journal catalog, on every target. The default journald storage of debian13 and ubuntu2604 is checked in the container and recorded in docs/findings.md.",
+      "depends_on": [
+        "F45"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/ubuntu2604/Containerfile && test -f e2e/targets/ubuntu2604/skip.list && grep -rq 'journalctl -x' e2e",
       "passes": false
     },
     {
@@ -111,7 +131,7 @@
       "title": "End-to-end target Arch",
       "description": "Target arch runs the suite of F45 with pacman -U installing the .pkg.tar.zst. Gaps in test tools become skip-list entries with reasons. The bus daemon Arch runs by default is recorded from the container, and docs/findings.md section 3 is corrected if it is not dbus-daemon; the journald default is recorded too.",
       "depends_on": [
-        "F44",
+        "F58",
         "F45"
       ],
       "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -qi 'archlinux' e2e/targets/arch/Containerfile && test -f e2e/targets/arch/skip.list",
@@ -120,12 +140,23 @@
     {
       "id": "F48",
       "title": "End-to-end upgrade cases on every target",
-      "description": "`just e2e` also runs the upgrade case on each of debian13, ubuntu2604, fedora44, alma10 and arch: keys are imported with package version N, a package N+1 built from the same tree with only the version raised is installed with the target's tool, and the test checks that the key files are byte-identical with the same owner and modes, the same keys are listed and sign with polkit asked, the service if running before runs the new binary afterwards (checked by its executable's identity, not only its state), and no manual step was needed. On debian13 the same case runs from the last .deb built by cargo deb to the first nfpm .deb; the old package is produced reproducibly from the last M1 commit without putting cargo-deb back in mise.toml, the dev image or CI.",
+      "description": "`just e2e` also runs the upgrade case on each of debian13, ubuntu2604, fedora44, alma10 and arch: keys are imported with package version N, a package N+1 built from the same tree with only the version raised is installed with the target's tool, and the test checks that the key files are byte-identical with the same owner and modes, the same keys are listed and sign with polkit asked, the service if running before runs the new binary afterwards (checked by its executable's identity, not only its state), and no manual step was needed.",
       "depends_on": [
         "F46",
-        "F47"
+        "F47",
+        "F59"
       ],
       "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rqi 'upgrade' e2e && grep -rq 'sha256sum\\|cmp ' e2e",
+      "passes": false
+    },
+    {
+      "id": "F60",
+      "title": "End-to-end upgrade from the last cargo-deb .deb on Debian 13",
+      "description": "On debian13, `just e2e` also runs the upgrade case of F48 from the last .deb built by cargo deb to the first nfpm .deb. The old package is produced reproducibly from the last M1 commit without putting cargo-deb back in mise.toml, the dev image or CI.",
+      "depends_on": [
+        "F48"
+      ],
+      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rqi 'cargo.deb\\|cargo-deb' e2e && ! grep -rqsE 'cargo[- ]deb' mise.toml harness/Containerfile .github",
       "passes": false
     },
     {
@@ -134,7 +165,8 @@
       "description": "`just e2e` also runs, on every target of F48, removal with the target's tool (and apt purge on debian13 and ubuntu2604), checking that the service is not running, no packaged file remains, com.rfirma.Custodio1 cannot be activated, the state directory and key files are present and unchanged, the custodio account still exists, and the removal output said where the keys are; then reinstalls and checks that the same keys are listed and sign without a new import.",
       "depends_on": [
         "F46",
-        "F47"
+        "F47",
+        "F59"
       ],
       "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rq 'purge' e2e && grep -rqiE 'reinstall' e2e",
       "passes": false
@@ -157,7 +189,8 @@
       "depends_on": [
         "F41",
         "F43",
-        "F44"
+        "F44",
+        "F58"
       ],
       "verify": "for w in 'Debian 13' 'Ubuntu 26.04' 'Fedora 44' 'Alma' 'Arch' 'rpm-ostree' 'dbus-broker' 'ProcessFD' 'purge' 'Storage=persistent' 'journalctl'; do grep -qF -- \"$w\" docs/install.md || { echo \"missing: $w\" >&2; exit 1; }; done && grep -q 'docs/install.md' README.md",
       "passes": false
@@ -182,7 +215,8 @@
         "F40",
         "F48",
         "F49",
-        "F50"
+        "F50",
+        "F60"
       ],
       "manual": true,
       "passes": false
