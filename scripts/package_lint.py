@@ -196,7 +196,7 @@ def rootless_single_uid():
         return False
     try:
         names = {str(os.getuid()), os.environ.get("USER", "")}
-        return not any(line.split(":")[0] in names for line in open("/etc/subuid") if line.strip())
+        return not any(line.split(":")[0] in names for line in open(os.environ.get("PACKAGE_LINT_SUBUID", "/etc/subuid")) if line.strip())
     except OSError:
         return True
 

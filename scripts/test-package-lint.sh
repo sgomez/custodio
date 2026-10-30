@@ -172,6 +172,20 @@ ok "container, docker only"
 grep -q '^docker run ' "$T/rt.calls" || bad "docker was not used"
 grep -q -- "--user $(id -u):$(id -g)" "$T/rt.calls" || bad "docker run without the caller's --user"
 
+# 0:0 is only for a non-root caller with no subuid range under podman; never for docker or a caller with a range.
+rm -f "$T/rt.calls"
+mkrt podman
+printf '%s:100000:65536\n' "$(id -u)" > "$T/subuid"
+PACKAGE_LINT_SUBUID=$T/subuid ok "container, podman, subuid range"
+if [ "$(id -u)" != 0 ]; then
+    grep -q -- "--user $(id -u):$(id -g)" "$T/rt.calls" || bad "podman with a subuid range lacks the caller's --user"
+    grep -q -- "--user 0:0" "$T/rt.calls" && bad "0:0 passed to a caller with a subuid range"
+    rm -f "$T/rt.calls"
+    : > "$T/subuid"
+    PACKAGE_LINT_SUBUID=$T/subuid ok "container, podman, no subuid range"
+    grep -q -- "--user 0:0" "$T/rt.calls" || bad "podman without a subuid range lacks --user 0:0"
+fi
+
 reset
 rm -f "$T/rt/podman"
 no "no host linter and no runtime" "no container runtime" lintian -- "$PKG" "$LINT"

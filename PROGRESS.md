@@ -110,3 +110,9 @@ with an empty context.
   image build. Package changes added files to all three packages (`package_expected.py`, fixtures updated). `git commit -- <path>` breaks the
   commit hook (GIT_INDEX_FILE leaks into test-shell-scripts); commit with the index instead.
 - Next session should: nothing for F38; the evaluator decides.
+
+### 2026-10-30 — F38 — attempt 2 (session 3)
+- Fixed NEXT_FINDINGS: the contract body now states the two literal lintian path entries, the exact `--user 0:0` condition (podman, non-root,
+  no subuid entry) and namcap `-i -m`, with matching Evidence (committed alone as the amendment). Added tests that `0:0` is not passed to a
+  caller with a subuid range (`PACKAGE_LINT_SUBUID` overrides the file in tests). `just check` green.
+- Next session should: nothing for F38; the evaluator decides.
