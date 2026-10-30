@@ -41,7 +41,9 @@ only a person can check.
    real. `just milestone approve features`.
 6. `just harness run`. The agents build feature after feature.
 7. Check by hand the features marked `manual`, then `just milestone pass <id>` for each.
-8. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
+8. Review `SPEC_DEVIATIONS.md`: for each entry, update `SPEC.md` and set `Status: accepted`, or set
+   `rejected` and say what to build instead. `just milestone close` refuses while any is not accepted.
+9. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
 
 ## When it stops
 
@@ -95,6 +97,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `contracts/<id>.md` | a builder, approved by the evaluator; builders tick its steps or amend it, and the evaluator approves each amendment; the unblocker applies your answer to it |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
+| `SPEC_DEVIATIONS.md` | builders, for a requirement proven impossible; you accept or reject each entry |
 | `BLOCKED.md` | any session that needs a person |
 
 Commit messages follow Conventional Commits (commitlint checks them in the hook, the loop and CI),

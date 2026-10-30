@@ -25,8 +25,10 @@ finding behind it, untick any step it makes untrue, and commit that change alone
 never weakens a gate.
 
 When SPEC.md does not decide something and the conservative option is easy to undo, decide it
-yourself and go on. Write BLOCKED.md only for what needs a person: credentials, a change to the dev
-container or the host, a contradiction with SPEC.md or features.json, or a hard-to-undo decision
-SPEC.md does not cover. Check every claim about the environment by running it before you write it.
+yourself and go on. When a finding proves a SPEC.md requirement impossible for anything this
+project ships, record a deviation as CLAUDE.md says and amend the contract in the same commit;
+do not block. Write BLOCKED.md only for what needs a person: credentials, a change to the dev
+container or the host, a contradiction with SPEC.md or features.json that is a choice rather than
+an impossibility, or a hard-to-undo decision SPEC.md does not cover. Check every claim about the environment by running it before you write it.
 
 Do not edit features.json or SPEC.md. If you need a human, write BLOCKED.md, commit, and stop.

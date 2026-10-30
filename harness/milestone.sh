@@ -65,11 +65,14 @@ close() {
   tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
   pending=$(jq -r '[.features[] | select(.passes | not) | .id] | join(", ")' features.json)
   [ -z "$pending" ] || die "Not every feature passes yet: $pending. See: just status"
+  if [ -f SPEC_DEVIATIONS.md ] && grep -Eq '^- Status: *(pending|rejected)' SPEC_DEVIATIONS.md; then
+    die "SPEC_DEVIATIONS.md has entries not accepted yet; review them first."
+  fi
   name=$(current)
   dest="$archive/$name"
   [ -e "$dest" ] && die "$dest already exists."
   mkdir -p "$dest"
-  for f in SPEC.md features.json APPROVALS contracts IDEA.md PROGRESS.md; do
+  for f in SPEC.md SPEC_DEVIATIONS.md features.json APPROVALS contracts IDEA.md PROGRESS.md; do
     if [ -e "$f" ]; then git mv "$f" "$dest/"; fi
   done
   git commit -q -m "docs: close milestone $name"

@@ -51,7 +51,14 @@ Everything in this repository is in English: code, comments, docs, commit messag
   `docs/decisions.md` only if a later session could undo it without knowing why; follow the rules
   at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
   the commit; research in `docs/findings.md`.
+- If a `SPEC.md` requirement cannot be met by anything this project ships, and a finding in
+  `docs/findings.md` proves it (a tool's source or a command you ran, not a guess), do not block:
+  record a deviation in `SPEC_DEVIATIONS.md` (format at the top of that file), amend the contract
+  to the narrowest replacement, and go on. The evaluator approves it with the amendment; a person
+  reviews every deviation before the milestone closes. Never for the security rules above, nor
+  for a requirement that is only hard or costly.
 - If you cannot continue without a human (a decision the spec does not cover and that is hard to
   undo, missing credentials, a change to the dev container or the host, a contradiction with
-  `SPEC.md`, a `verify` command that cannot work), write `BLOCKED.md` with the question and the
-  options, commit your work so far, and stop. A contract that cannot hold is amended instead.
+  `SPEC.md` that is a choice rather than an impossibility, a `verify` command that cannot work),
+  write `BLOCKED.md` with the question and the options, commit your work so far, and stop. A
+  contract that cannot hold is amended instead.

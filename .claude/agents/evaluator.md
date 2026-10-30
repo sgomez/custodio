@@ -47,7 +47,10 @@ findings the amendment cites. Approve only if all of these hold:
   were wrong, and every ticked step is still true.
 - No gate gets weaker: no dropped flag or check, no exception or glob wider than the finding
   needs, no evidence moved to CI or to a person.
-- It does not contradict `SPEC.md`. If it must, reply `REVISE` and say the builder has to write
+- It does not contradict `SPEC.md`, unless it comes with a `pending` entry in
+  `SPEC_DEVIATIONS.md` and all of these hold: the cited finding proves nothing this project ships
+  can meet the requirement; the replacement is the narrowest one and is under Evidence; it touches
+  no security rule in `CLAUDE.md`. Otherwise reply `REVISE` and say the builder has to write
   `BLOCKED.md`.
 
 Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to change.
