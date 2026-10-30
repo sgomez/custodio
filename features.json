@@ -53,7 +53,7 @@
       "description": "Before any Ubuntu 24.04 work, polkit 124's system-bus-name subject code is read (through a subagent) to establish whether it takes the pidfd from the bus's ProcessFD credential or falls back to the PID. The result, with the source files and versions read, goes in docs/findings.md under a section naming polkit 124 and ProcessFD. If 124 falls short, the minimum polkit declared by the packages is raised to the first release that does read it, Ubuntu 24.04 is dropped from the supported set in the docs and the e2e matrix, and BLOCKED.md asks the person approving the milestone to confirm.",
       "depends_on": [],
       "verify": "grep -qE '^#+ .*polkit 124' docs/findings.md && grep -q 'ProcessFD' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F42",
