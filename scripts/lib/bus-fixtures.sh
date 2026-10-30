@@ -19,6 +19,12 @@ bf_init() {
             ln -s "$(readlink -f "$real")" "$BF_DIR/$dir/$tool"
         done
     done
+    # The deb preinst goes on after a passing check (F43): harmless stand-ins for what it runs next, first on every PATH of the check tests.
+    mkdir "$BF_DIR/stubs"
+    printf '#!/bin/sh\nwhile read -r _; do :; done\nexit 0\n' > "$BF_DIR/stubs/systemd-sysusers"
+    printf '#!/bin/sh\nexit 3\n' > "$BF_DIR/stubs/systemctl"
+    ln -s "$(readlink -f "$(command -v rm)")" "$BF_DIR/stubs/rm"
+    chmod +x "$BF_DIR/stubs/systemd-sysusers" "$BF_DIR/stubs/systemctl"
     ln -s "$(command -v busctl)" "$BF_DIR/path-busctl/busctl"
     ln -s "$(command -v dbus-send)" "$BF_DIR/path-dbus-send/dbus-send"
     # Recording tools: they log what the check gives them and behave like a tool that cannot connect.
@@ -96,7 +102,7 @@ bf_mkroot() {
     ln -sfn usr/bin "$r/bin"
     ln -sfn usr/lib "$r/lib"
     ln -sfn usr/lib64 "$r/lib64" 2> /dev/null || true
-    for tool in dash grep awk busctl; do
+    for tool in dash grep awk busctl rm; do
         real=$(readlink -f "$(type -P "$tool")")
         cp "$real" "$r/usr/bin/$tool"
         for lib in $(ldd "$real" | awk '/=> \//{print $3}'); do
@@ -112,10 +118,13 @@ bf_mkroot() {
     : > "$r/var/lib/dpkg/available"
     printf 'root:x:0:0:root:/root:/bin/sh\n' > "$r/etc/passwd"
     printf 'root:x:0:\n' > "$r/etc/group"
-    for tool in systemd-sysusers systemctl deb-systemd-invoke; do
+    for tool in systemd-sysusers systemctl deb-systemd-invoke journalctl; do
         printf '#!/bin/sh\necho "%s $*" >> /recorded-calls\n' "$tool" > "$r/usr/bin/$tool"
         chmod +x "$r/usr/bin/$tool"
     done
+    # No service runs in the root: systemctl is-active says "inactive".
+    # shellcheck disable=SC2016 # the recorder expands $* and $1 itself
+    printf '#!/bin/sh\necho "systemctl $*" >> /recorded-calls\n[ "$1" != is-active ] || exit 3\n' > "$r/usr/bin/systemctl"
 }
 
 # bf_in_root ROOT COMMAND...: runs the command as root of a user namespace with the stub buses (BF_SOCKDIR) bound at ROOT/run/bus, so

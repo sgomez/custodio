@@ -66,7 +66,7 @@ subject_cmd() {
 run_subject() {
     subject_cmd "$1"
     rc=0
-    out=$("${WRAP[@]}" env PATH="${3:-$PATH}" DBUS_SYSTEM_BUS_ADDRESS="$2" "${CMD[@]}" 2>&1) || rc=$?
+    out=$("${WRAP[@]}" env PATH="$BF_DIR/stubs:${3:-$PATH}" DBUS_SYSTEM_BUS_ADDRESS="$2" "${CMD[@]}" 2>&1) || rc=$?
 }
 
 # run_fake_os ID SUBJECT ADDRESS: run_subject with /etc/os-release replaced (debian13 or ubuntu2404) and daemons by those names on PATH.

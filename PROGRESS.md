@@ -211,3 +211,21 @@ with an empty context.
   it needs user namespaces and a container engine, which ubuntu-24.04 runners may restrict (AppArmor); decide whether to add it.
 - No Rust changed, so `just mutants-diff F42` has nothing to mutate. `just check`, `just test-scripts`, `just package`, `just package-lint` pass.
 - Next session should: nothing for F42; the evaluator decides.
+
+### 2026-10-30 — F43 — session 1
+- Done (all seven steps): deb `preinst` (F42 check, then `systemd-sysusers -` from sysusers text embedded by `scripts/embed-bus-check.sh`, kept equal to
+  `data/sysusers.d/custodio.conf` by `scripts/check-sysusers-sync.sh`; on upgrade notes `is-active` in `/run/custodio-restart-after-upgrade`), `postinst`
+  (daemon-reload, bus reload, catalog, one restart only with an old version and the marker), `prerm` (stop on remove), `postrm` (remove = purge: reloads, second
+  stop if active, notice on stderr). `systemd` moved to the deb's `Pre-Depends` (top-level `deb.predepends` in nfpm.yaml); `check_packages.py` reads the field
+  separately (`package_expected.PRE_DEPS`), fixtures `predep-*` in `nfpm_edit.py`. Gates/fixtures for the four scripts updated (inverted, not dropped).
+- Tests in `test-scripts`: `test-sysusers-sync.sh`, `test-deb-scripts-static.sh` (state-path allowlist with reasons, forbidden commands), `test-deb-lifecycle.sh`
+  (every action; call lists in its header; 19 mutants; 7 control scripts proving the state check sees `rm`, redirections, chmod, cat), `test-deb-lifecycle-real.sh`
+  (real dpkg in a user namespace: install, upgrade from a fixture that looks like the cargo-deb 0.1.0-1 package, remove, purge; 5 mutants incl. account in postinst).
+  `test-bus-check.sh` and `test-install-real.sh` needed only fixture changes (stubs on PATH / `rm`, `journalctl` in the root), not the assertions.
+- Decisions in `docs/decisions.md`: edited the F42 ProcessFD entry (Pre-Depends no longer rejected; the check is not changed to use busctl from systemd); new
+  entries for Pre-Depends + `useradd` fallback rejected, and for the marker, stderr notice, purge printing twice.
+- Contract note: the evidence names `/etc/dbus-1/system.d/...` as the bus policy; the package ships it at `/usr/share/dbus-1/system.d/...` and the test uses that.
+- A `postinst configure OLD` after a first install of the same version number as the cargo-deb one (both 0.1.0-1) is a reinstall for dpkg; the real-dpkg
+  test uses 0.1.1 for the nfpm package. No Rust changed, so `just mutants-diff F43` has nothing to mutate.
+- `just check`, `just package`, `just package-lint` pass (`test-scripts` ran inside `check`).
+- Next session should: nothing for F43; the evaluator decides.

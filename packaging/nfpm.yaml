@@ -20,6 +20,10 @@ description: |
   so that PKCS#11 applications can sign without ever holding the key.
 rpm:
   group: System Environment/Daemons
+# systemd is a Pre-Depends, not a Depends: preinst runs systemd-sysusers, and dpkg guarantees Depends only for postinst (docs/decisions.md).
+deb:
+  predepends:
+    - systemd
 
 contents:
   - src: target/release/custodiod
@@ -80,12 +84,13 @@ overrides:
       - libc6
       - libgcc-s1
       - polkitd (>= 124)
-      - systemd
       - dbus-system-bus
       - p11-kit
     scripts:
       preinstall: packaging/deb/preinst
       postinstall: packaging/deb/postinst
+      preremove: packaging/deb/prerm
+      postremove: packaging/deb/postrm
   rpm:
     depends:
       - glibc

@@ -75,15 +75,21 @@ package-gate-test:
     scripts/test-package-lint.sh
     scripts/test-package-lint-lists.sh
 
-# The install-time check that the system bus provides ProcessFD (F42): the copies in the pre-install scripts equal the source, the check
+# The install-time scripts. F43: the account text in the deb preinst equals the sysusers file, every maintainer script and action of the
+# .deb runs in a stubbed root, and the real dpkg installs, upgrades, removes and purges. F42: the copies in the pre-install scripts equal the source, the check
 # against a private dbus-daemon, a stub bus without ProcessFD and no bus (as the source and as the scripts extracted from fixture
 # packages, with dash and bash), and the real dpkg, rpm and pacman refusing, installing or warning. The pacman cases run in the Arch
 # image of the namcap lint and need a container engine; CUSTODIO_SKIP_ARCH_INSTALL=1 skips them with a message.
 test-scripts:
     scripts/check-bus-check-sync.sh
+    scripts/check-sysusers-sync.sh
     scripts/test-bus-check-sync.sh
+    scripts/test-sysusers-sync.sh
     scripts/test-bus-check.sh
     scripts/test-install-real.sh
+    scripts/test-deb-scripts-static.sh
+    scripts/test-deb-lifecycle.sh
+    scripts/test-deb-lifecycle-real.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:

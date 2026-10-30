@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | predep-add DEP | predep-del DEP | predep-to-depends DEP
 """
 import sys
 
@@ -49,6 +49,13 @@ elif op == "dep-del":
 elif op == "dep-set":
     deps = cfg["overrides"][args[0]]["depends"]
     deps[deps.index(args[1])] = args[2]
+elif op == "predep-add":  # the deb's Pre-Depends (top-level deb section)
+    cfg["deb"]["predepends"].append(args[0])
+elif op == "predep-del":
+    cfg["deb"]["predepends"].remove(args[0])
+elif op == "predep-to-depends":  # the dependency is only in Depends
+    cfg["deb"]["predepends"].remove(args[0])
+    cfg["overrides"]["deb"]["depends"].append(args[0])
 elif op == "script-del":
     ov = cfg["overrides"][args[0]]
     (ov["archlinux"]["scripts"] if args[1] in ("preupgrade", "postupgrade") else ov["scripts"]).pop(args[1])

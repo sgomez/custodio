@@ -1,0 +1,24 @@
+#!/bin/sh
+# Remove and purge are the same (F43; SPEC design section 2): the files are gone, the service is stopped, and the state directory and
+# the custodio account stay. The keys cannot be exported or recreated, so no script deletes them. Nothing here reads, changes or lists
+# anything under the state directory; the notice only names it.
+set -e
+case "$1" in
+remove | purge)
+    systemctl daemon-reload || true
+    deb-systemd-invoke reload dbus.service || true
+    # The bus policy and the activation file are gone now, so nothing starts the service again; stop one that came back
+    # between prerm and the removal of the files.
+    if systemctl is-active --quiet custodio.service 2>/dev/null; then
+        deb-systemd-invoke stop custodio.service || true
+    fi
+    {
+        echo "custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio)."
+        echo "custodio: the account custodio was kept too, because the keys belong to its uid."
+        echo "custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated."
+    } >&2
+    ;;
+abort-install | abort-upgrade)
+    rm -f /run/custodio-restart-after-upgrade
+    ;;
+esac

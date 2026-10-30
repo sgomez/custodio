@@ -1,6 +1,10 @@
 #!/bin/sh
-# Refuse to install while the system bus lacks ProcessFD (F42). The check below is packaging/bus-check.sh, embedded by
-# scripts/embed-bus-check.sh. It is the first thing this script does; abort-* calls do not run it.
+# Refuse to install while the system bus lacks ProcessFD (F42), then create the custodio account (F43) and, on an upgrade, note
+# whether the service is running so that postinst restarts it only then. The check below is packaging/bus-check.sh, embedded by
+# scripts/embed-bus-check.sh; it is the first thing this script does. abort-upgrade calls do nothing.
+# The account comes from the sysusers text below (scripts/check-sysusers-sync.sh keeps it equal to data/sysusers.d/custodio.conf):
+# it is created here, before unpacking, because dbus-daemon may load the bus policy that names the account as soon as it is unpacked,
+# and a pre-install script cannot read a packaged file. The deb Pre-Depends on systemd, which provides systemd-sysusers.
 set -e
 # >>> custodio-bus-check
 custodio_bus_check() {
@@ -57,6 +61,30 @@ custodio_bus_check() {
     return 1
 }
 # <<< custodio-bus-check
+custodio_create_account() {
+    if ! command -v systemd-sysusers >/dev/null 2>&1; then
+        printf '%s\n' "custodio: systemd-sysusers is not installed, so the custodio account cannot be created. Nothing was changed." >&2
+        return 1
+    fi
+    if ! systemd-sysusers - <<'CUSTODIO_SYSUSERS'
+u custodio - "Custodio signing service" -
+CUSTODIO_SYSUSERS
+    then
+        printf '%s\n' "custodio: systemd-sysusers failed to create the custodio account. Nothing was changed." >&2
+        return 1
+    fi
+}
+# The marker is in /run, never under the state directory; postinst removes it.
+custodio_note_running() {
+    rm -f /run/custodio-restart-after-upgrade
+    if [ "$1" = upgrade ] && systemctl is-active --quiet custodio.service 2>/dev/null; then
+        : > /run/custodio-restart-after-upgrade || true
+    fi
+}
 case "$1" in
-    install | upgrade) custodio_bus_check || exit 1 ;;
+    install | upgrade)
+        custodio_bus_check || exit 1
+        custodio_create_account || exit 1
+        custodio_note_running "$1"
+        ;;
 esac

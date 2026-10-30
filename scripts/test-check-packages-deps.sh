@@ -46,10 +46,16 @@ case_fail rpm-polkitd rpm: polkitd -- dep-add rpm polkitd
 case_fail arch-polkit-bare arch: polkit -- dep-set archlinux 'polkit>=124' polkit
 case_fail arch-polkitd arch: polkitd -- dep-add archlinux polkitd
 for dep in systemd p11-kit; do
-    case_fail "deb-no-$dep" deb: "$dep" -- dep-del deb "$dep"
     case_fail "rpm-no-$dep" rpm: "$dep" -- dep-del rpm "$dep"
     case_fail "arch-no-$dep" arch: "$dep" -- dep-del archlinux "$dep"
 done
+case_fail deb-no-p11-kit deb: p11-kit -- dep-del deb p11-kit
+# The deb's systemd is a Pre-Depends (the preinst runs systemd-sysusers): missing from both fields fails, only in Depends fails, in both
+# fails, and the two fields are not mixed up.
+case_fail deb-no-systemd deb: Pre-Depends -- predep-del systemd
+case_fail deb-systemd-only-in-depends deb: Pre-Depends -- predep-to-depends systemd
+case_fail deb-systemd-in-both deb: "in Depends as well" -- dep-add deb systemd
+case_fail deb-extra-predepends deb: Pre-Depends -- predep-add dbus-system-bus
 case_fail deb-no-bus deb: dbus-system-bus -- dep-del deb dbus-system-bus
 case_fail rpm-no-bus rpm: dbus -- dep-set rpm dbus dbus-daemon
 case_fail arch-no-bus arch: dbus -- dep-del archlinux dbus
@@ -69,8 +75,8 @@ expect_fail needed-unknown "$FX_DIR/out/needed-unknown" "$REAL" libq.so.6 deb: r
 # The lifecycle script set per format.
 case_fail deb-no-postinst deb: postinst -- script-del deb postinstall
 case_fail deb-no-preinst deb: preinst -- script-del deb preinstall
-case_fail deb-prerm deb: prerm -- script-add deb preremove
-case_fail deb-postrm deb: postrm -- script-add deb postremove
+case_fail deb-no-prerm deb: prerm -- script-del deb preremove
+case_fail deb-no-postrm deb: postrm -- script-del deb postremove
 case_fail rpm-no-post rpm: post -- script-del rpm postinstall
 case_fail rpm-no-pre rpm: pre -- script-del rpm preinstall
 case_fail rpm-preun rpm: preun -- script-add rpm preremove

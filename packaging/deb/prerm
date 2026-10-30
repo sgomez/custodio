@@ -1,0 +1,9 @@
+#!/bin/sh
+# Stop the service when the package is removed or purged (F43). An upgrade does not stop it: postinst restarts it once, after the
+# new files and bus policy are in place. failed-upgrade and deconfigure do nothing. Nothing here touches the state directory.
+set -e
+case "$1" in
+remove)
+    deb-systemd-invoke stop custodio.service || true
+    ;;
+esac

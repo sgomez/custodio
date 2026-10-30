@@ -195,7 +195,32 @@ Format: a title and three short bullets, a couple of lines each:
 ## 2026-10-30 — The install-time ProcessFD check refuses when it has no tool to ask with
 - Decision: the check (`packaging/bus-check.sh`) asks with `busctl`, else `dbus-send`. A bus socket that exists with neither tool
   installed is refused, with a message to install one; only an absent socket (or nothing listening) is "no bus" and installs with a notice.
-- Why: a deb `preinst` can rely on Essential packages only, so neither tool is guaranteed; installing silently would hide a bus without
-  ProcessFD, which the check exists to catch.
-- Rejected: treating a missing tool as "no bus" (silent install); adding `Pre-Depends` on systemd or dbus (the dependency gate and the
-  minimal-install goal); querying the bus with a tool of our own (nothing may be added to the package for a script that runs before it).
+  The deb's `Pre-Depends: systemd` (next entry) puts `busctl` on the system when `preinst` runs, but this check does not rely on it and
+  is not changed for it: it still tries `busctl`, then `dbus-send`, and refuses when it has neither.
+- Why: a deb `preinst` can rely on Essential packages only unless it pre-depends, so neither tool was guaranteed when this was decided; installing
+  silently would hide a bus without ProcessFD, which the check exists to catch. The rpm and Arch scripts have no pre-dependency at all.
+- Rejected: treating a missing tool as "no bus" (silent install); querying the bus with a tool of our own (nothing may be added to the
+  package for a script that runs before it). `Pre-Depends` on systemd for this check alone was rejected here because of the dependency gate
+  and the minimal-install goal; that reason no longer holds, since F43 pre-depends on systemd for another reason and `systemd` was already a
+  dependency, so `Pre-Depends` changes when it is installed and not what gets installed. Pre-depending on dbus is still rejected: nothing needs it.
+
+## 2026-10-30 — The deb pre-depends on systemd and creates the account in preinst
+- Decision: `systemd` is in the deb's `Pre-Depends` (and no longer in `Depends`; rpm and Arch lists are unchanged). `preinst` creates the
+  `custodio` account with `systemd-sysusers -`, from the sysusers text embedded in the script (`scripts/check-sysusers-sync.sh` keeps it equal
+  to `data/sysusers.d/custodio.conf`), on `install` and on `upgrade`. If the tool is missing or fails, `preinst` fails and nothing is unpacked.
+- Why: dpkg unpacks the bus policy before `postinst`, and `dbus-daemon` may load it at once, so the account must exist before; and dpkg
+  guarantees `Depends` only for `postinst`, so in one transaction (debootstrap, image builds) `systemd` may not be unpacked when `preinst`
+  runs. Debian policy 7.2 discourages `Pre-Depends`; this is the case it allows. Do not drop it as lint hygiene.
+- Rejected: a `useradd`/`adduser` fallback in `preinst` (a second account definition to keep in sync with the sysusers file, and different
+  uid choice); creating the account in `postinst` (the policy would name a missing user); skipping account creation when the tool is missing.
+  A later session may move `systemd` back to `Depends` only if `preinst` stops needing `systemd-sysusers`.
+
+## 2026-10-30 — Deb scripts: restart marker in /run, notice on stderr, purge as remove
+- Decision: `preinst upgrade` notes that `systemctl is-active` said active by creating `/run/custodio-restart-after-upgrade`; `postinst
+  configure OLD` restarts once (`deb-systemd-invoke restart`) only if it exists, and removes it. Without it (an upgrade from the cargo-deb package
+  needs none: the new `preinst` runs first) the service is left alone. The removal notice goes to stderr, on `remove` and on `purge`
+  (printed twice when an installed package is purged). `postrm remove|purge` stops the service again if it is active after the reloads.
+- Why: the marker is the only state that survives from `preinst` to `postinst`, and it must not be under the state directory; stdout of
+  maintainer scripts can carry debconf's protocol; the second stop covers a D-Bus activation between `prerm` and the removal of the files.
+- Rejected: `try-restart` in `postinst` (restarts a service that was started after `preinst`, and cannot tell a stale state); the marker under
+  `/var/lib` (state directory); one notice per transaction (needs another marker).

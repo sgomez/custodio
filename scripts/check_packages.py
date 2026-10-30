@@ -153,9 +153,9 @@ def squash(text):
     return re.sub(r"\s+", " ", text.strip())
 
 
-def dependencies(label, pkg):
+def dependencies(label, pkg, field="Depends"):
     if label == "deb":
-        return [squash(d) for d in run(["dpkg-deb", "-f", pkg, "Depends"]).split(",") if d.strip()]
+        return [squash(d) for d in run(["dpkg-deb", "-f", pkg, field], optional=True).split(",") if d.strip()]
     if label == "rpm":
         lines = run(["rpm", "--dbpath", f"{extract_dir}/rpmdb", "-qpR", pkg]).splitlines()
         return [squash(d) for d in lines if d.strip() and not d.startswith(("rpmlib(", "/"))]
@@ -170,6 +170,14 @@ def check_deps(label, pkg):
     for dep in have:
         if re.split(r"[ (<>=]", dep)[0] in expected.FORBIDDEN_DEPS[label]:
             fail(label, f"dependency '{dep}' is not allowed")
+    # The Pre-Depends field is its own list: whatever it holds is not a Depends entry, and the other way round.
+    pre = dependencies(label, pkg, "Pre-Depends") if label == "deb" else []
+    want = expected.PRE_DEPS.get(label, [])
+    if pre != want:
+        fail(label, f"Pre-Depends is '{', '.join(pre) or 'empty'}', expected '{', '.join(want) or 'empty'}'")
+    for dep in want:
+        if dep in have:
+            fail(label, f"'{dep}' is in Depends as well as in Pre-Depends")
 
 
 def check_needed(label, pkg, files):

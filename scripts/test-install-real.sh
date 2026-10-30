@@ -85,7 +85,7 @@ expect_install() { # FORMAT BUS-NAME KIND (refused | installed | notice)
         installed "$fmt" "$root" || bad "$fmt, bus $name: the package manager does not list custodio"
         if grep -qF "does not provide ProcessFD" <<< "$out"; then bad "$fmt, bus $name: a refusal message appears: $out"; fi
         # The post script ran after the check (the recorders are in the root).
-        grep -q '^systemd-sysusers custodio.conf' "$root/recorded-calls" 2> /dev/null || bad "$fmt, bus $name: the post script did not run"
+        grep -q '^systemctl daemon-reload' "$root/recorded-calls" 2> /dev/null || bad "$fmt, bus $name: the post script did not run"
         if [ "$kind" = notice ]; then
             grep -qF "will refuse to sign until a bus with ProcessFD runs" <<< "$out" || bad "$fmt, bus $name: the notice is not in the output: $out"
         elif grep -qF "will refuse to sign" <<< "$out"; then
