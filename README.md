@@ -15,7 +15,8 @@ intent: the dialog cannot prove what is being signed.
 
 ## Development
 
-Linux only. Install [mise](https://mise.jdx.dev) and rustup, activate mise in your shell
+Linux only. Install [mise](https://mise.jdx.dev), rustup and the system packages the package tests
+need (Debian/Ubuntu: `rpm libarchive-tools zstd python3-yaml`), activate mise in your shell
 (`eval "$(mise activate bash)"` or `zsh`), then once:
 
 ```bash

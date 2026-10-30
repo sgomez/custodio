@@ -12,6 +12,8 @@ default:
 # One-time setup of a development machine: the pinned tools in mise.toml, the nightly toolchain
 # for Miri, ASan and fuzzing, commitlint and the git hooks. Needs mise and rustup.
 setup:
+    @{ command -v rpm && command -v bsdtar && command -v zstd && python3 -c 'import yaml'; } >/dev/null 2>&1 \
+        || { echo "Missing system packages for the package tests; on Debian/Ubuntu: sudo apt install rpm libarchive-tools zstd python3-yaml" >&2; exit 1; }
     mise trust
     mise install
     rustup toolchain install {{nightly_toolchain}} --profile minimal --component miri --component rust-src
