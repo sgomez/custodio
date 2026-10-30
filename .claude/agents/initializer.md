@@ -39,8 +39,8 @@ Rules:
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
   Never use a command that always succeeds. Use `just check` plus only the slow gates the feature
-  touches (e.g. `just miri` for FFI code, `just mutants` for files in its recipe), never
-  `just check-slow`: the release runs it in full.
+  touches (e.g. `just miri` for FFI code, `just mutants-diff <id>` for files in the `mutants`
+  recipe, never the full `just mutants`), never `just check-slow`: the release runs it in full.
 - An acceptance item that only a person can check (a GUI dialog, hardware, a third-party app) is a
   feature with `"manual": true` and no `verify`.
 - Every `passes` is `false`.

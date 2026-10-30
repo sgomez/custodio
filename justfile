@@ -180,6 +180,19 @@ mutants *args:
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
     exit "$status"
 
+# `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
+# working tree included. A feature's `verify` gate; CI sweeps every mutant weekly. Extra arguments go to `just mutants`.
+[positional-arguments]
+mutants-diff id *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    id=$1; shift
+    base_file=".harness/state/$id.base"
+    [ -f "$base_file" ] || { echo "no $base_file: the loop has not started $id" >&2; exit 1; }
+    mkdir -p target
+    git diff "$(cat "$base_file")" > "target/mutants-$id.diff"
+    just mutants --in-diff "target/mutants-$id.diff" "$@"
+
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
 coverage:
