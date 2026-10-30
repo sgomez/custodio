@@ -3,6 +3,9 @@ pre-commit:
   commands:
     check:
       run: just check
+      # Nothing in `just check` reads Markdown but docs/audit.md (docs_tests.rs), features.json or APPROVALS.
+      skip:
+        - run: test -z "$(git diff --cached --name-only | awk '!(/\.md$|^features\.json$|^APPROVALS$/ && $0 != "docs/audit.md")')"
 
 commit-msg:
   commands:

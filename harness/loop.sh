@@ -34,12 +34,17 @@ run_claude() {
   shift 2
   if (( sessions >= MAX_SESSIONS )); then die "Reached MAX_SESSIONS=$MAX_SESSIONS." 0; fi
   sessions=$((sessions + 1))
+  stop_if_asked
   HARNESS_ROLE=$role claude -p --dangerously-skip-permissions "$@" >"$logfile" 2>&1 \
     || log "$role session exited non-zero, see $logfile"
+  stop_if_asked # the kill-switch hook cut this session short: its output is no verdict
 }
+
+stop_if_asked() { if [ -e AGENT_STOP ]; then die "AGENT_STOP found, stopping." 0; fi; }
 
 verdict() { grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*'; }
 bump() { local n; n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/$1"; echo "$n"; }
+gated() { bump "$1.attempts" >/dev/null; git rev-parse HEAD > "$STATE/$1.evaluated"; }
 open_steps() { grep -cE '^[[:space:]]*- \[ \]' "$1" || true; }
 
 stash_leftovers() {
@@ -186,11 +191,12 @@ Approved contract: $c"
   fi
 
   # 3. Gate: verify, then evaluator
-  attempts=$(bump "$id.attempts")
-  (( attempts <= MAX_ATTEMPTS )) || die "$id was rejected $MAX_ATTEMPTS times; see NEXT_FINDINGS.md. Stopping for a human." 2
-  git rev-parse HEAD > "$STATE/$id.evaluated"
+  # An attempt counts only once it has a result, so a stop mid-gate costs none.
+  (( $(cat "$STATE/$id.attempts" 2>/dev/null || echo 0) < MAX_ATTEMPTS )) \
+    || die "$id was rejected $MAX_ATTEMPTS times; see NEXT_FINDINGS.md. Stopping for a human." 2
   log "$id: verify ($verify)"
   if ! bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1; then
+    gated "$id"
     # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
     { printf 'The verify command failed: `%s`\n\nLast lines of output:\n\n```\n' "$verify"
       tail -n 60 "$LOG_DIR/$stamp-verify.log"
@@ -201,6 +207,7 @@ Approved contract: $c"
   run_claude evaluator "$LOG_DIR/$stamp-eval.log" --agent evaluator \
     "Mode: implementation. Feature: $feature. Contract: $c. Changes: git diff $(cat "$STATE/$id.base")..HEAD. Verify log: $LOG_DIR/$stamp-verify.log"
 
+  gated "$id"
   stash_leftovers "$stamp-eval"
 
   # 4. Mark as passing
