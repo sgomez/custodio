@@ -40,7 +40,7 @@ for f in packaging/deb/postinst packaging/rpm/post packaging/arch/post_install p
     sh -n "$ROOT/$f" || bad "$f: sh -n failed"
     shellcheck "$ROOT/$f" || bad "$f: shellcheck failed"
 done
-[ "$(find "$ROOT/packaging" -mindepth 2 -type f | wc -l)" -eq 4 ] || bad "the four script files are not distinct paths"
+[ "$(find "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$ROOT/packaging/arch" -mindepth 1 -type f | wc -l)" -eq 4 ] || bad "the four script files are not distinct paths"
 for f in "$tmp/deb/postinst" "$tmp/rpm/post"; do sh -n "$f" || bad "rendered $f: sh -n failed"; done
 bash -n "$tmp/archlinux/INSTALL" || bad "rendered .INSTALL: bash -n failed"
 shellcheck -s bash "$tmp/archlinux/INSTALL" "$tmp/deb/postinst" "$tmp/rpm/post" || bad "rendered scripts: shellcheck failed"

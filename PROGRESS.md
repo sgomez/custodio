@@ -88,3 +88,9 @@ with an empty context.
   Findings are in docs/findings.md. CI actionlint/zizmor ran within `just check` locally (green).
 - Not done: nothing known. The `GLIBC_PRIVATE` fixture is not yet proven on the ubuntu-24.04 runner (CI will).
 - Next session should: nothing for F37; the evaluator decides.
+
+### 2026-10-30 — F38 — attempt 1 (session 1)
+- Done: step 1. `packaging/lint/pins.txt`, research in docs/findings.md. rpmlint outcome (b) (Debian 2.7.0 vs Fedora 2.8.0-2.fc44);
+  namcap branch 2 (container only); lintian_profile = lintian package version.
+- Not done: steps 2-7. BLOCKED.md: no root and no container runtime in the session, so no linter can run.
+- Next session should: read BLOCKED.md; once a runtime exists, step 2.

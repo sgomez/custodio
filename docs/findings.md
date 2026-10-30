@@ -470,3 +470,25 @@ Dependency names (read from distro metadata, 2026-10-30):
 - Real listings: rpm lists no directories (`rpm --dump`), deb and Arch list the implicit parents as `0755 root root`; the
   directory rule in `scripts/check_parity.py` follows from that. The three real packages have no difference.
 - A fixture ELF must be stripped (`gcc -s`) before byte-patching `GLIBC_2.34`: otherwise the name also sits in `.strtab`.
+
+## F38: package linters, research (2026-10-30)
+
+- lintian: Debian 13 at `snapshot.debian.org/archive/debian/20261020T000000Z/` has lintian 2.122.0 and rpmlint 2.7.0-3. lintian has no
+  separate profile or data version: `debian/main` is a profile file inside the package, so `lintian_profile` is the package version.
+  `lintian --print-version` prints it. Default `--fail-on` is `error`, so findings are parsed from output, not from the status. Use
+  `--tag-display-limit 0`. Lintian needs many Perl modules; it did not run from an extracted .deb without root.
+- rpmlint: Fedora 44 has 2.8.0-2.fc44 (koji URL and sha256 in `pins.txt`); trixie has 2.7.0, so outcome (b): rpmlint always runs in the
+  Fedora container and the dev image gets no rpmlint. Config loading (2.7 and 2.8): built-in `configdefaults.toml`, then every
+  `*.toml` in `$XDG_CONFIG_HOME` and `$XDG_CONFIG_DIRS` (default `/etc/xdg`) `/rpmlint/`, then each `-c` path; `-c` adds and does not
+  replace. `CONFIG_DISABLE_AUTOLOADING=1` skips the autoload. The Fedora image loads `fedora.toml` (77 filters, 5 extra checks),
+  `scoring.toml`, `users-groups.toml`, `warn-on-functions.toml`; the gate image must remove them. The session header lists the loaded
+  files (4-space indented, after `configuration:`). Status 0 with warnings; 64 errors. Summary: `N packages and M specfiles checked; E errors, W warnings, F filtered, ...`.
+- namcap 3.6.0-3 (`any`) is in the Arch Linux Archive under `repos/2026/10/20/extra/os/x86_64/`. Line format `pkgname W: message`,
+  `Error: ...` lines on stdout, status 0 even with findings. Branch 2 (container only): trixie has no `python3-pyalpm`, and namcap needs
+  a real pacman database to resolve dependencies, so a Debian build would report different findings than on Arch.
+- Base digests (2026-10-30): see `pins.txt`.
+
+## F38: blocked on the sandbox (2026-10-30)
+
+The session runs as uid 1000 without sudo and with neither podman nor docker. None of the three linters can be run, so step 2 (raw
+findings on the real packages, the `/usr/lib/custodio/custodiod` outcome, `reports/package-lint-container.txt`) cannot be produced.
