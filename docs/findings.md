@@ -651,3 +651,19 @@ line lists only `configdefaults.toml` and the committed empty config) followed b
 Outcomes for the dev image: rpmlint outcome (b) (container only, none installed), namcap branch 2 (container only), lintian installed at
 the pin from the snapshot (takes effect when the dev image is rebuilt; until then the host has no lintian and the gate uses the container).
 Under the nested rootless podman of the dev container the run uses `--user 0:0` (the unprivileged caller; no other uid exists there).
+
+## F42 — Does pacman stop an installation when `pre_install` fails? (2026-10-30)
+
+No. Tested with the real `pacman -U --noconfirm` (pacman from the pinned Arch image of `packaging/lint/namcap.Containerfile`, rootless
+podman, `--user 0:0`) on a hand-made package whose `.INSTALL` defines `pre_install() { ...; return 1; }`: pacman prints
+`error: command failed to execute correctly`, goes on, extracts the files, exits 0, and `pacman -Q` lists the package. `pre_upgrade` is
+run by the same libalpm call and is not expected to differ (not run separately).
+
+Mechanisms tried for an abort from inside the package:
+- A script `kill -INT "$PPID"` (the parent of the scriptlet is `pacman`): pacman prints `Interrupt signal received`, but the transaction still
+  completes (exit 0, files extracted). Not an abort.
+- A shipped alpm `PreTransaction` hook with `AbortOnFail`: libalpm reads hooks from the hook directories before the transaction starts, so
+  the hook of the package being installed is not there yet. It can only protect a later upgrade or reinstall, never the first installation
+  (reasoned from the libalpm hook order, not run).
+
+deb and rpm were not run in this session (work stopped at this finding); see `BLOCKED.md`.
