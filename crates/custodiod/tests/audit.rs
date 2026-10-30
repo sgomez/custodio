@@ -394,8 +394,12 @@ fn sign_refused_with_process_fd_of_wrong_type() -> TestResult {
 
 #[test]
 fn sign_refused_with_pidfd_of_another_process() -> TestResult {
-    refused_for_process_fd(|m| {
-        if let Ok(v) = pidfd(std::os::unix::process::parent_id()) {
+    let parent = std::os::unix::process::parent_id();
+    assert_ne!(parent, std::process::id());
+    // Opened up front so a failure fails the test instead of dropping `ProcessFD`.
+    let fd = pidfd(parent)?;
+    refused_for_process_fd(move |m| {
+        if let Ok(v) = fd.try_clone() {
             m.insert("ProcessFD".to_owned(), v);
         }
     })

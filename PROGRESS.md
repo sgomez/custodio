@@ -153,3 +153,8 @@ with an empty context.
 - Optional "why" field: not added (conservative); `docs/audit.md` only extends the outcome's meaning text.
 - `just check`, `just test-integration`, `just mutants` pass; zero missed/timeout in `target/mutants`.
 - Next session should: nothing for F39; the evaluator decides.
+
+### 2026-10-30 — F39 — session 2 (NEXT_FINDINGS fix)
+- `sign_refused_with_pidfd_of_another_process` now opens the parent's pidfd up front with `?` and asserts the parent pid differs from
+  ours, so it cannot pass as a copy of the no-`ProcessFD` test. Test-only change; `just check` and `just test-integration` pass.
+- Next session should: nothing for F39; the evaluator decides.
