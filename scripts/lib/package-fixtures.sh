@@ -58,3 +58,11 @@ fx_scripts() {
     archlinux) bsdtar -xOf "$pkg" .INSTALL > "$3/INSTALL" ;;
     esac
 }
+
+# fx_mix NAME BASE FORMAT OTHER: the packages of case BASE, with the package of FORMAT taken from case OTHER.
+fx_mix() {
+    mkdir -p "$FX_DIR/out/$1"
+    cp "$FX_DIR/out/$2"/* "$FX_DIR/out/$1/"
+    rm -f "$(fx_file "$1" "$3")"
+    cp "$(fx_file "$4" "$3")" "$FX_DIR/out/$1/"
+}

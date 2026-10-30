@@ -34,7 +34,7 @@ elif op == "type":
 elif op == "override-contents":
     cfg["overrides"][args[0]]["contents"] = [{"src": "data/custodio.module", "dst": "/usr/share/x"}]
 elif op == "override-unknown":
-    cfg["overrides"][args[0]]["version"] = "9.9.9"
+    cfg["overrides"][args[0]]["suggests"] = ["bash"]
 elif op == "dep-add":
     cfg["overrides"][args[0]]["depends"].append(args[1])
 elif op == "dep-del":

@@ -65,6 +65,7 @@ system-gates: security-score unit-verify bus-policy
 # The tests of the package gate and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd).
 package-gate-test:
     scripts/test-package-scripts.sh
+    scripts/test-check-packages.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
