@@ -706,7 +706,7 @@ Checked on rpm 4.20.1 and nfpm 2.48.0 in the dev container (logging packages und
   `/var/lib/rpm-state`, `/usr` and `/etc` writable. It never runs `%preun`, `%postun` or the triggers of removal ("not running *un scripts for
   removals yet"; only install, update and downgrade are handled). **So `rpm-ostree uninstall` runs no scriptlet of the removed package: the stop
   (it ends with the reboot into the deployment without the package) and the notice SPEC asks for cannot come from the package's scriptlets.**
-  No other mechanism that runs at uninstall time exists in the package: see BLOCKED.md. Users: rpm-ostree runs sysusers once on the whole tree
+  No other mechanism that runs at uninstall time exists in the package: see the F44 entry in `SPEC_DEVIATIONS.md`. Users: rpm-ostree runs sysusers once on the whole tree
   before the `%pre` scripts if the image's rpm sets `%__systemd_sysusers`, and turns `useradd` calls of `%pre` into sysusers fragments; a
   shipped `/usr/lib/sysusers.d/custodio.conf` is enough there (inferred; not run: F45 and later).
 - **Local finding in the deb (F43), not changed here.** `: > /run/custodio-restart-after-upgrade || true` in `preinst` ends a dash `sh` when the

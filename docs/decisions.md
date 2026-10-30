@@ -237,4 +237,4 @@ Format: a title and three short bullets, a couple of lines each:
   provide would make rpm create the account before the F42 check.
 - Rejected: `%posttrans` for the restart (its `$1` cannot tell install from upgrade, and it would restart after the old files are removed); the
   helper `systemd-update-helper` (absent in a chroot, enables and presets on install); a `useradd` fallback (see the deb entry).
-- Not decided here: the notice for `rpm-ostree uninstall` (no scriptlet of the removed package runs there): BLOCKED.md.
+- Not decided here: the notice for `rpm-ostree uninstall` (no scriptlet of the removed package runs there): decided as a deviation, see the F44 entry in `SPEC_DEVIATIONS.md`.

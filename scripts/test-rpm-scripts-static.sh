@@ -73,6 +73,9 @@ for tag in PRETRANS POSTTRANS; do [ -z "$(fx_rpm -qp --qf "%{$tag}" "$pkg" | gre
 for pair in PREIN:pre POSTIN:post PREUN:preun POSTUN:postun; do
     [ "$(fx_rpm -qp --qf "%{${pair%%:*}}" "$pkg")" = "$(cat "$SRC/${pair##*:}")" ] || bad "rpm ${pair%%:*} is not packaging/rpm/${pair##*:}"
 done
+# rpm's own sysusers step would create the account for a user() or group() provide before the F42 check runs (docs/decisions.md, F44).
+account_provides() { grep -E '^(user|group)\(' <<< "$(fx_rpm -qp --provides "$1")" || true; }
+[ -z "$(account_provides "$pkg")" ] || bad "the built rpm provides an account: $(account_provides "$pkg")"
 [ -z "$(fx_rpm -qp --triggers "$pkg" | grep -v '^$' || true)" ] || bad "the built rpm has a trigger"
 
 # ---- the gates see what they are meant to see (fixtures with one bad line each) ----
@@ -109,4 +112,9 @@ python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$ROOT/packaging/nfpm.yaml" "$FX_DIR
 macro_pkg=$(ls "$FX_DIR"/out/*.rpm)
 [ -n "$(macro_hits "$(fx_rpm -qp --scripts "$macro_pkg")")" ] || bad "control: the macro gate did not see a macro in a built rpm"
 
+# A package with a user() provide is seen by the account gate.
+fx_build userprov 0.1.0 "" provides-add rpm 'user(custodio)'
+[ -n "$(account_provides "$(fx_file userprov rpm)")" ] || bad "control: the account-provides gate did not see user(custodio)"
+fx_build groupprov 0.1.0 "" provides-add rpm 'group(custodio)'
+[ -n "$(account_provides "$(fx_file groupprov rpm)")" ] || bad "control: the account-provides gate did not see group(custodio)"
 exit "$fail"

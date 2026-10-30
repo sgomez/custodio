@@ -253,3 +253,10 @@ with an empty context.
 - BLOCKED.md was answered (deviation recorded in `SPEC_DEVIATIONS.md`, contract amended). Last step done: ran `verify` in full: `just check`,
   `just test-scripts` (no SKIPPED line), `just package`, `just package-lint` (61 findings, all excepted, 0 stale) pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F44; the evaluator decides. A person reviews the pending F44 deviation before the milestone closes.
+
+### 2026-10-30 — F44 — session 3
+- Fixed NEXT_FINDINGS: `test-rpm-scripts-static.sh` now fails if the built rpm has a `user(`/`group(` provide, with controls built via the new
+  `provides-add` op of `nfpm_edit.py` (a `user(custodio)` and a `group(custodio)` fixture must be seen; also checked by hand against nfpm.yaml). Stale
+  `BLOCKED.md` pointers in `docs/decisions.md` and `docs/findings.md` now point to the F44 entry of `SPEC_DEVIATIONS.md`.
+- `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed.
+- Next session should: nothing for F44; the evaluator decides.
