@@ -178,11 +178,27 @@ coverage:
 crap threshold="30":
     cargo run --quiet --locked -p crap -- target/coverage/coverage.json {{threshold}} crates/custodiod crates/custodio-pkcs11 crates/custodio-cli crates/crap --exclude crates/custodio-pkcs11/src/ffi/fuzzing.rs --exclude crates/custodio-pkcs11/src/ffi/fuzzing/ops.rs
 
-# One .deb in target/debian with the binaries, the unit, the sysusers file, the D-Bus policy and activation file, the polkit action and
-# the p11-kit module (needs cargo-deb).
-package:
+# One .deb, one .rpm and one .pkg.tar.zst in target/packages from packaging/nfpm.yaml, then the gate scripts/check-packages.sh.
+# `just package version=0.1.1` or `just package 0.2.0-rc.1` overrides the workspace version without touching Cargo.toml (needs nfpm and the
+# tools of the gate).
+package version="":
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo build --release --locked -p custodiod -p custodio-cli -p custodio-pkcs11
-    cargo deb --locked --no-build -p custodiod
+    v='{{version}}'
+    v=${v#version=}
+    [ -n "$v" ] || v=$(cargo metadata --locked --no-deps --format-version 1 | python3 -I -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "custodiod"))')
+    [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "package: bad version '$v'" >&2; exit 1; }
+    base=${v%%-*}
+    pre=""
+    [ "$v" = "$base" ] || pre=${v#*-}
+    rm -rf target/packages
+    mkdir -p target/packages
+    NFPM_VERSION=$base NFPM_PRERELEASE=$pre nfpm package -f packaging/nfpm.yaml -p deb -t target/packages >/dev/null
+    NFPM_VERSION=$base NFPM_PRERELEASE=$pre nfpm package -f packaging/nfpm.yaml -p rpm -t target/packages >/dev/null
+    # Arch forbids "-" in pkgver and nfpm drops the prerelease there: the pre-release goes into the version with "_".
+    NFPM_VERSION=${base}${pre:+_$pre} NFPM_PRERELEASE= nfpm package -f packaging/nfpm.yaml -p archlinux -t target/packages >/dev/null
+    scripts/check-packages.sh target/packages packaging/nfpm.yaml
 
 # End-to-end tests: boots a systemd container (podman or docker, privileged), installs the .deb with the real polkit, and signs with
 # pkcs11-tool and NSS (modutil, certutil) while a test authentication agent approves or denies. Not part of `check-slow`: it needs a

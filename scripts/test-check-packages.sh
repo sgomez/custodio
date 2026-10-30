@@ -86,4 +86,13 @@ python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$REAL" "$FX_DIR/nfpm-dup.yaml" dup 
 expect_fail duplicate "$FX_DIR/out/dup-base" "$FX_DIR/nfpm-dup.yaml" "listed twice" $CLI
 config_case override-contents contents -- override-contents deb
 config_case override-unknown suggests -- override-unknown rpm
+# e2e/run.sh finds the .deb in target/packages: run its own `find` line in a temp tree holding one fixture .deb.
+bash -n "$ROOT/e2e/run.sh" || { echo "FAIL: e2e/run.sh syntax" >&2; fail=1; }
+e2e_tmp=$(mktemp -d)
+mkdir -p "$e2e_tmp/target/packages"
+cp "$(fx_file dup-base deb)" "$e2e_tmp/target/packages/"
+grep -q "find target/packages -name 'custodio_\*.deb'" "$ROOT/e2e/run.sh" || { echo "FAIL: e2e/run.sh find line" >&2; fail=1; }
+e2e_found=$(cd "$e2e_tmp" && find target/packages -name 'custodio_*.deb')
+rm -rf "$e2e_tmp"
+case $e2e_found in target/packages/custodio_*.deb) ;; *) echo "FAIL: e2e/run.sh found '$e2e_found'" >&2; fail=1 ;; esac
 exit "$fail"

@@ -65,7 +65,7 @@ system's) is **unverified**; use what the rFirma documentation says and record i
 
 ## 2. Install the .deb
 
-`just package` writes `target/debian/custodio_0.1.0-1_amd64.deb` (the name is `custodio_<version>-1_<arch>.deb`).
+`just package` writes `target/packages/custodio_0.1.0-1_amd64.deb` (the name is `custodio_<version>-1_<arch>.deb`).
 Copy the file the maintainers gave you, or the one built from the milestone commit, and run (unverified here,
 there is no graphical session in the build environment):
 

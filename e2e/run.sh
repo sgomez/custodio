@@ -8,8 +8,8 @@ if [ -z "$engine" ]; then
     echo "e2e: neither podman nor docker is installed; a systemd container is required" >&2
     exit 1
 fi
-deb=$(find target/debian -name 'custodio_*.deb' | sort | tail -n 1)
-[ -n "$deb" ] || { echo "e2e: no .deb in target/debian (run just package)" >&2; exit 1; }
+deb=$(find target/packages -name 'custodio_*.deb' | sort | tail -n 1)
+[ -n "$deb" ] || { echo "e2e: no .deb in target/packages (run just package)" >&2; exit 1; }
 "$engine" build -q -t custodio-e2e -f e2e/Containerfile e2e >/dev/null
 name="custodio-e2e-$$"
 cleanup() { "$engine" rm -f "$name" >/dev/null 2>&1 || true; }

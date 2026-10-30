@@ -51,3 +51,12 @@ with an empty context.
 - Not done: steps 7-11. Step 7 must add any extra `NEEDED` soname of the release binaries to `NEEDED` (findings: only
   libgcc_s, libc, ld-linux so far).
 - Next session should: step 7 (`package` recipe, version override, e2e/manual-acceptance paths).
+
+### 2026-10-30 — F36 — attempt 1 (session 4)
+- Done: step 7. `just package [version]` (accepts `0.1.1` or `version=0.1.1`): release build, version from the custodiod
+  package metadata or the override, `target/packages` cleaned, three nfpm builds (Arch gets `X_pre` as version), then
+  `scripts/check-packages.sh`. Real binaries need only libc, libgcc_s, ld-linux, so the NEEDED table is unchanged. Checked
+  0.1.0, 0.1.1 and 0.2.0-rc.1 builds; Cargo files untouched. `e2e/run.sh`, `docs/manual-acceptance.md` use `target/packages`;
+  the e2e `find` is tested in `scripts/test-check-packages.sh`. `just check` green.
+- Not done: steps 8-11 (remove cargo-deb everywhere, shell_scripts + test, decisions.md, final verify).
+- Next session should: step 8.
