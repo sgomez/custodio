@@ -55,12 +55,16 @@ test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
+# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests, taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
-check: lint test system-gates
+check: lint test system-gates package-gate-test
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-verify bus-policy
+
+# The tests of the package gate and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd).
+package-gate-test:
+    scripts/test-package-scripts.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.

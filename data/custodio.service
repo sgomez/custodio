@@ -7,7 +7,7 @@ Requires=dbus.socket
 [Service]
 Type=dbus
 BusName=com.rfirma.Custodio1
-ExecStart=/usr/libexec/custodiod
+ExecStart=/usr/lib/custodio/custodiod
 User=custodio
 DynamicUser=yes
 StateDirectory=custodio

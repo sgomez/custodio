@@ -11,6 +11,7 @@ EXCLUDE_PATTERNS=(
   "*/Cargo.lock"
   "package-lock.json"
   "skills-lock.json"
+  "mise.lock"
   "LICENSE"
   ".agents/skills/*"
   ".claude/skills/*"

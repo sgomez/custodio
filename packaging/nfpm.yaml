@@ -1,0 +1,86 @@
+# The one file list of the .deb, the .rpm and the Arch package (`just package`; run from the repository root).
+# Every installed file is listed once, under /usr. Per-format overrides hold only metadata, dependency names and
+# the lifecycle script files. The version comes from the environment (see the `package` recipe).
+name: custodio
+arch: amd64
+platform: linux
+version: ${NFPM_VERSION}
+prerelease: ${NFPM_PRERELEASE}
+release: "1"
+section: utils
+priority: optional
+maintainer: rFirma <info@rfirma.com>
+vendor: rFirma
+homepage: https://github.com/rfirma/custodio
+license: EUPL-1.2
+description: |
+  Signing service that keeps PKCS#12 keys and asks polkit before every signature, with a command-line
+  importer and a PKCS#11 module for p11-kit.
+
+contents:
+  - src: target/release/custodiod
+    dst: /usr/lib/custodio/custodiod
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/custodio-cli
+    dst: /usr/bin/custodio
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/libcustodio_pkcs11.so
+    dst: /usr/lib/custodio/libcustodio_pkcs11.so
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/sysusers.d/custodio.conf
+    dst: /usr/lib/sysusers.d/custodio.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.Custodio1.conf
+    dst: /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.Custodio1.service
+    dst: /usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.custodio.policy
+    dst: /usr/share/polkit-1/actions/com.rfirma.custodio.policy
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio.module
+    dst: /usr/share/p11-kit/modules/custodio.module
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio.catalog
+    dst: /usr/lib/systemd/catalog/custodio.catalog
+    file_info: {mode: 0644, owner: root, group: root}
+
+# nfpm does not compute shared-library dependencies: libc and libgcc_s are what `readelf -d` shows on the binaries.
+overrides:
+  deb:
+    depends:
+      - libc6
+      - libgcc-s1
+      - polkitd (>= 124)
+      - systemd
+      - dbus-system-bus
+      - p11-kit
+    scripts:
+      postinstall: packaging/deb/postinst
+  rpm:
+    depends:
+      - glibc
+      - libgcc
+      - polkit >= 124
+      - systemd
+      - dbus
+      - p11-kit
+    scripts:
+      postinstall: packaging/rpm/post
+  archlinux:
+    depends:
+      - glibc
+      - gcc-libs
+      - polkit>=124
+      - systemd
+      - dbus
+      - p11-kit
+    scripts:
+      postinstall: packaging/arch/post_install
+    archlinux:
+      scripts:
+        postupgrade: packaging/arch/post_upgrade

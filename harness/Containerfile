@@ -6,8 +6,15 @@ FROM debian:trixie
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential clang lld pkg-config libssl-dev git curl ca-certificates sudo jq procps \
       dbus dbus-daemon polkitd systemd p11-kit opensc libnss3-tools \
-      just shellcheck nodejs npm python3 \
+      just shellcheck nodejs npm python3 python3-yaml rpm libarchive-tools zstd \
     && rm -rf /var/lib/apt/lists/*
+
+# nfpm builds the .deb, .rpm and Arch packages (`just package`); keep the version in step with mise.toml and CI.
+ARG NFPM_VERSION=2.48.0
+ARG NFPM_SHA256=6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
+RUN curl -fsSLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz \
+    && echo "${NFPM_SHA256}  /tmp/nfpm.tgz" | sha256sum -c - \
+    && tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm && rm /tmp/nfpm.tgz
 
 RUN npm install -g lefthook
 RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
