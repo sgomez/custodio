@@ -17,11 +17,13 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 # Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
 userns=() target_opts=
 if [[ $engine == *podman ]]; then userns=(--userns=keep-id) target_opts=:U; fi
+hc_status=0
+[[ -n ${HC_TERMINAL_ID:-} ]] && hc_status=1
 
 exec "$engine" run --rm -it ${userns[@]+"${userns[@]}"} \
   -v "$PWD":/work \
   -v "custodio-target:/work/target$target_opts" \
-  -e CLAUDE_CODE_OAUTH_TOKEN \
+  -e CLAUDE_CODE_OAUTH_TOKEN -e HARNESS_HC_STATUS="$hc_status" \
   -e AUTO_APPROVE -e MAX_SESSIONS -e MAX_ATTEMPTS -e MAX_CONTRACT_ROUNDS -e MAX_FEATURE_SESSIONS \
   -e GIT_AUTHOR_NAME="$(git config user.name)" -e GIT_AUTHOR_EMAIL="$(git config user.email)" \
   -e GIT_COMMITTER_NAME="$(git config user.name)" -e GIT_COMMITTER_EMAIL="$(git config user.email)" \
