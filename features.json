@@ -17,7 +17,7 @@
         "F36"
       ],
       "verify": "just check && just package && just package-parity && just glibc-ceiling",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F38",
