@@ -18,6 +18,7 @@ EXCLUDE_PATTERNS=(
   "docs/*"
   "*.md"
   "features.json"
+  "justfile"
 )
 
 excluded() {
