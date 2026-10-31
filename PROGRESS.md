@@ -355,3 +355,17 @@ with an empty context.
   - alma10.record: `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 36`, `bus-reported-process=dbus-broker-launch`, `polkit-version=125`
 - `just check` and the rest of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F46; the evaluator decides.
+
+### 2026-10-31 — F47 — session 1
+- Tests first (`scripts/test-e2e-host.sh`): `arch*` family in `target_problems` (package lists read from `pacman -S...` lines; `polkit`; no `dbus`, `dbus-broker`,
+  `dbus-broker-units`, `dbus-daemon-units` in any list; `pacman -U ... "$1"`), controls: `polkitd`, each of the four bus packages, files unpacked with bsdtar,
+  `pacman -U` on a copy, `pacman -S "$1"`; "available targets" line and shellcheck list include arch. Run red first.
+- Target `arch` (Containerfile from `archlinux:latest` with `pacman -Syu`, `install.sh` with `pacman -U --noconfirm --needed "$1"`, probe copied from fedora44,
+  `package.pattern`, empty `skip.list`). No shared script changed. Image-only fix: `su-l` PAM gets `-session optional pam_systemd.so` (Arch's has none, so no logind session).
+  Pacman's sandbox needed no fix. The Containerfile cleans the cache with `find ... -delete` (a `/pkg/` path would trip the "names a package" check).
+- Findings: `docs/findings.md` "End-to-end target Arch"; section 3 row, "Default bus" note and the M1.2 table corrected: Arch runs dbus-broker 37, not dbus-daemon.
+  Journald: no `Storage=` set, `auto`, `/var/log/journal` exists after boot.
+- Real runs: `just e2e arch` exit 0, 29 cases run, 0 skipped; `just e2e` exit 0 "passed: alma10 arch debian13 fedora44 ubuntu2604". `just check` and `bash -n e2e/*.sh` pass.
+  `target/e2e/arch.record`: `target=arch`, `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 37`, `bus-reported-process=dbus-broker-launch`, `polkit-version=128`
+  (`grep -qx bus-daemon=dbus-broker` holds). No Rust changed, so no mutants-diff.
+- Next session should: nothing for F47; the evaluator decides.

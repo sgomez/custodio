@@ -90,7 +90,7 @@ done
 
 # --- unknown target: names the targets, never calls the engine
 expect_fail unknown-target nope || true
-grep -q 'available targets: alma10 debian13 fedora44 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
+grep -q 'available targets: alma10 arch debian13 fedora44 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
 [ ! -s "$tmp/log" ] || bad "the engine was called for an unknown target"
 expect_fail path-target ../targets/debian13 || true
 [ ! -s "$tmp/log" ] || bad "the engine was called for a target with a path"
@@ -162,7 +162,7 @@ target_problems() {
     inst="$d/install.sh"
     for f in Containerfile install.sh probe.sh skip.list package.pattern; do [ -f "$d/$f" ] || echo "$n: no $f"; done
     # The package lists sit on the lines of the install command (with their continuations), not anywhere in the file.
-    pkgs=$(sed -n '/\(apt-get\|apt\|dnf\)[^#]*install/,/[^\\]$/p' "$cf" 2> /dev/null | grep -v '^[[:space:]]*#' || true)
+    pkgs=$(sed -n '/\(apt-get\|apt\|dnf\)[^#]*install\|pacman[^#]*[[:space:]]-S/,/[^\\]$/p' "$cf" 2> /dev/null | grep -v '^[[:space:]]*#' || true)
     case $n in
     debian* | ubuntu*)
         grep -Eq '(^|[[:space:]])polkitd([[:space:]]|$)' <<< "$pkgs" || echo "$n: does not install polkitd"
@@ -175,12 +175,17 @@ target_problems() {
         grep -Eq '(^|[[:space:]])dbus([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install the dbus meta package"
         if grep -Eq '(^|[[:space:]])(dbus-broker|dbus-daemon)([[:space:]\\]|$)' <<< "$pkgs"; then echo "$n: names a bus daemon package"; fi
         ;;
+    arch*)
+        grep -Eq '(^|[[:space:]])polkit([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install polkit"
+        if grep -Eq '(^|[[:space:]])(dbus|dbus-broker|dbus-broker-units|dbus-daemon-units)([[:space:]\\]|$)' <<< "$pkgs"; then echo "$n: names a bus package"; fi
+        ;;
     esac
     grep -Eq 'dpkg|apt|rpm|dnf|pacman' "$inst" 2> /dev/null || echo "$n: install.sh uses no package tool"
     # shellcheck disable=SC2016 # the pattern looks for a literal "$1" in the script
     case $n in
     ubuntu*) grep -Eq '(^|[[:space:]])(apt|apt-get)[[:space:]].*\binstall\b.*"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not apt install the mounted file" ;;
     fedora* | alma*) grep -Eq '(^|[[:space:]])dnf[[:space:]].*\binstall\b.*"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not dnf install the mounted file" ;;
+    arch*) grep -Eq '(^|[[:space:]])pacman[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*-U[A-Za-z]*([[:space:]]+-[A-Za-z-]+)*[[:space:]]+"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not pacman -U the mounted file" ;;
     esac
 }
 for d in "$ROOT"/e2e/targets/*/; do
@@ -224,6 +229,41 @@ fx_rpm fedora9999
 # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
 printf '#!/usr/bin/env bash\nset -euo pipefail\nrpm -i "$1"\n' > "$tmp/fx/fedora9999/install.sh"
 [ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target that installs with rpm -i only was accepted"
+# controls for the arch family
+fx_arch() { # NAME: an arch-style fixture target with polkit, no bus package, pacman -U "$1"
+    mkdir -p "$tmp/fx/$1"
+    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern} "$tmp/fx/$1/"
+    printf 'FROM docker.io/library/archlinux:latest\nRUN pacman -Syu --noconfirm --needed systemd polkit python-gobject && find /var/cache/pacman -type f -delete\n' > "$tmp/fx/$1/Containerfile"
+    # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
+    printf '#!/usr/bin/env bash\nset -euo pipefail\npacman -U --noconfirm "$1" > /dev/null\n' > "$tmp/fx/$1/install.sh"
+}
+fx_arch arch9999
+[ -z "$(target_problems "$tmp/fx/arch9999")" ] || bad "control: a correct arch target was rejected: $(target_problems "$tmp/fx/arch9999")"
+arch_rejects() { # DESCRIPTION MESSAGE: the fixture arch9999 must be rejected with exactly this message
+    local got
+    got=$(target_problems "$tmp/fx/arch9999")
+    grep -q "$2" <<< "$got" || bad "control: $1: expected '$2', got '$got'"
+}
+fx_arch arch9999
+sed -i 's/ polkit / polkitd /' "$tmp/fx/arch9999/Containerfile"
+arch_rejects "an arch target with polkitd instead of polkit" 'does not install polkit'
+for pkg in dbus dbus-broker dbus-broker-units dbus-daemon-units; do
+    fx_arch arch9999
+    sed -i "s/ polkit / polkit $pkg /" "$tmp/fx/arch9999/Containerfile"
+    arch_rejects "an arch target that names $pkg" 'names a bus package'
+done
+fx_arch arch9999
+# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
+printf '#!/usr/bin/env bash\nset -euo pipefail\nbsdtar -xf "$1" -C /\n' > "$tmp/fx/arch9999/install.sh"
+arch_rejects "an arch target that unpacks the files instead of pacman -U" 'install.sh uses no package tool'
+fx_arch arch9999
+# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
+printf '#!/usr/bin/env bash\nset -euo pipefail\ncp "$1" /tmp/x.pkg.tar.zst\npacman -U --noconfirm /tmp/x.pkg.tar.zst\n' > "$tmp/fx/arch9999/install.sh"
+arch_rejects "an arch target that runs pacman -U on a copy" 'does not pacman -U the mounted file'
+fx_arch arch9999
+# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
+printf '#!/usr/bin/env bash\nset -euo pipefail\npacman -S --noconfirm "$1"\n' > "$tmp/fx/arch9999/install.sh"
+arch_rejects "an arch target that pacman -S the file" 'does not pacman -U the mounted file'
 # a Debian target must not take the rpm names, and must not force dbus-daemon
 cp -r "$ROOT/e2e/targets/debian13" "$tmp/fx/debian9999"
 sed -i 's/ dbus / dbus dbus-daemon /' "$tmp/fx/debian9999/Containerfile"

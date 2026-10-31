@@ -1,0 +1,21 @@
+# Test machine for `just e2e`: Arch Linux with systemd as PID 1, real polkit and logind, the tools that
+# consume PKCS#11 modules, and Python for the test authentication agent. The bus daemon is whatever the
+# base image and polkit bring (none is named here). The Custodio package is NOT in the image: the test
+# installs it with pacman -U, like a user would.
+FROM docker.io/library/archlinux:latest
+
+# Full upgrade, never `-Sy` alone (a partial upgrade is unsupported on an image built earlier).
+RUN pacman -Syu --noconfirm --needed \
+      systemd polkit p11-kit opensc pkcs11-provider nss openssl util-linux python python-gobject procps-ng \
+    && find /var/cache/pacman -type f -delete
+
+# The agent authenticates through PAM like a real one; accept any password for the polkit service
+# so that "approve" needs no secret. The decision (approve or deny) is made by the agent.
+RUN printf 'auth required pam_permit.so\naccount required pam_permit.so\n' > /etc/pam.d/polkit-1
+
+# Arch's `su -l` (pam.d/su-l) does not open a logind session; the guest logs in with `su -l` and needs one, as a login does
+# (system-login has pam_systemd). Test-image configuration only.
+RUN printf -- '-session optional pam_systemd.so\n' >> /etc/pam.d/su-l
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/usr/lib/systemd/systemd"]

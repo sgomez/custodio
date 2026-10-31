@@ -94,10 +94,10 @@ what makes the older rows unsafe against PID reuse.
 | openSUSE Leap 15.6 | 121 | 1.12.2 / 28 | No |
 | openSUSE Leap 16.0 | 123 | 1.14.10 / 36 | No (polkit) |
 | openSUSE Tumbleweed | 128 | 1.14.10 / 37 | Only with dbus-broker |
-| Arch | 128 | 1.16.2 / 37 | Yes |
+| Arch | 128 | 1.16.2 / 37 | Yes with dbus-broker (the default, observed in the e2e image) |
 
-"Default bus" is inferred for rows not run; package versions were checked, not each distribution's default. Observed in the e2e images: Fedora 44 and Alma 10 run dbus-broker (see "End-to-end targets Fedora 44 and Alma 10").
-Open risk: the end-to-end runs cover Debian 13, Ubuntu 26.04, Fedora 44 and Alma 10; no other row was run.
+"Default bus" is inferred for rows not run; package versions were checked, not each distribution's default. Observed in the e2e images: Fedora 44, Alma 10 and Arch run dbus-broker (see "End-to-end targets Fedora 44 and Alma 10" and "End-to-end target Arch").
+Open risk: the end-to-end runs cover Debian 13, Ubuntu 26.04, Fedora 44, Alma 10 and Arch; no other row was run.
 RHEL 10 was checked through CentOS Stream 10 and the AlmaLinux 10 repository.
 
 Consequence: supported targets are Debian 13, Ubuntu 25.10 and later, Fedora 41 and later,
@@ -379,7 +379,7 @@ archives, 2026-10-28):
 | Ubuntu 26.04 | dbus-daemon | 1.16.2 | 7.0 | present | present | with AppArmor (inferred) | present | absent | verified |
 | Fedora 41+ | dbus-broker | 36 / 37 | 6.11 at GA, later 6.17 | present | present | with SELinux | present | absent | versions verified, default inferred |
 | RHEL/Alma 10 | dbus-broker | 36 | 6.12 | present | present | with SELinux | present | absent | inferred (CentOS Stream 10 packages) |
-| Arch | dbus-daemon | 1.16.2 | rolling (7.x) | present | present | probably absent (no default LSM, inferred) | present | absent | versions verified, rest inferred |
+| Arch | dbus-broker (observed; corrected from dbus-daemon) | 37 (dbus 1.16.2 is installed but not running) | rolling (7.x) | present | present | probably absent (no default LSM, inferred) | present | absent | bus daemon observed in the e2e image, rest inferred |
 
 - Key code: dbus-daemon emits `LinuxSecurityLabel` from `getsockopt(SO_PEERSEC)`
   (`dbus-sysdeps-unix.c` ~2074; `bus/driver.c:2009-2016`), `UnixGroupIDs` from `SO_PEERGROUPS`
@@ -863,3 +863,33 @@ for the state before boot):
   on disk. Who creates it on Alma was not traced (the `z` lines of `tmpfiles.d/systemd.conf` only set modes).
 - `journal-catalog` and the audit-entry cases pass on both (real runs). Nothing in the package changes journald. As for the Debian family, an installed
   system can differ (a `Storage=volatile` drop-in, a read-only `/var`); only the two images were checked.
+
+### End-to-end target Arch
+
+Checked 2026-10-31 in the minimal base image `docker.io/library/archlinux:latest` (systemd 262.1) built by `e2e/targets/arch`, booted as in
+`e2e/run.sh`. Results come from that image, not from an installed system.
+
+**Tool sources** (`pacman -Q` / `pacman -Qo` in the booted container): `pkcs11-tool` from opensc 0.27.1-2; `pkcs11-provider` 1.3.0-1;
+`certutil` and `modutil` from nss 3.132-1; `openssl` 3.6.5-1; `pgrep` from procps-ng 4.0.7-1; p11-kit 0.26.5-1; polkit 128-1;
+python-gobject 3.58.1-1 (the agent uses Gio, so `python-dbus` is not installed). All were installed by `pacman -Syu --noconfirm --needed`
+in the Containerfile; none is missing.
+
+**Skip list: empty.** Every tool has a candidate in core/extra, so no case is skipped; the real run reports 29 cases run, 0 skipped.
+
+**Bus daemon and record** (`target/e2e/arch.record`): `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 37`,
+`bus-reported-process=dbus-broker-launch`, `polkit-version=128`. `pacman -Q` in the image: `dbus 1.16.2-2`, `dbus-broker 37-3`,
+`dbus-broker-units 37-3`, `dbus-units 37-3`; `/usr/lib/systemd/system/dbus.service -> dbus-broker.service`. The base image already has
+`dbus-broker`; the Containerfile names no bus package. Section 3 said Arch ran `dbus-daemon` 1.16.2: wrong. Corrected in the table of
+section 3 (row "Arch", and "Default bus") and in the "M1.2 Caller detail" table. As on Fedora, the bus names `dbus-broker-launch` as its own process.
+
+**Journald default** (minimal base image): `systemd-analyze cat-config systemd/journald.conf` prints only `[Journal]` (no `Storage=`
+set anywhere), so the compiled-in default `auto` applies. `/var/log/journal` exists after boot (`drwxr-sr-x+ root systemd-journal`) and
+holds `<machine-id>/system.journal` (`journalctl --header`), `journalctl --disk-usage` says 8M; `/run/log/journal` is empty. So logs are persistent
+here. The package changes nothing in journald; `journal-catalog` and the audit-entry cases pass on this default.
+
+**Differences from the other targets, all in the image:**
+- Pacman's download sandbox / Landlock did not fail in the dev container's rootless nested podman; no `DisableSandbox` is set anywhere
+  (`grep -rn -i sandbox e2e/targets/arch` is empty). `grep -n 'pacman -Sy' e2e/targets/arch/*` shows only `-Syu`.
+- Arch's `/etc/pam.d/su-l` has no `pam_systemd`, so `su -l alice` opened no logind session (`e2e: FAIL: no logind session`). The Containerfile appends
+  `-session optional pam_systemd.so` to `su-l` (what `system-login` has). Test-image configuration only, not in the package or in `install.sh`.
+- `install.sh` runs `pacman -U --noconfirm --needed "$1"` on the mounted file; the sync databases come from the image's full upgrade and were enough (no second refresh).
