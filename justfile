@@ -60,9 +60,20 @@ test:
 # Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
 # ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
-check: lint test system-gates script-tests
+# A pass stamps the tree (scripts/tree-hash.sh) in target/check-ok, and that tree is skipped; CHECK_FORCE=1 runs it.
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tree=$(scripts/tree-hash.sh)
+    if [ -z "${CHECK_FORCE:-}" ] && [ "$(cat target/check-ok 2> /dev/null)" = "$tree" ]; then
+        echo "check: this tree already passed (target/check-ok)"
+        exit 0
+    fi
+    rm -f target/check-ok
+    just lint test system-gates script-tests
+    if [ "$(scripts/tree-hash.sh)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/check-ok; fi
 
-# package-gate-test, shell-scripts-test and test-scripts at once (scripts/run-script-tests.sh); JOBS=1 runs one at a time.
+# package-gate-test, shell-scripts-test and test-scripts in parallel (JOBS=1: one at a time).
 script-tests:
     scripts/run-script-tests.sh package-gate-test shell-scripts-test test-scripts
 
@@ -110,6 +121,7 @@ shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
     scripts/test-changed-checks.sh
+    scripts/test-tree-hash.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
@@ -212,9 +224,7 @@ mutants *args:
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
     exit "$status"
 
-# The checks the changes since feature <id> started (or since a git revision) can break, working tree included: lints of the
-# changed files, clippy and tests of the affected crates, and the script tests that use an affected file. For the steps
-# in between; `check` stays the gate.
+# Only the checks the changes since feature <id> started (or a git revision) can break (scripts/changed_checks.py).
 test-changed id_or_rev:
     #!/usr/bin/env bash
     set -euo pipefail

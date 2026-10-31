@@ -169,6 +169,11 @@ def main():
     ap.add_argument("--lint-only", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     opts = ap.parse_args()
+    if opts.base and not opts.dry_run:
+        tree = subprocess.run([os.path.join(ROOT, "scripts/tree-hash.sh")], check=True, capture_output=True, text=True).stdout
+        if tree.strip() == read("target/check-ok").strip():
+            print("changed-checks: this tree already passed just check (target/check-ok)")
+            return 0
     cmds = plan(opts)
     failed = []
     for c in cmds:
