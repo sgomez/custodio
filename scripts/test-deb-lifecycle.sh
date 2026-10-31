@@ -56,6 +56,8 @@ SRC=$ROOT/packaging/deb
 
 # new_root [none]: a fresh root with a populated state directory (or none) and an account list holding root only.
 new_root() {
+    # The previous case is done with its root; keeping every one fills /tmp (GBs per run).
+    if [ -n "${root:-}" ] && [ -d "$root" ]; then chmod -R u+w "$root" 2> /dev/null || true; rm -rf "$root"; fi
     root=$(mktemp -d "$BF_DIR/root.XXXXXX")
     cp -a "$SKELETON/." "$root/"
     mkdir -p "$root/var/lib"

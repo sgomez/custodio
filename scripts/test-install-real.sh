@@ -40,6 +40,8 @@ custodio_files() { find "$1" -mindepth 1 \( -iname '*custodio*' -o -name 'com.rf
 install_in_root() {
     local fmt=$1 address pkg
     address=$(bf_root_address "$2")
+    # The previous case is done with its root; keeping every one fills /tmp (GBs per run).
+    if [ -n "${root:-}" ] && [ -d "$root" ]; then chmod -R u+w "$root" 2> /dev/null || true; rm -rf "$root"; fi
     root=$(mktemp -d "$BF_DIR/root.XXXXXX")
     cp -a "$SKELETON/." "$root/"
     rc=0
@@ -108,6 +110,8 @@ upgrade_refused() { # FORMAT
     local fmt=$1 address_with address_without next
     address_with=$(bf_root_address "$with_bus")
     address_without=$(bf_root_address "$without_bus")
+    # The previous case is done with its root; keeping every one fills /tmp (GBs per run).
+    if [ -n "${root:-}" ] && [ -d "$root" ]; then chmod -R u+w "$root" 2> /dev/null || true; rm -rf "$root"; fi
     root=$(mktemp -d "$BF_DIR/root.XXXXXX")
     cp -a "$SKELETON/." "$root/"
     case $fmt in

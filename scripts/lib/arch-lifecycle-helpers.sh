@@ -2,6 +2,8 @@
 # Helpers of scripts/test-arch-lifecycle.sh (F58); sourced, uses its $SKELETON, $root, $calls, bad().
 # shellcheck disable=SC2154,SC2153 # rc, err, ROOT and calls are set by the sourcing test
 new_root() {
+    # The previous case is done with its root; keeping every one fills /tmp (GBs per run).
+    if [ -n "${root:-}" ] && [ -d "$root" ]; then chmod -R u+w "$root" 2> /dev/null || true; rm -rf "$root"; fi
     root=$(mktemp -d "$BF_DIR/root.XXXXXX")
     cp -a "$SKELETON/." "$root/"
     mkdir -p "$root/var/lib"
@@ -45,9 +47,10 @@ no_enable() { if grep -E '(^| )(enable|start|restart|preset|mask|daemon-reload|r
 active() { [ -e "$root/stub/active" ]; }
 restarts() { if [ -e "$root/stub/restarts" ]; then wc -l < "$root/stub/restarts"; else echo 0; fi; }
 # root_snapshot: every file of the root outside the recorders, with mode, size and content hash (a script that writes anywhere shows).
+# No size for directories: on tmpfs it counts entries, and the pruned files come and go.
 root_snapshot() {
     (cd "$root" && find . -path ./recorded-calls -prune -o -path ./fs-calls -prune -o -path ./scripts -prune -o -path ./stub -prune -o \
-        -printf '%p\t%y\t%m\t%s\t%l\n' | sort; find . -type f -not -path ./recorded-calls -not -path ./fs-calls -not -path './scripts/*' -not -path './stub/*' -exec sha256sum {} + | sort)
+        -type d -printf '%p\t%y\t%m\n' -o -printf '%p\t%y\t%m\t%s\t%l\n' | sort; find . -type f -not -path ./recorded-calls -not -path ./fs-calls -not -path './scripts/*' -not -path './stub/*' -exec sha256sum {} + | sort)
 }
 want_notice() { # LABEL: stderr holds the three lines, stdout is empty
     [ "$err" = "$NOTICE" ] || bad "$1: the notice on stderr was:"$'\n'"$err"$'\n'"expected:"$'\n'"$NOTICE"
