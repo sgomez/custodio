@@ -467,3 +467,8 @@ with an empty context.
 - Records (bus daemon, polkit) per target in `docs/findings.md` "F53". The worst CRAP score is at the threshold (30.0), no margin left.
 - An expired Docker Hub login on the host blocks pulling uncached base images; pull with an empty `--authfile`.
 - Next session should: a person runs `just milestone pass F53`.
+
+### 2026-11-01 — F54 — session 1
+- Manual run on labvm `fedora44` (SELinux enforcing, Firefox 150 from Fedora, polkit 127): acceptance 12 passes; record in `docs/findings.md` "F54".
+- `custodiod` runs in `init_t` (no policy module), so "no denial" is weak evidence; `ausearch` over ssh needs `--input-logs`.
+- Next session should: a person runs `just milestone pass F54`.
