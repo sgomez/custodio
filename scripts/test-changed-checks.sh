@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fail=0
 bad() { echo "test-changed-checks: $*" >&2; fail=1; }
-plan() { "$ROOT/scripts/changed_checks.py" --dry-run "$@" | sed 's/^changed-checks: //'; }
+# This test names the paths it plans for, so it is in every plan; leave it out.
+plan() { "$ROOT/scripts/changed_checks.py" --dry-run "$@" | sed 's/^changed-checks: //' | grep -vxF scripts/test-changed-checks.sh; }
 has() { grep -qxF -- "$2" <<< "$1" || bad "$3: missing '$2'"; }
 hasnt() { if grep -qF -- "$2" <<< "$1"; then bad "$3: unexpected '$2'"; fi; }
 
