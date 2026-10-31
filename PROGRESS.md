@@ -293,3 +293,11 @@ with an empty context.
 - **BLOCKED.md written**: the real run is impossible in this dev container (finding "F45: a systemd container cannot boot…"). The last step stays open.
 - `just check` passes. No Rust changed, so no mutants-diff.
 - Next session should: nothing until BLOCKED.md is answered.
+
+### 2026-10-31 — F45 — session 2
+- BLOCKED.md answered: the dev container was restarted (SYS_ADMIN, unmasked /proc, systemd mode; d55f9ac). Real run done, nothing else changed.
+- `just e2e debian13` exit 0 and `just e2e` (all; only target `debian13` exists yet) exit 0: "e2e: passed: debian13", 28 cases accounted for by `check-cases.sh`,
+  none skipped, journal entries ok, no secret leaks.
+- Record `target/e2e/debian13.record`: `target=debian13`, `bus-daemon=dbus-daemon`, `bus-daemon-version=D-Bus Message Bus Daemon 1.16.2`, `polkit-version=126`.
+- Last contract step ticked. No code changed.
+- Next session should: nothing for F45; the evaluator decides.
