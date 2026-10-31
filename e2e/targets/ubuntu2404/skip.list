@@ -1,0 +1,1 @@
+# Cases the e2e suite may skip on ubuntu2404, as `case: reason` (format: e2e/check-cases.sh). Empty: nothing is skipped here.

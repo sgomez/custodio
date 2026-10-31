@@ -212,7 +212,7 @@ rejects "an empty script" 'is empty' lifecycle_static_problems "$sect" "$tmp/emp
 # the real case: its section and the scripts it calls
 tdirs=("$here"/targets/*/)
 real=("$here/lifecycle-lib.sh")
-for d in "${tdirs[@]}"; do real+=("${d}install.sh" "${d}remove.sh"); [ ! -f "${d}purge.sh" ] || real+=("${d}purge.sh"); done
+for d in "${tdirs[@]}"; do [ -f "${d}remove.sh" ] || continue; real+=("${d}install.sh" "${d}remove.sh"); [ ! -f "${d}purge.sh" ] || real+=("${d}purge.sh"); done
 [ -f "$here/lifecycle.sh" ] && { accepts "the real lifecycle case" lifecycle_static_problems "$here/lifecycle.sh" "${real[@]}"; }
 # the real section runs the tool of the target, not an import
 if [ -f "$here/lifecycle.sh" ]; then

@@ -139,9 +139,10 @@ grep -rqi 'polkit' "$ROOT/e2e/targets" || bad "no target mentions polkit"
 # --- shellcheck covers the new scripts
 list=$("$ROOT/scripts/list-shell-scripts.sh")
 targets_scripts=()
-for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh" "e2e/targets/$(basename "$d")/remove.sh")
+for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh")
+    [ ! -f "$d/remove.sh" ] || targets_scripts+=("e2e/targets/$(basename "$d")/remove.sh")
     [ ! -f "$d/purge.sh" ] || targets_scripts+=("e2e/targets/$(basename "$d")/purge.sh"); done
-for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh e2e/lifecycle.sh e2e/lifecycle-lib.sh e2e/lifecycle-selftest.sh scripts/test-e2e-lifecycle.sh scripts/package-next.sh scripts/package-old.sh scripts/test-e2e-old.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
+for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh e2e/lifecycle.sh e2e/lifecycle-lib.sh e2e/lifecycle-selftest.sh e2e/refusal.sh e2e/refusal-lib.sh e2e/refusal-static.sh e2e/refusal-selftest.sh scripts/test-e2e-refusal.sh scripts/test-e2e-lifecycle.sh scripts/package-next.sh scripts/package-old.sh scripts/test-e2e-old.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
     grep -qx "$f" <<< "$list" || bad "$f is not in the shellcheck list"
 done
 

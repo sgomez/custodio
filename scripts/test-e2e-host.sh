@@ -50,7 +50,8 @@ exec)
             echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
             # the main run reports the common cases and the target's own, except the ones of the old-package run (F60)
             list=$STUB_LOG.main
-            cat "$STUB_ROOT/e2e/cases.list" > "$list"
+            : > "$list"
+            [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
             grep -v '^upgrade-cargo-deb-' "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
         fi
         while IFS= read -r c; do
@@ -97,6 +98,12 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     pkg=$(find "$tmp/pkgs" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$pkg" ] || bad "$T: package.pattern matches none of the fake packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/$pkg:/pkg/$pkg:ro" || bad "the package is not mounted read-only"
+    if [ -f "$ROOT/e2e/targets/$T/refusal-only" ]; then
+        # F50: the package never installs on this target; no N+1 and no old package, one read-only mount
+        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 1 ] || bad "$T: a refusal-only target mounts more than the package"
+        grep -q 'pkg-next\|pkg-old' "$tmp/log" && bad "$T: a refusal-only target mounts N+1 or the old package"
+        continue
+    fi
     nxt=$(find "$tmp/next" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
@@ -141,7 +148,7 @@ done
 
 # --- unknown target: names the targets, never calls the engine
 expect_fail unknown-target nope || true
-grep -q 'available targets: alma10 arch debian13 fedora44 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
+grep -q 'available targets: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
 [ ! -s "$tmp/log" ] || bad "the engine was called for an unknown target"
 expect_fail path-target ../targets/debian13 || true
 [ ! -s "$tmp/log" ] || bad "the engine was called for a target with a path"
@@ -224,7 +231,7 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     if [ "$T" = debian13 ]; then [ -f "$ROOT/e2e/targets/$T/old.pattern" ] || bad "debian13 has no old.pattern"
     else [ ! -e "$ROOT/e2e/targets/$T/old.pattern" ] || bad "$T has an old.pattern"; fi
     # the target's own cases.list belongs to the deb targets only (the purge cycle of F49)
-    case $T in debian13 | ubuntu2604) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
+    case $T in debian13 | ubuntu2604 | ubuntu2404) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
 done
 for id in $old_ids; do
     grep -qx "$id" "$ROOT/e2e/targets/debian13/cases.list" || bad "debian13/cases.list lacks $id"

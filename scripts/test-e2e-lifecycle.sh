@@ -24,6 +24,7 @@ for id in $purge_ids; do grep -qx "$id" "$ROOT/e2e/cases.list" && bad "$id is in
 
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     d=$ROOT/e2e/targets/$T
+    [ ! -f "$d/refusal-only" ] || continue # F50: a refusal-only target installs nothing, so it has no lifecycle
     [ -f "$d/remove.sh" ] || bad "$T has no remove.sh"
     case $T in
     debian13 | ubuntu2604)
@@ -57,6 +58,7 @@ done
 # --- the accounting, with the real lists: an omitted id fails, a purge id on a target without purge is unknown
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     d=$ROOT/e2e/targets/$T
+    [ ! -f "$d/refusal-only" ] || continue # F50: a refusal-only target installs nothing, so it has no lifecycle
     { ids_of "$ROOT/e2e/cases.list"; ids_of "$d/cases.list" | grep -v '^upgrade-cargo-deb-' || true; } > "$tmp/ids"
     cat "$ROOT/e2e/cases.list" > "$tmp/cases"
     [ ! -f "$d/cases.list" ] || cat "$d/cases.list" >> "$tmp/cases"

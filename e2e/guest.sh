@@ -10,6 +10,19 @@ case $mode in main | old) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 
+# A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
+if [ -f /e2e-target/refusal-only ]; then
+    [ "$mode" = main ] || fail "a refusal-only target has no old-package run"
+    pkg=$(find /pkg -type f | head -n 1)
+    [ -n "$pkg" ] || fail "no package is mounted in /pkg"
+    bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
+    bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
+    probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
+    while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
+    echo "e2e: all checks passed (refusal)"
+    exit 0
+fi
+
 # The checks of the journal checker come first; a broken checker would make the later checks worthless.
 bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here

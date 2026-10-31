@@ -427,3 +427,11 @@ with an empty context.
   - Not-activatable error: dbus-daemon "was not provided by any .service files" (debian13, ubuntu2604); dbus-broker "The name is not activatable" (alma10, arch, fedora44).
 - `just check` (forced) and the greps/`bash -n` of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F49; the evaluator decides.
+
+### 2026-10-31 — F50 — session 1
+- Tests first: `e2e/refusal-selftest.sh` (one control per rejection: precondition reply with ProcessFD / error / empty / not a reply; install that exits 0, empty output, no phrase, the "could not be queried" message, a dependency failure, no `custodio:` prefix, no dpkg report; leftover packaged file, only `/usr/lib/custodio`, only `/var/lib/custodio`, dangling link; dpkg statuses installed/half-configured/unpacked/half-installed/config-files; owned and activatable listing; call that succeeds or fails otherwise; live pid; unit; static check with systemctl stop/start/restart, pkill, kill, rm, dpkg --purge, apt remove, dbus-broker, bus config edits, missing markers, empty section) and `scripts/test-e2e-refusal.sh` (target dir, marker, guest path, stub-engine run: no N+1/old needed with the marker, still demanded without it, own ids only, omitted id, common id). Both run in `test-scripts`.
+- Built: `e2e/refusal-lib.sh`, `refusal-static.sh`, `refusal.sh`, `targets/ubuntu2404/` (marker file `refusal-only`, Containerfile FROM ubuntu:24.04, install.sh returns status and output). `run.sh` skips N+1/old/common cases only through the marker; `guest.sh` runs the refusal path first. The phrase asserted is "does not provide ProcessFD". `dpkg -s` dropped (dpkg-query covers it); `dpkg --audit` kept.
+- Real run: `just e2e all` exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604"; 5 `E2E-CASE run refusal-*` lines on ubuntu2404, 0 skipped. Record: bus-daemon=dbus-daemon, D-Bus Message Bus Daemon 1.14.10, polkit 124.
+  Observed: apt exit non-zero; dpkg status `not-installed`; custodio account before: no, after: no (preinst checks the bus before creating the account).
+- `just check` (forced), `bash -n e2e/*.sh` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F50; the evaluator decides.
