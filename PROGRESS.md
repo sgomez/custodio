@@ -301,3 +301,9 @@ with an empty context.
 - Record `target/e2e/debian13.record`: `target=debian13`, `bus-daemon=dbus-daemon`, `bus-daemon-version=D-Bus Message Bus Daemon 1.16.2`, `polkit-version=126`.
 - Last contract step ticked. No code changed.
 - Next session should: nothing for F45; the evaluator decides.
+
+### 2026-10-31 — F45 — session 3
+- F45 was already committed (c1eb94a) with the real run recorded. Kept the stopped session's two small environment fixes: `package_lint.py` reads the user name from `pwd`
+  (not `$USER`) for the subuid check; `test-rpm-lifecycle.sh` removes each case's root so a small /tmp does not fill.
+- `just check` and the rest of `verify` pass. No Rust changed.
+- Next session should: nothing for F45; the evaluator decides.

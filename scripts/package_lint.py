@@ -12,6 +12,7 @@ import fnmatch
 import glob
 import hashlib
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -222,9 +223,9 @@ def rootless_single_uid():
     if os.getuid() == 0:
         return False
     try:
-        names = {str(os.getuid()), os.environ.get("USER", "")}
+        names = {str(os.getuid()), pwd.getpwuid(os.getuid()).pw_name}
         return not any(line.split(":")[0] in names for line in open(os.environ.get("PACKAGE_LINT_SUBUID", "/etc/subuid")) if line.strip())
-    except OSError:
+    except (OSError, KeyError):
         return True
 
 
