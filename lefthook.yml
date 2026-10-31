@@ -3,9 +3,13 @@ pre-commit:
   commands:
     check:
       run: just check
-      # Nothing in `just check` reads Markdown but docs/audit.md (docs_tests.rs), features.json or APPROVALS.
+      # Nothing in `just check` reads Markdown but docs/audit.md (docs_tests.rs), features.json or APPROVALS,
+      # and the harness scripts get their own check below.
       skip:
-        - run: test -z "$(git diff --cached --name-only | awk '!(/\.md$|^features\.json$|^APPROVALS$/ && $0 != "docs/audit.md")')"
+        - run: test -z "$(git diff --cached --name-only | awk '!((/\.md$|^features\.json$|^APPROVALS$|^harness\/[^\/]*\.sh$/) && $0 != "docs/audit.md")')"
+    harness:
+      glob: "harness/*.sh"
+      run: shellcheck {staged_files} && scripts/check-files.sh
 
 commit-msg:
   commands:
