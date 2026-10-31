@@ -26,7 +26,10 @@ unless SPEC.md or `docs/decisions.md` fixes them. Do not forbid outright somethi
 researched yet; if a step researches it, let that step decide within limits the contract states.
 
 Every point in the feature description must appear under Evidence, with evidence that would fail
-if the feature were wrong. If the feature is too big for about five steps, say so under Scope and
+if the feature were wrong. Prove each behaviour once, at the cheapest level that would catch it
+being wrong. If another feature's description or `verify` in features.json names the same check,
+point to that feature under Scope instead of proving it here. A few negative controls show that a
+test can fail; build no mutant sets beyond what `verify` runs. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.
 
 Do not write code in this session. Commit the contract with a message like `docs(F09): add contract`.

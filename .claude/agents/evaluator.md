@@ -23,11 +23,16 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - The evidence would fail if the feature were wrong. "Tests pass" or "`just check` passes" alone
   is not evidence.
 - Each step fits in one session, and nothing outside the feature is planned.
+- The evidence is proportionate: each behaviour is proven once, at the cheapest level that would
+  catch it being wrong. Evidence that another feature's description or `verify` names belongs to
+  that feature.
 
 Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
 with the feature wrong or fail with it right, a step too big for a session, or scope outside the
 feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
-list it; the builder reads it.
+list it; the builder reads it. A note asks for more evidence only to close a way a wrong feature
+could pass, never for a second proof of the same behaviour; note evidence that is redundant, so the
+builder can drop it.
 
 If the task includes your previous review, this is a re-review: check that each blocking point was
 addressed, and do not reopen what you accepted. Raise a new point only if it is blocking and the
@@ -66,7 +71,7 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    the contract lists, reusing those results where the evidence is the same command.
 4. Check:
    - Every step and every piece of evidence in the contract is delivered, and nothing outside it
-     was started.
+     was started. Do not ask for evidence the contract does not list.
    - The tests exercise the behaviour: they fail if the code is wrong, they are not skipped or
      `#[ignore]`d, and they do not just assert what the code returns.
    - No gate was weakened: deleted tests, lowered thresholds, unjustified `#[allow]`, no-op
