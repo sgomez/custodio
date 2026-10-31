@@ -203,7 +203,7 @@
         "F51"
       ],
       "verify": "for w in fedora44 bazzite omarchy ubuntu2404 rpm-ostree Quickshell dbus-broker SELinux ausearch 'pacman -U' 'polkit version'; do grep -qF -- \"$w\" docs/manual-acceptance.md || { echo \"missing: $w\" >&2; exit 1; }; done",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F53",
