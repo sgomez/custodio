@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Shared helpers for the harness scripts. Source it; do not run it.
 
+# The pre-commit lint (lefthook.yml) repeats what the verify gate runs; commitlint still runs.
+export LEFTHOOK_EXCLUDE=lint
+
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; hc_last=$*; hc_status working "$*"; }
 die() { log "$1" >&2; exit "${2:-1}"; }
 

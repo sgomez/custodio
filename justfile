@@ -105,6 +105,7 @@ test-scripts:
 shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
+    scripts/test-changed-checks.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
 # safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
@@ -206,6 +207,16 @@ mutants *args:
     cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
     exit "$status"
+
+# The checks the changes since feature <id> started (or since a git revision) can break, working tree included: lints of the
+# changed files, clippy and tests of the affected crates, and the script tests that use an affected file. For the steps
+# in between; `check` stays the gate.
+test-changed id_or_rev:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    base_file=".harness/state/{{id_or_rev}}.base"
+    if [ -f "$base_file" ]; then base=$(cat "$base_file"); else base={{id_or_rev}}; fi
+    scripts/changed_checks.py --base "$base"
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
 # working tree included. A feature's `verify` gate; CI sweeps every mutant weekly. Extra arguments go to `just mutants`.
