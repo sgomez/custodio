@@ -34,11 +34,11 @@ RUN npm install -g lefthook
 RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
       | bash -s -- latest /usr/local/bin
 
-RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && echo "dev:1:999" > /etc/subuid && echo "dev:1001:64535" > /etc/subgid
+RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && printf 'dev:1:999\ndev:1001:64535\n' | tee /etc/subuid > /etc/subgid
 USER dev
 RUN mkdir -p /home/dev/.config/containers \
     && printf '[storage]\ndriver = "vfs"\n[storage.options]\nignore_chown_errors = "true"\n' > /home/dev/.config/containers/storage.conf \
-    && printf '[containers]\ndefault_sysctls = []\nnetns = "host"\npidns = "host"\nutsns = "host"\n' > /home/dev/.config/containers/containers.conf
+    && printf '[containers]\ndefault_sysctls = []\nnetns = "host"\nutsns = "host"\n' > /home/dev/.config/containers/containers.conf
 ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:$PATH
 
 # run.sh passes the pins from rust-toolchain.toml and the justfile's nightly_toolchain.

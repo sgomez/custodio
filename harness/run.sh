@@ -15,9 +15,10 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 "$engine" volume create custodio-target >/dev/null 2>&1 || true
 
 # Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
-# Podman also gets --privileged: the e2e targets run rootless podman with systemd inside (F45).
+# The e2e targets run systemd containers in a nested rootless podman (F45), which needs no more than: SYS_ADMIN for
+# newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings.md, F45).
 userns=() target_opts=
-if [[ $engine == *podman ]]; then userns=(--userns=keep-id --privileged) target_opts=:U; fi
+if [[ $engine == *podman ]]; then userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U; fi
 hc_status=0
 if [[ -n ${HC_TERMINAL_ID:-} ]]; then
   hc_status=1

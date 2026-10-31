@@ -761,3 +761,14 @@ The required real run of `just e2e debian13` cannot be made here. Commands and e
   the container shares the host PID namespace (`echo $$` printed 248867 in it; F38's `containers.conf` sets `pidns = "host"` for this reason).
 What would be needed: subuid/subgid ranges for `dev` and a user namespace that can mount `/proc` (or a rootful engine), i.e. a change to the dev
 container. The stub-engine test (`scripts/test-e2e-host.sh`) proves the host logic only and is not a substitute.
+
+### F45: what the dev container needs instead of `--privileged` (2026-10-31)
+Rootless podman on the host, `--userns=keep-id`, probed one option at a time (nested `podman run` as `dev`):
+- With subuid ranges, `newuidmap` fails (`write to uid_map failed: Operation not permitted`) until `--cap-add=SYS_ADMIN`; apparmor, seccomp
+  and unmask options alone do not fix it.
+- `--pid=private` fails (`crun: mount proc to proc: Operation not permitted`) until `--security-opt=unmask=/proc/*`.
+- systemd exits at once (status 255): `/sys/fs/cgroup` is read-only; `--systemd=always` mounts it read-write and systemd reaches `degraded`.
+- The guest's `chown` to uids from 1000 fails (`Invalid argument`) with `dev:1:999` alone: keep-id leaves 1-999 and 1001-65536 free, so
+  `/etc/subuid` and `/etc/subgid` list both. `pidns = "host"` (F38) keeps systemd from being PID 1, so it is gone; `just package-lint` still passes.
+With these, `just e2e debian13` passes (28 cases, dbus-daemon 1.16.2, polkit 126). Every capability stays in the rootless user namespace, and
+seccomp and the default device list stay on, which `--privileged` would drop.
