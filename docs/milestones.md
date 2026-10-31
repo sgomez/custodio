@@ -87,7 +87,7 @@ Build and test the packages; publishing them waits for M5.
 - **Key lifecycle:** listing and deleting keys, replacing a renewed certificate, and what happens to
   the keys when the disk dies (no export by design).
 - **Keys born in the TPM:** `C_GenerateKeyPair` and a CSR, so the key never exists outside the TPM
-  (`fixedTPM`, `fixedParent`), as in Windows Hello. Depends on whether the CA's enrolment tool (the
-  FNMT Configurador) can generate the key in a system PKCS#11 token.
+  (`fixedTPM`, `fixedParent`), as in Windows Hello. The FNMT Configurador cannot generate the key
+  in a generic PKCS#11 token; the remaining routes are in `docs/reports/fnmt-configurador.md`.
 - **Presence without polkit:** the service talking to `fprintd` or a FIDO key directly, so the
   barrier does not depend on the system PAM stack.
