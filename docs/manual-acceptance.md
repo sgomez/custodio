@@ -352,8 +352,8 @@ desktop session; do not use a toolbox or distrobox: a signature from inside a to
    sudo ausearch -m AVC,USER_AVC --start "HH:MM:SS" | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
    ```
 
-   Expected: no line. Note that the audit log resets at each reboot unless it is persistent; run the command after each
-   reboot and record the output of each.
+   Expected: no line. Run the command after each reboot, with `--start` set to the time of the run so that
+   it covers the reboots, and record the output of each.
 
 ## 13. omarchy (acceptance 14)
 

@@ -455,3 +455,9 @@ with an empty context.
 - `docs/manual-acceptance.md` §14: one-line reason for `dpkg -i` (refusal) versus `apt-get install` (install).
 - `just check` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F52; the evaluator decides.
+
+### 2026-10-31 — F52 — session 3
+- Fixed NEXT_FINDINGS: `scripts/test-docs-manual.sh` no longer pipes into `grep -q` under `pipefail` (SIGPIPE made checks, and so controls, fail at random); it uses here-strings. 120 runs, 60 in parallel: no failure.
+- `docs/manual-acceptance.md` §12 step 6: dropped the unverified claim that the audit log resets at each reboot; now says to run ausearch after each reboot with `--start` covering the reboots.
+- `just check` passes (one run failed once in `test-tree-hash.sh`, a same-second/same-size edit race unrelated to this feature; it passed alone and on rerun). No Rust changed, so no mutants-diff.
+- Next session should: nothing for F52; the evaluator decides.

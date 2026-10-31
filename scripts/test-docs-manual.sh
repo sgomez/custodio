@@ -22,8 +22,8 @@ REFUSAL=$(sed -n "s/^REFUSAL_PHRASE='\(.*\)'$/\1/p" e2e/refusal-lib.sh)
 check() {
     local doc=$1 install=$2 fail=0 m part
     bad() { echo "manual-acceptance: $*" >&2; fail=1; }
-    need() { printf '%s\n' "$part" | grep -Eq -- "$1" || bad "$m: $2"; } # need REGEX WHAT, on $part
-    needF() { printf '%s\n' "$part" | grep -qF -- "$1" || bad "$m: $2"; }
+    need() { grep -Eq -- "$1" <<< "$part" || bad "$m: $2"; } # need REGEX WHAT, on $part
+    needF() { grep -qF -- "$1" <<< "$part" || bad "$m: $2"; }
     [ -n "$REFUSAL" ] || bad "no refusal phrase in e2e/refusal-lib.sh"
     local q; q=$(audit_query); [ -n "$q" ] || bad "no base query in docs/audit.md"
 
@@ -56,10 +56,10 @@ check() {
     need 'ausearch -m AVC' "no ausearch for AVC denials"
     need 'ausearch.*(--start|-ts)' "ausearch has no time window"
     local au; au=$(printf '%s\n' "$part" | grep -E 'ausearch.*(--start|-ts)|grep -E.*libcustodio' | tr '\n' ' ')
-    for w in custodio polkit libcustodio_pkcs11; do printf '%s' "$au" | grep -qF -- "$w" || bad "$m: the ausearch denial check does not name '$w'"; done
+    for w in custodio polkit libcustodio_pkcs11; do grep -qF -- "$w" <<< "$au" || bad "$m: the ausearch denial check does not name '$w'"; done
     need 'import.*sign|sign.*import|import, signing' "denial check does not cover import and signing"
     need 'failure of (acceptance|step) 12' "manual registration is not recorded as a failure"
-    printf '%s\n' "$part" | sed 's/ \\$//' | grep -qFx -- "$q" || bad "$m: the journalctl line is not the base query of docs/audit.md"
+    grep -qFx -- "$q" <<< "$(awk '{ sub(/ \\$/, "") } 1' <<< "$part")" || bad "$m: the journalctl line is not the base query of docs/audit.md"
     need 'CUSTODIO_OUTCOME=denied' "no query for cancellations"
     need 'one entry per signature and per cancellation' "no rule of one entry per signature and cancellation"
 
@@ -73,7 +73,7 @@ check() {
     need 'after (the|each) reboot' "no check after each reboot"
     need 'ausearch -m AVC' "no ausearch for AVC denials"; needF 'getenforce' "no getenforce"
     # The order: the OS update step is followed by a reboot step.
-    printf '%s\n' "$part" | awk '/rpm-ostree upgrade/ { u = 1 } u && /reboot/ { ok = 1 } END { exit !ok }' || bad "$m: no reboot after the OS update"
+    awk '/rpm-ostree upgrade/ { u = 1 } u && /reboot/ { ok = 1 } END { exit !ok }' <<< "$part" || bad "$m: no reboot after the OS update"
 
     m=omarchy; part=$(section "$doc" "^## .*$m")
     need '^sudo pacman -U custodio-.*pkg\.tar\.zst' "no pacman -U"
