@@ -94,16 +94,23 @@ TEXT
     arch-install | arch-upgrade)
         cat <<'TEXT'
 #!/bin/sh
-# Warn while the system bus lacks ProcessFD (F42). The check below is packaging/bus-check.sh, embedded by
-# scripts/embed-bus-check.sh. pacman ignores the status of this script and goes on, so it cannot refuse; the package hook
-# custodio-bus-check.hook refuses a later upgrade or reinstall. Nothing is exposed: the service refuses to sign without ProcessFD.
+# Check that the system bus provides ProcessFD (F42) and create the custodio account (F58). The check below is packaging/bus-check.sh,
+# embedded by scripts/embed-bus-check.sh. pacman ignores the status of this script and goes on, so a failed check cannot refuse (the
+# package hook custodio-bus-check.hook refuses a later upgrade or reinstall). Because the installation goes on, the account is created
+# after the check whatever the check said, before pacman unpacks the bus policy that names it; the exit status is 1 if either failed.
+# The account comes from the sysusers text below (scripts/check-sysusers-sync.sh keeps it equal to data/sysusers.d/custodio.conf): the
+# sysusers hook of systemd runs after unpacking, too late, and a pre-install script cannot read a packaged file.
 TEXT
         block
+        account_fn
         cat <<'TEXT'
+custodio_status=0
 if ! custodio_bus_check; then
     printf '%s\n' 'custodio: pacman ignores a failing pre-install script, so the installation goes on; custodiod refuses to sign until the bus provides ProcessFD.' >&2
-    exit 1
+    custodio_status=1
 fi
+custodio_create_account || custodio_status=1
+exit "$custodio_status"
 TEXT
         ;;
     hook)

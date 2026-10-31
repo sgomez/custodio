@@ -89,7 +89,11 @@ case_fail arch-no-hook arch: custodio-bus-check.hook -- drop /usr/share/libalpm/
 case_fail arch-no-hook-script arch: libalpm/scripts/custodio-bus-check -- drop /usr/share/libalpm/scripts/custodio-bus-check
 case_fail hook-in-every-format deb: libalpm -- unpackager /usr/share/libalpm/hooks/custodio-bus-check.hook
 case_fail hook-mode arch: custodio-bus-check -- mode /usr/share/libalpm/scripts/custodio-bus-check 0644
-case_fail arch-post-remove arch: post_remove -- script-add archlinux postremove
+case_fail arch-no-post-remove arch: post_remove -- script-del archlinux postremove
+case_fail arch-no-pre-remove arch: pre_remove -- script-del archlinux preremove
+case_fail arch-no-restart-hook arch: zz-custodio-restart.hook -- drop /usr/share/libalpm/hooks/zz-custodio-restart.hook
+case_fail restart-hook-in-every-format deb: libalpm -- unpackager /usr/share/libalpm/hooks/zz-custodio-restart.hook
+case_fail restart-hook-mode arch: zz-custodio-restart.hook -- mode /usr/share/libalpm/hooks/zz-custodio-restart.hook 0755
 
 # Versions: the three formats carry the same version, and a pre-release sorts below its release.
 version_of() { # NAME: "deb rpm arch" version-release strings

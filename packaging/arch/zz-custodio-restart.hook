@@ -1,0 +1,12 @@
+# Restarts a running custodio.service once after an upgrade (F58). The name sorts after dbus-reload.hook and the hooks of systemd (20 to
+# 36), which pacman runs by file name, so the restart follows the daemon reload and the bus reload. try-restart leaves a stopped service
+# alone. A first installation (no Upgrade) and a removal never trigger it. See docs/decisions.md.
+[Trigger]
+Operation = Upgrade
+Type = Package
+Target = custodio
+
+[Action]
+Description = Restarting custodio.service if it runs
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/systemd-hook restart custodio.service

@@ -260,3 +260,14 @@ with an empty context.
   `BLOCKED.md` pointers in `docs/decisions.md` and `docs/findings.md` now point to the F44 entry of `SPEC_DEVIATIONS.md`.
 - `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed.
 - Next session should: nothing for F44; the evaluator decides.
+
+### 2026-10-31 — F58 — session 2
+- Kept the stopped session's work after checking it: `pre_install`/`pre_upgrade` (F42 check, account from the embedded sysusers text, then exit 1 if either failed),
+  `post_install`/`post_upgrade` do nothing (systemd's `30-systemd-daemon-reload-system`, dbus's `dbus-reload` and `25-systemd-catalog` already do the reloads and the
+  catalog once), `pre_remove` stops, `post_remove` stops if active and prints the notice on stderr. Restart on upgrade is the new PostTransaction hook
+  `zz-custodio-restart.hook` (`systemd-hook restart` = `try-restart`, sorts after `dbus-reload`). Research in `docs/findings.md`, decision in `docs/decisions.md`.
+- Tests in `test-scripts`: `test-arch-lifecycle.sh` (stubs, mutants, controls; both-failing case), `test-arch-scripts-static.sh`, `test-arch-lifecycle-real.sh` (real
+  `pacman -U/-R/-Rns` in the Arch image, upgrade from a build of `cd5afb6`, refusing bus, failing sysusers, mutant packages). Sysusers sync gate covers the Arch scripts;
+  package gates, parity and namcap lists updated. The real test needs commit `cd5afb6` in the clone (fails in a shallow one).
+- `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed, so `just mutants-diff F58` has nothing to mutate.
+- Next session should: nothing for F58; the evaluator decides.

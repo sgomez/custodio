@@ -712,3 +712,39 @@ Checked on rpm 4.20.1 and nfpm 2.48.0 in the dev container (logging packages und
 - **Local finding in the deb (F43), not changed here.** `: > /run/custodio-restart-after-upgrade || true` in `preinst` ends a dash `sh` when the
   redirection fails (a redirection error on a special builtin is fatal, whatever follows `||`); on a read-only `/run` the upgrade would fail.
   The rpm `%pre` writes the marker in a subshell for this reason.
+
+## F58: Arch hooks and install script, research (2026-10-30)
+
+Read in the pinned Arch image of `packaging/lint/namcap.Containerfile` (`podman run --rm --user 0:0 localhost/custodio-f42-arch:<tag> sh -c '...'`):
+systemd 262.1-1, dbus 1.16.2-2, dbus-broker 37-3, pacman 7.1.0. Command for the hooks: `cd /usr/share/libalpm/hooks; grep -v '^#' NAME.hook`; for
+their command: `cat /usr/share/libalpm/scripts/systemd-hook`; owner: `pacman -Qo FILE`. **Verified** unless marked.
+
+| hook (package) | When | Trigger (Type Path) | Exec (`systemd-hook OP`) |
+|---|---|---|---|
+| `20-systemd-sysusers` (systemd) | PostTransaction | Install, Upgrade: `usr/lib/sysusers.d/*.conf` | `systemd-sysusers` (no live-systemd check) |
+| `25-systemd-catalog` (systemd) | PostTransaction | Install, Upgrade, Remove: `usr/lib/systemd/catalog/*` | `journalctl --update-catalog` (no check) |
+| `30-systemd-daemon-reload-system` (systemd) | PostTransaction | Install, Upgrade, Remove: `usr/lib/systemd/system/*` | `systemctl --system daemon-reload` after `systemd_live` |
+| `35-systemd-enqueue-marked` (systemd) | PostTransaction | Upgrade: `usr/lib/systemd/system/*` | `systemctl enqueue-marked` after `systemd_live` |
+| `dbus-reload` (dbus) | PostTransaction | Install, Upgrade, Remove: `etc/dbus-1/system.d/*.conf`, `usr/share/dbus-1/system.d/*.conf`, `usr/share/dbus-1/system-services/*.service` | `systemd-hook reload dbus.service` = `systemctl try-reload-or-restart dbus.service` (no live check) |
+
+- `systemd_live` is `systemd-detect-virt --chroot` (skip) and `systemd-notify --booted` (skip when not booted); the skip messages say
+  "Skipped: Running in chroot." / "Skipped: Current root is not booted.". `systemd-hook` also has `restart UNIT` = `systemctl try-restart UNIT`
+  and `reload UNIT`, both "for use by other packages", without the live check.
+- **Every call the package needs on install, upgrade and removal for its unit, sysusers file, catalog and bus policy is already a hook:** daemon-reload
+  (30, unit path), the bus reload (`dbus-reload`, policy path, also on removal), the catalog (25), `sysusers` (20). The scripts do not repeat any of them.
+  The `dbus-broker` and `dbus-broker-units` packages ship no hook (`pacman -Ql dbus-broker dbus-broker-units | grep -i 'hook\|libalpm'` is empty); `dbus.service`
+  is what `dbus-reload` reloads on both implementations.
+- **Order.** libalpm runs the install script of a package (`pre_*` before unpacking, `post_*` after) before the PostTransaction hooks, and hooks of one phase
+  by file name. File names sort 20, 21, 25, 30, 35, `dbus-reload`: so the bus reload comes after the daemon reload, and `35-systemd-enqueue-marked` runs
+  BEFORE `dbus-reload.hook` (a restart through the marker would precede the bus reload). The order is proven by the sequence numbers of the real run
+  (`scripts/test-arch-lifecycle-real.sh`).
+- **`enqueue-marked` needs a marker** set with `systemctl set-property UNIT Markers=needs-restart` (comment in `systemd-hook`), by a script that runs
+  while the service is running; `post_upgrade` runs before every PostTransaction hook, so the marker is the only way for a script to ask for a restart that
+  comes after the daemon reload, but the marker hook runs before the bus reload. Not used (docs/decisions.md): a hook of this package named after
+  `dbus-reload` runs `systemd-hook restart custodio.service` (`try-restart`: only if active, so no state and no marker).
+- **Why the account must exist before the policy is unpacked, though sysusers has a hook.** The sysusers hook runs PostTransaction, after unpacking and after
+  `post_*`. `dbus-daemon` links `inotify_add_watch` (`grep -a -o 'inotify_[a-z_]*' /usr/bin/dbus-daemon`) and watches its configuration directories, so it
+  may load a policy that names the user `custodio` as soon as the file is unpacked, not only at the `dbus-reload` hook (`dbus-broker` has no inotify
+  strings; it reloads on request). A policy naming a missing user is a bad configuration. `pre_install`/`pre_upgrade` create the account.
+- Hooks are read at the start of the transaction for PreTransaction (F42) and again for PostTransaction, so a PostTransaction hook that a package ships
+  runs in the transaction that installs it. (Proven by the real run, same file.)

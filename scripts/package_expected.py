@@ -18,11 +18,12 @@ FILES = {
     "/usr/share/doc/custodio/changelog.Debian.gz": 0o644,
 }
 
-# Files only the Arch package installs (nfpm `packager: archlinux`): the alpm hook that refuses an upgrade or reinstall while the
+# Files only the Arch package installs (nfpm `packager: archlinux`): the alpm hook that refuses an upgrade or reinstall while the (F58: and the restart hook)
 # system bus lacks ProcessFD, and the check it runs (F42). packaging/parity-exceptions.txt lists them.
 ARCH_ONLY_FILES = {
     "/usr/share/libalpm/hooks/custodio-bus-check.hook": 0o644,
     "/usr/share/libalpm/scripts/custodio-bus-check": 0o755,
+    "/usr/share/libalpm/hooks/zz-custodio-restart.hook": 0o644,
 }
 
 UNIT = "/usr/lib/systemd/system/custodio.service"
@@ -64,6 +65,6 @@ ELF_FILES = ("/usr/lib/custodio/custodiod", "/usr/bin/custodio", "/usr/lib/custo
 # Lifecycle scripts per format: exactly these exist (deb maintainer scripts, rpm scriptlet tags, Arch .INSTALL functions).
 DEB_SCRIPTS = {"preinst", "postinst", "prerm", "postrm"}
 RPM_SCRIPTS = {"pre", "post", "preun", "postun"}
-ARCH_FUNCTIONS = {"pre_install", "pre_upgrade", "post_install", "post_upgrade"}
-# The check embedded in the pre scripts is a function of its own in the .INSTALL (F42); it is not a lifecycle function.
-ARCH_HELPERS = {"custodio_bus_check"}
+ARCH_FUNCTIONS = {"pre_install", "pre_upgrade", "post_install", "post_upgrade", "pre_remove", "post_remove"}
+# The check and the account creation embedded in the pre scripts are functions of their own in the .INSTALL (F42, F58); they are not lifecycle functions.
+ARCH_HELPERS = {"custodio_bus_check", "custodio_create_account"}

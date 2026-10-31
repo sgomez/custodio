@@ -67,6 +67,10 @@ contents:
     dst: /usr/share/libalpm/scripts/custodio-bus-check
     packager: archlinux
     file_info: {mode: 0755, owner: root, group: root}
+  - src: packaging/arch/zz-custodio-restart.hook
+    dst: /usr/share/libalpm/hooks/zz-custodio-restart.hook
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
   - src: packaging/copyright
     dst: /usr/share/doc/custodio/copyright
     file_info: {mode: 0644, owner: root, group: root}
@@ -115,6 +119,8 @@ overrides:
     scripts:
       preinstall: packaging/arch/pre_install
       postinstall: packaging/arch/post_install
+      preremove: packaging/arch/pre_remove
+      postremove: packaging/arch/post_remove
     archlinux:
       scripts:
         preupgrade: packaging/arch/pre_upgrade

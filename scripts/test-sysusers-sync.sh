@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests of scripts/check-sysusers-sync.sh (F43, F44): it passes on the tree, ignores comments in the conf, and fails when the text
-# embedded in the deb preinst or in the rpm %pre, or the conf, is edited, when the embedded text is gone, and when the conf has no entry.
+# embedded in the deb preinst, the rpm %pre or the Arch pre_install and pre_upgrade, or the conf, is edited, when the embedded text is gone, and when the conf has no entry.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 GATE=$ROOT/scripts/check-sysusers-sync.sh
@@ -12,7 +12,7 @@ bad() { echo "test-sysusers-sync: $*" >&2; fail=1; }
 fresh() {
     rm -rf "$tmp/tree"
     mkdir -p "$tmp/tree/packaging" "$tmp/tree/data"
-    cp -r "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$tmp/tree/packaging/"
+    cp -r "$ROOT/packaging/deb" "$ROOT/packaging/rpm" "$ROOT/packaging/arch" "$tmp/tree/packaging/"
     cp -r "$ROOT/data/sysusers.d" "$tmp/tree/data/"
 }
 gate() { "$GATE" "$tmp/tree" > "$tmp/out" 2>&1; }
@@ -37,6 +37,17 @@ expect_fail "rpm: embedded account name edited"
 fresh
 sed -i 's/Custodio signing service/Custodio signing servicf/' "$tmp/tree/packaging/rpm/pre"
 expect_fail "rpm: embedded description edited"
+for f in pre_install pre_upgrade; do
+    fresh
+    sed -i 's/^u custodio/u custodiX/' "$tmp/tree/packaging/arch/$f"
+    expect_fail "arch $f: embedded account name edited"
+    fresh
+    sed -i 's/Custodio signing service/Custodio signing servicf/' "$tmp/tree/packaging/arch/$f"
+    expect_fail "arch $f: embedded description edited"
+    fresh
+    sed -i '/^u custodio/d' "$tmp/tree/packaging/arch/$f"
+    expect_fail "arch $f: embedded text removed"
+done
 fresh
 sed -i "/<<'CUSTODIO_SYSUSERS'\$/,/^CUSTODIO_SYSUSERS\$/d" "$tmp/tree/packaging/rpm/pre"
 expect_fail "rpm: embedded text removed"

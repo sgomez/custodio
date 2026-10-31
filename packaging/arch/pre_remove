@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stop the service when the package is removed (F58). pacman runs pre_remove only for a real removal, never for an upgrade, so an upgrade
+# does not stop the service (zz-custodio-restart.hook restarts it once). `pacman -Rns` is the same removal. Nothing here touches the
+# state directory. A failing systemctl (no live systemd) is not an error.
+systemctl stop custodio.service || true

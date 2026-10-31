@@ -1,6 +1,6 @@
 # Exceptions for namcap (F38). One per line: TAG | SUBJECT-GLOB | REASON. namcap runs with -i -m (informational lines, machine-readable tags).
 # The gate sorts the elements of bracketed lists in a subject, so that the entries naming usr/lib/custodio/custodiod are literal.
-external-hooks | systemd-sysusers | the .INSTALL script (shared lifecycle script of F43) runs systemd-sysusers so that the account exists before the service starts
+external-hooks | systemd-sysusers | the .INSTALL pre_install and pre_upgrade (F58) run systemd-sysusers so that the account exists before pacman unpacks the bus policy that names it; systemd's own sysusers hook runs after unpacking
 incorrect-owner | usr/lib/custodio/custodiod (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | .PKGINFO (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | .MTREE (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
@@ -19,6 +19,7 @@ incorrect-owner | usr/share/man/man1/custodio.1.gz (0:0) | nfpm writes numeric o
 incorrect-owner | usr/share/p11-kit/modules/custodio.module (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/polkit-1/actions/com.rfirma.custodio.policy (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/libalpm/hooks/custodio-bus-check.hook (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/share/libalpm/hooks/zz-custodio-restart.hook (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/libalpm/scripts/custodio-bus-check (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 library-no-package-associated | sh ['usr/share/libalpm/scripts/custodio-bus-check'] | the alpm hook script (F42) is a POSIX sh script; sh comes with bash, which every Arch system has (base)
 script-link-detected | sh in ['usr/share/libalpm/scripts/custodio-bus-check'] | the alpm hook script (F42) is a POSIX sh script; sh comes with bash, which every Arch system has (base)
