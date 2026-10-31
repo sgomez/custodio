@@ -13,6 +13,11 @@ intent: the dialog cannot prove what is being signed.
 - System D-Bus name: `com.rfirma.Custodio1`
 - polkit action: `com.rfirma.custodio.sign`
 
+## Installing and removing
+
+Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
+requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
+
 ## Development
 
 Linux only. Install [mise](https://mise.jdx.dev), rustup and the system packages the package tests

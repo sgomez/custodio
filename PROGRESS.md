@@ -435,3 +435,10 @@ with an empty context.
   Observed: apt exit non-zero; dpkg status `not-installed`; custodio account before: no, after: no (preinst checks the bus before creating the account).
 - `just check` (forced), `bash -n e2e/*.sh` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F50; the evaluator decides.
+
+### 2026-10-31 — F51 — session 1
+- Tests first: `scripts/test-docs-install.sh` (in `test-scripts`): derives each target's install command from `e2e/targets/<t>/install.sh` (`dpkg -i`, `apt-get install` x2, `dnf install` x2, `pacman -U`), checks it in that system's section; checks the four `bus-check.sh` messages are answered by phrase (phrases verified against the script, count check for new messages), Ubuntu 24.04 switch, Arch warn-only, removal paths against `packaging/deb/postrm`, fenced destroy command, `secure erasure`, rpm-ostree no notice, fails closed, journal storage, README link. 22 negative controls on fixture copies, each checked to differ from the real doc.
+- Wrote `docs/install.md` and the README link. Debian section also gives `apt-get -f install` for missing dependencies (evaluator note); rpm-ostree has a control (evaluator note). Bus-check messages are matched by text, not line (evaluator note).
+- `verify` greps and `just check` (forced) pass. No Rust changed, so no mutants-diff.
+- Not run on a real system: the commands in the doc are copied from the e2e install scripts; the rpm-ostree bus-check notice and `rpm-ostree install` are unverified here (no rpm-ostree in the container).
+- Next session should: nothing for F51; the evaluator decides.

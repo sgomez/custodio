@@ -103,6 +103,7 @@ test-scripts:
     scripts/test-bus-check-sync.sh
     scripts/test-sysusers-sync.sh
     scripts/test-bus-check.sh
+    scripts/test-docs-install.sh
     scripts/test-install-real.sh
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
