@@ -147,7 +147,7 @@
         "F59"
       ],
       "verify": "just check && bash -n e2e/*.sh && grep -rqi 'upgrade' e2e && grep -rq 'sha256sum\\|cmp ' e2e",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F60",
