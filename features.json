@@ -124,7 +124,7 @@
         "F45"
       ],
       "verify": "just check && bash -n e2e/*.sh && grep -q 'fedora:44' e2e/targets/fedora44/Containerfile && grep -qi 'alma' e2e/targets/alma10/Containerfile && test -f e2e/targets/fedora44/skip.list && test -f e2e/targets/alma10/skip.list",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F47",
