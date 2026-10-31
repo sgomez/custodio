@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Runs as root inside the systemd container: installs the package, starts the real service, imports
-# a key, and runs user.sh in a logind session of an ordinary user (the polkit agent needs one).
+# Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
+# (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
+# (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
 set -euo pipefail
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
@@ -8,7 +9,10 @@ fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 # The checks of the journal checker come first; a broken checker would make the later checks worthless.
 bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
-dpkg -i /pkg/custodio.deb >/dev/null
+pkg=$(find /pkg -type f | head -n 1)
+[ -n "$pkg" ] || fail "no package is mounted in /pkg"
+bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
+echo "e2e: installed $(basename "$pkg") from the mounted file"
 systemctl daemon-reload
 systemctl reload dbus # restart would drop logind and polkit off the bus
 systemctl start polkit
@@ -65,4 +69,6 @@ WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"
 if journalctl -u custodio --no-pager | grep -q "e2e-password"; then fail "the password reached the journal"; fi
+probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
+while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
 echo "e2e: all checks passed"

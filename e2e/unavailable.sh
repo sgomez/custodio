@@ -4,6 +4,8 @@
 # Needs WORK and MODULE. The input is over 1024 bytes so pkcs11-tool does not retry a failed one-shot signature.
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+# shellcheck source=e2e/report.sh
+source "$(dirname "${BASH_SOURCE[0]}")/report.sh"
 in=$WORK/evidence/unavailable.in
 out=$WORK/evidence/unavailable.sig
 pidfile=$WORK/unavailable.pid
@@ -18,4 +20,4 @@ timeout 60 sh -c 'echo $$ > "$1"; shift; exec "$@"' wrapper "$pidfile" \
 [ ! -s "$out" ] || fail "a signature was written while polkit was unavailable"
 [ -s "$pidfile" ] || fail "the wrapper wrote no pid"
 echo "authorization_unavailable rsa1 $(cat "$pidfile") $(id -u)" >> "$WORK/journal.cases"
-echo "ok: no signature while polkit is unavailable"
+case_run "polkit-unavailable"

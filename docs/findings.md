@@ -748,3 +748,16 @@ their command: `cat /usr/share/libalpm/scripts/systemd-hook`; owner: `pacman -Qo
   strings; it reloads on request). A policy naming a missing user is a bad configuration. `pre_install`/`pre_upgrade` create the account.
 - Hooks are read at the start of the transaction for PreTransaction (F42) and again for PostTransaction, so a PostTransaction hook that a package ships
   runs in the transaction that installs it. (Proven by the real run, same file.)
+
+## F45: a systemd container cannot boot in the dev container (2026-10-31)
+
+The required real run of `just e2e debian13` cannot be made here. Commands and errors:
+- `just e2e debian13` (nested rootless podman 5.4.2, single-uid user namespace, `/proc/self/uid_map` maps uid 0 to host 1000 only): the image build
+  failed first at `apt-get` (`setgroups 65534 failed`; fixed in the Containerfile with `-o APT::Sandbox::User=root`, as the F38 images do), then at
+  `dpkg` configuring the packages (`chown to root:adm of file /var/log/apt/term.log failed (22: Invalid argument)`, exit 1): only uid 0 exists
+  in the namespace, so the systemd, dbus and polkit packages cannot be unpacked with their owners.
+- Even with an image, systemd needs to be PID 1 of its own PID namespace: `podman run --rm --privileged --pid=private --cgroupns=host --tmpfs /run
+  docker.io/library/debian:trixie true` fails with `crun: mount `proc` to `proc`: Operation not permitted: OCI permission denied`; without `--pid=private`
+  the container shares the host PID namespace (`echo $$` printed 248867 in it; F38's `containers.conf` sets `pidns = "host"` for this reason).
+What would be needed: subuid/subgid ranges for `dev` and a user namespace that can mount `/proc` (or a rootful engine), i.e. a change to the dev
+container. The stub-engine test (`scripts/test-e2e-host.sh`) proves the host logic only and is not a substitute.

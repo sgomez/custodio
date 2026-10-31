@@ -2,6 +2,8 @@
 # Runs as the ordinary user "alice" in a logind session, with WORK and MODULE set by guest.sh.
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+# shellcheck source=e2e/report.sh
+source "$(dirname "${BASH_SOURCE[0]}")/report.sh"
 export E2E_DIR=$WORK/agent
 mkdir -p "$E2E_DIR"
 : > "$E2E_DIR/requests"
@@ -24,7 +26,7 @@ if cat /var/lib/custodio/* >/dev/null 2>&1; then fail "alice read a key file"; f
 if ls /var/lib/custodio >/dev/null 2>&1; then fail "alice listed /var/lib/custodio"; fi
 if grep -rl "PRIVATE KEY\|PKCS" /var/lib/custodio >/dev/null 2>&1; then fail "alice grepped a key file"; fi
 expect_requests 0
-echo "ok: the user cannot read the key files"
+case_run "no-key-read"
 
 sig="$WORK/sig.bin"
 p11sign() { # key id, mechanism; output in $sig
@@ -40,13 +42,13 @@ echo approve > "$E2E_DIR/mode"
 p11sign rsa1 RSA-PKCS || { cat "$WORK/p11.log" >&2; fail "approved RSA signature failed"; }
 [ "$(stat -c %s "$sig")" -eq 256 ] || fail "RSA signature is not 256 bytes"
 expect_requests 1
-echo "ok: pkcs11-tool approve (RSA)"
+case_run "pkcs11-tool-approve-rsa"
 
 echo deny > "$E2E_DIR/mode"
 if p11sign rsa1 RSA-PKCS; then fail "a denied signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied signature produced output"
 expect_requests 2
-echo "ok: pkcs11-tool deny"
+case_run "pkcs11-tool-deny"
 
 # Second signature asks again: approve once, then sign twice more; each one reaches the agent.
 echo approve > "$E2E_DIR/mode"
@@ -57,12 +59,12 @@ expect_requests 4
 echo deny > "$E2E_DIR/mode"
 if p11sign rsa1 RSA-PKCS; then fail "the second signature reused the previous authorization"; fi
 expect_requests 5
-echo "ok: every signature asks again"
+case_run "pkcs11-tool-asks-again"
 
 echo approve > "$E2E_DIR/mode"
 p11sign ec1 ECDSA || { cat "$WORK/p11.log" >&2; fail "approved ECDSA signature failed"; }
 expect_requests 6
-echo "ok: pkcs11-tool approve (ECDSA)"
+case_run "pkcs11-tool-approve-ecdsa"
 
 # --- NSS: modutil and certutil ------------------------------------------------------------------
 db=$WORK/nssdb
@@ -82,18 +84,18 @@ echo approve > "$E2E_DIR/mode"
 nsssign || { cat "$WORK/nss.log" >&2; fail "NSS signing with approval failed"; }
 [ "$(requests)" -eq $((before + 1)) ] || fail "NSS signing: expected exactly one request, saw $(( $(requests) - before ))"
 openssl x509 -inform DER -in "$WORK/issued.der" -noout -subject | grep -q "e2e subject" || fail "NSS did not produce the certificate"
-echo "ok: NSS approve"
+case_run "nss-approve"
 
 echo deny > "$E2E_DIR/mode"
 if nsssign; then fail "NSS signed after a denial"; fi
 [ ! -s "$WORK/issued.der" ] || fail "NSS produced a certificate after a denial"
 [ "$(requests)" -eq $((before + 2)) ] || fail "NSS deny: the agent was not asked"
-echo "ok: NSS deny"
+case_run "nss-deny"
 
 echo approve > "$E2E_DIR/mode"
 nsssign || fail "NSS signing (again) failed"
 [ "$(requests)" -eq $((before + 3)) ] || fail "NSS second signature did not ask again"
-echo "ok: NSS second signature asks again"
+case_run "nss-asks-again"
 
 # shellcheck source=/dev/null # checked on its own
 source "$(dirname "${BASH_SOURCE[0]}")/composed.sh"

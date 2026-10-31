@@ -278,3 +278,18 @@ with an empty context.
   (3) `arch-real-steps.sh` records any `*.wants/custodio.service` link and the real test asserts none after the first install, with a new mutant that enables by `ln`.
 - `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed.
 - Next session should: nothing for F58; the evaluator decides.
+
+### 2026-10-31 — F45 — session 1
+- Built steps 1-7: `e2e/run.sh [target]` (default `all`; validates the name before touching the engine; builds the target's Containerfile, runs it privileged with the
+  package mounted read-only at `/pkg`, `e2e/` at `/e2e` and the target dir at `/e2e-target`, execs the shared `guest.sh`, checks the cases, saves `target/e2e/<t>.record`;
+  a failed target does not stop the others). `just e2e target="all": package`. Target `debian13`: Containerfile (moved; `-o APT::Sandbox::User=root` added for the
+  single-uid dev container), `skip.list` (empty), `package.pattern`, `install.sh` (`dpkg -i`), `probe.sh` (bus daemon asked of the bus via `GetConnectionUnixProcessID`, polkit
+  version from `pkaction`). Cases: every `echo "ok: ..."` became `case_run ID` (`e2e/report.sh`, prints `E2E-CASE run ID`); `e2e/cases.list` is the known list;
+  `e2e/check-cases.sh` lints skip lists (`case: reason`) and fails on a missing, unknown, duplicated or unlisted-skipped case (unused entries: stderr, exit 0).
+- Tests in `test-scripts`: `test-e2e-skips.sh` (format, enforcement a-e, accounting), `test-e2e-host.sh` (stub podman: order of calls, read-only mount, record, `all` with fake
+  targets, failure isolation, omitted/unknown/duplicated/unlisted-skip through the host, Containerfile and guest greps, shellcheck list). `test-check-packages.sh` now reads the
+  `find` line of `e2e/run.sh` with a control. Mutants tried by hand: dropping the accounting call, `--privileged`, and two messages of check-cases were all caught.
+- Amendment (own commit): step 4 and the grep sentence, as the evaluator's notes asked.
+- **BLOCKED.md written**: the real run is impossible in this dev container (finding "F45: a systemd container cannot boot…"). The last step stays open.
+- `just check` passes. No Rust changed, so no mutants-diff.
+- Next session should: nothing until BLOCKED.md is answered.

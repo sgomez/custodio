@@ -3,6 +3,8 @@
 # was installed) and TOTAL (the agent's request count before the unavailable signature).
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+# shellcheck source=e2e/report.sh
+source "$(dirname "${BASH_SOURCE[0]}")/report.sh"
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 uid=$(id -u custodio)
 journalctl --sync
@@ -20,4 +22,4 @@ extra=()
 for f in "$WORK/data.bin" "$WORK/deny.bin" "$WORK/big.bin" "$WORK/sig.bin" "$WORK/issued.der"; do extra+=(--file "$f"); done
 python3 -I "$here/journal.py" sweep --export "$WORK/service.export" --evidence "$WORK/evidence" "${extra[@]}" \
     --password e2e-password || fail "a secret reached the journal of custodio.service"
-echo "ok: journal entries and no secrets in the journal"
+case_run "journal-entries"

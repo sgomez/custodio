@@ -98,6 +98,8 @@ test-scripts:
     scripts/test-arch-scripts-static.sh
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
+    scripts/test-e2e-skips.sh
+    scripts/test-e2e-host.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -278,11 +280,12 @@ package-parity:
 glibc-ceiling:
     scripts/check-glibc-ceiling.sh
 
-# End-to-end tests: boots a systemd container (podman or docker, privileged), installs the .deb with the real polkit, and signs with
-# pkcs11-tool and NSS (modutil, certutil) while a test authentication agent approves or denies. Not part of `check-slow`: it needs a
-# container engine that can run systemd, which the dev container does not have.
-e2e: package
-    bash e2e/run.sh
+# End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
+# with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
+# (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
+# target/e2e/. Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
+e2e target="all": package
+    bash e2e/run.sh {{target}}
 
 # Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.

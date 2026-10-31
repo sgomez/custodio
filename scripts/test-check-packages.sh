@@ -86,13 +86,19 @@ python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$REAL" "$FX_DIR/nfpm-dup.yaml" dup 
 expect_fail duplicate "$FX_DIR/out/dup-base" "$FX_DIR/nfpm-dup.yaml" "listed twice" $CLI
 config_case override-contents contents -- override-contents deb
 config_case override-unknown suggests -- override-unknown rpm
-# e2e/run.sh finds the .deb in target/packages: run its own `find` line in a temp tree holding one fixture .deb.
+# e2e/run.sh finds the package in target/packages with a `find` line: run that line from the script in a temp tree holding one fixture
+# .deb, and a copy of the script without the line must be seen as lacking it.
 bash -n "$ROOT/e2e/run.sh" || { echo "FAIL: e2e/run.sh syntax" >&2; fail=1; }
 e2e_tmp=$(mktemp -d)
 mkdir -p "$e2e_tmp/target/packages"
 cp "$(fx_file dup-base deb)" "$e2e_tmp/target/packages/"
-grep -q "find target/packages -name 'custodio_\*.deb'" "$ROOT/e2e/run.sh" || { echo "FAIL: e2e/run.sh find line" >&2; fail=1; }
-e2e_found=$(cd "$e2e_tmp" && find target/packages -name 'custodio_*.deb')
+# shellcheck disable=SC2016 # the line is text to find in the script and to run in a child shell
+find_line='found=$(find "$packages" -name "$pattern" | sort | tail -n 1)'
+grep -qF "$find_line" "$ROOT/e2e/run.sh" || { echo "FAIL: e2e/run.sh find line" >&2; fail=1; }
+grep -vF "$find_line" "$ROOT/e2e/run.sh" > "$e2e_tmp/run-without-find.sh"
+if grep -qF "$find_line" "$e2e_tmp/run-without-find.sh"; then echo "FAIL: control for the e2e/run.sh find line" >&2; fail=1; fi
+e2e_pattern=$(head -n 1 "$ROOT/e2e/targets/debian13/package.pattern")
+e2e_found=$(cd "$e2e_tmp" && packages=target/packages pattern=$e2e_pattern bash -c "$find_line; echo \"\$found\"")
 rm -rf "$e2e_tmp"
 case $e2e_found in target/packages/custodio_*.deb) ;; *) echo "FAIL: e2e/run.sh found '$e2e_found'" >&2; fail=1 ;; esac
 exit "$fail"
