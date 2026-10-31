@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # lintian for `just package-lint`, at the version of packaging/lint/pins.txt (a test keeps them in step) from the dated snapshot as the only
 # apt source of this install, so a point release cannot remove it. rpmlint is not installed: Debian's is not the pinned Fedora one, so the
 # gate runs rpmlint, and namcap (not packaged for Debian), in containers. podman (rootless, the host socket is never mounted) and uidmap run
-# them; the dev container maps one uid only, so /etc/subuid stays empty and the storage driver is vfs (see docs/findings.md, F38).
+# them; the storage driver is vfs (see docs/findings.md, F38).
 ARG LINTIAN=2.122.0
 ARG DEBIAN_SNAPSHOT=20261020T000000Z
 RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/ trixie main" > /etc/apt/snapshot.list \
@@ -34,7 +34,7 @@ RUN npm install -g lefthook
 RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \
       | bash -s -- latest /usr/local/bin
 
-RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && : > /etc/subuid && : > /etc/subgid
+RUN useradd -m -s /bin/bash dev && echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev && echo "dev:1:999" > /etc/subuid && echo "dev:1001:64535" > /etc/subgid
 USER dev
 RUN mkdir -p /home/dev/.config/containers \
     && printf '[storage]\ndriver = "vfs"\n[storage.options]\nignore_chown_errors = "true"\n' > /home/dev/.config/containers/storage.conf \
