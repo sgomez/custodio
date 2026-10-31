@@ -219,7 +219,7 @@
         "F60"
       ],
       "manual": true,
-      "passes": false
+      "passes": true
     },
     {
       "id": "F54",
