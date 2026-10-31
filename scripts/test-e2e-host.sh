@@ -53,37 +53,50 @@ run_host() {
 expect_ok() { local n=$1; shift; run_host "$@" || { bad "$n: failed: $(tail -n 5 "$tmp/out")"; return 1; }; }
 expect_fail() { local n=$1; shift; if run_host "$@"; then bad "$n: passed"; return 1; fi; }
 
-# --- the real target: the order and shape of the calls
-expect_ok debian13 debian13 || true
-b=$(grep -n '^build ' "$tmp/log" | head -n 1 | cut -d: -f1)
-r=$(grep -n '^run ' "$tmp/log" | head -n 1 | cut -d: -f1)
-x=$(grep -n 'guest.sh' "$tmp/log" | head -n 1 | cut -d: -f1)
-{ [ -n "$b" ] && [ -n "$r" ] && [ -n "$x" ] && [ "$b" -lt "$r" ] && [ "$r" -lt "$x" ]; } || bad "build, run, exec of the guest are not in this order: $(cat "$tmp/log")"
-grep '^build ' "$tmp/log" | grep -q -- '-f e2e/targets/debian13/Containerfile' || bad "the build does not use the target's Containerfile"
-grep '^run ' "$tmp/log" | grep -q -- '--privileged' || bad "the container is not privileged"
-grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro" || bad "the package is not mounted read-only"
-grep -q 'exec .* bash /e2e/guest.sh debian13' "$tmp/log" || bad "the shared guest script is not executed"
-grep -q 'installed custodio_0.1.0-1_amd64.deb from the mounted file' "$tmp/out" || bad "the guest's output is not passed through"
-grep -qi 'cargo\|nfpm\|just package' "$tmp/log" && bad "the engine log shows a package build"
-grep -q 'cargo\|nfpm\|just package' "$ROOT/e2e/run.sh" && bad "the host script builds packages"
+# --- every real target: the order and shape of the calls
+for T in $(cd "$ROOT/e2e/targets" && echo *); do
+    expect_ok "$T" "$T" || true
+    b=$(grep -n '^build ' "$tmp/log" | head -n 1 | cut -d: -f1)
+    r=$(grep -n '^run ' "$tmp/log" | head -n 1 | cut -d: -f1)
+    x=$(grep -n 'guest.sh' "$tmp/log" | head -n 1 | cut -d: -f1)
+    { [ -n "$b" ] && [ -n "$r" ] && [ -n "$x" ] && [ "$b" -lt "$r" ] && [ "$r" -lt "$x" ]; } || bad "build, run, exec of the guest are not in this order: $(cat "$tmp/log")"
+    grep '^build ' "$tmp/log" | grep -q -- "-f e2e/targets/$T/Containerfile" || bad "the build does not use the target's Containerfile"
+    grep '^run ' "$tmp/log" | grep -q -- '--privileged' || bad "the container is not privileged"
+    grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro" || bad "the package is not mounted read-only"
+    grep -q "exec .* bash /e2e/guest.sh $T" "$tmp/log" || bad "the shared guest script is not executed"
+    grep -q 'installed custodio_0.1.0-1_amd64.deb from the mounted file' "$tmp/out" || bad "the guest's output is not passed through"
+    grep -qi 'cargo\|nfpm\|just package' "$tmp/log" && bad "the engine log shows a package build"
+    grep -q 'cargo\|nfpm\|just package' "$ROOT/e2e/run.sh" && bad "the host script builds packages"
+done
 # the recipe: package is its dependency and the default target is all
 grep -Eq '^e2e target="all": package$' "$ROOT/justfile" || bad "the e2e recipe does not take a target (default all) and depend on package"
 grep -q 'bash e2e/run.sh {{target}}' "$ROOT/justfile" || bad "the e2e recipe does not pass the target"
 
 # --- the record
-rec=$tmp/o/debian13.record
-[ -f "$rec" ] || bad "no record file"
-{ grep -qx 'target=debian13' "$rec" && grep -qx 'bus-daemon=dbus-daemon' "$rec" && grep -qx 'polkit-version=126' "$rec"; } || bad "the record lacks target, daemon or polkit version: $(cat "$rec" 2> /dev/null)"
-{ grep -q 'record: bus-daemon=dbus-daemon' "$tmp/out" && grep -q 'record: polkit-version=126' "$tmp/out"; } || bad "the record is not printed"
-STUB_NOPROBE=1 expect_fail probe-empty debian13 || true
-grep -q 'reported no bus-daemon' "$tmp/out" || bad "an empty probe was not named: $(tail -n 3 "$tmp/out")"
+for T in $(cd "$ROOT/e2e/targets" && echo *); do
+    expect_ok "$T" "$T" || true
+    rec=$tmp/o/$T.record
+    [ -f "$rec" ] || bad "no record file"
+    { grep -qx "target=$T" "$rec" && grep -qx 'bus-daemon=dbus-daemon' "$rec" && grep -qx 'polkit-version=126' "$rec"; } || bad "the record lacks target, daemon or polkit version: $(cat "$rec" 2> /dev/null)"
+    { grep -q 'record: bus-daemon=dbus-daemon' "$tmp/out" && grep -q 'record: polkit-version=126' "$tmp/out"; } || bad "the record is not printed"
+    STUB_NOPROBE=1 expect_fail probe-empty "$T" || true
+    grep -q 'reported no bus-daemon' "$tmp/out" || bad "an empty probe was not named: $(tail -n 3 "$tmp/out")"
+done
 
 # --- unknown target: names the targets, never calls the engine
 expect_fail unknown-target nope || true
-grep -q 'available targets: debian13' "$tmp/out" || bad "an unknown target does not name the available ones"
+grep -q 'available targets: debian13 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
 [ ! -s "$tmp/log" ] || bad "the engine was called for an unknown target"
 expect_fail path-target ../targets/debian13 || true
 [ ! -s "$tmp/log" ] || bad "the engine was called for a target with a path"
+
+# --- all, with the real targets directory: every real target runs
+: > "$tmp/log"; rm -rf "$tmp/o"
+STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" all > "$tmp/out" 2>&1 || bad "all (real targets): failed: $(tail -n 5 "$tmp/out")"
+for T in $(cd "$ROOT/e2e/targets" && echo *); do
+    grep -q "guest.sh $T" "$tmp/log" || bad "all (real targets): $T did not run"
+    [ -f "$tmp/o/$T.record" ] || bad "all (real targets): no record for $T"
+done
 
 # --- all, with two fake targets copied in with no edit to any script
 fake=$tmp/targets

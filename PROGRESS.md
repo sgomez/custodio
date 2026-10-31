@@ -325,3 +325,15 @@ with an empty context.
   `bus-daemon-version=D-Bus Message Bus Daemon 1.16.2`, `polkit-version=127`. debian13: dbus-daemon 1.16.2, polkit 126.
 - `just check` and the rest of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F59; the evaluator decides.
+
+### 2026-10-31 — F59 — session 2
+- Fixed NEXT_FINDINGS: (1) `scripts/test-e2e-host.sh` now loops over `e2e/targets/*` for the build/run/exec shape, the read-only mount and the record (so the real
+  `ubuntu2604` directory goes through `e2e/run.sh` with the stub), runs `all` on the real targets directory (both must run), and expects "available targets: debian13 ubuntu2604";
+  (2) `scripts/test-e2e-catalog.sh` has `split_check CATALOG`; the controls change only the first entry, then only the last, and `split_check` must reject both;
+  (3) per-case results from the real runs (`target/e2e/<t>.log`), both targets, 29 `E2E-CASE run` lines each, none skipped:
+  `no-key-read pkcs11-tool-approve-rsa pkcs11-tool-deny pkcs11-tool-asks-again pkcs11-tool-approve-ecdsa nss-approve nss-deny nss-asks-again composed-SHA256-RSA-PKCS
+  composed-SHA384-RSA-PKCS composed-SHA512-RSA-PKCS composed-SHA256-RSA-PKCS-deny composed-ECDSA-SHA256 composed-ECDSA-SHA384 composed-ECDSA-SHA512 composed-ECDSA-SHA256-deny
+  provider-rsa1 provider-ec1 provider-several-updates provider-deny login-approve-rsa login-approve-ecdsa login-asks-again login-deny login-context-specific
+  journal-signatures polkit-unavailable journal-entries journal-catalog`. Records: ubuntu2604 `dbus-daemon` 1.16.2, polkit 127; debian13 `dbus-daemon` 1.16.2, polkit 126.
+- `just check`, `bash -n e2e/*.sh` and the file greps of `verify` pass. Only test scripts changed; no Rust, so no mutants-diff.
+- Next session should: nothing for F59; the evaluator decides.

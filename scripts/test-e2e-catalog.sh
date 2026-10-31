@@ -13,7 +13,7 @@ EXPECT=$ROOT/e2e/catalog-text.txt
 check() { python3 -I "$ROOT/e2e/journal.py" catalog --text "$1" --expect "${2:-$EXPECT}"; }
 
 # --- the text matched is the body of every entry of the catalog
-python3 -I - "$ROOT/data/custodio.catalog" "$EXPECT" "$tmp" <<'PY' || bad "cannot split the catalog"
+cat > "$tmp/split.py" <<'PY'
 import os, sys
 catalog, expect, out = sys.argv[1:4]
 bodies, cur, header = [], None, False
@@ -41,10 +41,17 @@ for i, body in enumerate(bodies):
         sys.exit(f"entry {i + 1} of the catalog differs from e2e/catalog-text.txt")
 open(os.path.join(out, "bodies"), "w").write(str(len(bodies)))
 PY
+# split_check CATALOG: succeeds when every entry of CATALOG has the committed body
+split_check() { rm -f "$tmp/bodies"; python3 -I "$tmp/split.py" "$1" "$EXPECT" "$tmp"; }
+split_check "$ROOT/data/custodio.catalog" || bad "the catalog differs from e2e/catalog-text.txt"
 [ "$(cat "$tmp/bodies" 2> /dev/null)" = 2 ] || bad "expected two entries (unmarked and en) in data/custodio.catalog"
 # control: a change to only one entry is caught
 sed '0,/^identifies this kind of entry\./s//identifies this kind of entry (changed)./' "$ROOT/data/custodio.catalog" > "$tmp/changed.catalog"
 if cmp -s "$tmp/changed.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the catalog copy was not changed"; fi
+if split_check "$tmp/changed.catalog" > /dev/null 2>&1; then bad "control: a change to only the first entry was accepted"; fi
+sed '0,/^identifies this kind of entry\./!s/^identifies this kind of entry\./identifies this kind of entry (changed)./' "$ROOT/data/custodio.catalog" > "$tmp/changed2.catalog"
+if cmp -s "$tmp/changed2.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the second copy was not changed"; fi
+if split_check "$tmp/changed2.catalog" > /dev/null 2>&1; then bad "control: a change to only the last entry was accepted"; fi
 
 # --- fixtures of journalctl -x
 entry='Oct 31 10:00:00 host custodiod[321]: signature made: uid 1000 pid 99 key rsa1'
