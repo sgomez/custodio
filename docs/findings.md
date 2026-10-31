@@ -96,8 +96,8 @@ what makes the older rows unsafe against PID reuse.
 | openSUSE Tumbleweed | 128 | 1.14.10 / 37 | Only with dbus-broker |
 | Arch | 128 | 1.16.2 / 37 | Yes |
 
-"Default bus" is inferred; package versions were checked, not each distribution's default.
-Open risk: the end-to-end run covers only Debian 13; no other row was run.
+"Default bus" is inferred for rows not run; package versions were checked, not each distribution's default. Observed in the e2e images: Fedora 44 and Alma 10 run dbus-broker (see "End-to-end targets Fedora 44 and Alma 10").
+Open risk: the end-to-end runs cover Debian 13, Ubuntu 26.04, Fedora 44 and Alma 10; no other row was run.
 RHEL 10 was checked through CentOS Stream 10 and the AlmaLinux 10 repository.
 
 Consequence: supported targets are Debian 13, Ubuntu 25.10 and later, Fedora 41 and later,
@@ -800,3 +800,66 @@ ls -ld /var/log/journal            # in the image, before boot: podman run --rm 
   `/var`. Nothing here was checked on those.
 - What it means for the open question "Volatile journal warning" (SPEC): on these two targets the default is not volatile, so the install
   scripts need no warning for it, and the package changes no journald configuration (SPEC section 6). The other targets record their own default.
+
+### End-to-end targets Fedora 44 and Alma 10
+
+Checked 2026-10-31 in the minimal base images (`docker.io/library/fedora:44`, Fedora 44, systemd 259.10; `docker.io/library/almalinux:10`,
+AlmaLinux 10.2, systemd 257) built by `e2e/targets/fedora44` and `e2e/targets/alma10`, booted as in `e2e/run.sh`. Results come from those
+images, not from an installed system. `docker.io/almalinux/10` does not exist; the image is `almalinux:10`. EPEL is not used anywhere
+(`grep -ri epel e2e/targets` is empty; no `BLOCKED.md` asked for it, none was needed).
+
+**Tool sources** (`dnf repoquery --installed --qf '%{name}-%{version}-%{release} from %{from_repo}'` on Fedora; `dnf list installed` on Alma):
+
+| tool | fedora44 | alma10 |
+| --- | --- | --- |
+| pkcs11-provider | 1.1-3.fc44, repo `fedora` | 1.0-3.el10_0, `@baseos` |
+| OpenSC | 0.27.1-2.fc44, `updates` | 0.26.1-1.el10, `@baseos` |
+| NSS tools (`nss-tools`) | 3.131.0, `updates` | 3.124.0-5.el10_0, `@appstream` |
+| Python D-Bus bindings (`python3-dbus`) | 1.4.0-9.fc44, `fedora` (available) | **absent** |
+| GLib D-Bus for Python (`python3-gobject-base`) | 3.56.3, `updates` | 3.46.0-7.el10, `@baseos` |
+| polkit | 127-2.fc44.2, `fedora` | 125-4.el10_2.1, `@baseos` |
+
+No skip list entry is needed: both `skip.list` files are empty. Alma's gap was the Python D-Bus bindings:
+`dnf list --available python3-dbus` prints `Error: No matching Packages to list`, and `dnf list --available "python3-dbus*"` shows only
+`python3-dbus-client-gen`, `python3-dbus-python-client-gen` and `python3-dbus-signature-pyparsing`. The way taken is (1) of the contract: the test
+agent `e2e/agent.py` now talks to polkit with GLib's D-Bus (Gio, from `python3-gi` / `python3-gobject-base`, present on every target) and no
+target installs `python3-dbus` any more. All approval and denial cases therefore run on Alma. `pkcs11-provider` 1.0 of RHEL 10 passes the
+provider cases (`provider-rsa1`, `provider-ec1`, `provider-several-updates`, `provider-deny`).
+
+**Records** (`target/e2e/<t>.record` from the real runs):
+
+| target | `bus-daemon` | version | `bus-reported-process` | polkit |
+| --- | --- | --- | --- | --- |
+| fedora44 | `dbus-broker` | dbus-broker 37 | `dbus-broker-launch` | 127 |
+| alma10 | `dbus-broker` | dbus-broker 36 | `dbus-broker-launch` | 125 |
+
+- Section 3 said "dbus-broker is the default (inferred)" for Fedora and RHEL/Alma 10. Observed: it is the default of both images. Fedora's image has no
+  bus daemon, the `dbus` meta package pulls in `dbus-broker`; Alma's image already has `dbus-broker` 36 and `dbus` 1.14.10 (dbus-daemon is NOT installed:
+  `rpm -q dbus-daemon` says so). The table in section 3 is right for these two rows; the "inferred" is now observed for the e2e images.
+- The bus does not report the broker as its own process. `GetConnectionUnixProcessID` of `org.freedesktop.DBus` returns the pid of
+  `dbus-broker-launch` (pid 47 in `ps`), whose child `dbus-broker` (pid 48, `--controller 9`) is the daemon; `systemctl show -p MainPID dbus-broker` is also
+  the launcher. `probe.sh` of both targets takes the launcher's `dbus-broker` child and records it as `bus-daemon`, and records what the bus named in
+  `bus-reported-process`.
+
+**Differences from the Debian family** that the suite needed (none weakens a check):
+- Fedora's and Alma's NSS load every p11-kit module through `p11-kit-proxy` (`/etc/crypto-policies/back-ends/nss.config`), so the Custodio module
+  (`/usr/share/p11-kit/modules/custodio.module`) is already in an empty NSS database (`modutil -list` shows its token). `modutil -add` then fails with
+  "Unknown PKCS #11 error": the second load in the same process gets `CKR_CRYPTOKI_ALREADY_INITIALIZED` (0x191) from `C_Initialize` (seen with gdb).
+  `e2e/user.sh` adds the module by hand only when `modutil -list` does not show it, and checks the listing either way.
+- Spy library: `pkcs11-spy.so` is in `/usr/lib64` there; `e2e/composed.sh` searches `/usr/lib` and `/usr/lib64`.
+- Alma's container image masks `systemd-logind` (`/etc/systemd/system/systemd-logind.service -> /dev/null`, not from a package); without it `pam_systemd`
+  fails ("unit is invalid") and there is no session. `alma10`'s Containerfile removes that link, as a booted AlmaLinux has no such mask.
+
+**Journald default** (booted images, before the Custodio package is installed; commands as in the section above: `systemd-analyze cat-config
+systemd/journald.conf | grep -i Storage`, `ls -d /var/log/journal`, `journalctl --header | grep 'File path'`, `podman run --rm <image> ls -d /var/log/journal`
+for the state before boot):
+
+| target | `Storage=` default | `/var/log/journal` before boot | after boot | active journal file |
+| --- | --- | --- | --- | --- |
+| fedora44 | `#Storage=persistent` | exists (in the image) | exists | `/var/log/journal/<machine-id>/system.journal` |
+| alma10 | `#Storage=auto` | absent | exists | `/var/log/journal/<machine-id>/system.journal` |
+
+- fedora44: `persistent`, not volatile. alma10: `auto`; the directory is absent in the image but exists after boot with the journal in it, so the journal is
+  on disk. Who creates it on Alma was not traced (the `z` lines of `tmpfiles.d/systemd.conf` only set modes).
+- `journal-catalog` and the audit-entry cases pass on both (real runs). Nothing in the package changes journald. As for the Debian family, an installed
+  system can differ (a `Storage=volatile` drop-in, a read-only `/var`); only the two images were checked.

@@ -5,7 +5,7 @@ FROM debian:trixie
 
 RUN apt-get -o APT::Sandbox::User=root update && apt-get -o APT::Sandbox::User=root install -y --no-install-recommends \
       systemd systemd-sysv systemd-cron dbus dbus-user-session libpam-systemd polkitd p11-kit opensc pkcs11-provider \
-      libnss3-tools openssl util-linux python3 python3-dbus python3-gi procps \
+      libnss3-tools openssl util-linux python3 python3-gi procps \
     && rm -rf /var/lib/apt/lists/*
 
 # The agent authenticates through PAM like a real one; accept any password for the polkit service

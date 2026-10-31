@@ -10,7 +10,7 @@ spy_log=$WORK/spy.log
 
 # OpenSC's spy module; it is never replaced by $MODULE, a missing spy fails the run.
 spy=/usr/lib/x86_64-linux-gnu/pkcs11-spy.so
-[ -f "$spy" ] || spy=$(find /usr/lib -name pkcs11-spy.so 2>/dev/null | head -n 1)
+[ -f "$spy" ] || spy=$(find /usr/lib /usr/lib64 -name pkcs11-spy.so 2>/dev/null | head -n 1)
 if [ -z "$spy" ] || [ ! -f "$spy" ]; then fail "pkcs11-spy.so (OpenSC) not found"; fi
 
 # Over 1024 bytes, so pkcs11-tool goes straight to C_SignUpdate/C_SignFinal and a denial asks polkit once.

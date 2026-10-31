@@ -73,8 +73,12 @@ case_run "pkcs11-tool-approve-ecdsa"
 db=$WORK/nssdb
 mkdir -p "$db"
 certutil -N -d "sql:$db" --empty-password
-modutil -dbdir "sql:$db" -add custodio -libfile "$MODULE" -force >/dev/null
-modutil -dbdir "sql:$db" -list 2>&1 | grep -q custodio || fail "NSS did not load the module"
+# NSS built with p11-kit (Fedora, RHEL) loads every p11-kit module through p11-kit-proxy by itself, so the module is already
+# there and a second load by modutil fails (C_Initialize: CKR_CRYPTOKI_ALREADY_INITIALIZED). Add it by hand only when it is not.
+if ! modutil -dbdir "sql:$db" -list 2>&1 | grep -qi custodio; then
+    modutil -dbdir "sql:$db" -add custodio -libfile "$MODULE" -force > /dev/null
+fi
+modutil -dbdir "sql:$db" -list 2>&1 | grep -qi custodio || fail "NSS did not load the module"
 certutil -L -d "sql:$db" -h all 2>&1 | grep -q "rsa1" || fail "NSS does not list the custodied certificate"
 
 nsssign() { # issues a certificate from the CSR with the custodied key rsa1

@@ -337,3 +337,21 @@ with an empty context.
   journal-signatures polkit-unavailable journal-entries journal-catalog`. Records: ubuntu2604 `dbus-daemon` 1.16.2, polkit 127; debian13 `dbus-daemon` 1.16.2, polkit 126.
 - `just check`, `bash -n e2e/*.sh` and the file greps of `verify` pass. Only test scripts changed; no Rust, so no mutants-diff.
 - Next session should: nothing for F59; the evaluator decides.
+
+### 2026-10-31 — F46 — session 1
+- Tests first (`scripts/test-e2e-host.sh`): `target_problems` split by family (`polkitd` vs `polkit` matched in the install line, `dbus` meta package and no named
+  bus daemon for `fedora*`/`alma*`, `dnf install "$1"`), a control fixture per rule plus accepted variants, stub packages for deb/rpm/pkg with a per-target
+  `package.pattern` lookup. Run red before the directories existed.
+- Targets `fedora44` and `alma10` (Containerfile, `install.sh` with dnf, `probe.sh`, `package.pattern`, empty `skip.list`). Shared-script changes (all
+  keep debian13/ubuntu2604 green): `agent.py` uses GLib's Gio D-Bus instead of `python3-dbus` (absent on Alma; way (1) of the contract; `python3-dbus` dropped from
+  all four Containerfiles); `user.sh` adds the NSS module with `modutil` only if p11-kit-proxy has not already loaded it; `composed.sh` also searches `/usr/lib64` for
+  `pkcs11-spy.so`. Alma's image masks logind: its Containerfile removes the mask. `probe.sh` (rpm targets) reports the dbus-broker child because the bus names
+  `dbus-broker-launch` as its own process.
+- Findings: `docs/findings.md` "End-to-end targets Fedora 44 and Alma 10" (tool sources, no skips needed, records, differences, journald: fedora44 `persistent`,
+  alma10 `auto` with the directory created at boot); section 3 notes updated. No EPEL, no deviation, no BLOCKED.md.
+- Real runs: `just e2e` (all) exit 0, "passed: alma10 debian13 fedora44 ubuntu2604"; 29 cases run, 0 skipped on each. fedora44 and alma10 were also run alone
+  with `bash e2e/run.sh <t>` (passed). `grep -qx bus-daemon=dbus-broker` holds on both records.
+  - fedora44.record: `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 37`, `bus-reported-process=dbus-broker-launch`, `polkit-version=127`
+  - alma10.record: `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 36`, `bus-reported-process=dbus-broker-launch`, `polkit-version=125`
+- `just check` and the rest of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F46; the evaluator decides.
