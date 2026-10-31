@@ -442,3 +442,10 @@ with an empty context.
 - `verify` greps and `just check` (forced) pass. No Rust changed, so no mutants-diff.
 - Not run on a real system: the commands in the doc are copied from the e2e install scripts; the rpm-ostree bus-check notice and `rpm-ostree install` are unverified here (no rpm-ostree in the container).
 - Next session should: nothing for F51; the evaluator decides.
+
+### 2026-10-31 — F52 — session 1
+- Tests first: `scripts/test-docs-manual.sh` (in `test-scripts`): each machine's part (found by heading) has the five run records, install commands that also appear whole in `docs/install.md`, per-machine items of SPEC acceptance 12 to 15, the fedora44 journalctl line equal to the base query of `docs/audit.md` (cancellations: `CUSTODIO_OUTCOME=denied`), the refusal phrase read from `e2e/refusal-lib.sh`; 25 negative controls on fixture copies, each checked to differ from the page.
+- Wrote sections 10 to 15 of `docs/manual-acceptance.md` (common records, fedora44, bazzite, omarchy, ubuntu2404, result form); M01 sections kept, title and intro cover both milestones. Evaluator notes: manual registration on Fedora is recorded as a failure of acceptance 12; bazzite has toolbox and ausearch controls; runs are F54 to F57 as in features.json.
+- Not run on real machines: every command not copied from a script or `docs/install.md` is unverified (the page says so). `rpm-ostree uninstall custodio --install` for the replace step is unverified.
+- `verify` greps and `just check` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F52; the evaluator decides.
