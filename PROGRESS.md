@@ -369,3 +369,29 @@ with an empty context.
   `target/e2e/arch.record`: `target=arch`, `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 37`, `bus-reported-process=dbus-broker-launch`, `polkit-version=128`
   (`grep -qx bus-daemon=dbus-broker` holds). No Rust changed, so no mutants-diff.
 - Next session should: nothing for F47; the evaluator decides.
+
+### 2026-10-31 — F48 — session 1
+- Tests first: `e2e/upgrade-selftest.sh` (run by the guest and by `scripts/test-e2e-upgrade.sh` in `test-scripts`) with a control per rejection: changed byte, mode,
+  uid, gid, directory mode, added/removed file, snapshot without key files, listing without a key or empty or changed, unchanged pid, `(deleted)` exe, another inode with
+  the same content, an old process still on the live binary, `systemctl restart/start/daemon-reload/reload/kill`, `pkill` in the section, missing or empty markers.
+  Version comparison controls (equal, lower, odd characters) run on `dpkg --compare-versions` and on `rpm.vercmp` (both exist in the dev container; a mutated
+  always-accept rpm branch fails 8 controls); Arch's branch reads `vercmp`'s output, exactly `1`, and runs against stubs that print 0, -1, 2, 11, empty, text or exit 3.
+  `scripts/test-e2e-host.sh` now builds real fixture packages (nfpm), checks the second read-only mount `/pkg-next`, the new ids, an omitted id, a missing N+1, a
+  different `custodiod` and N used as N+1. It was over the 5000-token limit, so its target checks moved to `scripts/test-e2e-targets.sh`.
+- N+1: `scripts/package-next.sh` (called by the `e2e` recipe after `package`) puts N aside, runs `just package version=<patch+1>` and puts N back; N+1 is in
+  `target/packages-next`. `e2e/check-next.sh` (host, no version tool): same format, different version, same `custodiod` sha256, same sorted file list.
+- Guest: `e2e/upgrade.sh` (markers `# BEGIN/END upgrade-case`, called last from `guest.sh`) and `e2e/upgrade-user.sh`; the greater-than check runs in the guest
+  with the target's tool before installing. Six ids in `cases.list`: `upgrade-version-greater upgrade-service-new-binary upgrade-state-unchanged upgrade-keys-listed
+  upgrade-signs-with-polkit upgrade-no-manual-step`. No skip entries.
+- Found by the real run: the stock Debian/Ubuntu images ship `/usr/sbin/policy-rc.d` (exit 101), so dpkg did not restart the service. Image fix only
+  (`rm -f` in the two Containerfiles); the package was right. `cmp` is absent on rpm/Arch images, so `sha256sum` is used. See `docs/findings.md` "F48".
+- Real run: `just e2e` exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2604"; each log has the 6 `E2E-CASE run upgrade-*` lines, 0 skipped.
+  Version tool, N -> N+1, MainPID before -> after, device:inode of `/proc/<pid>/exe` before -> after (the installed file's inode):
+  - debian13: `dpkg --compare-versions`, 0.1.0-1 -> 0.1.1-1, 699 -> 1919, 67:75759776 -> 67:75769367
+  - ubuntu2604: `dpkg --compare-versions`, 0.1.0-1 -> 0.1.1-1, 734 -> 2202, 67:75759769 -> 67:75769897
+  - fedora44: `rpm.vercmp (rpm --eval)`, 0.1.0-1 -> 0.1.1-1, 703 -> 1988, 67:75759798 -> 67:75770705
+  - alma10: `rpm.vercmp (rpm --eval)`, 0.1.0-1 -> 0.1.1-1, 716 -> 2075, 67:75628704 -> 67:75637714
+  - arch: `vercmp` (printed 1), 0.1.0-1 -> 0.1.1-1, 768 -> 2160, 67:75760146 -> 67:75760147
+  State directory identical (5 entries, sha256 + owner + mode) and 3 requests for 3 signatures after the upgrade on all five.
+- `just check`, `bash -n e2e/*.sh` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F48; the evaluator decides.

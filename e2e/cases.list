@@ -29,3 +29,9 @@ journal-signatures
 polkit-unavailable
 journal-entries
 journal-catalog
+upgrade-version-greater
+upgrade-service-new-binary
+upgrade-state-unchanged
+upgrade-keys-listed
+upgrade-signs-with-polkit
+upgrade-no-manual-step

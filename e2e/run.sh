@@ -2,12 +2,13 @@
 # Host side of `just e2e [TARGET]` (default: all). For each target directory under e2e/targets/ (or E2E_TARGETS): builds its
 # Containerfile, boots it as a privileged systemd container with the package mounted read-only, runs the shared guest.sh, then
 # checks the case accounting (check-cases.sh) and saves the record of the run (bus daemon, polkit version) under target/e2e/.
-# The packages are built by the `package` dependency of the recipe, not here. A failed target does not stop the others.
+# The packages (N, and N+1 for the upgrade case) are built by the `e2e` recipe, not here. A failed target does not stop the others.
 # Needs podman or docker able to run a privileged container (systemd needs cgroups and /run).
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 targets_dir=${E2E_TARGETS:-e2e/targets}
 packages=${E2E_PACKAGES:-target/packages}
+packages_next=${E2E_PACKAGES_NEXT:-target/packages-next} # package N+1 of the upgrade case (scripts/package-next.sh), never in $packages
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
 
@@ -30,7 +31,7 @@ fi
 mkdir -p "$out_dir"
 
 run_target() {
-    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found state log rc=0 line key value
+    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next state log rc=0 line key value
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
@@ -38,11 +39,16 @@ run_target() {
     pattern=$(head -n 1 "$dir/package.pattern")
     found=$(find "$packages" -name "$pattern" | sort | tail -n 1)
     [ -n "$found" ] || { echo "e2e[$t]: no package '$pattern' in $packages (the e2e recipe builds it first)" >&2; return 1; }
+    found_next=$(find "$packages_next" -name "$pattern" 2> /dev/null | sort | tail -n 1)
+    [ -n "$found_next" ] || { echo "e2e[$t]: no package N+1 '$pattern' in $packages_next (the e2e recipe builds it)" >&2; return 1; }
+    [ "$(realpath "$found")" != "$(realpath "$found_next")" ] || { echo "e2e[$t]: N and N+1 are the same file" >&2; return 1; }
+    bash e2e/check-next.sh "$found" "$found_next" || return 1
     echo "e2e[$t]: building the image from $dir/Containerfile"
     "$engine" build -q -t "custodio-e2e-$t" -f "$dir/Containerfile" "$dir" > /dev/null || return 1
     "$engine" run -d --name "$name" --privileged --cgroupns=host \
         --tmpfs /run --tmpfs /run/lock --tmpfs /tmp \
         -v "$PWD/$found:/pkg/$(basename "$found"):ro" \
+        -v "$PWD/$found_next:/pkg-next/$(basename "$found_next"):ro" \
         -v "$PWD/e2e:/e2e:ro" \
         -v "$PWD/$dir:/e2e-target:ro" \
         "custodio-e2e-$t" > /dev/null || return 1

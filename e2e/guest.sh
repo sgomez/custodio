@@ -11,6 +11,8 @@ bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
 pkg=$(find /pkg -type f | head -n 1)
 [ -n "$pkg" ] || fail "no package is mounted in /pkg"
+pkg_next=$(find /pkg-next -type f | head -n 1)
+[ -n "$pkg_next" ] || fail "no package N+1 is mounted in /pkg-next"
 bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
 echo "e2e: installed $(basename "$pkg") from the mounted file"
 systemctl daemon-reload
@@ -65,6 +67,9 @@ timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/unavailable.sh" |
 restore_polkit || fail "polkit could not be restored"
 systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
 WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
+
+# The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
+WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"

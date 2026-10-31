@@ -6,20 +6,31 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-host: $*" >&2; fail=1; }
 
-mkdir -p "$tmp/bin" "$tmp/pkgs"
-: > "$tmp/pkgs/custodio_0.1.0-1_amd64.deb"
-: > "$tmp/pkgs/custodio-0.1.0-1.x86_64.rpm"
-: > "$tmp/pkgs/custodio-0.1.0-1-x86_64.pkg.tar.zst"
+# Real (small) packages: the host checks that N+1 is N with only the version raised (e2e/check-next.sh), which needs the contents.
+# shellcheck source=scripts/lib/package-fixtures.sh
+. "$ROOT/scripts/lib/package-fixtures.sh"
+fx_init
+trap 'fx_cleanup; rm -rf "$tmp"' EXIT
+fx_build cur 0.1.0 '' none
+fx_build next 0.1.1 '' none
+mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next"
+for f in deb rpm archlinux; do
+    cp "$(fx_file cur "$f")" "$tmp/pkgs/"
+    cp "$(fx_file next "$f")" "$tmp/next/"
+done
+export E2E_PACKAGES_NEXT=$tmp/next
 cat > "$tmp/bin/podman" <<'STUB'
 #!/usr/bin/env bash
 # Logs the arguments; `exec ... guest.sh` prints what the fake guest would, from STUB_* variables.
 echo "$*" >> "$STUB_LOG"
 case $1 in
-run) sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg" ;;
+run)
+    sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg"
+    sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.next"
+    ;;
 exec)
     case "$*" in
     *"is-system-running"*) echo running ;;
@@ -68,6 +79,11 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     pkg=$(find "$tmp/pkgs" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$pkg" ] || bad "$T: package.pattern matches none of the fake packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/$pkg:/pkg/$pkg:ro" || bad "the package is not mounted read-only"
+    nxt=$(find "$tmp/next" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
+    [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
+    grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
+    [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
+    [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 2 ] || bad "$T: N and N+1 are not two different read-only mounts"
     grep -q "exec .* bash /e2e/guest.sh $T" "$tmp/log" || bad "the shared guest script is not executed"
     grep -q "installed $pkg from the mounted file" "$tmp/out" || bad "the guest's output is not passed through"
     grep -qi 'cargo\|nfpm\|just package' "$tmp/log" && bad "the engine log shows a package build"
@@ -141,143 +157,35 @@ rm -rf "$fake/gamma" "$fake/beta"; rm "$fake/alpha/install.sh"
 run_all alpha && bad "a target without install.sh was accepted"
 ! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine built or ran an incomplete target"
 
+# --- the upgrade case: the ids are registered, a run that omits one fails, and the pair N, N+1 is checked by the host before anything runs
+for id in upgrade-version-greater upgrade-service-new-binary upgrade-state-unchanged upgrade-keys-listed upgrade-signs-with-polkit upgrade-no-manual-step; do
+    grep -qx "$id" "$ROOT/e2e/cases.list" || bad "cases.list lacks $id"
+    STUB_OMIT=$id expect_fail "omitted $id" debian13 || true
+    grep -q "'$id' was not reported" "$tmp/out" || bad "an omitted $id was not named"
+done
+grep -q 'upgrade' "$ROOT/e2e/guest.sh" || bad "the guest does not run the upgrade case"
+grep -q 'install.sh' "$ROOT/e2e/upgrade.sh" || bad "the upgrade case does not install N+1 with the target's install.sh"
+# N+1 is looked for in its own directory: none there, the run fails before the engine is called
+mkdir -p "$tmp/nonext"
+: > "$tmp/log"
+if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/nonext" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run without package N+1 passed"; fi
+grep -q 'no package N+1' "$tmp/out" || bad "a missing N+1 was not named: $(tail -n 3 "$tmp/out")"
+! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine ran without package N+1"
+# N+1 must be N with only the version raised: another custodiod, or the same version, is rejected by the host before the engine is called
+printf 'another build\n' >> "$FX_DIR/target/release/custodiod"
+fx_build other 0.1.1 '' none
+mkdir -p "$tmp/otherbin"
+cp "$(fx_file other deb)" "$tmp/otherbin/"
+: > "$tmp/log"
+if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/otherbin" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with a different custodiod in N+1 passed"; fi
+grep -q 'custodiod of N+1 differs' "$tmp/out" || bad "a different custodiod was not named: $(tail -n 3 "$tmp/out")"
+! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine ran with a different custodiod in N+1"
+if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with N as N+1 passed"; fi
+grep -q 'same file' "$tmp/out" || bad "N used as N+1 was not named: $(tail -n 3 "$tmp/out")"
+
 # --- the packages come from the packages directory: none there, the run fails
 mkdir -p "$tmp/empty"
 STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/empty" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1 && bad "a run without a package passed"
 
-# --- the targets: no Containerfile copies a package, the install step uses the target's tool, the real polkit and bus daemon
-for cf in "$ROOT"/e2e/targets/*/Containerfile; do
-    if grep -Eqi '^[[:space:]]*(COPY|ADD)\b|\bcp\b.*(\.deb|\.rpm|\.pkg|custodio)|/pkg/' "$cf"; then bad "$cf copies or names a package"; fi
-done
-printf 'FROM debian:trixie\nCOPY custodio.deb /tmp/\n' > "$tmp/CF.bad"
-grep -Eqi '^[[:space:]]*(COPY|ADD)\b' "$tmp/CF.bad" || bad "control: a Containerfile that copies a .deb was not seen"
-grep -q 'install.sh' "$ROOT/e2e/guest.sh" || bad "the guest does not call the target's install step"
-if grep -En '\b(dpkg|apt|apt-get|rpm|pacman|dnf)\b|\b(cp|install)\b.* /(usr|etc)' "$ROOT/e2e/guest.sh" | grep -v '^[0-9]*:[[:space:]]*#' | grep -q .; then bad "the shared guest script calls a package tool or copies into /usr or /etc"; fi
-# target_problems DIR: what is wrong with a target directory (empty output: nothing). The install step uses the tool of the
-# distribution on the mounted file (ubuntu* must use apt, not only dpkg), the image has the real polkit and a default bus daemon.
-target_problems() {
-    local d=$1 n cf inst
-    n=$(basename "$d")
-    cf="$d/Containerfile"
-    inst="$d/install.sh"
-    for f in Containerfile install.sh probe.sh skip.list package.pattern; do [ -f "$d/$f" ] || echo "$n: no $f"; done
-    # The package lists sit on the lines of the install command (with their continuations), not anywhere in the file.
-    pkgs=$(sed -n '/\(apt-get\|apt\|dnf\)[^#]*install\|pacman[^#]*[[:space:]]-S/,/[^\\]$/p' "$cf" 2> /dev/null | grep -v '^[[:space:]]*#' || true)
-    case $n in
-    debian* | ubuntu*)
-        grep -Eq '(^|[[:space:]])polkitd([[:space:]]|$)' <<< "$pkgs" || echo "$n: does not install polkitd"
-        grep -Eq '(^|[[:space:]])dbus([[:space:]]|$)' <<< "$pkgs" || echo "$n: does not install dbus"
-        if grep -qi 'dbus-broker' "$cf" 2> /dev/null; then echo "$n: installs dbus-broker"; fi
-        if grep -Eq '(^|[[:space:]])dbus-daemon([[:space:]]|$)' <<< "$pkgs"; then echo "$n: forces dbus-daemon"; fi
-        ;;
-    fedora* | alma*)
-        grep -Eq '(^|[[:space:]])polkit([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install polkit"
-        grep -Eq '(^|[[:space:]])dbus([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install the dbus meta package"
-        if grep -Eq '(^|[[:space:]])(dbus-broker|dbus-daemon)([[:space:]\\]|$)' <<< "$pkgs"; then echo "$n: names a bus daemon package"; fi
-        ;;
-    arch*)
-        grep -Eq '(^|[[:space:]])polkit([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install polkit"
-        if grep -Eq '(^|[[:space:]])(dbus|dbus-broker|dbus-broker-units|dbus-daemon-units)([[:space:]\\]|$)' <<< "$pkgs"; then echo "$n: names a bus package"; fi
-        ;;
-    esac
-    grep -Eq 'dpkg|apt|rpm|dnf|pacman' "$inst" 2> /dev/null || echo "$n: install.sh uses no package tool"
-    # shellcheck disable=SC2016 # the pattern looks for a literal "$1" in the script
-    case $n in
-    ubuntu*) grep -Eq '(^|[[:space:]])(apt|apt-get)[[:space:]].*\binstall\b.*"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not apt install the mounted file" ;;
-    fedora* | alma*) grep -Eq '(^|[[:space:]])dnf[[:space:]].*\binstall\b.*"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not dnf install the mounted file" ;;
-    arch*) grep -Eq '(^|[[:space:]])pacman[[:space:]]+(-[A-Za-z-]+[[:space:]]+)*-U[A-Za-z]*([[:space:]]+-[A-Za-z-]+)*[[:space:]]+"\$1"' "$inst" 2> /dev/null || echo "$n: install.sh does not pacman -U the mounted file" ;;
-    esac
-}
-for d in "$ROOT"/e2e/targets/*/; do
-    d=${d%/}
-    p=$(target_problems "$d")
-    [ -z "$p" ] || bad "$p"
-done
-[ -d "$ROOT/e2e/targets/ubuntu2604" ] || bad "no target ubuntu2604"
-# control: a fixture Ubuntu target whose install.sh uses only dpkg is rejected, an apt one is not
-mkdir -p "$tmp/fx"
-cp -r "$ROOT/e2e/targets/debian13" "$tmp/fx/ubuntu9999"
-[ -n "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: an ubuntu target that installs with dpkg -i only was accepted"
-# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-printf '#!/usr/bin/env bash\nset -euo pipefail\napt-get install -y "$1" > /dev/null\n' > "$tmp/fx/ubuntu9999/install.sh"
-[ -z "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: an ubuntu target that installs with apt was rejected: $(target_problems "$tmp/fx/ubuntu9999")"
-# controls for the rpm family: an accepted variant, then one change at a time that must be rejected
-fx_rpm() { # NAME: a fedora-style fixture target with polkit + dbus + dnf install "$1"
-    mkdir -p "$tmp/fx/$1"
-    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern} "$tmp/fx/$1/"
-    printf 'FROM docker.io/library/fedora:44\nRUN dnf install -y systemd dbus polkit python3-dbus && dnf clean all\n' > "$tmp/fx/$1/Containerfile"
-    # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-    printf '#!/usr/bin/env bash\nset -euo pipefail\ndnf install -y "$1" > /dev/null\n' > "$tmp/fx/$1/install.sh"
-}
-fx_rpm fedora9999
-[ -z "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a correct rpm target was rejected: $(target_problems "$tmp/fx/fedora9999")"
-fx_rpm alma9999
-[ -z "$(target_problems "$tmp/fx/alma9999")" ] || bad "control: a correct alma target was rejected: $(target_problems "$tmp/fx/alma9999")"
-fx_rpm fedora9999
-sed -i 's/ polkit / polkitd /' "$tmp/fx/fedora9999/Containerfile"
-[ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target with polkitd instead of polkit was accepted"
-fx_rpm fedora9999
-sed -i 's/ dbus / dbus dbus-daemon /' "$tmp/fx/fedora9999/Containerfile"
-[ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target that installs dbus-daemon was accepted"
-fx_rpm fedora9999
-sed -i 's/ dbus / dbus dbus-broker /' "$tmp/fx/fedora9999/Containerfile"
-[ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target that installs dbus-broker was accepted"
-fx_rpm fedora9999
-sed -i 's/ dbus / /' "$tmp/fx/fedora9999/Containerfile"
-[ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target without the dbus meta package (python3-dbus only) was accepted"
-fx_rpm fedora9999
-# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-printf '#!/usr/bin/env bash\nset -euo pipefail\nrpm -i "$1"\n' > "$tmp/fx/fedora9999/install.sh"
-[ -n "$(target_problems "$tmp/fx/fedora9999")" ] || bad "control: a fedora target that installs with rpm -i only was accepted"
-# controls for the arch family
-fx_arch() { # NAME: an arch-style fixture target with polkit, no bus package, pacman -U "$1"
-    mkdir -p "$tmp/fx/$1"
-    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern} "$tmp/fx/$1/"
-    printf 'FROM docker.io/library/archlinux:latest\nRUN pacman -Syu --noconfirm --needed systemd polkit python-gobject && find /var/cache/pacman -type f -delete\n' > "$tmp/fx/$1/Containerfile"
-    # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-    printf '#!/usr/bin/env bash\nset -euo pipefail\npacman -U --noconfirm "$1" > /dev/null\n' > "$tmp/fx/$1/install.sh"
-}
-fx_arch arch9999
-[ -z "$(target_problems "$tmp/fx/arch9999")" ] || bad "control: a correct arch target was rejected: $(target_problems "$tmp/fx/arch9999")"
-arch_rejects() { # DESCRIPTION MESSAGE: the fixture arch9999 must be rejected with exactly this message
-    local got
-    got=$(target_problems "$tmp/fx/arch9999")
-    grep -q "$2" <<< "$got" || bad "control: $1: expected '$2', got '$got'"
-}
-fx_arch arch9999
-sed -i 's/ polkit / polkitd /' "$tmp/fx/arch9999/Containerfile"
-arch_rejects "an arch target with polkitd instead of polkit" 'does not install polkit'
-for pkg in dbus dbus-broker dbus-broker-units dbus-daemon-units; do
-    fx_arch arch9999
-    sed -i "s/ polkit / polkit $pkg /" "$tmp/fx/arch9999/Containerfile"
-    arch_rejects "an arch target that names $pkg" 'names a bus package'
-done
-fx_arch arch9999
-# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-printf '#!/usr/bin/env bash\nset -euo pipefail\nbsdtar -xf "$1" -C /\n' > "$tmp/fx/arch9999/install.sh"
-arch_rejects "an arch target that unpacks the files instead of pacman -U" 'install.sh uses no package tool'
-fx_arch arch9999
-# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-printf '#!/usr/bin/env bash\nset -euo pipefail\ncp "$1" /tmp/x.pkg.tar.zst\npacman -U --noconfirm /tmp/x.pkg.tar.zst\n' > "$tmp/fx/arch9999/install.sh"
-arch_rejects "an arch target that runs pacman -U on a copy" 'does not pacman -U the mounted file'
-fx_arch arch9999
-# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
-printf '#!/usr/bin/env bash\nset -euo pipefail\npacman -S --noconfirm "$1"\n' > "$tmp/fx/arch9999/install.sh"
-arch_rejects "an arch target that pacman -S the file" 'does not pacman -U the mounted file'
-# a Debian target must not take the rpm names, and must not force dbus-daemon
-cp -r "$ROOT/e2e/targets/debian13" "$tmp/fx/debian9999"
-sed -i 's/ dbus / dbus dbus-daemon /' "$tmp/fx/debian9999/Containerfile"
-[ -n "$(target_problems "$tmp/fx/debian9999")" ] || bad "control: a debian target that forces dbus-daemon was accepted"
-rm "$tmp/fx/ubuntu9999/probe.sh"
-[ -n "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: a target without probe.sh was accepted"
-grep -rqi 'polkit' "$ROOT/e2e/targets" || bad "no target mentions polkit"
-
-# --- shellcheck covers the new scripts
-list=$("$ROOT/scripts/list-shell-scripts.sh")
-targets_scripts=()
-for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh"); done
-for f in e2e/run.sh e2e/check-cases.sh e2e/report.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
-    grep -qx "$f" <<< "$list" || bad "$f is not in the shellcheck list"
-done
 
 exit "$fail"

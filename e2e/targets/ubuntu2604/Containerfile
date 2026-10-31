@@ -8,6 +8,10 @@ RUN apt-get -o APT::Sandbox::User=root update && apt-get -o APT::Sandbox::User=r
       libnss3-tools openssl util-linux python3 python3-gi procps \
     && rm -rf /var/lib/apt/lists/*
 
+# The container image ships /usr/sbin/policy-rc.d (exit 101: "do not start services in a container"); a real machine has none, and the
+# maintainer scripts of the package would not restart the service on an upgrade with it. The test machine behaves like a real one.
+RUN rm -f /usr/sbin/policy-rc.d
+
 # The agent authenticates through PAM like a real one; accept any password for the polkit service
 # so that "approve" needs no secret. The decision (approve or deny) is made by the agent.
 RUN printf 'auth required pam_permit.so\naccount required pam_permit.so\n' > /etc/pam.d/polkit-1
