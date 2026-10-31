@@ -15,7 +15,10 @@ cd "$(git rev-parse --show-toplevel)"
 LOG_DIR=.harness/logs
 mkdir -p "$LOG_DIR"
 ensure_node_tools
-tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+# After a stop, loop.sh decides what to do with the leftovers of the session it cut short.
+if [ ! -f .harness/state/interrupted ] && tracked_changes; then
+  die "Uncommitted changes to tracked files; commit or stash them first."
+fi
 
 gate() {
   approved "$1" && return 0

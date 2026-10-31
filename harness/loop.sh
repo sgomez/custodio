@@ -37,10 +37,15 @@ run_claude() {
   stop_if_asked
   HARNESS_ROLE=$role claude -p --dangerously-skip-permissions "$@" >"$logfile" 2>&1 \
     || log "$role session exited non-zero, see $logfile"
-  stop_if_asked # the kill-switch hook cut this session short: its output is no verdict
+  stop_if_asked "$logfile" # the kill-switch hook cut this session short: its output is no verdict
 }
 
-stop_if_asked() { if [ -e AGENT_STOP ]; then die "AGENT_STOP found, stopping." 0; fi; }
+# stop_if_asked [<log of the session just cut short>]: the log goes to $STATE/interrupted for the resume.
+stop_if_asked() {
+  [ -e AGENT_STOP ] || return 0
+  [ -z "${1:-}" ] || basename "$1" > "$STATE/interrupted"
+  die "AGENT_STOP found, stopping." 0
+}
 
 verdict() { grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*'; }
 bump() { local n; n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/$1"; echo "$n"; }
@@ -124,10 +129,25 @@ $(cat "$STATE/$id.contract-eval")"
   die "$id: contract not approved after $MAX_CONTRACT_ROUNDS rounds; see $STATE/$id.contract-review" 2
 }
 
+# A stop skips the stash after a session. A builder's leftovers stay for the next builder; any other
+# role's are stashed, as the loop would have done.
+resumed=
+if [ -f "$STATE/interrupted" ]; then
+  cut=$(cat "$STATE/interrupted")
+  if [[ $cut == *-build.log ]]; then
+    resumed=$cut
+  else
+    stash_leftovers "${cut%.log}"
+    rm "$STATE/interrupted"
+  fi
+fi
+
 while true; do
   [ -e AGENT_STOP ] && die "AGENT_STOP found, stopping." 0
   if [ -e BLOCKED.md ]; then cat BLOCKED.md; die "BLOCKED.md found: a human is needed." 2; fi
-  tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+  if [ -z "$resumed" ] && tracked_changes; then
+    die "Uncommitted changes to tracked files; commit or stash them first."
+  fi
 
   id=$(next_feature)
   if [ -z "$id" ]; then
@@ -156,7 +176,12 @@ $feature
 Approved contract: $c
 
 The evaluator's notes on the contract:
-$(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)"
+$(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)${resumed:+
+
+The operator stopped the previous builder session ($LOG_DIR/$resumed) before it committed. Its
+uncommitted work is in the working tree: check it with git status and git diff, keep what holds,
+and continue from it.}"
+  resumed= && rm -f "$STATE/interrupted"
   [ -e BLOCKED.md ] && continue
   stash_leftovers "$stamp"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
