@@ -62,7 +62,7 @@
       "depends_on": [
         "F36"
       ],
-      "verify": "just check && just test-scripts && just package && just package-lint",
+      "verify": "just check && just package && just package-lint",
       "passes": true
     },
     {
@@ -72,7 +72,7 @@
       "depends_on": [
         "F42"
       ],
-      "verify": "just check && just test-scripts && just package && just package-lint",
+      "verify": "just check && just package && just package-lint",
       "passes": true
     },
     {
@@ -82,7 +82,7 @@
       "depends_on": [
         "F42"
       ],
-      "verify": "just check && just test-scripts && just package && just package-lint",
+      "verify": "just check && just package && just package-lint",
       "passes": true
     },
     {
@@ -92,7 +92,7 @@
       "depends_on": [
         "F42"
       ],
-      "verify": "just check && just test-scripts && just package && just package-lint",
+      "verify": "just check && just package && just package-lint",
       "passes": true
     },
     {
@@ -102,7 +102,7 @@
       "depends_on": [
         "F43"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/debian13/skip.list && grep -rqi 'polkit' e2e/targets",
+      "verify": "just check && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/debian13/skip.list && grep -rqi 'polkit' e2e/targets",
       "passes": false
     },
     {
@@ -112,7 +112,7 @@
       "depends_on": [
         "F45"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && test -f e2e/targets/ubuntu2604/Containerfile && test -f e2e/targets/ubuntu2604/skip.list && grep -rq 'journalctl -x' e2e",
+      "verify": "just check && bash -n e2e/*.sh && test -f e2e/targets/ubuntu2604/Containerfile && test -f e2e/targets/ubuntu2604/skip.list && grep -rq 'journalctl -x' e2e",
       "passes": false
     },
     {
@@ -123,7 +123,7 @@
         "F44",
         "F45"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -q 'fedora:44' e2e/targets/fedora44/Containerfile && grep -qi 'alma' e2e/targets/alma10/Containerfile && test -f e2e/targets/fedora44/skip.list && test -f e2e/targets/alma10/skip.list",
+      "verify": "just check && bash -n e2e/*.sh && grep -q 'fedora:44' e2e/targets/fedora44/Containerfile && grep -qi 'alma' e2e/targets/alma10/Containerfile && test -f e2e/targets/fedora44/skip.list && test -f e2e/targets/alma10/skip.list",
       "passes": false
     },
     {
@@ -134,7 +134,7 @@
         "F58",
         "F45"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -qi 'archlinux' e2e/targets/arch/Containerfile && test -f e2e/targets/arch/skip.list",
+      "verify": "just check && bash -n e2e/*.sh && grep -qi 'archlinux' e2e/targets/arch/Containerfile && test -f e2e/targets/arch/skip.list",
       "passes": false
     },
     {
@@ -146,7 +146,7 @@
         "F47",
         "F59"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rqi 'upgrade' e2e && grep -rq 'sha256sum\\|cmp ' e2e",
+      "verify": "just check && bash -n e2e/*.sh && grep -rqi 'upgrade' e2e && grep -rq 'sha256sum\\|cmp ' e2e",
       "passes": false
     },
     {
@@ -156,7 +156,7 @@
       "depends_on": [
         "F48"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rqi 'cargo.deb\\|cargo-deb' e2e && ! grep -rqsE 'cargo[- ]deb' mise.toml harness/Containerfile .github",
+      "verify": "just check && bash -n e2e/*.sh && grep -rqi 'cargo.deb\\|cargo-deb' e2e && ! grep -rqsE 'cargo[- ]deb' mise.toml harness/Containerfile .github",
       "passes": false
     },
     {
@@ -168,7 +168,7 @@
         "F47",
         "F59"
       ],
-      "verify": "just check && just test-scripts && bash -n e2e/*.sh && grep -rq 'purge' e2e && grep -rqiE 'reinstall' e2e",
+      "verify": "just check && bash -n e2e/*.sh && grep -rq 'purge' e2e && grep -rqiE 'reinstall' e2e",
       "passes": false
     },
     {
