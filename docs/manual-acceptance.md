@@ -276,10 +276,12 @@ Write the package file names. Fedora's own Firefox (`dnf install firefox` if mis
 or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
 
 1. SELinux first, before installing anything. `getenforce` must print `Enforcing`. If not, stop and
-   note it: the run does not count. Write down the time of day as the start of the audit window.
+   note it: the run does not count. The second command prints the start of the audit window (date and
+   time, as `ausearch` reads them); write it down.
 
    ```sh
    getenforce
+   LC_ALL=C date '+%x %T'
    ```
 2. Install the `.rpm` (command from `docs/install.md`):
 
@@ -298,11 +300,15 @@ or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
    enough; **unverified**), pick the certificate and check that the page loads.
 6. Each signature shows the polkit dialog: repeat step 5 twice for each key, approving; the dialog must
    appear each time. Then repeat once and cancel the dialog: the connection must fail.
-7. SELinux denials over the whole run, from the start time of step 1 (**unverified** flags):
+7. SELinux denials over the whole run, from the start of step 1 (replace `MM/DD/YY HH:MM:SS` with
+   what it printed; checked in the F54 run). `--input-logs` makes `ausearch` read the log even when
+   its input is not a terminal (over `ssh`); without it, it reads nothing and prints `<no matches>`. The
+   first command must find the polkit authentications of step 6; if it finds none, the query is wrong.
 
    ```sh
-   sudo ausearch -m AVC,USER_AVC --start "HH:MM:SS" | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
-   sudo ausearch -m AVC,USER_AVC --start "HH:MM:SS" | wc -l
+   sudo LC_ALL=C ausearch -m USER_AUTH --input-logs --start MM/DD/YY HH:MM:SS | grep -c USER_AUTH
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -c AVC
    ```
 
    Expected: no line names the service (`custodio`), polkit or the module (`libcustodio_pkcs11`) during import, signing and denial. Any AVC at all: copy it into the notes, with the step it happened in.
@@ -323,10 +329,12 @@ Record first (section 10): `cat /etc/os-release; uname -r; dbus-broker --version
 package file names of the old and the newer package. Do everything on the host, in a terminal of the
 desktop session; do not use a toolbox or distrobox: a signature from inside a toolbox does not count.
 
-1. `getenforce` prints `Enforcing`; write down the time of day. Layer the package (`docs/install.md`, rpm-ostree)
-   and reboot into the new deployment:
+1. `getenforce` prints `Enforcing`; write down what `LC_ALL=C date '+%x %T'` prints, the start of the audit
+   window (section 11 step 1). Layer the package (`docs/install.md`, rpm-ostree) and reboot into the new deployment:
 
    ```sh
+   getenforce
+   LC_ALL=C date '+%x %T'
    sudo rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm
    sudo systemctl reboot
    ```
@@ -346,14 +354,17 @@ desktop session; do not use a toolbox or distrobox: a signature from inside a to
 5. OS update: `sudo rpm-ostree upgrade`, then `sudo systemctl reboot`. After the reboot, the same keys
    sign again, with the dialog, and a cancel fails. If the upgrade offers nothing, write that and use `rpm-ostree rebase` to another image
    (**unverified**) or mark this step not run.
-6. No SELinux denial involves the service, after each reboot and at the end:
+6. No SELinux denial involves the service, after each reboot and at the end. The flags are those of section 11
+   step 7 (checked on Fedora 44, not on bazzite); `MM/DD/YY HH:MM:SS` is what step 1 printed, so the window covers
+   the reboots even across midnight. The first command must find authentications (the desktop login after each
+   reboot, the polkit dialogs); if it finds none, the query is wrong:
 
    ```sh
-   sudo ausearch -m AVC,USER_AVC --start "HH:MM:SS" | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
+   sudo LC_ALL=C ausearch -m USER_AUTH --input-logs --start MM/DD/YY HH:MM:SS | grep -c USER_AUTH
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
    ```
 
-   Expected: no line. Run the command after each reboot, with `--start` set to the time of the run so that
-   it covers the reboots, and record the output of each.
+   Expected: no line from the second command. Run both after each reboot and at the end, and record the output of each.
 
 ## 13. omarchy (acceptance 14)
 
