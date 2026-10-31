@@ -32,4 +32,9 @@ point to that feature under Scope instead of proving it here. A few negative con
 test can fail; build no mutant sets beyond what `verify` runs. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.
 
+If a requirement depends on the environment (a container engine, privileges, network, a device,
+a tool not pinned in mise.toml), run the smallest command that shows the dev container can do it,
+and put the command and its result under Scope. If it cannot, the contract says how the requirement
+will be met instead (a deviation or a person's run) before anything is built.
+
 Do not write code in this session. Commit the contract with a message like `docs(F09): add contract`.

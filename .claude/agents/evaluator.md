@@ -23,12 +23,15 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - The evidence would fail if the feature were wrong. "Tests pass" or "`just check` passes" alone
   is not evidence.
 - Each step fits in one session, and nothing outside the feature is planned.
+- Evidence that depends on the environment (a container engine, privileges, network, a device, a
+  tool not pinned in mise.toml) has under Scope a command run in the dev container and its result,
+  or says how the requirement is met if the container cannot.
 - The evidence is proportionate: each behaviour is proven once, at the cheapest level that would
   catch it being wrong. Evidence that another feature's description or `verify` names belongs to
   that feature.
 
 Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
-with the feature wrong or fail with it right, a step too big for a session, or scope outside the
+with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, or scope outside the
 feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
 list it; the builder reads it. A note asks for more evidence only to close a way a wrong feature
 could pass, never for a second proof of the same behaviour; note evidence that is redundant, so the
