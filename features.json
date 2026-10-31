@@ -103,7 +103,7 @@
         "F43"
       ],
       "verify": "just check && bash -n e2e/*.sh && test -f e2e/targets/debian13/Containerfile && test -f e2e/targets/debian13/skip.list && grep -rqi 'polkit' e2e/targets",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F59",
