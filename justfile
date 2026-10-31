@@ -114,6 +114,7 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
+    scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
 
 # The shellcheck file list covers scripts by extension or shebang.

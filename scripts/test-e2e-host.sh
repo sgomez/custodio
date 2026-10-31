@@ -133,16 +133,45 @@ for cf in "$ROOT"/e2e/targets/*/Containerfile; do
 done
 printf 'FROM debian:trixie\nCOPY custodio.deb /tmp/\n' > "$tmp/CF.bad"
 grep -Eqi '^[[:space:]]*(COPY|ADD)\b' "$tmp/CF.bad" || bad "control: a Containerfile that copies a .deb was not seen"
-grep -Eq 'dpkg|apt' "$ROOT/e2e/targets/debian13/install.sh" || bad "debian13 install step does not use dpkg or apt"
 grep -q 'install.sh' "$ROOT/e2e/guest.sh" || bad "the guest does not call the target's install step"
 if grep -En '\b(dpkg|apt|apt-get|rpm|pacman|dnf)\b|\b(cp|install)\b.* /(usr|etc)' "$ROOT/e2e/guest.sh" | grep -v '^[0-9]*:[[:space:]]*#' | grep -q .; then bad "the shared guest script calls a package tool or copies into /usr or /etc"; fi
-{ grep -Eq 'polkitd' "$ROOT/e2e/targets/debian13/Containerfile" && grep -Eq '\bdbus\b' "$ROOT/e2e/targets/debian13/Containerfile"; } || bad "debian13 does not install polkitd and dbus"
-grep -qi 'dbus-broker' "$ROOT/e2e/targets/debian13/Containerfile" && bad "debian13 installs dbus-broker"
+# target_problems DIR: what is wrong with a target directory (empty output: nothing). The install step uses the tool of the
+# distribution on the mounted file (ubuntu* must use apt, not only dpkg), the image has the real polkit and a default bus daemon.
+target_problems() {
+    local d=$1 n
+    n=$(basename "$d")
+    for f in Containerfile install.sh probe.sh skip.list package.pattern; do [ -f "$d/$f" ] || echo "$n: no $f"; done
+    grep -Eq 'polkitd' "$d/Containerfile" 2> /dev/null || echo "$n: does not install polkitd"
+    grep -Eq '\bdbus\b' "$d/Containerfile" 2> /dev/null || echo "$n: does not install dbus"
+    if grep -qi 'dbus-broker' "$d/Containerfile" 2> /dev/null; then echo "$n: installs dbus-broker"; fi
+    grep -Eq 'dpkg|apt|rpm|dnf|pacman' "$d/install.sh" 2> /dev/null || echo "$n: install.sh uses no package tool"
+    # shellcheck disable=SC2016 # the pattern looks for a literal "$1" in the script
+    case $n in
+    ubuntu*) grep -Eq '(^|[[:space:]])(apt|apt-get)[[:space:]].*\binstall\b.*"\$1"' "$d/install.sh" 2> /dev/null || echo "$n: install.sh does not apt install the mounted file" ;;
+    esac
+}
+for d in "$ROOT"/e2e/targets/*/; do
+    d=${d%/}
+    p=$(target_problems "$d")
+    [ -z "$p" ] || bad "$p"
+done
+[ -d "$ROOT/e2e/targets/ubuntu2604" ] || bad "no target ubuntu2604"
+# control: a fixture Ubuntu target whose install.sh uses only dpkg is rejected, an apt one is not
+mkdir -p "$tmp/fx"
+cp -r "$ROOT/e2e/targets/debian13" "$tmp/fx/ubuntu9999"
+[ -n "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: an ubuntu target that installs with dpkg -i only was accepted"
+# shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
+printf '#!/usr/bin/env bash\nset -euo pipefail\napt-get install -y "$1" > /dev/null\n' > "$tmp/fx/ubuntu9999/install.sh"
+[ -z "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: an ubuntu target that installs with apt was rejected: $(target_problems "$tmp/fx/ubuntu9999")"
+rm "$tmp/fx/ubuntu9999/probe.sh"
+[ -n "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: a target without probe.sh was accepted"
 grep -rqi 'polkit' "$ROOT/e2e/targets" || bad "no target mentions polkit"
 
 # --- shellcheck covers the new scripts
 list=$("$ROOT/scripts/list-shell-scripts.sh")
-for f in e2e/run.sh e2e/check-cases.sh e2e/report.sh e2e/targets/debian13/install.sh e2e/targets/debian13/probe.sh scripts/test-e2e-host.sh scripts/test-e2e-skips.sh; do
+targets_scripts=()
+for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh"); done
+for f in e2e/run.sh e2e/check-cases.sh e2e/report.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
     grep -qx "$f" <<< "$list" || bad "$f is not in the shellcheck list"
 done
 

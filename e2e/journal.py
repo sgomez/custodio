@@ -8,6 +8,10 @@ journal-selftest.sh can feed it synthetic streams.
   journal.py sweep --export F --evidence DIR [--file P]... --password S
       F is `journalctl -u custodio.service -o export`. Fails when any secret appears in it, in any form.
 
+  journal.py catalog --text F --expect F
+      F is `journalctl -x` of the documented query. It must hold an entry of custodiod and, under it, every line of the
+      explanation in the --expect file (the shared body of data/custodio.catalog; scripts/test-e2e-catalog.sh keeps them in step).
+
 A failure names the kind of needle and the form, never the bytes."""
 import argparse
 import base64
@@ -186,6 +190,28 @@ def sweep(stream, secrets):
     return hits
 
 
+def catalog_problems(text, expected):
+    """Problems of `journalctl -x` output: no entry of the daemon, or an entry without the catalog explanation."""
+    lines = [strip_marker(line) for line in text.splitlines()]
+    if not any("custodiod[" in line for line in lines):
+        return ["no custodiod entry in the output of journalctl -x"]
+    missing = [line for line in expected if line not in lines]
+    if missing:
+        return ["the entry is shown without the explanation from the journal catalog "
+                f"(is the catalog registered? {len(missing)} of {len(expected)} explanation lines missing, "
+                f"first: {missing[0]!r})"]
+    return []
+
+
+def strip_marker(line):
+    """The explanation lines of journalctl -x start with a marker: two light-shade blocks, or `--` outside a UTF-8 locale."""
+    line = line.strip()
+    for marker in ("\u2591\u2591", "--"):
+        if line.startswith(marker):
+            return line[len(marker):].strip()
+    return line
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -201,8 +227,20 @@ def main():
     s.add_argument("--evidence", required=True)
     s.add_argument("--file", action="append", default=[])
     s.add_argument("--password", required=True)
+    c = sub.add_parser("catalog")
+    c.add_argument("--text", required=True)
+    c.add_argument("--expect", required=True)
     args = parser.parse_args()
-    if args.command == "entries":
+    if args.command == "catalog":
+        with open(args.expect, encoding="utf-8") as f:
+            expected = [line.strip() for line in f.read().splitlines() if line.strip()]
+        if not expected:
+            problems = ["the expected explanation is empty"]
+        else:
+            with open(args.text, encoding="utf-8", errors="replace") as f:
+                problems = catalog_problems(f.read(), expected)
+        what = "journal catalog explanation"
+    elif args.command == "entries":
         with open(args.json, encoding="utf-8", errors="replace") as f:
             entries = audit_entries(f.read().splitlines(), args.unit, args.uid)
         with open(args.ledger, encoding="utf-8") as f:

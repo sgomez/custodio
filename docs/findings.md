@@ -772,3 +772,31 @@ Rootless podman on the host, `--userns=keep-id`, probed one option at a time (ne
   `/etc/subuid` and `/etc/subgid` list both. `pidns = "host"` (F38) keeps systemd from being PID 1, so it is gone; `just package-lint` still passes.
 With these, `just e2e debian13` passes (28 cases, dbus-daemon 1.16.2, polkit 126). Every capability stays in the rootless user namespace, and
 seccomp and the default device list stay on, which `--privileged` would drop.
+
+### Journald default storage on debian13 and ubuntu2604
+
+Checked 2026-10-31 in the booted e2e images (`custodio-e2e-debian13` from `debian:trixie`, systemd 257.13; `custodio-e2e-ubuntu2604` from
+`ubuntu:26.04`, systemd 259.9), after `systemctl is-system-running`, before the Custodio package is installed (`podman run -d --privileged
+--cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp <image>`, then `podman exec`):
+
+```
+systemd-analyze cat-config systemd/journald.conf | grep -i Storage   # the commented default is the effective value
+ls -ld /var/log/journal ; journalctl --header | grep 'File path'
+ls -ld /var/log/journal            # in the image, before boot: podman run --rm <image> ls -ld /var/log/journal
+```
+
+| target | `Storage=` default | `/var/log/journal` | active journal file |
+| --- | --- | --- | --- |
+| debian13 | `#Storage=auto` | exists (`drwxr-sr-x root systemd-journal`) | `/var/log/journal/<machine-id>/system.journal` |
+| ubuntu2604 | `#Storage=persistent` | exists (same mode and group) | `/var/log/journal/<machine-id>/system.journal` |
+
+- debian13: `auto` stores on disk only if `/var/log/journal` exists, and it does. The directory is already in the image, before boot; the
+  `systemd` package's postinst creates it ("Enable persistent journal, in auto-mode, by default on new installs", `mkdir -p`).
+- ubuntu2604: systemd 259 defaults to `persistent`, so journald creates the directory itself; the image has it too (the same postinst).
+- On both, the run's entries (including those of `custodio.service`) are in `/var/log/journal`, not only in `/run/log/journal`. The catalog check
+  and the audit-entry checks pass on `ubuntu2604` (real run) and on `debian13`.
+- Limits: these are the minimal images. An installed system can differ: a system installed without the `systemd` postinst running on a new
+  install (an image built from a copied root, a container image without that directory), a `Storage=volatile` drop-in, or a read-only
+  `/var`. Nothing here was checked on those.
+- What it means for the open question "Volatile journal warning" (SPEC): on these two targets the default is not volatile, so the install
+  scripts need no warning for it, and the package changes no journald configuration (SPEC section 6). The other targets record their own default.

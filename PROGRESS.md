@@ -307,3 +307,21 @@ with an empty context.
   (not `$USER`) for the subuid check; `test-rpm-lifecycle.sh` removes each case's root so a small /tmp does not fill.
 - `just check` and the rest of `verify` pass. No Rust changed.
 - Next session should: nothing for F45; the evaluator decides.
+
+### 2026-10-31 — F59 — session 1
+- Catalog check: `journal.py catalog` (the one function; the guest case in `e2e/journal-check.sh` runs `journalctl -x -u custodio.service MESSAGE_ID=... -n 1`
+  since the start of the run and never `--update-catalog`), case `journal-catalog` in `cases.list`. The matched text is `e2e/catalog-text.txt`;
+  `scripts/test-e2e-catalog.sh` (in `test-scripts`) has fixtures (UTF-8 and C-locale markers, entry without explanation, partial text, no entry, text without
+  entry, empty), checks the text against BOTH entries of `data/custodio.catalog` (unmarked and `en`), and the wiring.
+- `scripts/test-e2e-host.sh`: per-target checks are a loop over `e2e/targets/*` (`target_problems`); `ubuntu*` must `apt`/`apt-get install "$1"`; control with a
+  dpkg-only fixture; the shellcheck list covers every target's `install.sh` and `probe.sh`.
+- Target `ubuntu2604` (Containerfile from `docker.io/library/ubuntu:26.04`, `install.sh` with `apt-get install`, probe, pattern, empty `skip.list`).
+- Two suite fixes the real Ubuntu run needed (neither weakens a check): `user.sh` uses `ls -L` and `cd` for the unreadable state dir (uutils `ls` of Ubuntu 26.04
+  exits 0 on a symlink whose target it cannot open); `agent.py` talks to polkit 127's socket-activated helper (`/run/polkit/agent-helper.socket`, first line the
+  user) when `polkit-agent-helper-1` is not setuid.
+- Findings: `docs/findings.md` "Journald default storage on debian13 and ubuntu2604" (debian13 `auto`, ubuntu2604 `persistent`; `/var/log/journal` exists on both; no warning needed).
+- Real runs: `just e2e ubuntu2604` exit 0, 29 cases accounted for, all run, none skipped (incl. `journal-catalog`); `just e2e debian13` exit 0, 29 cases;
+  `just e2e` exit 0 ("passed: debian13 ubuntu2604"). `target/e2e/ubuntu2604.record`: `target=ubuntu2604`, `bus-daemon=dbus-daemon`,
+  `bus-daemon-version=D-Bus Message Bus Daemon 1.16.2`, `polkit-version=127`. debian13: dbus-daemon 1.16.2, polkit 126.
+- `just check` and the rest of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F59; the evaluator decides.

@@ -23,7 +23,10 @@ expect_requests() { [ "$(requests)" -eq "$1" ] || fail "expected $1 authenticati
 # --- Acceptance 1: the user cannot read the key files -------------------------------------------
 [ -z "$(find -L /var/lib/custodio -mindepth 1 -maxdepth 3 2>/dev/null | head -n 1)" ] || fail "alice can list the state directory"
 if cat /var/lib/custodio/* >/dev/null 2>&1; then fail "alice read a key file"; fi
-if ls /var/lib/custodio >/dev/null 2>&1; then fail "alice listed /var/lib/custodio"; fi
+# -L: the state directory is a symlink into the 0700 /var/lib/private (DynamicUser=); uutils ls (Ubuntu 26.04) exits 0 on an
+# unreadable link target unless it must follow the link, and cd fails the same way on every implementation.
+if ls -L /var/lib/custodio >/dev/null 2>&1; then fail "alice listed /var/lib/custodio"; fi
+if (cd /var/lib/custodio) 2>/dev/null; then fail "alice entered /var/lib/custodio"; fi
 if grep -rl "PRIVATE KEY\|PKCS" /var/lib/custodio >/dev/null 2>&1; then fail "alice grepped a key file"; fi
 expect_requests 0
 case_run "no-key-read"

@@ -28,3 +28,4 @@ login-context-specific
 journal-signatures
 polkit-unavailable
 journal-entries
+journal-catalog

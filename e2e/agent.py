@@ -1,9 +1,11 @@
 #!/usr/bin/python3 -I
 """Test polkit authentication agent. Registers for the session it runs in and answers every
 BeginAuthentication according to the word in $E2E_DIR/mode: "approve" completes the authentication
-through polkit-agent-helper-1 (the PAM stack accepts anyone), "deny" cancels. Each request is
+through polkit's agent helper (the PAM stack accepts anyone), "deny" cancels. Each request is
 appended to $E2E_DIR/requests as "<mode> <action>"."""
 import os
+import socket
+import stat
 import subprocess
 import sys
 
@@ -15,6 +17,24 @@ from gi.repository import GLib
 E2E_DIR = os.environ["E2E_DIR"]
 PATH = "/org/e2e/Agent"
 HELPER = "/usr/lib/polkit-1/polkit-agent-helper-1"
+# Polkit 127 (Ubuntu 26.04) has no setuid helper: the agent talks to a root helper that systemd starts per connection on this socket.
+HELPER_SOCKET = "/run/polkit/agent-helper.socket"
+
+
+def authenticate(user, cookie):
+    """The reply of polkit's agent helper: through the setuid program if there is one, else through the socket. Both take the
+    cookie and an empty password; the socket also takes the user name as the first line."""
+    if os.stat(HELPER).st_mode & stat.S_ISUID:
+        return subprocess.run([HELPER, user], input=cookie + "\n\n", text=True,
+                              capture_output=True, check=False).stdout
+    with socket.socket(socket.AF_UNIX) as s:
+        s.settimeout(30)
+        s.connect(HELPER_SOCKET)
+        s.sendall(f"{user}\n{cookie}\n\n".encode())
+        chunks = []
+        while chunk := s.recv(4096):
+            chunks.append(chunk)
+    return b"".join(chunks).decode(errors="replace")
 
 
 def mode():
@@ -33,8 +53,7 @@ class Agent(dbus.service.Object):
             raise dbus.DBusException("denied by the test agent",
                                      name="org.freedesktop.PolicyKit1.Error.Cancelled")
         user = os.environ["USER"]
-        out = subprocess.run([HELPER, user], input=cookie + "\n\n", text=True,
-                             capture_output=True, check=False).stdout
+        out = authenticate(user, cookie)
         if "SUCCESS" not in out:
             raise dbus.DBusException("authentication failed",
                                      name="org.freedesktop.PolicyKit1.Error.Failed")
