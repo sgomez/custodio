@@ -385,7 +385,7 @@ package file names. A polkit dialog is expected for every signature.
 Record first (section 10), before and after the switch (the bus daemon changes): `cat /etc/os-release; uname -r;
 dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file names), then `dbus-broker --version` after the switch.
 
-1. Before the switch, install the `.deb`; it must be refused:
+1. Before the switch, install the `.deb`; it must be refused (`dpkg -i` runs the package's `preinst` check directly and shows its message, without resolving dependencies first):
 
    ```sh
    sudo dpkg -i custodio_0.1.0-1_amd64.deb
@@ -408,7 +408,7 @@ dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file na
    | the polkit agent | `pgrep -a polkit`; run `pkexec true` | the agent runs, the dialog appears | |
    | NetworkManager | `systemctl is-active NetworkManager; nmcli general status` | `active`, connected | |
    | bus daemon | `busctl status \| head -n 3`; `systemctl status dbus-broker` | `dbus-broker` | |
-4. Install:
+4. Install (`apt-get` here, so that any missing dependency is installed too):
 
    ```sh
    sudo apt-get install ./custodio_0.1.0-1_amd64.deb

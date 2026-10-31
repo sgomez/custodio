@@ -27,6 +27,11 @@ check() {
     [ -n "$REFUSAL" ] || bad "no refusal phrase in e2e/refusal-lib.sh"
     local q; q=$(audit_query); [ -n "$q" ] || bad "no base query in docs/audit.md"
 
+    # The words of the feature's verify command, on the whole page.
+    for w in fedora44 bazzite omarchy ubuntu2404 rpm-ostree Quickshell dbus-broker SELinux ausearch 'pacman -U' 'polkit version'; do
+        grep -qF -- "$w" "$doc" || bad "the page lacks '$w'"
+    done
+
     for m in fedora44 bazzite omarchy ubuntu2404; do
         part=$(section "$doc" "^## .*$m")
         [ -n "$part" ] || { bad "$m: no part with that heading"; continue; }
@@ -50,7 +55,8 @@ check() {
     need 'TLS client authentication' "no TLS client authentication"
     need 'ausearch -m AVC' "no ausearch for AVC denials"
     need 'ausearch.*(--start|-ts)' "ausearch has no time window"
-    need 'custodio' "no service name"; need 'polkit' "no polkit in the denial check"; need 'libcustodio_pkcs11' "no module in the denial check"
+    local au; au=$(printf '%s\n' "$part" | grep -E 'ausearch.*(--start|-ts)|grep -E.*libcustodio' | tr '\n' ' ')
+    for w in custodio polkit libcustodio_pkcs11; do printf '%s' "$au" | grep -qF -- "$w" || bad "$m: the ausearch denial check does not name '$w'"; done
     need 'import.*sign|sign.*import|import, signing' "denial check does not cover import and signing"
     need 'failure of (acceptance|step) 12' "manual registration is not recorded as a failure"
     printf '%s\n' "$part" | sed 's/ \\$//' | grep -qFx -- "$q" || bad "$m: the journalctl line is not the base query of docs/audit.md"
@@ -107,6 +113,9 @@ control_in() { # control_in NAME MACHINE SED_EXPR
     if check "$tmp/doc.md" "$INSTALL" 2> /dev/null; then echo "control '$1': a broken page passed" >&2; exit 1; fi
 }
 
+for w in fedora44 bazzite omarchy ubuntu2404 rpm-ostree Quickshell dbus-broker SELinux ausearch 'pacman -U' 'polkit version'; do
+    control "no '$w' anywhere" "s/$w/XXXX/g"
+done
 control_in 'no kernel command (bazzite)' bazzite 's/uname -r/uname/g'
 control_in 'no polkit version (omarchy)' omarchy 's/pkaction --version/pkaction/g'
 control_in 'no package file names (ubuntu2404)' ubuntu2404 's/package file/package/g'

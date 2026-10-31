@@ -449,3 +449,9 @@ with an empty context.
 - Not run on real machines: every command not copied from a script or `docs/install.md` is unverified (the page says so). `rpm-ostree uninstall custodio --install` for the replace step is unverified.
 - `verify` greps and `just check` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F52; the evaluator decides.
+
+### 2026-10-31 — F52 — session 2
+- Fixed NEXT_FINDINGS: `scripts/test-docs-manual.sh` now checks all eleven `verify` words on the whole page, with one control per word. The three fedora44 ausearch name checks (`custodio`, `polkit`, `libcustodio_pkcs11`) are anchored on the ausearch/grep lines.
+- `docs/manual-acceptance.md` §14: one-line reason for `dpkg -i` (refusal) versus `apt-get install` (install).
+- `just check` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F52; the evaluator decides.
