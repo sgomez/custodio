@@ -51,6 +51,15 @@ sysusers_hits() {
         grep -Ev '^[[:space:]]*#' "$1/$f" | grep -E 'systemd-sysusers' | sed "s|^|$f: |" || true
     done
 }
+# decision_misses FILE: names the F58 entry of docs/decisions.md must carry, so that it says which hook or script owns each call of the contract.
+decision_misses() {
+    local entry n
+    entry=$(awk '/^## .*Arch: hooks do the reloads/ { on = 1; next } /^## / { on = 0 } on' "$1")
+    [ -n "$entry" ] || { echo "no F58 entry"; return; }
+    for n in 30-systemd-daemon-reload-system dbus-reload 25-systemd-catalog --update-catalog 'systemd-sysusers -' pre_install pre_upgrade pre_remove zz-custodio-restart.hook try-restart; do
+        grep -qF -- "$n" <<< "$entry" || echo "$n"
+    done
+}
 
 [ -z "$(state_hits "$SRC")" ] || bad "a script names the state directory in a line that is not on the allowlist: $(state_hits "$SRC")"
 for entry in "${ALLOW_STATE[@]}"; do
@@ -127,4 +136,10 @@ done
 try state zz-custodio-restart.hook 'Exec = /usr/bin/ls /var/lib/custodio'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/bin/systemctl enable custodio.service'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/share/libalpm/scripts/systemd-hook reload dbus.service'
+# The decision table names the owner of every call; deleting one name from a copy must be seen.
+[ -z "$(decision_misses "$ROOT/docs/decisions.md")" ] || bad "the F58 entry of docs/decisions.md does not name: $(decision_misses "$ROOT/docs/decisions.md")"
+for n in 30-systemd-daemon-reload-system dbus-reload 25-systemd-catalog --update-catalog 'systemd-sysusers -' pre_remove zz-custodio-restart.hook try-restart; do
+    sed "s|$n|REMOVED|g" "$ROOT/docs/decisions.md" > "$FX_DIR/decisions.md"
+    [ -n "$(decision_misses "$FX_DIR/decisions.md")" ] || bad "control: the decision check did not see '$n' deleted"
+done
 exit "$fail"

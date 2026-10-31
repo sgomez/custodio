@@ -240,17 +240,11 @@ Format: a title and three short bullets, a couple of lines each:
 - Not decided here: the notice for `rpm-ostree uninstall` (no scriptlet of the removed package runs there): decided as a deviation, see the F44 entry in `SPEC_DEVIATIONS.md`.
 
 ## 2026-10-30 — Arch: hooks do the reloads and the catalog, the account is made in pre_*, a hook restarts
-- Decision: the Arch scripts call none of `daemon-reload`, the bus reload or `journalctl --update-catalog`: systemd's `30-systemd-daemon-reload-system`,
-  dbus's `dbus-reload` and systemd's `25-systemd-catalog` do each exactly once for the paths the package ships (docs/findings.md, "F58"). `post_install` and
-  `post_upgrade` do nothing but say so. `pre_install` and `pre_upgrade` run the F42 check, keep its status, create the account with `systemd-sysusers -`
-  (sysusers text embedded, kept equal to the sysusers file by `scripts/check-sysusers-sync.sh`) and only then exit with 1 if the check or the account failed
-  (both failing exits 1 too). `pre_remove` stops the service; `post_remove` stops it again if active and prints the notice on stderr (as the deb and rpm).
-  The restart on upgrade is the PostTransaction hook `zz-custodio-restart.hook` (`Operation = Upgrade`, `Target = custodio`), running `systemd-hook restart
-  custodio.service` = `systemctl try-restart`; the name sorts after `dbus-reload.hook` so the restart follows both reloads.
-- Why: a script of this package runs before all PostTransaction hooks, so a reload in it would be a second call and a restart in it would precede the
-  daemon reload. `try-restart` restarts only a running unit and needs no marker, so nothing is written (no state under the state directory, nothing in /run).
-  The hook runs on the first upgrade from the F42-era package too, since it is the new package's own file. The account in `pre_*` stays because the sysusers hook
-  is PostTransaction, after the bus policy is unpacked.
-- Rejected: `enqueue-marked` with a `Markers=needs-restart` property (`35-systemd-enqueue-marked` runs before `dbus-reload`, and needs a script to set the
-  property); repeating the reloads in `post_*` (duplicates hooks, runs before them); a `restart` marker file as in the deb (no need); a `useradd` fallback.
+- Decision: the scripts call no `daemon-reload` (`30-systemd-daemon-reload-system` does), no bus reload (`dbus-reload`) and no `journalctl --update-catalog`
+  (`25-systemd-catalog`). `pre_install` and `pre_upgrade` create the account with `systemd-sysusers -`, after the F42 check. The restart on upgrade is the
+  PostTransaction hook `zz-custodio-restart.hook` (`systemd-hook restart` = `try-restart`); `pre_remove` stops the service on removal.
+- Why: a script runs before all PostTransaction hooks, so a reload in it would be a second call and a restart in it would precede the daemon reload; the
+  sysusers hook also runs after the bus policy is unpacked. `try-restart` needs no marker, so nothing is written (docs/findings.md, "F58").
+- Rejected: `enqueue-marked` with `Markers=needs-restart` (runs before `dbus-reload`, needs a script to set the property); reloads repeated in `post_*`;
+  a marker file as in the deb; a `useradd` fallback.
 - Not covered: `pacman --noscriptlet` and `pacman -U` into a `--root` without hooks run no scripts or hooks, as for any package. A real running systemd is F45.

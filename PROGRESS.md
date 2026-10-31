@@ -271,3 +271,10 @@ with an empty context.
   package gates, parity and namcap lists updated. The real test needs commit `cd5afb6` in the clone (fails in a shallow one).
 - `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed, so `just mutants-diff F58` has nothing to mutate.
 - Next session should: nothing for F58; the evaluator decides.
+
+### 2026-10-31 — F58 — session 3
+- Fixed NEXT_FINDINGS: (1) `test-arch-scripts-static.sh` checks that the F58 entry of `docs/decisions.md` names the owner of every call (the three hooks, `systemd-sysusers -`
+  in `pre_*`, `pre_remove`, `zz-custodio-restart.hook`, `try-restart`), with a control per name that deletes it from a copy; (2) the entry is cut to the format of the file;
+  (3) `arch-real-steps.sh` records any `*.wants/custodio.service` link and the real test asserts none after the first install, with a new mutant that enables by `ln`.
+- `just check`, `just test-scripts` (no SKIPPED), `just package`, `just package-lint` (0 stale) pass. No Rust changed.
+- Next session should: nothing for F58; the evaluator decides.

@@ -142,6 +142,7 @@ check_flow() {
     if L $s | grep -E ' systemctl (stop|restart|try-restart custodio)' > /dev/null; then bad "$s: a stop or restart was made on a first installation"; fi
     [ "$(count $s "$EFFECT_RESTART")" = 0 ] || bad "$s: the service was restarted on a first installation"
     [ "$(cat "$OUT/$s.active")" = inactive ] || bad "$s: the service is active"
+    [ ! -s "$OUT/$s.wants" ] || bad "$s: the unit is enabled (a .wants link exists): $(cat "$OUT/$s.wants")"
     [ "$(cat "$OUT/$s.state")" = none ] || bad "$s: a state directory exists after the first installation"
 
     s=upgrade-active
@@ -266,6 +267,7 @@ mutant_flow() { # NAME NFPM-SED FILE SED [FILE SED]...
     mutant_flow no-stop-in-pre-remove '' pre_remove 's|^systemctl stop custodio.service.*|:|'
     mutant_flow delete-state-in-post-remove '' post_remove 's|^if systemctl is-active.*|rm -rf /var/lib/private/custodio\n&|'
     mutant_flow remove-account-in-post-remove '' post_remove 's|^if systemctl is-active.*|userdel custodio\n&|'
+    mutant_flow enable-by-link-in-post-install '' post_install 's|^:$|mkdir -p /etc/systemd/system/multi-user.target.wants\nln -s /usr/lib/systemd/system/custodio.service /etc/systemd/system/multi-user.target.wants/custodio.service|'
     mutant_flow enable-in-post-install '' post_install 's|^:$|systemctl enable custodio.service|'
 }
 

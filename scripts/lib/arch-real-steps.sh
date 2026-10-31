@@ -1,7 +1,7 @@
 #!/bin/sh
 # shellcheck disable=SC2086 # $PM is a command with options and is split on purpose
 # Runs in the throw-away Arch container of scripts/test-arch-lifecycle-real.sh (F58). usage: arch-real-steps.sh SCENARIO PREFIX
-# /pkg holds the packages, /stubs the stand-ins, /out the results: every step leaves NAME.{log,out,rc,passwd,state,active,files,version} there.
+# /pkg holds the packages, /stubs the stand-ins, /out the results: every step leaves NAME.{log,out,rc,passwd,state,active,wants,files,version} there.
 sh /stubs/arch-real-stubs.sh
 PM="pacman --noconfirm --disable-sandbox -dd"
 STATE=/var/lib/private/custodio
@@ -25,6 +25,7 @@ step() { # NAME COMMAND...
     getent passwd custodio > "/out/$name.passwd" 2>&1 || true
     state_hash > "/out/$name.state"
     if [ -e /tmp/stub/active ]; then echo active; else echo inactive; fi > "/out/$name.active"
+    find /etc/systemd/system /usr/lib/systemd/system -path '*.wants/custodio.service' 2> /dev/null | sort > "/out/$name.wants"
     { ls /usr/lib/custodio/custodiod /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf /usr/lib/systemd/system/custodio.service 2>/dev/null || true; } > "/out/$name.files"
     pacman -Q custodio > "/out/$name.version" 2>&1 || true
 }
