@@ -157,7 +157,7 @@
         "F48"
       ],
       "verify": "just check && bash -n e2e/*.sh && grep -rqi 'cargo.deb\\|cargo-deb' e2e && ! grep -rqsE 'cargo[- ]deb' mise.toml harness/Containerfile .github",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F49",
