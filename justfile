@@ -60,7 +60,11 @@ test:
 # Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
 # ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
-check: lint test system-gates package-gate-test shell-scripts-test test-scripts
+check: lint test system-gates script-tests
+
+# package-gate-test, shell-scripts-test and test-scripts at once (scripts/run-script-tests.sh); JOBS=1 runs one at a time.
+script-tests:
+    scripts/run-script-tests.sh package-gate-test shell-scripts-test test-scripts
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-hardening unit-verify bus-policy
