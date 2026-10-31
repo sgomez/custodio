@@ -19,13 +19,13 @@ question=$(sha < BLOCKED.md)
 logfile="$LOG_DIR/$(date +%Y%m%d-%H%M%S)-unblock.log"
 
 log "Unblocker: applying your answer"
-HARNESS_ROLE=unblocker claude -p --dangerously-skip-permissions "$(cat harness/unblock-prompt.md)
+claude_session unblocker "$logfile" "$(cat harness/unblock-prompt.md)
 
 BLOCKED.md:
 $(cat BLOCKED.md)
 
 The person's answer:
-$answer" >"$logfile" 2>&1 || log "unblocker session exited non-zero, see $logfile"
+$answer" || log "unblocker session exited non-zero, see $logfile"
 
 if [ -e BLOCKED.md ] && [ "$(sha < BLOCKED.md)" != "$question" ]; then
   cat BLOCKED.md

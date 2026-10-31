@@ -35,7 +35,7 @@ run_claude() {
   if (( sessions >= MAX_SESSIONS )); then die "Reached MAX_SESSIONS=$MAX_SESSIONS." 0; fi
   sessions=$((sessions + 1))
   stop_if_asked
-  HARNESS_ROLE=$role claude -p --dangerously-skip-permissions "$@" >"$logfile" 2>&1 \
+  claude_session "$role" "$logfile" "$@" \
     || log "$role session exited non-zero, see $logfile"
   stop_if_asked "$logfile" # the kill-switch hook cut this session short: its output is no verdict
 }

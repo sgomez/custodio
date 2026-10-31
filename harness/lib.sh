@@ -22,6 +22,37 @@ hc_exit() {
 }
 if [ "${HARNESS_HC_STATUS:-0}" = 1 ]; then trap hc_exit EXIT; fi
 
+# A session's events, from its transcript or `--output-format stream-json`, as text and tool calls.
+transcript_format='
+  fromjson? |
+  if .type == "assistant" then
+    .message.content[]? |
+    if .type == "text" then .text
+    elif .type == "tool_use" then
+      "→ \(.name) " + ((.input.command // .input.file_path // .input.pattern // .input.description
+        // .input | tostring) | gsub("\\s+"; " ") | .[0:160])
+    else empty end
+  elif .type == "user" then
+    .message.content[]? | select(.type? == "tool_result" and .is_error == true)
+    | "  ✗ " + ((.content | tostring) | gsub("\\s+"; " ") | .[0:160])
+  else empty end'
+
+# claude_session <role> <log> <claude args...>: a headless session whose events show here as they
+# happen; <log> gets its final message, as plain `claude -p` would print it.
+claude_session() {
+  local role=$1 logfile=$2 rc=0
+  shift 2
+  HARNESS_ROLE=$role claude -p --dangerously-skip-permissions --output-format stream-json --verbose \
+    "$@" 2>&1 | tee "$logfile.jsonl" | jq --unbuffered -rR "$transcript_format" |
+    while IFS= read -r line; do
+      printf '  %s\n' "$line"
+      if [[ $line == "→ "* ]]; then hc_status working "$role ${line:2:80}"; fi
+    done || rc=$?
+  { jq -rR 'fromjson? | select(.type == "result") | .result // empty' "$logfile.jsonl"
+    grep -v '^{' "$logfile.jsonl"; } > "$logfile" || true
+  return "$rc"
+}
+
 sha() {
   if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1
 }
