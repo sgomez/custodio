@@ -408,7 +408,13 @@ dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file na
    | the polkit agent | `pgrep -a polkit`; run `pkexec true` | the agent runs, the dialog appears | |
    | NetworkManager | `systemctl is-active NetworkManager; nmcli general status` | `active`, connected | |
    | bus daemon | `busctl status \| head -n 3`; `systemctl status dbus-broker` | `dbus-broker` | |
-4. Install: `sudo apt-get install ./custodio_0.1.0-1_amd64.deb`. Import both keys (`custodio import`). Sign with the polkit dialog each time
+4. Install:
+
+   ```sh
+   sudo apt-get install ./custodio_0.1.0-1_amd64.deb
+   ```
+
+   Import both keys (`custodio import`). Sign with the polkit dialog each time
    (twice for each key) and cancel once for each: the signature fails.
 5. Whether switching to dbus-broker is acceptable on Ubuntu 24.04, from the table above: ______________________
    The milestone approver settles the open question on refusing Ubuntu 24.04 altogether.
