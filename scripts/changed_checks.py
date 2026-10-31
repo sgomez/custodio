@@ -127,8 +127,9 @@ def plan(opts):
     cmds = []
     shells = set(subprocess.run([os.path.join(ROOT, "scripts/list-shell-scripts.sh")], cwd=ROOT, check=True,
                                 capture_output=True, text=True).stdout.split())
-    if sh := sorted(existing & shells):
-        cmds.append(["shellcheck", *sh])
+    # All of them, as `just lint` does: alone, a script does not see what the libraries it sources define.
+    if existing & shells:
+        cmds.append(["shellcheck", *sorted(shells)])
     if toml := sorted(f for f in existing if f.endswith(".toml")):
         cmds.append(["taplo", "fmt", "--check", *toml])
     if any(f.startswith(".github/workflows/") for f in changed):
