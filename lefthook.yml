@@ -9,7 +9,7 @@ pre-commit:
         - run: test -z "$(git diff --cached --name-only | awk '!((/\.md$|^features\.json$|^APPROVALS$|^harness\/[^\/]*\.sh$/) && $0 != "docs/audit.md")')"
     harness:
       glob: "harness/*.sh"
-      run: shellcheck {staged_files} && scripts/check-files.sh
+      run: shellcheck -x {staged_files} && scripts/check-files.sh
 
 commit-msg:
   commands:
