@@ -193,7 +193,7 @@
         "F58"
       ],
       "verify": "for w in 'Debian 13' 'Ubuntu 26.04' 'Fedora 44' 'Alma' 'Arch' 'rpm-ostree' 'dbus-broker' 'ProcessFD' 'purge' 'Storage=persistent' 'journalctl'; do grep -qF -- \"$w\" docs/install.md || { echo \"missing: $w\" >&2; exit 1; }; done && grep -q 'docs/install.md' README.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F52",
