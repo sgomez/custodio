@@ -18,9 +18,12 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 userns=() target_opts=
 if [[ $engine == *podman ]]; then userns=(--userns=keep-id) target_opts=:U; fi
 hc_status=0
-[[ -n ${HC_TERMINAL_ID:-} ]] && hc_status=1
+if [[ -n ${HC_TERMINAL_ID:-} ]]; then
+  hc_status=1
+  if command -v hc >/dev/null && command -v jq >/dev/null; then harness/hc-sessions.sh $$ & fi
+fi
 
-exec "$engine" run --rm -it ${userns[@]+"${userns[@]}"} \
+"$engine" run --rm -it ${userns[@]+"${userns[@]}"} \
   -v "$PWD":/work \
   -v "custodio-target:/work/target$target_opts" \
   -e CLAUDE_CODE_OAUTH_TOKEN -e HARNESS_HC_STATUS="$hc_status" \

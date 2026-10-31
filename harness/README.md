@@ -102,4 +102,5 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 
 Commit messages follow Conventional Commits (commitlint checks them in the hook, the loop and CI),
 and `just release` builds the changelog from them. Hooks in `.claude/hooks/` stop each agent role
-from writing another role's files. Logs are in `.harness/logs/`.
+from writing another role's files. Logs are in `.harness/logs/`. Under herdr, each claude session also gets a child terminal of
+`just harness run` that follows it and shows its state (`harness/hc-sessions.sh`).
