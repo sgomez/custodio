@@ -461,3 +461,9 @@ with an empty context.
 - `docs/manual-acceptance.md` §12 step 6: dropped the unverified claim that the audit log resets at each reboot; now says to run ausearch after each reboot with `--start` covering the reboots.
 - `just check` passes (one run failed once in `test-tree-hash.sh`, a same-second/same-size edit race unrelated to this feature; it passed alone and on rerun). No Rust changed, so no mutants-diff.
 - Next session should: nothing for F52; the evaluator decides.
+
+### 2026-10-31 — F53 — session 1
+- Manual run on the host (Ubuntu 26.04.1, podman 5.7.0): `just e2e all` exit 0 on the six targets, 0 skipped; `CHECK_FORCE=1 just check-slow` exit 0 with thresholds equal to `v0.3.0`.
+- Records (bus daemon, polkit) per target in `docs/findings.md` "F53". The worst CRAP score is at the threshold (30.0), no margin left.
+- An expired Docker Hub login on the host blocks pulling uncached base images; pull with an empty `--authfile`.
+- Next session should: a person runs `just milestone pass F53`.
