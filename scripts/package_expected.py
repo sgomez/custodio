@@ -26,6 +26,14 @@ ARCH_ONLY_FILES = {
     "/usr/share/libalpm/hooks/zz-custodio-restart.hook": 0o644,
 }
 
+# Directories only the rpm lists (nfpm `type: dir`, `packager: rpm`): rpm owns no directory it is not told about, so without these `dnf remove`
+# leaves them behind (F49); dpkg and pacman own the parents of the files they list. Path -> mode.
+RPM_ONLY_DIRS = {
+    "/usr/lib/custodio": 0o755,
+    "/usr/share/doc/custodio": 0o755,
+    "/usr/share/licenses/custodio": 0o755,
+}
+
 UNIT = "/usr/lib/systemd/system/custodio.service"
 ACTIVATION = "/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service"
 ACTIVATION_LINES = ("Exec=/bin/false", "SystemdService=custodio.service")

@@ -48,10 +48,14 @@ exec)
             [ "$t" != "${STUB_FAIL_OLD:-}" ] || { echo "e2e: FAIL: stubbed (old)"; exit 1; }
         else
             echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
-            list=$STUB_ROOT/e2e/cases.list
+            # the main run reports the common cases and the target's own, except the ones of the old-package run (F60)
+            list=$STUB_LOG.main
+            cat "$STUB_ROOT/e2e/cases.list" > "$list"
+            grep -v '^upgrade-cargo-deb-' "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
         fi
         while IFS= read -r c; do
             case $c in '' | '#'*) continue ;; esac
+            if [ "$mode" = old ]; then case $c in upgrade-cargo-deb-*) ;; *) continue ;; esac; fi
             [ "$c" = "${STUB_OMIT:-}" ] && continue
             if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
@@ -218,7 +222,9 @@ grep -q 'same file' "$tmp/out" || bad "N used as N+1 was not named: $(tail -n 3 
 old_ids="upgrade-cargo-deb-version-greater upgrade-cargo-deb-service-new-binary upgrade-cargo-deb-state-unchanged upgrade-cargo-deb-keys-listed upgrade-cargo-deb-signs-with-polkit upgrade-cargo-deb-no-manual-step"
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     if [ "$T" = debian13 ]; then [ -f "$ROOT/e2e/targets/$T/old.pattern" ] || bad "debian13 has no old.pattern"
-    else { [ ! -e "$ROOT/e2e/targets/$T/old.pattern" ] && [ ! -e "$ROOT/e2e/targets/$T/cases.list" ]; } || bad "$T has an old.pattern or its own cases.list"; fi
+    else [ ! -e "$ROOT/e2e/targets/$T/old.pattern" ] || bad "$T has an old.pattern"; fi
+    # the target's own cases.list belongs to the deb targets only (the purge cycle of F49)
+    case $T in debian13 | ubuntu2604) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
 done
 for id in $old_ids; do
     grep -qx "$id" "$ROOT/e2e/targets/debian13/cases.list" || bad "debian13/cases.list lacks $id"

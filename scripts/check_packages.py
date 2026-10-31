@@ -77,8 +77,18 @@ def entries(label, pkg):
 def check_config():
     cfg = yaml.safe_load(open(config_path))
     seen = {}
+    dirs = {}
     for item in cfg["contents"]:
         dst, info = item["dst"], item.get("file_info", {})
+        if item.get("type") == "dir":
+            if dst in dirs:
+                fail("nfpm.yaml", f"{dst} is listed twice")
+            dirs[dst] = info.get("mode")
+            if item.get("packager") != "rpm" or dst not in expected.RPM_ONLY_DIRS:
+                fail("nfpm.yaml", f"the directory {dst} is not one of the rpm-only directories")
+            if info.get("owner") != "root" or info.get("group") != "root":
+                fail("nfpm.yaml", f"{dst} is not owned by root:root")
+            continue
         if dst in seen:
             fail("nfpm.yaml", f"{dst} is listed twice")
         seen[dst] = info.get("mode")
@@ -93,6 +103,11 @@ def check_config():
             fail("nfpm.yaml", f"{dst} has type {item['type']}")
         if info.get("owner") != "root" or info.get("group") != "root":
             fail("nfpm.yaml", f"{dst} is not owned by root:root")
+    for dst, mode in expected.RPM_ONLY_DIRS.items():
+        if dst not in dirs:
+            fail("nfpm.yaml", f"the rpm-only directory {dst} is missing")
+        elif dirs[dst] != mode:
+            fail("nfpm.yaml", f"the directory {dst} has mode {dirs[dst]:o}, expected {mode:o}")
     every = {**expected.FILES, **expected.ARCH_ONLY_FILES}
     for dst in every.keys() - seen.keys():
         fail("nfpm.yaml", f"{dst} is missing from the file list")
@@ -118,6 +133,7 @@ def check_package(label, nfpm_name, pattern):
         return
     listing = entries(label, found[0])
     files = {}
+    listed_dirs = {}
     for path, kind, mode, owner, group in listing:
         if path != "/usr" and not path.startswith("/usr/"):
             fail(label, f"{path} is not under /usr")
@@ -127,8 +143,19 @@ def check_package(label, nfpm_name, pattern):
             fail(label, f"{path} is a config file")
         elif kind == "f":
             files[path] = mode
-        elif kind != "d":
+        elif kind == "d":
+            listed_dirs[path] = mode
+        else:
             fail(label, f"{path} is not a regular file or directory (type {kind})")
+    if label == "rpm":
+        # rpm lists no implicit parent, so the directories it lists are exactly the ones it owns on purpose.
+        for path, mode in expected.RPM_ONLY_DIRS.items():
+            if path not in listed_dirs:
+                fail(label, f"the directory {path} is missing from the package")
+            elif listed_dirs[path] != mode:
+                fail(label, f"the directory {path} has mode {listed_dirs[path]:o}, expected {mode:o}")
+        for path in listed_dirs.keys() - expected.RPM_ONLY_DIRS.keys():
+            fail(label, f"the directory {path} is not one of the rpm-only directories")
     wanted = {**expected.FILES, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
     for path, mode in wanted.items():
         if path not in files:

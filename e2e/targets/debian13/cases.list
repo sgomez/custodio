@@ -6,3 +6,13 @@ upgrade-cargo-deb-state-unchanged
 upgrade-cargo-deb-keys-listed
 upgrade-cargo-deb-signs-with-polkit
 upgrade-cargo-deb-no-manual-step
+# The purge cycle of F49 (apt-get purge), reported by the main guest run on the deb targets only.
+purge-service-stopped
+purge-no-packaged-files
+purge-not-activatable
+purge-state-unchanged
+purge-account-kept
+purge-notice-keys
+reinstall-after-purge-keys-listed
+reinstall-after-purge-signs-with-polkit
+reinstall-after-purge-no-import

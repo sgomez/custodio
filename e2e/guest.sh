@@ -83,6 +83,9 @@ WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 
+# The removal, purge and reinstall cases come after the upgrade: they remove N+1 and install it again, from the state the upgrade left.
+WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
+
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"
 if journalctl -u custodio --no-pager | grep -q "e2e-password"; then fail "the password reached the journal"; fi

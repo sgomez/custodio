@@ -911,3 +911,14 @@ case compares with `sha256sum`.
   `ExecStart` of the unit before and after. The old process ends with a deleted exe; the new `MainPID` runs the new path.
 - Reproducible: two builds from different empty directories give the same sha256 with `--remap-path-prefix` set for the build directory and `CARGO_HOME` and
   `SOURCE_DATE_EPOCH` set to the pinned commit's time (not tried without the remap).
+
+## F49: the rpm owned no directory, so `dnf remove` left three behind (2026-10-31)
+The removal case lists the files and the directories of the package file and, after the removal, asks the target's tool whether another package owns each
+directory. On fedora44 and alma10 `/usr/lib/custodio`, `/usr/share/doc/custodio` and `/usr/share/licenses/custodio` stayed (empty, owned by no package):
+`rpm -qp --qf '[%{FILEMODES:perms} %{FILENAMES}\n]'` listed 14 files and no directory. dpkg and pacman own the parents of the files they list, and left nothing.
+Fix in the package: three `type: dir` entries with `packager: rpm` in `packaging/nfpm.yaml`, expected by `scripts/package_expected.py` (`RPM_ONLY_DIRS`) and
+checked by the package gate. The case derives the ancestor directories of every listed file for all formats, so it would also catch the next such leftover.
+- Scriptlet output reaches the terminal of the removal tool on all five targets (the guest captures stdout and stderr together): apt prints the postrm text after
+  `Removing custodio`; dnf (alma10) prints it after `Running scriptlet`; dnf5 (fedora44) prints it under `>>> Scriptlet output:`; pacman prints it after `removing custodio...`.
+- On debian13 and ubuntu2604 `apt-get remove` leaves the package in dpkg state `config-files` (`rc`) with no conffiles (`dpkg-query -W -f='${Conffiles}'` is empty) and no file
+  on disk; `apt-get purge` moves it to `not-installed`.

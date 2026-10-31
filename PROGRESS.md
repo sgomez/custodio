@@ -408,3 +408,22 @@ with an empty context.
   dpkg database 0.1.0-1 -> 0.1.1-1 (`dpkg --compare-versions` ran before install); MainPID 695 -> 1446; executable `/usr/libexec/custodiod` 67:75769337 -> `/usr/lib/custodio/custodiod` 67:75769361; 5 state entries identical; 3 requests for 3 signatures.
 - `just check` and the greps of `verify` pass. No Rust changed, so no mutants-diff. Findings: `docs/findings.md` "F60".
 - Next session should: nothing for F60; the evaluator decides.
+
+### 2026-10-31 — F49 — session 1
+- Tests first: `e2e/lifecycle-selftest.sh` (one control per rejection: shared-directory list is fixed with no custodio path, package lists parsed from the three tools' output, a fixture root with
+  one file / only a directory / the doc and licenses directories left, active unit or live old pid, unit active right before the first call, listing that still holds the name, call that
+  succeeds or fails for another reason, state directory gone, other uid, empty output, path without the warning, `removed`/`installed` database states, forbidden commands in the section,
+  `remove.sh`, `purge.sh`, `install.sh` and the library) and `scripts/test-e2e-lifecycle.sh` (ids, `remove.sh` on five targets, `purge.sh` on the two deb targets and different from `remove.sh`, accounting with
+  an omitted or a misplaced id, order in the guest, lists read from real fixture rpm/deb). Both run in `test-scripts`; `scripts/test-e2e-host.sh` learned that the main run reports the target's own ids.
+- Built: `e2e/lifecycle-lib.sh`, `e2e/lifecycle.sh` (section between `# BEGIN/END lifecycle-case`, called from `guest.sh` after the upgrade), `targets/*/remove.sh`, `targets/{debian13,ubuntu2604}/purge.sh`
+  and the purge ids in both `cases.list`. The removal output is captured by the guest (`$WORK/remove.out`, `purge.out`) and printed as `e2e: remove output: ...`. Reinstall installs N+1 (`/pkg-next`).
+- Real defect found and fixed in the package: the rpm owned no directory, so `dnf remove` left `/usr/lib/custodio`, `/usr/share/doc/custodio`, `/usr/share/licenses/custodio`. Three rpm-only `type: dir` entries
+  in `packaging/nfpm.yaml`; the package gate (`package_expected.py` `RPM_ONLY_DIRS`, `check_packages.py`) expects them, with controls in `test-check-packages.sh`. `docs/findings.md` "F49".
+- Real run: `just e2e` exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2604". Each log has the 9 `removal-*`/`reinstall-*` `E2E-CASE run` lines, debian13 and ubuntu2604 also the 9 purge ones (18); 0 skipped.
+  - Observed values: after `apt-get remove` on debian13 and ubuntu2604 dpkg says `config-files` with empty `Conffiles` and no packaged file or directory left; after `apt-get purge` `not-installed`.
+    rpm, dnf, pacman: `rpm -q`/`pacman -Q` fail after removal; version N+1 (0.1.1-1) after each reinstall. Account custodio, state dir (5 entries), `MainPID` 0 and activation checks pass after removal and purge.
+  - Where the scriptlet notice appeared (all on the tool's terminal output, captured by the guest): debian13/ubuntu2604 apt after `Removing custodio`, and again on purge; alma10 dnf after `Running scriptlet`;
+    fedora44 dnf5 under `>>> Scriptlet output:`; arch pacman after `removing custodio...`. Phrase checked: `destroys the keys for good`.
+  - Not-activatable error: dbus-daemon "was not provided by any .service files" (debian13, ubuntu2604); dbus-broker "The name is not activatable" (alma10, arch, fedora44).
+- `just check` (forced) and the greps/`bash -n` of `verify` pass. No Rust changed, so no mutants-diff.
+- Next session should: nothing for F49; the evaluator decides.

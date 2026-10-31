@@ -66,6 +66,17 @@ for i in 0 1 2; do
     expect_fail "wrong group in $fmt" "$FX_DIR/out/g-$fmt" "${config:-$FX_DIR/nfpm-group.yaml}" "$label:" /usr/lib/custodio/custodiod custodio
 done
 
+# The rpm-only directories (F49: rpm owns no directory it is not told about, so `dnf remove` would leave them behind).
+fx_build nodir 0.1.0 '' drop /usr/lib/custodio
+expect_fail "rpm without an owned directory" "$FX_DIR/out/nodir" "$REAL" "rpm:" "the directory /usr/lib/custodio is missing from the package"
+expect_fail "nfpm.yaml without an owned directory" "$FX_DIR/out/good" "$FX_DIR/nfpm-nodir.yaml" "the rpm-only directory /usr/lib/custodio is missing"
+fx_build dirmode 0.1.0 '' mode /usr/share/doc/custodio 700
+expect_fail "a wrong directory mode in rpm" "$FX_DIR/out/dirmode" "$REAL" "rpm:" "the directory /usr/share/doc/custodio has mode 700, expected 755"
+fx_build dirall 0.1.0 '' unpackager /usr/lib/custodio
+expect_fail "an owned directory for every format" "$FX_DIR/out/good" "$FX_DIR/nfpm-dirall.yaml" "the directory /usr/lib/custodio is not one of the rpm-only directories"
+fx_build dirextra 0.1.0 '' dir /usr/share/custodio-extra 755
+expect_fail "an extra directory" "$FX_DIR/out/dirextra" "$FX_DIR/nfpm-dirextra.yaml" "the directory /usr/share/custodio-extra is not one of the rpm-only directories"
+
 # Cases whose nfpm.yaml itself is wrong: the gate's explicit list is the reference, and all three formats fail.
 config_case() { # NAME WORD... -- OP [ARG...]
     local name=$1 words=()

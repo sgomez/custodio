@@ -118,6 +118,7 @@ test-scripts:
     scripts/test-e2e-host.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
+    scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-old.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
