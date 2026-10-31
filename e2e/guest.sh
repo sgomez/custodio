@@ -2,15 +2,20 @@
 # Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
 # (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
+# Usage: guest.sh TARGET [old]. With "old" (F60, on a fresh container) it installs the OLD package (/pkg-old, the last cargo-deb .deb),
+# imports the keys and runs only the upgrade case from it to package N+1 (/pkg-next); it reports the upgrade-cargo-deb-* cases only.
 set -euo pipefail
+mode=${2:-main}
+case $mode in main | old) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 
 # The checks of the journal checker come first; a broken checker would make the later checks worthless.
 bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
-pkg=$(find /pkg -type f | head -n 1)
-[ -n "$pkg" ] || fail "no package is mounted in /pkg"
+if [ "$mode" = old ]; then from_dir=/pkg-old; else from_dir=/pkg; fi
+pkg=$(find "$from_dir" -type f | head -n 1)
+[ -n "$pkg" ] || fail "no package is mounted in $from_dir"
 pkg_next=$(find /pkg-next -type f | head -n 1)
 [ -n "$pkg_next" ] || fail "no package N+1 is mounted in /pkg-next"
 bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
@@ -51,6 +56,13 @@ for k in rsa1 ec1; do
         || fail "import of $k failed"
 done
 rm -f "$work"/*.key "$work"/*.p12
+
+if [ "$mode" = old ]; then
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-cargo-deb || fail "upgrade.sh failed (from the old package)"
+    systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old package"
+    echo "e2e: all checks passed (upgrade from the old package)"
+    exit 0
+fi
 
 # User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session.
 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"

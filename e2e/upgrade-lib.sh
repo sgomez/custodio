@@ -3,7 +3,25 @@
 # print one message per problem and return non-zero when there is any, so the self-test can feed each one fixtures.
 
 STATE_LINK=${STATE_LINK:-/var/lib/custodio}
-INSTALLED_BINARY=${INSTALLED_BINARY:-/usr/lib/custodio/custodiod}
+
+# unit_binary UNIT_FILE: the executable the unit starts, from its last ExecStart line: the prefixes (- @ ! + :) and the arguments are
+# stripped. The old package (cargo-deb, M1) has its daemon at /usr/libexec/custodiod and the new one at /usr/lib/custodio/custodiod, so the
+# path is read from the unit before and after the upgrade instead of being a constant.
+unit_binary() {
+    local line path
+    [ -f "$1" ] || { echo "unit_binary: no unit file '$1'" >&2; return 1; }
+    line=$(grep -E '^[[:space:]]*ExecStart=' "$1" | tail -n 1 || true)
+    [ -n "$line" ] || { echo "unit_binary: no ExecStart in '$1'" >&2; return 1; }
+    line=${line#*=}
+    line=${line#"${line%%[![:space:]]*}"}
+    while [[ $line == [-@!+:]* ]]; do line=${line#?}; done
+    path=${line%%[[:space:]]*}
+    [[ $path == /* ]] || { echo "unit_binary: ExecStart of '$1' is not an absolute path ('$path')" >&2; return 1; }
+    printf '%s\n' "$path"
+}
+
+# unit_file: the unit file of custodio.service as systemd resolves it now.
+unit_file() { systemctl show -p FragmentPath --value custodio; }
 
 # --- package files and versions ---------------------------------------------------------------------------------------------
 
@@ -61,6 +79,19 @@ version_greater() {
         ;;
     *) return 1 ;;
     esac
+}
+
+# upgrade_gate FORMAT FROM_FILE TO_FILE: what must hold before anything is installed. The database holds FROM's version, the two
+# versions differ, and the target's own tool says TO is strictly greater. Prints one message per problem; fails on any. The case
+# calls it before the install command, so an equal or lower version never reaches the install.
+upgrade_gate() {
+    local fmt=$1 from=$2 to=$3 vf vt
+    vf=$(pkg_file_version "$fmt" "$from") || { echo "gate: cannot read the version of $from"; return 1; }
+    vt=$(pkg_file_version "$fmt" "$to") || { echo "gate: cannot read the version of $to"; return 1; }
+    if [ "$(installed_version "$fmt")" != "$vf" ]; then echo "gate: before the upgrade the database holds $(installed_version "$fmt"), not $vf"; return 1; fi
+    if [ "$vf" = "$vt" ]; then echo "gate: both packages have the same version ($vf)"; return 1; fi
+    if ! version_greater "$fmt" "$vt" "$vf"; then echo "gate: the new version ($vt) is not greater than the old one ($vf) by $(version_tool "$fmt")"; return 1; fi
+    echo "e2e: upgrade: $(version_tool "$fmt") says $vt is greater than $vf"
 }
 
 # --- the state directory --------------------------------------------------------------------------------------------------

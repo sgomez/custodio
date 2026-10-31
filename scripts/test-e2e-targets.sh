@@ -140,7 +140,7 @@ grep -rqi 'polkit' "$ROOT/e2e/targets" || bad "no target mentions polkit"
 list=$("$ROOT/scripts/list-shell-scripts.sh")
 targets_scripts=()
 for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh"); done
-for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh scripts/package-next.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
+for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh scripts/package-next.sh scripts/package-old.sh scripts/test-e2e-old.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
     grep -qx "$f" <<< "$list" || bad "$f is not in the shellcheck list"
 done
 

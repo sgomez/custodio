@@ -901,3 +901,13 @@ builds; a real machine has none. The Containerfiles of `debian13` and `ubuntu260
 are untouched). With it gone the maintainer scripts restart the service by themselves on all five targets (new `MainPID`, `/proc/<pid>/exe` is the installed
 inode). The check of the new binary is by device:inode, because N+1 has the same content as N. `cmp` is not on the rpm and Arch images (no diffutils), so the
 case compares with `sha256sum`.
+
+## F60: upgrading from the last cargo-deb .deb (2026-10-31)
+- `v0.3.0` is an annotated tag: `git rev-parse v0.3.0` gives the tag object (`0f48354`), the commit is `d870ab2…`. `git archive` takes either, but the pin
+  in `scripts/package-old.sh` is the commit id, which `git cat-file -t` reports as `commit`.
+- The cargo-deb package and package N are both `0.1.0-1`, which dpkg treats as a reinstall. The case therefore upgrades to N+1 (`0.1.1-1`, F48) and the guest
+  proves it greater with `dpkg --compare-versions` before installing.
+- The daemon moved: the cargo-deb package has it at `/usr/libexec/custodiod`, the nfpm one at `/usr/lib/custodio/custodiod`. The upgrade case reads the path from
+  `ExecStart` of the unit before and after. The old process ends with a deleted exe; the new `MainPID` runs the new path.
+- Reproducible: two builds from different empty directories give the same sha256 with `--remap-path-prefix` set for the build directory and `CARGO_HOME` and
+  `SOURCE_DATE_EPOCH` set to the pinned commit's time (not tried without the remap).

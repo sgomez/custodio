@@ -92,6 +92,37 @@ rejects "an exe with another inode and the same content" 'does not run the insta
 rejects "a pid with no process" 'no exe link' service_problems "$proc" 100 999 "$tmp/installed"
 rejects "an old process that still runs the live binary" 'old pid 300 still runs' service_problems "$proc" 300 200 "$tmp/installed"
 
+# --- the executable named by the unit: it differs between the old and the new package, so it is read, not assumed ---------------
+unit() { printf '[Service]\nType=dbus\n%s\n' "$1" > "$tmp/unit.service"; }
+unit 'ExecStart=/usr/libexec/custodiod'
+accepts "the old unit" test "$(unit_binary "$tmp/unit.service")" = /usr/libexec/custodiod
+unit 'ExecStart=/usr/lib/custodio/custodiod'
+accepts "the new unit" test "$(unit_binary "$tmp/unit.service")" = /usr/lib/custodio/custodiod
+for prefix in '-' '@' '!' '+' ':' '-!' '!!+' '@-'; do
+    unit "ExecStart=$prefix/usr/libexec/custodiod --flag value --other=1"
+    accepts "ExecStart with the prefix '$prefix' and arguments" test "$(unit_binary "$tmp/unit.service")" = /usr/libexec/custodiod
+done
+unit 'ExecStart=  -/usr/libexec/custodiod   --flag'
+accepts "ExecStart with spaces around" test "$(unit_binary "$tmp/unit.service")" = /usr/libexec/custodiod
+printf '[Service]\nExecStart=/usr/bin/old\nExecStart=\nExecStart=/usr/libexec/custodiod\n' > "$tmp/unit.service"
+accepts "the last ExecStart wins" test "$(unit_binary "$tmp/unit.service")" = /usr/libexec/custodiod
+printf '[Service]\nType=dbus\n' > "$tmp/unit.service"
+rejects "a unit without ExecStart" 'no ExecStart' unit_binary "$tmp/unit.service"
+unit 'ExecStart=custodiod'
+rejects "a relative ExecStart" 'not an absolute path' unit_binary "$tmp/unit.service"
+rejects "no unit file" 'no unit file' unit_binary "$tmp/none.service"
+# The process started from the old file must not pass for the new one: after the upgrade the process runs the file the NEW unit names.
+mkdir -p "$tmp/oldroot" "$tmp/newroot"
+printf 'binary\n' > "$tmp/oldroot/custodiod"
+printf 'binary\n' > "$tmp/newroot/custodiod"
+ln -sfn "$tmp/oldroot/custodiod" "$proc/200/exe" # the process runs the old path's file
+ln -sfn "$tmp/newroot/custodiod" "$proc/300/exe"
+accepts "before: the process runs the file the old unit names" exe_problems "$proc" 200 "$tmp/oldroot/custodiod"
+rejects "after: an old exe path reused for the new process" 'does not run the installed file' service_problems "$proc" 100 200 "$tmp/newroot/custodiod"
+accepts "after: the process runs the file the new unit names" service_problems "$proc" 100 300 "$tmp/newroot/custodiod"
+rm -f "$tmp/oldroot/custodiod"
+rejects "the old file is gone: the old unit's path no longer describes a live process" 'no exe link\|does not run\|deleted' exe_problems "$proc" 200 "$tmp/oldroot/custodiod"
+
 # --- no manual step -----------------------------------------------------------------------------------------------------------
 good=$tmp/good.sh
 # shellcheck disable=SC2016 # the fixture sections hold a literal "$1"

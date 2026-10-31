@@ -118,6 +118,7 @@ test-scripts:
     scripts/test-e2e-host.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
+    scripts/test-e2e-old.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -311,9 +312,10 @@ glibc-ceiling:
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
 # (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
-# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
+# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
 e2e target="all": package
     scripts/package-next.sh
+    scripts/package-old.sh
     bash e2e/run.sh {{target}}
 
 # Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP

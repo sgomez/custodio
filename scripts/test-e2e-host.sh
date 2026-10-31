@@ -16,7 +16,10 @@ fx_init
 trap 'fx_cleanup; rm -rf "$tmp"' EXIT
 fx_build cur 0.1.0 '' none
 fx_build next 0.1.1 '' none
-mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next"
+mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/old"
+# the old package (F60) is a third file, distinct from N and N+1; only its name matters to the host
+cp "$(fx_file cur deb)" "$tmp/old/custodio_0.0.9-1_amd64.deb"
+export E2E_PACKAGES_OLD=$tmp/old
 for f in deb rpm archlinux; do
     cp "$(fx_file cur "$f")" "$tmp/pkgs/"
     cp "$(fx_file next "$f")" "$tmp/next/"
@@ -30,19 +33,30 @@ case $1 in
 run)
     sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg"
     sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.next"
+    sed -n 's|.*:/pkg-old/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.old"
     ;;
 exec)
     case "$*" in
     *"is-system-running"*) echo running ;;
     *"/e2e/guest.sh"*)
+        mode=main
         t=${*: -1}
-        echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
+        if [ "$t" = old ]; then mode=old; t=${*: -2:1}; fi
+        if [ "$mode" = old ]; then
+            echo "e2e: installed $(cat "$STUB_LOG.old") from the mounted file"
+            list=${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list
+            [ "$t" != "${STUB_FAIL_OLD:-}" ] || { echo "e2e: FAIL: stubbed (old)"; exit 1; }
+        else
+            echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
+            list=$STUB_ROOT/e2e/cases.list
+        fi
         while IFS= read -r c; do
             case $c in '' | '#'*) continue ;; esac
             [ "$c" = "${STUB_OMIT:-}" ] && continue
             if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
-        done < "$STUB_ROOT/e2e/cases.list"
+        done < "$list"
+        [ "$mode" = old ] && exit 0
         [ -z "${STUB_EXTRA:-}" ] || echo "E2E-CASE run $STUB_EXTRA"
         if [ -z "${STUB_NOPROBE:-}" ]; then
             echo "E2E-RECORD bus-daemon=dbus-daemon"
@@ -83,7 +97,24 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
     [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
-    [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 2 ] || bad "$T: N and N+1 are not two different read-only mounts"
+    if [ -f "$ROOT/e2e/targets/$T/old.pattern" ]; then
+        # F60: the old package is a third read-only mount, in the fresh container of the second guest run
+        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 3 ] || bad "$T: N, N+1 and the old package are not three different read-only mounts"
+        grep '^run ' "$tmp/log" | grep -q -- "$tmp/old/custodio_0.0.9-1_amd64.deb:/pkg-old/custodio_0.0.9-1_amd64.deb:ro" || bad "$T: the old package is not mounted read-only at /pkg-old"
+        [ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "$T: the upgrade from the old package does not run in a fresh container"
+        [ "$(grep -c '^rm .*custodio-e2e-' "$tmp/log")" -ge 2 ] || bad "$T: the first container is not removed before the second"
+        r1=$(grep -n '^run ' "$tmp/log" | head -n 1 | cut -d: -f1)
+        rm1=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
+        r2=$(grep -n '^run ' "$tmp/log" | tail -n 1 | cut -d: -f1)
+        { [ "$r1" -lt "$rm1" ] && [ "$rm1" -lt "$r2" ]; } || bad "$T: the order run, rm, run is wrong: $(cat "$tmp/log")"
+        grep -q "exec .* bash /e2e/guest.sh $T old" "$tmp/log" || bad "$T: the guest is not run in the old mode"
+        grep -q "installed custodio_0.0.9-1_amd64.deb from the mounted file" "$tmp/out" || bad "$T: the old guest's output is not passed through"
+    else
+        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 2 ] || bad "$T: N and N+1 are not two different read-only mounts"
+        grep -q 'pkg-old' "$tmp/log" && bad "$T: the old package is mounted on a target that has no old.pattern"
+        [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "$T: more than one container ran"
+        grep -q 'guest.sh [a-z0-9]* old' "$tmp/log" && bad "$T: the old-package run happened on a target without old.pattern"
+    fi
     grep -q "exec .* bash /e2e/guest.sh $T" "$tmp/log" || bad "the shared guest script is not executed"
     grep -q "installed $pkg from the mounted file" "$tmp/out" || bad "the guest's output is not passed through"
     grep -qi 'cargo\|nfpm\|just package' "$tmp/log" && bad "the engine log shows a package build"
@@ -182,6 +213,38 @@ grep -q 'custodiod of N+1 differs' "$tmp/out" || bad "a different custodiod was 
 ! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine ran with a different custodiod in N+1"
 if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with N as N+1 passed"; fi
 grep -q 'same file' "$tmp/out" || bad "N used as N+1 was not named: $(tail -n 3 "$tmp/out")"
+
+# --- F60: the upgrade from the last cargo-deb .deb is for debian13 only, with its own ids
+old_ids="upgrade-cargo-deb-version-greater upgrade-cargo-deb-service-new-binary upgrade-cargo-deb-state-unchanged upgrade-cargo-deb-keys-listed upgrade-cargo-deb-signs-with-polkit upgrade-cargo-deb-no-manual-step"
+for T in $(cd "$ROOT/e2e/targets" && echo *); do
+    if [ "$T" = debian13 ]; then [ -f "$ROOT/e2e/targets/$T/old.pattern" ] || bad "debian13 has no old.pattern"
+    else { [ ! -e "$ROOT/e2e/targets/$T/old.pattern" ] && [ ! -e "$ROOT/e2e/targets/$T/cases.list" ]; } || bad "$T has an old.pattern or its own cases.list"; fi
+done
+for id in $old_ids; do
+    grep -qx "$id" "$ROOT/e2e/targets/debian13/cases.list" || bad "debian13/cases.list lacks $id"
+    grep -qx "$id" "$ROOT/e2e/cases.list" && bad "$id is in the common cases.list, so every target would owe it"
+    STUB_OMIT=$id expect_fail "omitted $id" debian13 || true
+    grep -q "'$id' was not reported" "$tmp/out" || bad "an omitted $id was not named: $(tail -n 3 "$tmp/out")"
+done
+expect_ok "old ids on debian13" debian13 || true
+grep -q 'cases accounted for' "$tmp/out" || bad "debian13 did not account for the cases"
+# another target that reports one of them fails (no cases.list of its own, so the id is unknown); a stub run of the old mode on it
+cp -r "$ROOT/e2e/targets/ubuntu2604" "$fake/delta"
+STUB_EXTRA=upgrade-cargo-deb-version-greater run_all delta && bad "a target without the old package accepted an old-package case"
+grep -q "unknown case 'upgrade-cargo-deb-version-greater'" "$tmp/out" || bad "an old-package case on another target was not named: $(tail -n 3 "$tmp/out")"
+# the second run failing fails the target
+STUB_FAIL_OLD=debian13 expect_fail "old run fails" debian13 || true
+grep -q 'upgrade from the old package' "$tmp/out" || bad "a failed old run was not named: $(tail -n 3 "$tmp/out")"
+# no old package: fails before the engine is called
+mkdir -p "$tmp/noold"
+: > "$tmp/log"
+if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_OLD="$tmp/noold" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run without the old package passed"; fi
+grep -q 'no old package' "$tmp/out" || bad "a missing old package was not named: $(tail -n 3 "$tmp/out")"
+! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine ran without the old package"
+# the old package is not N
+if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_OLD="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with N as the old package passed"; fi
+grep -q 'old package is the same file' "$tmp/out" || bad "N used as the old package was not named: $(tail -n 3 "$tmp/out")"
+grep -Eqi '^[[:space:]]*(COPY|ADD)\b|pkg-old' "$ROOT/e2e/targets/debian13/Containerfile" && bad "the debian13 image copies or names the old package"
 
 # --- the packages come from the packages directory: none there, the run fails
 mkdir -p "$tmp/empty"

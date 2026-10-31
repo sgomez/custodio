@@ -395,3 +395,16 @@ with an empty context.
   State directory identical (5 entries, sha256 + owner + mode) and 3 requests for 3 signatures after the upgrade on all five.
 - `just check`, `bash -n e2e/*.sh` and the greps of `verify` pass. No Rust changed, so no mutants-diff.
 - Next session should: nothing for F48; the evaluator decides.
+
+### 2026-10-31 — F60 — session 1
+- Tests first: `scripts/test-e2e-old.sh` (stub `cargo`, throwaway repo: pin is a full commit id, build outside the working tree with a mutated-script control, cache key from pin + cargo-deb version, cold cache without network stops at once with a stubbed probe, `mise.toml`/`mise.lock`/Containerfile/`.github` unchanged); `scripts/test-e2e-upgrade.sh` runs `upgrade.sh` with stub tools (equal, lower, database mismatch, same file, service down: non-zero exit, message, install marker absent; a greater version reaches the marker); `upgrade-selftest.sh` controls for `unit_binary` (prefixes and arguments) and for old-path reuse; `test-e2e-host.sh` for the third mount, fresh container, ids, target-only accounting.
+- `scripts/package-old.sh` (called by the `e2e` recipe): pin is the commit `d870ab21890362c1e5ba0c5e223513fe52e421b5` of tag `v0.3.0` (the tag object is `0f48354`), cargo-deb 3.8.0 installed in a private root, `--remap-path-prefix`, cache `target/old-package-cache/<key>`.
+  Reproducibility, two builds with `OLD_NO_CACHE=1`, different empty build directories:
+  - /tmp/ba/custodio-old.CZ90rw: sha256 40e3f06e6d3c18dc11b01bbd0681decadc7121182b2d6449345245bbf9db6456
+  - /tmp/bb/custodio-old.LlzdXO: sha256 40e3f06e6d3c18dc11b01bbd0681decadc7121182b2d6449345245bbf9db6456
+  File `custodio_0.1.0-1_amd64.deb`, `Depends: dbus, libc6 (>= 2.34), p11-kit, polkitd, systemd`, daemon in `/usr/libexec`, no `preinst`.
+- Per-target extra cases: `e2e/targets/<t>/cases.list` (only debian13) is appended to `e2e/cases.list` by `run.sh`; `old.pattern` marks a target that gets the old package at `/pkg-old` and a second guest run (`guest.sh debian13 old`) on a fresh container. `upgrade.sh` takes `PKG_FROM PKG_TO [ID_PREFIX]` and reads the executable from the unit's `ExecStart` before and after.
+- Real runs: `just e2e debian13` exit 0, 41 cases, 0 skipped, six `upgrade-cargo-deb-*` run; `just e2e` exit 0 "e2e: passed: alma10 arch debian13 fedora44 ubuntu2604", other four logs have no `upgrade-cargo-deb` id.
+  dpkg database 0.1.0-1 -> 0.1.1-1 (`dpkg --compare-versions` ran before install); MainPID 695 -> 1446; executable `/usr/libexec/custodiod` 67:75769337 -> `/usr/lib/custodio/custodiod` 67:75769361; 5 state entries identical; 3 requests for 3 signatures.
+- `just check` and the greps of `verify` pass. No Rust changed, so no mutants-diff. Findings: `docs/findings.md` "F60".
+- Next session should: nothing for F60; the evaluator decides.
