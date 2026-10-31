@@ -135,7 +135,7 @@
         "F45"
       ],
       "verify": "just check && bash -n e2e/*.sh && grep -qi 'archlinux' e2e/targets/arch/Containerfile && test -f e2e/targets/arch/skip.list",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F48",
