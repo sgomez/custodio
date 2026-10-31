@@ -48,11 +48,20 @@ total=$(jq '[.features[] | select((.manual // false) | not)] | length' features.
 done_=$(jq '[.features[] | select((.manual // false) | not) | select(.passes)] | length' features.json)
 printf '\n%s of %s automatic features pass.\n' "$done_" "$total"
 
+current=$(jq -r '[.features[] | select((.manual // false) | not) | select(.passes | not)] | first | .id // empty' features.json)
 if [ -f NEXT_FINDINGS.md ]; then
   printf '\nLast rejection (NEXT_FINDINGS.md):\n'; head -n 15 NEXT_FINDINGS.md
+  evaluated=$(cat ".harness/state/$current.evaluated" 2>/dev/null || true)
+  unevaluated=$(git log --format=%s "$evaluated..HEAD" 2>/dev/null | grep -cF "($current)" || true)
+  if [ -n "$evaluated" ] && (( unevaluated > 0 )); then
+    printf '\nThese findings may be fixed already: the builder has made %s commit(s) since, and no evaluator has reviewed them.\n' "$unevaluated"
+  fi
 fi
 
-current=$(jq -r '[.features[] | select((.manual // false) | not) | select(.passes | not)] | first | .id // empty' features.json)
+if [ -f .harness/state/stopped ]; then
+  printf '\nThe loop stopped for you: %s\n' "$(head -n 1 .harness/state/stopped)"
+  next "$(sed -n 2p .harness/state/stopped)"
+fi
 if [ -n "$current" ] && [ -f ".harness/state/$current.contract-review" ]; then
   printf '\nThe evaluator sent contracts/%s.md back (.harness/state/%s.contract-review):\n' "$current" "$current"
   head -n 15 ".harness/state/$current.contract-review"

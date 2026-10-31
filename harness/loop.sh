@@ -19,6 +19,7 @@ MAX_AMENDMENTS=${MAX_AMENDMENTS:-3}             # contract amendments per featur
 LOG_DIR=.harness/logs
 STATE=.harness/state
 mkdir -p "$LOG_DIR" "$STATE" contracts
+rm -f "$STATE/stopped"
 ensure_node_tools
 
 [ "$(uname -s)" = Linux ] || die "Run this inside the dev container: harness/run.sh"
@@ -47,6 +48,8 @@ stop_if_asked() {
   die "AGENT_STOP found, stopping." 0
 }
 
+# halt <reason> <what to do>: a stop that needs a person; just status shows both.
+halt() { printf '%s\n%s\n' "$1" "$2" > "$STATE/stopped"; die "$1" 2; }
 verdict() { grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*'; }
 bump() { local n; n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/$1"; echo "$n"; }
 gated() { bump "$1.attempts" >/dev/null; git rev-parse HEAD > "$STATE/$1.evaluated"; }
@@ -126,7 +129,8 @@ $(cat "$STATE/$id.contract-eval")"
     fi
     cp "$LOG_DIR/$stamp-review.log" "$STATE/$id.contract-review"
   done
-  die "$id: contract not approved after $MAX_CONTRACT_ROUNDS rounds; see $STATE/$id.contract-review" 2
+  halt "$id: contract not approved after $MAX_CONTRACT_ROUNDS rounds; see $STATE/$id.contract-review" \
+    "just harness fix $id"
 }
 
 # A stop skips the stash after a session. A builder's leftovers stay for the next builder; any other
@@ -162,9 +166,16 @@ while true; do
   # 1. Contract
   if [ ! -f "$STATE/$id.contract" ] || [ ! -f "$c" ]; then negotiate_contract "$id" "$feature"; fi
 
+  # After the last rejection a builder session would only make work no evaluator reviews.
+  (( $(cat "$STATE/$id.attempts" 2>/dev/null || echo 0) < MAX_ATTEMPTS )) \
+    || halt "$id was rejected $MAX_ATTEMPTS times; see NEXT_FINDINGS.md. Stopping for a human." \
+      "read NEXT_FINDINGS.md; if $id is badly defined, fix features.json and just milestone approve features; then: rm -f $STATE/$id.attempts && just harness run"
+
   # 2. Build
   n=$(bump "$id.sessions")
-  (( n <= MAX_FEATURE_SESSIONS )) || die "$id used $MAX_FEATURE_SESSIONS builder sessions without passing. Stopping for a human." 2
+  (( n <= MAX_FEATURE_SESSIONS )) \
+    || halt "$id used $MAX_FEATURE_SESSIONS builder sessions without passing. Stopping for a human." \
+      "split $id in features.json and just milestone approve features, or: rm -f $STATE/$id.sessions && just harness run"
   stamp="$(date +%Y%m%d-%H%M%S)-$id-s$n"
   head_before=$(git rev-parse HEAD)
   log "$id: builder session $n"
@@ -188,7 +199,9 @@ and continue from it.}"
     # Every step ticked and this HEAD never evaluated: nothing for a builder to do, go to the gate.
     if (( $(open_steps "$c") > 0 )) || [ "$(cat "$STATE/$id.evaluated" 2>/dev/null)" = "$head_before" ]; then
       # A second idle session in a row will not do better: stop instead of burning the budget.
-      (( $(bump "$id.idle") < 2 )) || die "$id: two builder sessions in a row made no commit. Stopping for a human." 2
+      (( $(bump "$id.idle") < 2 )) \
+        || halt "$id: two builder sessions in a row made no commit. Stopping for a human." \
+          "read the last $id-*-build.log in $LOG_DIR; then just harness fix $id, or: rm -f $STATE/$id.idle && just harness run"
       no_commit="The previous session made no commit. Commit your work at the end of every session."
       # Keep the evaluator's findings; replacing them leaves the next builder nothing to fix.
       prev=$(tail -n +3 NEXT_FINDINGS.md 2>/dev/null | grep -vxF "$no_commit" | sed "/./,\$!d" || true)
@@ -206,7 +219,9 @@ and continue from it.}"
 
   if [ "$(contract_hash "$c")" != "$(cat "$STATE/$id.contract")" ]; then
     n=$(bump "$id.amendments")
-    (( n <= MAX_AMENDMENTS )) || die "$id: more than $MAX_AMENDMENTS contract amendments. Stopping for a human." 2
+    (( n <= MAX_AMENDMENTS )) \
+      || halt "$id: more than $MAX_AMENDMENTS contract amendments. Stopping for a human." \
+        "just harness fix $id, or: rm -f $STATE/$id.amendments && just harness run"
     approved_head=$(cat "$STATE/$id.contract-head")
     log "$id: contract amended, evaluating the amendment"
     run_claude evaluator "$LOG_DIR/$stamp-amend.log" --agent evaluator \
@@ -232,8 +247,6 @@ and continue from it.}"
 
   # 3. Gate: verify, then evaluator
   # An attempt counts only once it has a result, so a stop mid-gate costs none.
-  (( $(cat "$STATE/$id.attempts" 2>/dev/null || echo 0) < MAX_ATTEMPTS )) \
-    || die "$id was rejected $MAX_ATTEMPTS times; see NEXT_FINDINGS.md. Stopping for a human." 2
   log "$id: verify ($verify)"
   if ! bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1; then
     gated "$id"
