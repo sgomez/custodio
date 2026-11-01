@@ -33,6 +33,7 @@ use bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use common::{CKM_ECDSA, CKM_RSA_PKCS, EC_P12, MissingPid, PASSWORD, RSA_P12, digest, digest_info};
 
 const OTHER_EC_P12: &[u8] = include_bytes!("fixtures/p256-other.p12");
+const OTHER_EC_RECERT: &[u8] = include_bytes!("fixtures/cert-p256-other-recert.der");
 const P256_RECERT: &[u8] = include_bytes!("fixtures/cert-p256-recert.der");
 const RSA_RECERT: &[u8] = include_bytes!("fixtures/cert-rsa2048-recert.der");
 const P256_EXPIRED: &[u8] = include_bytes!("fixtures/cert-p256-expired.der");
@@ -267,9 +268,13 @@ fn replace_rejects_bad_arguments() -> TestResult {
 #[test]
 fn replace_missing_equals_foreign() -> TestResult {
     block_on(async {
-        for (ua, ub) in UID_PAIRS {
+        for (ua, ub, answer) in UID_PAIRS
+            .iter()
+            .flat_map(|&(a, b)| [Answer::Yes, Answer::No, Answer::Fail].map(|n| (a, b, n)))
+        {
             let r = Rig::start(Answer::Yes, ua, ub).await?;
             r.import(r.a(), "k", EC_P12, Answer::Yes).await?;
+            r.f.set_answer(answer);
             let before = snapshot(&r.area(ua))?;
             let foreign = replace(&r.b, "k", P256_RECERT).await;
             let missing_b = replace(&r.b, "absent", P256_RECERT).await;
@@ -289,7 +294,7 @@ fn replace_missing_equals_foreign() -> TestResult {
 }
 
 #[test]
-fn replace_without_process_fd_is_unavailable() -> TestResult {
+fn replace_without_credentials_is_unavailable() -> TestResult {
     block_on(async {
         let f = Fixture::start(
             Answer::Yes,

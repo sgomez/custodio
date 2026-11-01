@@ -115,13 +115,23 @@ fn replace_leaves_other_uids_alone() -> TestResult {
                 replace(r.a(), "my-key", &old_b).await,
                 Err(ERROR_CERTIFICATE_MISMATCH.to_owned())
             );
-            // b's own key accepts its own certificate again, and a's files do not change.
-            replace(&r.b, "my-key", &old_b).await?;
+            // b's key accepts a matching certificate with other bytes; a's files do not change.
+            assert_ne!(OTHER_EC_RECERT, old_b.as_slice());
+            replace(&r.b, "my-key", OTHER_EC_RECERT).await?;
+            assert_eq!(snapshot(&r.area(ua))?, before_a, "{ua} {ub}");
+            assert_eq!(certificate_of(r.a(), "my-key").await?, old_a);
+            assert_eq!(certificate_of(&r.b, "my-key").await?, OTHER_EC_RECERT);
+            assert_eq!(
+                std::fs::read(r.area(ub).join("my-key-cert"))?,
+                OTHER_EC_RECERT
+            );
             replace(r.a(), "my-key", P256_RECERT).await?;
-            assert_eq!(certificate_of(&r.b, "my-key").await?, old_b);
             assert_eq!(certificate_of(r.a(), "my-key").await?, P256_RECERT);
             assert_ne!(snapshot(&r.area(ua))?, before_a);
-            assert_eq!(std::fs::read(r.area(ub).join("my-key-cert"))?, old_b);
+            assert_eq!(
+                std::fs::read(r.area(ub).join("my-key-cert"))?,
+                OTHER_EC_RECERT
+            );
             assert_eq!(sign_err(&r.b, "my-key").await, "ok");
         }
         Ok(())

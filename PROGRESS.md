@@ -269,3 +269,8 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `tests/replace.rs` exceeded the 5000-token file-size gate; the mismatch, sign-after-replace, two-uid and store-failure tests moved unchanged to `tests/replace/outcomes.rs` (`use super::*`).
 - Evidence: `just quick` exit 0, `just api-contract` green. Product code unchanged, so the F78 mutants result stands.
 - Next session should: nothing for F78.
+
+### 2026-11-01 — F78 — attempt 3
+- Fixed NEXT_FINDINGS: `replace_leaves_other_uids_alone` now replaces 1001's key with a matching certificate of other bytes (new `cert-p256-other-recert.der`, made in `gen.sh`) and checks 1000's area (snapshot, `ListKeys`) right after; `replace_missing_equals_foreign` loops over polkit Yes/No/Fail. Test renamed to `replace_without_credentials_is_unavailable`; `docs/api.md` notes that a failed final directory sync comes after the rename. `replace_call` reads the store inline like the other store calls (`run_on_thread` is used only for sinks).
+- Evidence: `just quick` exit 0, `just api-contract` green. Product code unchanged, so the mutants result stands.
+- Next session should: nothing for F78.

@@ -58,6 +58,8 @@ recert() { # name, extra `openssl req` args...
 }
 recert p256-recert p256 -days 36500 -set_serial 4242
 recert rsa2048-recert rsa2048 -days 36500 -set_serial 4243
+# A second certificate for the key of p256-other.p12, whose bytes differ from the one in the .p12.
+recert p256-other-recert p256-other -days 36500 -set_serial 4244
 # Expired: valid only in 2020.
 recert p256-expired p256 -not_before 20200101000000Z -not_after 20201231000000Z
 recert rsa2048-expired rsa2048 -not_before 20200101000000Z -not_after 20201231000000Z

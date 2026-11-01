@@ -107,7 +107,8 @@ an expired or self-signed certificate for the key is accepted, and so is the cer
 
 The replacement is atomic: the new certificate is written to a temporary file, synced, and renamed over the old one,
 so a concurrent `ListKeys` sees the old or the new certificate, never an error or a missing one. If anything fails
-the old certificate stays, no temporary file is left, and the call fails as `Internal`. A replace and a
+before the rename the old certificate stays and no temporary file is left; a failure of the final directory sync
+comes after the rename (the new certificate is in place). Either way the call fails as `Internal`. A replace and a
 `DeleteKey` of one id never run at the same time (the second waits for the first); a replace that finds the key gone
 fails as `NoSuchKey` and leaves no certificate behind. This method does not write a journal entry.
 
