@@ -5,7 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 fail=0
 bad() { echo "test-changed-checks: $*" >&2; fail=1; }
 # This test names the paths it plans for, so it is in every plan; leave it out.
-plan() { "$ROOT/scripts/changed_checks.py" --dry-run "$@" | sed 's/^changed-checks: //' | grep -vxF scripts/test-changed-checks.sh; }
+plan() { "$ROOT/scripts/changed_checks.py" --dry-run "$@" | sed 's/^changed-checks: //' | { grep -vxF scripts/test-changed-checks.sh || true; }; }
 has() { grep -qxF -- "$2" <<< "$1" || bad "$3: missing '$2'"; }
 hasnt() { if grep -qF -- "$2" <<< "$1"; then bad "$3: unexpected '$2'"; fi; }
 
@@ -29,7 +29,10 @@ p=$(plan --files Cargo.lock)
 has "$p" "cargo deny check" "lockfile"
 grep -q '^cargo test -p crap -p custodio-cli -p custodio-pkcs11 -p custodiod' <<< "$p" || bad "lockfile: not every crate"
 
-p=$(plan --files PROGRESS.md)
+# A Markdown file nothing references, so no check can depend on it.
+md=$(mktemp "$ROOT/test-changed-checks-XXXXXX.md")
+trap 'rm -f "$md"' EXIT
+p=$(plan --files "${md#"$ROOT"/}")
 hasnt "$p" "cargo" "Markdown only"
 hasnt "$p" "scripts/test-" "Markdown only"
 
