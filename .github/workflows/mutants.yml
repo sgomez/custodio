@@ -42,7 +42,9 @@ jobs:
           name: mutants-${{ matrix.shard }}
           path: |
             target/mutants/mutants.out/*.txt
+            target/mutants/mutants.out/outcomes.json
             target/mutants-pkcs11/mutants.out/*.txt
+            target/mutants-pkcs11/mutants.out/outcomes.json
 
   # One open issue collects every failing run, a comment each.
   report:
@@ -62,19 +64,32 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.sha }}
-          TITLE: Missed mutants
         run: |
-          missed=$(find mutants -name missed.txt -exec cat {} + 2>/dev/null || true)
+          # A failing unmutated tree tests no mutant: that is its own issue, not a missed mutant.
+          broken=$(find mutants -name outcomes.json -exec jq -r \
+            'select(.outcomes[0].scenario == "Baseline" and .outcomes[0].summary != "Success") | input_filename' {} + |
+            sed 's|^mutants/||; s|/mutants.out/outcomes.json$||' | sort)
+          if [ -n "$broken" ]; then
+            title="Mutants baseline failing"
+            intro="The unmutated tree failed its tests, so no mutant was tested in:"
+            list=$broken
+          else
+            title="Missed mutants"
+            intro="Mutants the tests did not catch:"
+            list=$(find mutants -name missed.txt -exec cat {} + 2>/dev/null || true)
+          fi
           {
             echo "Full sweep on \`$SHA\`: $RUN_URL"
             echo
+            echo "$intro"
+            echo
             echo '```'
-            echo "${missed:-no mutant list: see the run}"
+            echo "${list:-no list: see the run}"
             echo '```'
           } > "$RUNNER_TEMP/body.md"
-          number=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+          number=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
             gh issue comment "$number" --body-file "$RUNNER_TEMP/body.md"
           else
-            gh issue create --title "$TITLE" --label bug --body-file "$RUNNER_TEMP/body.md"
+            gh issue create --title "$title" --label bug --body-file "$RUNNER_TEMP/body.md"
           fi
