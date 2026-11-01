@@ -9,8 +9,14 @@ case $(jq -r '.tool_name' <<< "$input") in
   Bash)
     [ "$(jq -r '.tool_input.run_in_background // false' <<< "$input")" != true ] \
       || deny "run_in_background is not allowed in the build loop."
-    if jq -r '.tool_input.command' <<< "$input" | grep -qE '(^|[;&|(]|\b(do|then))[[:space:]]*sleep\b|\b(until|while)\b.*\b(pgrep|sleep)\b'; then
-      deny "Polling with sleep, until or while is not allowed in the build loop."
+    cmd=$(jq -r '.tool_input.command' <<< "$input")
+    # A short sleep (a service starting) is fine; a long one or an unbounded wait loop is not.
+    if grep -qE '(^|[;&|(]|\b(do|then))[[:space:]]*sleep[[:space:]]+(inf|[0-9]{2,}|[1-9][0-9]*[mhd])' <<< "$cmd"; then
+      deny "A sleep of 10 s or more is not allowed in the build loop."
+    fi
+    if grep -qE '\b(until|while)\b.*\b(pgrep|sleep)\b' <<< "$cmd" \
+      && ! grep -qE '\btimeout[[:space:]]+[^;&|]*\b(until|while)\b' <<< "$cmd"; then
+      deny "A wait loop must run inside \`timeout <seconds>\`, e.g. \`timeout 60 sh -c 'until ...; do sleep 1; done'\`."
     fi ;;
 esac
 exit 0
