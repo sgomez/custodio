@@ -1,1 +1,8 @@
-# Cases the e2e suite may skip on arch, as `case: reason` (format: e2e/check-cases.sh). Empty: nothing is skipped here.
+# Cases the e2e suite may skip on arch, as `case: reason` (format: e2e/check-cases.sh). Only the cases of the upgrade from the old path are skipped here (below).
+# F61: the cases of the upgrade from the old-path package; Arch has none (marker file no-oldpath).
+upgrade-oldpath-version-greater: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)
+upgrade-oldpath-service-new-binary: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)
+upgrade-oldpath-state-unchanged: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)
+upgrade-oldpath-keys-listed: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)
+upgrade-oldpath-signs-with-polkit: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)
+upgrade-oldpath-no-manual-step: the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)

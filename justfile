@@ -118,11 +118,14 @@ test-scripts:
     scripts/test-e2e-skips.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
+    scripts/test-e2e-host-oldpath.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-refusal.sh
     scripts/test-e2e-old.sh
+    scripts/test-e2e-oldpath.sh
+    scripts/test-relabel.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -284,6 +287,8 @@ package version="":
     rm -rf target/packages target/man
     mkdir -p target/packages target/man
     gzip -9n < packaging/custodio.1 > target/man/custodio.1.gz
+    # The unit of each format from the one source: the ExecStart follows the daemon path of the format (F61).
+    scripts/derive-units.sh data/custodio.service target/units
     mkdir -p target/doc
     sed "s/@VERSION@/${base}${pre:+~$pre}-1/" packaging/changelog.Debian | gzip -9n > target/doc/changelog.Debian.gz
     # rustc leaves a .comment section in the binaries (lintian: binary-has-unneeded-section).
@@ -316,10 +321,11 @@ glibc-ceiling:
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
 # (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
-# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
+# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
 e2e target="all": package
     scripts/package-next.sh
     scripts/package-old.sh
+    scripts/package-oldpath.sh
     bash e2e/run.sh {{target}}
 
 # Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP

@@ -9,13 +9,13 @@ BUS_NAME=com.rfirma.Custodio1
 REFUSAL_PHRASE='does not provide ProcessFD'
 
 REQUIRED_FILES=(
-    /usr/lib/custodio/custodiod
+    /usr/libexec/custodio/custodiod
     /usr/lib/custodio/libcustodio_pkcs11.so
     /usr/lib/systemd/system/custodio.service
     /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
     /usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
 )
-OWNED_DIRS=(/usr/lib/custodio /var/lib/custodio)
+OWNED_DIRS=(/usr/lib/custodio /usr/libexec/custodio /var/lib/custodio)
 
 # package_files DEB: the non-directory entries of the package file (never of the installed system), one absolute path per line.
 package_files() { dpkg-deb -c "$1" | awk 'substr($1, 1, 1) != "d" { p = $6; sub(/^\./, "", p); if (p != "") print p }'; }

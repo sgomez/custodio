@@ -36,7 +36,7 @@ fi
 : > "$tmp/empty"
 rejects "empty list" 'empty' list_problems "$tmp/empty"
 grep -v custodiod "$tmp/files" > "$tmp/nodaemon"
-rejects "list without the daemon" 'lacks /usr/lib/custodio/custodiod' list_problems "$tmp/nodaemon"
+rejects "list without the daemon" 'lacks /usr/libexec/custodio/custodiod' list_problems "$tmp/nodaemon"
 
 # --- the precondition: a bus that answers and lacks ProcessFD
 fx ok '(a{sv}) 3 "UnixUserID" u 0 "ProcessID" u 311 "UnixGroupIDs" au 1 0
@@ -89,8 +89,12 @@ mkdir -p "$tmp/root"
 accepts "empty root" files_problems "$tmp/root" "$tmp/files"
 mkdir -p "$tmp/root/usr/lib/custodio"
 rejects "only /usr/lib/custodio left" '/usr/lib/custodio exists' files_problems "$tmp/root" "$tmp/files"
-touch "$tmp/root/usr/lib/custodio/custodiod"
-rejects "a packaged file left" '/usr/lib/custodio/custodiod exists' files_problems "$tmp/root" "$tmp/files"
+mkdir -p "$tmp/root/usr/libexec/custodio"
+touch "$tmp/root/usr/libexec/custodio/custodiod"
+rejects "a packaged file left" '/usr/libexec/custodio/custodiod exists' files_problems "$tmp/root" "$tmp/files"
+rm -rf "$tmp/root"
+mkdir -p "$tmp/root/usr/libexec/custodio"
+rejects "only /usr/libexec/custodio left" '/usr/libexec/custodio exists' files_problems "$tmp/root" "$tmp/files"
 rm -rf "$tmp/root"
 mkdir -p "$tmp/root/var/lib/custodio"
 rejects "only /var/lib/custodio left" '/var/lib/custodio exists' files_problems "$tmp/root" "$tmp/files"

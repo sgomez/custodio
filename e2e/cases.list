@@ -35,6 +35,12 @@ upgrade-state-unchanged
 upgrade-keys-listed
 upgrade-signs-with-polkit
 upgrade-no-manual-step
+upgrade-oldpath-version-greater
+upgrade-oldpath-service-new-binary
+upgrade-oldpath-state-unchanged
+upgrade-oldpath-keys-listed
+upgrade-oldpath-signs-with-polkit
+upgrade-oldpath-no-manual-step
 removal-service-stopped
 removal-no-packaged-files
 removal-not-activatable

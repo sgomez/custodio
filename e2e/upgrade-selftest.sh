@@ -111,6 +111,16 @@ rejects "a unit without ExecStart" 'no ExecStart' unit_binary "$tmp/unit.service
 unit 'ExecStart=custodiod'
 rejects "a relative ExecStart" 'not an absolute path' unit_binary "$tmp/unit.service"
 rejects "no unit file" 'no unit file' unit_binary "$tmp/none.service"
+# F61: the upgrade from the package with the daemon at the old path moves the service from /usr/lib/custodio to /usr/libexec/custodio.
+accepts "the service moved to the libexec path" oldpath_problems /usr/lib/custodio/custodiod /usr/libexec/custodio/custodiod
+rejects "a before path equal to the after path" 'same path as before' oldpath_problems /usr/libexec/custodio/custodiod /usr/libexec/custodio/custodiod
+rejects "a before path that is not the old path" 'not the old path' oldpath_problems /usr/libexec/custodiod /usr/libexec/custodio/custodiod
+rejects "an after-unit naming the old path" 'still names the old path' oldpath_problems /usr/lib/custodio/custodiod /usr/lib/custodio/custodiod
+rejects "an after path that is not the libexec path" 'not /usr/libexec/custodio/custodiod' oldpath_problems /usr/lib/custodio/custodiod /usr/bin/custodiod
+accepts "the deb daemon path" test "$(daemon_path deb)" = /usr/libexec/custodio/custodiod
+accepts "the rpm daemon path" test "$(daemon_path rpm)" = /usr/libexec/custodio/custodiod
+accepts "the Arch daemon path" test "$(daemon_path arch)" = /usr/lib/custodio/custodiod
+rejects "an unknown format" 'unknown format' daemon_path snap
 # The process started from the old file must not pass for the new one: after the upgrade the process runs the file the NEW unit names.
 mkdir -p "$tmp/oldroot" "$tmp/newroot"
 printf 'binary\n' > "$tmp/oldroot/custodiod"

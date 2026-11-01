@@ -39,7 +39,7 @@ mixed() { fx_mix "$@"; }
 
 fx_build good 0.1.0 '' none
 expect_ok "good set" "$FX_DIR/out/good" "$NONE"
-grep -q ' 3 differences, 3 exceptions' "$FX_DIR/gate.out" || bad "the good set reports differences"
+grep -q ' 5 differences, 5 exceptions' "$FX_DIR/gate.out" || bad "the good set reports differences"
 expect_ok "default exceptions file is the committed one" "$FX_DIR/out/good"
 bare=$FX_DIR/bare.txt
 printf '# no exceptions\n' > "$bare"
@@ -58,9 +58,9 @@ done
 
 # Mode and owner, one format at a time.
 fx_build mode 0.1.0 '' mode $CLI 644
-fx_build owner 0.1.0 '' owner /usr/lib/custodio/custodiod custodio
-fx_build group 0.1.0 '' group /usr/lib/custodio/custodiod custodio
-fx_build numeric 0.1.0 '' owner /usr/lib/custodio/custodiod 1000
+fx_build owner 0.1.0 '' owner /usr/libexec/custodio/custodiod custodio
+fx_build group 0.1.0 '' group /usr/libexec/custodio/custodiod custodio
+fx_build numeric 0.1.0 '' owner /usr/libexec/custodio/custodiod 1000
 for fmt in deb rpm archlinux; do
     label=${fmt/archlinux/arch}
     mixed "mode-$fmt" good "$fmt" mode
@@ -68,7 +68,7 @@ for fmt in deb rpm archlinux; do
 done
 for fmt in deb rpm; do # nfpm writes numeric 0/0 for every Arch file, so Arch owners are tested below by repacking
     mixed "owner-$fmt" good "$fmt" owner
-    expect_fail "$fmt owner custodio" /usr/lib/custodio/custodiod "owner differs" "$fmt custodio" -- "$FX_DIR/out/owner-$fmt" "$NONE"
+    expect_fail "$fmt owner custodio" /usr/libexec/custodio/custodiod "owner differs" "$fmt custodio" -- "$FX_DIR/out/owner-$fmt" "$NONE"
     mixed "group-$fmt" good "$fmt" group
     expect_fail "$fmt group custodio" "group differs" "$fmt custodio" -- "$FX_DIR/out/group-$fmt" "$NONE"
     mixed "numeric-$fmt" good "$fmt" numeric
@@ -146,7 +146,7 @@ exc wrongfield "$CLI | rpm | owner | wrong field"
 expect_fail "mode difference under an owner exception" "mode differs" "stale" -- "$FX_DIR/out/m1" "$FX_DIR/wrongfield.txt"
 exc wrongpkg "$CLI | deb | mode | wrong package"
 expect_fail "mode difference in a package the entry does not name" "mode differs" "stale" -- "$FX_DIR/out/m1" "$FX_DIR/wrongpkg.txt"
-exc wrongpath "/usr/lib/custodio/custodiod | rpm | mode | wrong path"
+exc wrongpath "/usr/libexec/custodio/custodiod | rpm | mode | wrong path"
 expect_fail "same field on another path" "mode differs" "stale" -- "$FX_DIR/out/m1" "$FX_DIR/wrongpath.txt"
 # The same path and field with two differing packages: naming one of them is not enough.
 fx_build mode2 0.1.0 '' mode $CLI 600
@@ -159,12 +159,35 @@ fx_build ownmode 0.1.0 '' owner $CLI custodio
 mixed m3 m1 rpm ownmode
 expect_fail "owner under a mode exception" "owner differs" -- "$FX_DIR/out/m3" "$FX_DIR/ok.txt"
 
-# The committed file holds the Arch-only hook files of F42 and F58 and nothing else, each with a reason; the real fixtures pass with it.
+# The committed file holds the Arch-only hook files of F42 and F58 and the two paths of the daemon (F61) and nothing else, each with a reason; the real fixtures pass with it.
 entries=$(grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/packaging/parity-exceptions.txt" | cut -d' ' -f1-5 | sort)
-want=$'/usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence\n/usr/share/libalpm/hooks/zz-custodio-restart.hook | arch | presence\n/usr/share/libalpm/scripts/custodio-bus-check | arch | presence'
-[ "$entries" = "$want" ] || bad "packaging/parity-exceptions.txt holds other entries than the Arch hook files: $entries"
+want=$'/usr/lib/custodio/custodiod | arch | presence\n/usr/libexec/custodio/custodiod | arch | presence\n/usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence\n/usr/share/libalpm/hooks/zz-custodio-restart.hook | arch | presence\n/usr/share/libalpm/scripts/custodio-bus-check | arch | presence'
+[ "$entries" = "$want" ] || bad "packaging/parity-exceptions.txt holds other entries than the Arch hook files and the two daemon paths: $entries"
 if grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/packaging/parity-exceptions.txt" | awk -F' [|] ' 'length($4) < 20 { bad = 1 } END { exit !bad }'; then bad "a parity exception has no reason"; fi
 expect_ok "real fixtures with the committed exceptions" "$FX_DIR/out/good" "$ROOT/packaging/parity-exceptions.txt"
+
+# The daemon paths (F61): without their exceptions the gate fails; a daemon at the path of another format fails; an exception for another path, with
+# an empty reason, or for the wrong package does not excuse it.
+no_daemon=$FX_DIR/no-daemon.txt
+grep -v 'custodiod |' "$NONE" > "$no_daemon"
+expect_fail "the daemon paths without their exceptions" /usr/libexec/custodio/custodiod /usr/lib/custodio/custodiod "presence differs" -- "$FX_DIR/out/good" "$no_daemon"
+for path in /usr/libexec/custodio/custodiod /usr/lib/custodio/custodiod; do
+    base=$FX_DIR/no-daemon-$$.txt
+    grep -v "^$path |" "$NONE" > "$base"
+    expect_fail "no exception for $path" "$path" "presence differs" -- "$FX_DIR/out/good" "$base"
+    { cat "$base"; printf '%s | arch | presence | \n' "$path"; } > "$FX_DIR/empty-reason.txt"
+    expect_fail "an empty reason for $path" "no reason" -- "$FX_DIR/out/good" "$FX_DIR/empty-reason.txt"
+    { cat "$base"; printf '%s | deb | presence | wrong package, naming deb instead of arch\n' "$path"; } > "$FX_DIR/wrong-pkg.txt"
+    expect_fail "$path excused for the wrong package" "$path" "presence differs" -- "$FX_DIR/out/good" "$FX_DIR/wrong-pkg.txt"
+done
+{ grep -v 'libexec/custodio/custodiod |' "$NONE"; printf '/usr/libexec/custodio/other | arch | presence | another path\n'; } > "$FX_DIR/other-path.txt"
+expect_fail "an exception for another path" "/usr/libexec/custodio/custodiod" "presence differs" -- "$FX_DIR/out/good" "$FX_DIR/other-path.txt"
+fx_build deb-arch-path 0.1.0 '' daemon deb /usr/lib/custodio/custodiod
+mixed deb-at-arch-path good deb deb-arch-path
+expect_fail "a .deb with the daemon at the Arch path" /usr/libexec/custodio/custodiod "presence differs" "deb absent" -- "$FX_DIR/out/deb-at-arch-path" "$NONE"
+fx_build arch-libexec-path 0.1.0 '' daemon archlinux /usr/libexec/custodio/custodiod
+mixed arch-at-libexec-path good archlinux arch-libexec-path
+expect_fail "an Arch package with the daemon at the libexec path" /usr/lib/custodio/custodiod "stale exception" -- "$FX_DIR/out/arch-at-libexec-path" "$NONE"
 
 # Fail closed.
 expect_fail "missing DIR" "does not exist" -- "$FX_DIR/nowhere" "$NONE"

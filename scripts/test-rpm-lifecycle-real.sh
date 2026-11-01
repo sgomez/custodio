@@ -40,7 +40,7 @@ bf_in_root "$SKELETON" true || { echo "test-rpm-lifecycle-real: cannot make a us
 # build_rpm NAME VERSION DIR: an rpm of the real nfpm.yaml whose scriptlets are the files pre, post, preun, postun of DIR (a key whose file is
 # absent is left out). The package is out/NAME/*.rpm in FX_DIR.
 build_rpm() {
-    local name=$1 version=$2 dir=$3 yaml=$ROOT/packaging/nfpm.yaml key file n=0
+    local name=$1 version=$2 dir=$3 yaml=${BASE_YAML:-$ROOT/packaging/nfpm.yaml} key file n=0
     mkdir -p "$FX_DIR/pk/$name" "$FX_DIR/out/$name"
     cp "$dir"/* "$FX_DIR/pk/$name/"
     for pair in preinstall:pre postinstall:post preremove:preun postremove:postun; do
@@ -92,6 +92,12 @@ PKG_NEW=$(build_rpm new 0.1.1 "$ROOT/packaging/rpm")
 PKG_OLD42=$(build_rpm old42 0.1.0 "$OLD42")
 PKG_LOG_OLD=$(build_rpm log-old 0.1.0 "$LOGDIR")
 PKG_LOG_NEW=$(build_rpm log-new 0.1.1 "$LOGDIR")
+# F61: the package as the current M2 ones were (this tree's nfpm.yaml edited): the daemon at /usr/lib/custodio, the unit starting it there.
+python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$ROOT/packaging/nfpm.yaml" "$FX_DIR/nfpm-oldpath-base.yaml" oldpath
+PKG_OLDPATH=$(BASE_YAML=$FX_DIR/nfpm-oldpath-base.yaml build_rpm oldpath 0.1.0 "$ROOT/packaging/rpm")
+oldpath_files=$(rpm --dbpath "$FX_DIR/rpmdb" -qlp "$PKG_OLDPATH")
+grep -qx '/usr/lib/custodio/custodiod' <<< "$oldpath_files" || { echo "test-rpm-lifecycle-real: the old-path fixture has no daemon at /usr/lib/custodio" >&2; exit 1; }
+! grep -q '^/usr/libexec' <<< "$oldpath_files" || { echo "test-rpm-lifecycle-real: the old-path fixture has a /usr/libexec path" >&2; exit 1; }
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
@@ -189,11 +195,12 @@ cases() {
     files_gone "install on a bus without ProcessFD"
 
     # ---- upgrade between two builds of this tree, and over the F42-era package ----
-    for from in tree f42; do
+    for from in tree f42 oldpath; do
         for running in yes no; do
             new_root
-            if [ "$from" = tree ]; then rpm_in -i "$old"; else rpm_in -i "$PKG_OLD42"; fi
+            case $from in tree) rpm_in -i "$old" ;; f42) rpm_in -i "$PKG_OLD42" ;; oldpath) rpm_in -i "$PKG_OLDPATH" ;; esac
             want_ok "first install ($from)"
+            if [ "$from" = oldpath ]; then [ -e "$root/usr/lib/custodio/custodiod" ] || bad "first install ($from): the old daemon is missing"; fi
             [ "$running" = no ] || : > "$root/stub/active"
             label="upgrade from $from, running $running"
             rpm_in -U "$new"
@@ -211,6 +218,12 @@ cases() {
             grep -c '^custodio:' "$root/etc/passwd" | grep -qx 1 || bad "$label: not exactly one account line"
             no_enable "$label"
             state_intact "$label"
+            if [ "$from" = oldpath ]; then # F61: the daemon moved to /usr/libexec and the unit follows; the module stays
+                [ -e "$root/usr/libexec/custodio/custodiod" ] || bad "$label: the new daemon is missing"
+                [ ! -e "$root/usr/lib/custodio/custodiod" ] || bad "$label: the old daemon is still there"
+                [ -e "$root/usr/lib/custodio/libcustodio_pkcs11.so" ] || bad "$label: the module is gone"
+                grep -qx 'ExecStart=/usr/libexec/custodio/custodiod' "$root/usr/lib/systemd/system/custodio.service" || bad "$label: the unit does not start the new path"
+            fi
         done
     done
 

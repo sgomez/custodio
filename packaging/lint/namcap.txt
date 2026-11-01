@@ -10,6 +10,7 @@ incorrect-owner | usr/lib/custodio/libcustodio_pkcs11.so (0:0) | nfpm writes num
 incorrect-owner | usr/lib/systemd/catalog/custodio.catalog (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/lib/systemd/system/custodio.service (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/lib/sysusers.d/custodio.conf (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/lib/tmpfiles.d/custodio.conf (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/dbus-1/system-services/com.rfirma.Custodio1.service (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
 incorrect-owner | usr/share/doc/custodio/changelog.Debian.gz (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0

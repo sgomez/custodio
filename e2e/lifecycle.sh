@@ -34,7 +34,7 @@ account() { getent passwd custodio || true; }
 # BEGIN lifecycle-case
 vn1=$(pkg_file_version "$fmt" "$next")
 packaged_entries "$fmt" "$next" > "$WORK/packaged.list"
-entries_problems "$WORK/packaged.list" || fail "the package file lists too little (see above)"
+entries_problems "$WORK/packaged.list" "$fmt" || fail "the package file lists too little (see above)"
 echo "e2e: lifecycle: $(grep -c '^f ' "$WORK/packaged.list") files and $(grep -c '^d ' "$WORK/packaged.list") directories in $(basename "$next")"
 
 # Before: N+1 installed, the service running, the name activatable; what must survive is recorded.

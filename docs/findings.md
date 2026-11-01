@@ -1019,3 +1019,24 @@ Acceptance 13: pass.
   mountinfo), so inside it the files show as 956. Other processes running as 65534 cannot reach them: `/var/lib/private` is
   `0700 root`. Expected systemd behaviour for `DynamicUser=yes`, not a Custodio defect; the e2e snapshot compares uids before and
   after, so it is unaffected.
+
+## F61
+
+- **tmpfiles `Z` with three dashes restores a label and nothing else.** `man tmpfiles.d` (systemd 257, Debian 13): type `Z` "Recursively set the
+  access mode, user and group ownership, and restore the SELinux security context of a file or directory if it exists ... Does not follow
+  symlinks"; a `-` in the mode, user or group field leaves it as it is. Run here (`systemd-tmpfiles --create --root=ROOT data/tmpfiles.d/custodio.conf`
+  on a fixture tree with a 0700 directory, a 0640 file, an old mtime): mode, owner, content, size and mtime unchanged, exit 0, nothing printed;
+  with the directory removed, nothing is created (exit 0). `scripts/test-relabel.sh` repeats it, with a control line that has a mode and does change it.
+- **Mechanism chosen: a tmpfiles.d line, no scriptlet.** `data/tmpfiles.d/custodio.conf` (`Z /var/lib/private/custodio - - -`) in all three packages.
+  `systemd-tmpfiles-setup.service` runs it at every boot, so key files written under `init_t` (`init_var_lib_t`) get the default label back after the
+  first boot on the new package, and on an image-based system too: rpm-ostree runs `%post` in a build root with no `/var`, but the booted deployment
+  runs the boot service. A `restorecon` in `%post`/`postinst`/the Arch hook was rejected: it runs at the wrong time on rpm-ostree (nothing to label
+  in the build root), needs a call-log change in every lifecycle test of the three formats, and could run outside the state directory if
+  it were ever widened; the tmpfiles line is one path by construction and cannot create, remove, chown or chmod. With no SELinux, no
+  `systemd-tmpfiles` or a chroot, nothing runs. Not proven here: the label itself (no SELinux in the dev container); see "F61" in `docs/manual-acceptance.md`.
+- **Limit.** The label comes back at the next boot (or when someone runs `systemd-tmpfiles --create`), not at the moment of the upgrade.
+  Until then the restarted service (`unconfined_service_t`) reads files labelled `init_var_lib_t`; an unconfined domain is not denied.
+- **The old-path fixture** is this tree's `packaging/nfpm.yaml` with the deb and rpm daemon at `/usr/lib/custodio/custodiod` and the unit
+  from the source unmodified (`nfpm_edit.py oldpath`), not a pinned old commit: the F48 case upgrades N to N+1 from one tree, and both have the new path.
+- **Arch has no old path** (it keeps `/usr/lib/custodio/custodiod`): the `upgrade-oldpath-*` cases are skipped there (`e2e/targets/arch/no-oldpath`,
+  skip list); the package level checks and the F48 case cover it.

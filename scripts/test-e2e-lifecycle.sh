@@ -104,14 +104,16 @@ fx_build cur 0.1.0 '' none
 for fmt in deb rpm; do
     f=$(fx_file cur "$fmt")
     packaged_entries "$fmt" "$f" > "$tmp/list.$fmt" || bad "$fmt: the list cannot be read"
-    out=$(entries_problems "$tmp/list.$fmt" 2>&1) || bad "$fmt: the list of the real package is rejected: $out"
+    out=$(entries_problems "$tmp/list.$fmt" "$fmt" 2>&1) || bad "$fmt: the list of the real package is rejected: $out"
     grep -qx 'd /usr/lib/custodio' "$tmp/list.$fmt" || bad "$fmt: /usr/lib/custodio is not a directory of the package"
     grep -qx 'd /usr/share/doc/custodio' "$tmp/list.$fmt" || bad "$fmt: /usr/share/doc/custodio is not a directory of the package"
-    grep -qx 'f /usr/lib/custodio/custodiod' "$tmp/list.$fmt" || bad "$fmt: the daemon is not in the list"
+    grep -qx 'd /usr/libexec/custodio' "$tmp/list.$fmt" || bad "$fmt: /usr/libexec/custodio is not a directory of the package"
+    grep -qx 'f /usr/libexec/custodio/custodiod' "$tmp/list.$fmt" || bad "$fmt: the daemon is not in the list"
+    ! grep -qx 'f /usr/lib/custodio/custodiod' "$tmp/list.$fmt" || bad "$fmt: the daemon is also at the Arch path"
 done
 # the Arch package is read by bsdtar here (pacman -Qlp prints the same names with the package name before them)
 bsdtar -tf "$(fx_file cur archlinux)" | grep -v '^\.' | sed 's/^/custodio \//' | entries_from_arch | with_ancestors > "$tmp/list.arch"
-entries_problems "$tmp/list.arch" > /dev/null 2>&1 || bad "arch: the list of the real package is rejected: $(entries_problems "$tmp/list.arch" 2>&1)"
+entries_problems "$tmp/list.arch" arch > /dev/null 2>&1 || bad "arch: the list of the real package is rejected: $(entries_problems "$tmp/list.arch" arch 2>&1)"
 # a leftover directory of the real list is seen: the doc directory of the package, left behind in a fixture root
 mkdir -p "$tmp/root/usr/share/doc/custodio"
 out=$(leftover_problems "$tmp/list.deb" false "$tmp/root" 2>&1) && bad "a left-over doc directory of the real list was accepted"

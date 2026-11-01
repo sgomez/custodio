@@ -323,6 +323,52 @@ or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
    outcome `signed`. The cancellations alone: the same query with `CUSTODIO_OUTCOME=denied` in place of
    `MESSAGE_ID=...`. Use the table of section 7.
 
+### F61 fedora44: old-path .rpm upgrade, labels
+
+Proves that the service starts from `/usr/libexec/custodio/custodiod` in `unconfined_service_t`, and that key files written by the old
+package under `init_t` get the label `var_lib_t` back (F61). Needs the two packages of the milestone commit: the old-path fixture
+(`scripts/package-oldpath.sh` writes it to `target/packages-oldpath/`: the current .rpm with the daemon at `/usr/lib/custodio/custodiod`) and the
+newer package (`target/packages-next/`, which `just e2e` builds). Copy both to the machine (the old-path fixture has the name of package N, `custodio-0.1.0-1.x86_64.rpm`; the newer one is `custodio-0.1.1-1.x86_64.rpm`). Commands copied from `docs/install.md` and the e2e scripts
+are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** until this run.
+
+1. Remove any custodio package (`sudo dnf remove custodio`, and `sudo rm -rf /var/lib/private/custodio` on this test machine only), then install the old-path package and import a key:
+
+   ```sh
+   sudo dnf install ./custodio-0.1.0-1.x86_64.rpm
+   custodio import --id rsa2048 rsa2048.p12
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   ```
+
+   Expected: `ps -eZ` shows `system_u:system_r:init_t` for `custodiod` (the old path is `lib_t`), and the key file under
+   `/var/lib/private/custodio` has `init_var_lib_t`. Copy both outputs. If you see anything else, stop: the run does not show the problem F61 fixes.
+2. Upgrade to the newer package:
+
+   ```sh
+   sudo dnf upgrade ./custodio-0.1.1-1.x86_64.rpm
+   ls /usr/libexec/custodio/custodiod; ls /usr/lib/custodio/custodiod
+   systemctl status custodio --no-pager | grep -E 'Main PID|Active'
+   ps -eZ | grep custodiod
+   ```
+
+   Expected: the first `ls` finds the file, the second says `No such file or directory`; the service is active with a new main PID; `ps -eZ` shows
+   `system_u:system_r:unconfined_service_t`. `ls -Z /var/lib/private/custodio` may still show `init_var_lib_t` here: the label comes back at the next boot.
+3. Restore the labels and check them. The tmpfiles line runs at every boot; to see its effect at once, and to check that nothing but the label changes:
+
+   ```sh
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/custodio.conf
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   ls -Z /var/lib/private/custodio
+   matchpathcon /var/lib/private/custodio
+   ```
+
+   Expected: the two `stat` outputs are equal (mode, owner, size); `ls -Z` shows `var_lib_t` (what `matchpathcon` prints as the default); the key listing
+   still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). Then repeat the old-path steps 1 and 2 up to the upgrade, `sudo reboot` instead of the
+   `systemd-tmpfiles` command, and check `ls -Z` after the reboot: `var_lib_t` without any command.
+4. Sign with the dialog and cancel it (acceptance 12, steps 5 and 6 of the section above): the dialog appears, approving signs, cancelling fails.
+5. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+
 ## 12. bazzite, the .rpm layered (acceptance 13)
 
 Record first (section 10): `cat /etc/os-release; uname -r; dbus-broker --version; pkaction --version; rpm-ostree status`, and the
@@ -365,6 +411,39 @@ desktop session; do not use a toolbox or distrobox: a signature from inside a to
    ```
 
    Expected: no line from the second command. Run both after each reboot and at the end, and record the output of each.
+
+### F61 bazzite: old-path .rpm layered with rpm-ostree, labels
+
+The same proof on the image-based system, where `%post` runs in a build root and no scriptlet touches `/var` at deploy time, so only the tmpfiles line
+(`/usr/lib/tmpfiles.d/custodio.conf`, run by the boot) can restore the label. Do everything on the host (no toolbox). Commands are **unverified** until this run
+(`rpm-ostree install` of a local file and the replace step are the ones section 12 already marks as such).
+
+1. Layer the old-path package and reboot; import a key; look at the domain and the label:
+
+   ```sh
+   sudo rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm
+   systemctl reboot
+   custodio import --id rsa2048 rsa2048.p12
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   ```
+
+   Expected: `init_t` and `init_var_lib_t`, as on fedora44 (copy both outputs).
+2. Replace it with the newer package, reboot, and check:
+
+   ```sh
+   rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm
+   systemctl reboot
+   ls /usr/libexec/custodio/custodiod
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   ```
+
+   Expected: the file exists; `unconfined_service_t`; **after the reboot** `var_lib_t` for the key files (the boot ran `systemd-tmpfiles-setup`), with the same
+   mode, owner and size as before the upgrade (take the `stat` line before step 2 too and compare).
+3. The same keys still list and sign with the dialog, and a cancel fails (acceptance 12; sections 11 and 12 above): sign twice with the dialog open each time, cancel once.
+4. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
 
 ## 13. omarchy (acceptance 14)
 

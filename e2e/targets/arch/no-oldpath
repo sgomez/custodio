@@ -1,0 +1,1 @@
+the Arch package has no old path: the daemon was always at /usr/lib/custodio/custodiod there (Arch has no /usr/libexec)

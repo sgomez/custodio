@@ -25,7 +25,7 @@ for d in "${SHARED_DIRS[@]}"; do
     [[ $d == /* ]] || bad "the shared directory '$d' is not absolute"
     [[ $d =~ [\*\?\[] ]] && bad "the shared directory '$d' is a pattern"
 done
-for d in /usr/lib/custodio /usr/share/doc/custodio /usr/share/licenses/custodio; do
+for d in /usr/lib/custodio /usr/libexec/custodio /usr/share/doc/custodio /usr/share/licenses/custodio; do
     if is_shared_dir "$d"; then bad "$d is excused as a shared directory"; fi
 done
 is_shared_dir /usr/share/polkit-1/actions || bad "the polkit actions directory is not shared"
@@ -44,14 +44,22 @@ lrwxrwxrwx root/root 0 2026-01-01 00:00 ./usr/lib/custodio/link -> custodiod'
 
 # a full list of the files the package must install, with their directories
 full=$tmp/full.list
-for p in "${REQUIRED_PATHS[@]}" /usr/share/doc/custodio/copyright /usr/share/licenses/custodio/LICENSE; do echo "f $p"; done | with_ancestors > "$full"
-accepts "a full list" entries_problems "$full"
+for p in "${REQUIRED_PATHS[@]}" "$(daemon_path deb)" /usr/share/doc/custodio/copyright /usr/share/licenses/custodio/LICENSE; do echo "f $p"; done | with_ancestors > "$full"
+sed 's#^f /usr/libexec/custodio/custodiod$#f /usr/lib/custodio/custodiod#' "$full" > "$tmp/arch-path.list"
+{ cat "$tmp/arch-path.list"; echo 'f /usr/libexec/custodio/custodiod'; } > "$tmp/both.list"
+accepts "a full list" entries_problems "$full" deb
+accepts "a full list, rpm" entries_problems "$full" rpm
+# the daemon at the path of its format (F61)
+rejects "a deb list with the daemon at the Arch path" 'lacks /usr/libexec/custodio/custodiod' entries_problems "$tmp/arch-path.list" deb
+rejects "an Arch list with the daemon at the libexec path" 'lacks /usr/lib/custodio/custodiod' entries_problems "$full" arch
+rejects "an Arch list with both paths" 'another format' entries_problems "$tmp/both.list" arch
+rejects "an unknown format" 'unknown format' entries_problems "$full" snap
 grep -v '^f /usr/lib/systemd/system/custodio.service$' "$full" > "$tmp/nounit.list"
-rejects "a list without the unit" 'lacks /usr/lib/systemd/system/custodio.service' entries_problems "$tmp/nounit.list"
+rejects "a list without the unit" 'lacks /usr/lib/systemd/system/custodio.service' entries_problems "$tmp/nounit.list" deb
 : > "$tmp/empty.list"
-rejects "an empty list" 'no file' entries_problems "$tmp/empty.list"
+rejects "an empty list" 'no file' entries_problems "$tmp/empty.list" deb
 grep -v '^d ' "$full" > "$tmp/nodirs.list"
-rejects "a list without directories" 'no directory' entries_problems "$tmp/nodirs.list"
+rejects "a list without directories" 'no directory' entries_problems "$tmp/nodirs.list" deb
 
 # --- no packaged file remains: a fixture root ---------------------------------------------------------------------------------------
 root=$tmp/root
@@ -61,7 +69,7 @@ tree() { # a root that holds the shared directories and nothing of the package
     for d in "${SHARED_DIRS[@]}"; do mkdir -p "$root$d"; done
 }
 no_owner() { return 1; }
-other_owner() { [ "$1" = /usr/lib/custodio ]; } # another package owns this directory
+other_owner() { [ "$1" = /usr/libexec/custodio ]; } # another package owns this directory
 tree
 accepts "a clean tree" leftover_problems "$full" no_owner "$root"
 tree
@@ -78,12 +86,12 @@ mkdir -p "$root/usr/share/doc/custodio" "$root/usr/share/licenses/custodio"
 rejects "the doc directory left" 'leftover: directory /usr/share/doc/custodio' leftover_problems "$full" no_owner "$root"
 rejects "the licenses directory left" 'leftover: directory /usr/share/licenses/custodio' leftover_problems "$full" no_owner "$root"
 tree
-mkdir -p "$root/usr/lib/custodio"
+mkdir -p "$root/usr/libexec/custodio"
 accepts "a directory that another package owns" leftover_problems "$full" other_owner "$root"
 tree
-mkdir -p "$root/usr/lib/custodio"
-touch "$root/usr/lib/custodio/custodiod"
-rejects "a file under a directory that another package owns" 'leftover: file /usr/lib/custodio/custodiod' leftover_problems "$full" other_owner "$root"
+mkdir -p "$root/usr/libexec/custodio"
+touch "$root/usr/libexec/custodio/custodiod"
+rejects "a file under a directory that another package owns" 'leftover: file /usr/libexec/custodio/custodiod' leftover_problems "$full" other_owner "$root"
 tree
 rejects "a list that lacks the files" 'no file' leftover_problems "$tmp/empty.list" no_owner "$root"
 

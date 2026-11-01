@@ -1,12 +1,19 @@
 """What the package gate expects (see check_packages.py). Taken from the assets of M1's .deb, not from nfpm.yaml."""
 
-# Installed files of every package: path -> mode. /usr/lib/custodio/custodiod is the only path that moved from M1.
+# The service binary of each format (F61): where its distribution wants internal binaries. Arch has no /usr/libexec.
+DAEMON = {
+    "deb": "/usr/libexec/custodio/custodiod",
+    "rpm": "/usr/libexec/custodio/custodiod",
+    "arch": "/usr/lib/custodio/custodiod",
+}
+
+# Installed files of every package, the service binary apart (DAEMON): path -> mode.
 FILES = {
-    "/usr/lib/custodio/custodiod": 0o755,
     "/usr/bin/custodio": 0o755,
     "/usr/lib/custodio/libcustodio_pkcs11.so": 0o644,
     "/usr/lib/systemd/system/custodio.service": 0o644,
     "/usr/lib/sysusers.d/custodio.conf": 0o644,
+    "/usr/lib/tmpfiles.d/custodio.conf": 0o644,
     "/usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf": 0o644,
     "/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service": 0o644,
     "/usr/share/polkit-1/actions/com.rfirma.custodio.policy": 0o644,
@@ -30,6 +37,7 @@ ARCH_ONLY_FILES = {
 # leaves them behind (F49); dpkg and pacman own the parents of the files they list. Path -> mode.
 RPM_ONLY_DIRS = {
     "/usr/lib/custodio": 0o755,
+    "/usr/libexec/custodio": 0o755,
     "/usr/share/doc/custodio": 0o755,
     "/usr/share/licenses/custodio": 0o755,
 }
@@ -68,7 +76,7 @@ NEEDED = {
 }
 # The dynamic loader (PT_INTERP) is shipped by the glibc package that libc.so.6 already requires.
 NEEDED_EXEMPT = {"ld-linux-x86-64.so.2"}
-ELF_FILES = ("/usr/lib/custodio/custodiod", "/usr/bin/custodio", "/usr/lib/custodio/libcustodio_pkcs11.so")
+ELF_FILES = ("/usr/bin/custodio", "/usr/lib/custodio/libcustodio_pkcs11.so")  # and the DAEMON of the format
 
 # Lifecycle scripts per format: exactly these exist (deb maintainer scripts, rpm scriptlet tags, Arch .INSTALL functions).
 DEB_SCRIPTS = {"preinst", "postinst", "prerm", "postrm"}

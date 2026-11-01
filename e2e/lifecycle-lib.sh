@@ -4,21 +4,23 @@
 # The state comparisons (snapshot_state, compare_state, compare_listing) and the version readers are F48's, in upgrade-lib.sh.
 
 BUS_NAME=com.rfirma.Custodio1
+# shellcheck source=e2e/daemon-path.sh
+source "$(dirname "${BASH_SOURCE[0]}")/daemon-path.sh"
 
 # The shared system directories: a directory that the package lists (or whose file it lists) and that stays after the removal is not a leftover
-# when it is in this list. A fixed list, no pattern, and no path named after custodio: /usr/lib/custodio, /usr/share/doc/custodio and
+# when it is in this list. A fixed list, no pattern, and no path named after custodio: /usr/lib/custodio, /usr/libexec/custodio, /usr/share/doc/custodio and
 # /usr/share/licenses/custodio are not in it, so they must be gone. The /lib entries are the usr-merge aliases of the unit directory.
 SHARED_DIRS=(
     /lib /lib/systemd /lib/systemd/system
-    /usr /usr/bin /usr/lib /usr/lib/systemd /usr/lib/systemd/catalog /usr/lib/systemd/system /usr/lib/sysusers.d
+    /usr /usr/bin /usr/lib /usr/libexec /usr/lib/systemd /usr/lib/systemd/catalog /usr/lib/systemd/system /usr/lib/sysusers.d /usr/lib/tmpfiles.d
     /usr/share /usr/share/dbus-1 /usr/share/dbus-1/system-services /usr/share/dbus-1/system.d /usr/share/doc
     /usr/share/libalpm /usr/share/libalpm/hooks /usr/share/libalpm/scripts /usr/share/licenses
     /usr/share/man /usr/share/man/man1 /usr/share/p11-kit /usr/share/p11-kit/modules /usr/share/polkit-1 /usr/share/polkit-1/actions
 )
 
-# What the package must list: the daemon, the PKCS#11 module, the unit, the D-Bus policy and the D-Bus activation file.
+# What every package must list: the PKCS#11 module, the unit, the D-Bus policy and the D-Bus activation file. The daemon too, at the path of
+# its format (daemon_path).
 REQUIRED_PATHS=(
-    /usr/lib/custodio/custodiod
     /usr/lib/custodio/libcustodio_pkcs11.so
     /usr/lib/systemd/system/custodio.service
     /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
@@ -52,9 +54,17 @@ packaged_entries() {
     esac
 }
 
-# entries_problems LIST: the list is not empty and holds the files the package must install.
+# entries_problems LIST [FORMAT]: the list is not empty and holds the files the package must install, the daemon at the path of its format only.
+# Without FORMAT (the leftover check, which only reads a list it was given) the format is the one whose daemon path the list holds.
 entries_problems() {
-    local list=$1 p bad=0
+    local list=$1 p bad=0 daemon other fmt=${2:-}
+    if [ -z "$fmt" ]; then
+        if grep -qx 'f /usr/libexec/custodio/custodiod' "$list"; then fmt=deb; else fmt=arch; fi
+    fi
+    daemon=$(daemon_path "$fmt") || return 1
+    other=$(other_daemon_path "$fmt")
+    grep -qx "f $daemon" "$list" || { echo "package: the list lacks $daemon"; bad=1; }
+    ! grep -qx "f $other" "$list" || { echo "package: the list has the daemon at $other, the path of another format"; bad=1; }
     if [ "$(grep -c '^f ' "$list" || true)" -eq 0 ]; then echo "package: the list holds no file"; return 1; fi
     if [ "$(grep -c '^d ' "$list" || true)" -eq 0 ]; then echo "package: the list holds no directory"; bad=1; fi
     for p in "${REQUIRED_PATHS[@]}"; do

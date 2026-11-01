@@ -74,6 +74,13 @@ dpkg-deb --root-owner-group -b "$BF_DIR/old/tree" "$old_deb" > /dev/null
 
 fx_build new 0.1.1 "" none
 new_deb=$(fx_file new deb)
+# F61: the package as the current M2 ones were, with the daemon at /usr/lib/custodio and the unit starting it there (this tree's nfpm.yaml edited).
+fx_build oldpath 0.1.0 "" oldpath
+oldpath_deb=$(fx_file oldpath deb)
+oldpath_list=$(dpkg-deb -c "$oldpath_deb")
+grep -q ' ./usr/lib/custodio/custodiod$' <<< "$oldpath_list" || { echo "test-deb-lifecycle-real: the old-path fixture has no daemon at /usr/lib/custodio" >&2; exit 1; }
+oldpath_unit=$(dpkg-deb --fsys-tarfile "$oldpath_deb" | bsdtar -xOf - usr/lib/systemd/system/custodio.service)
+grep -qx 'ExecStart=/usr/lib/custodio/custodiod' <<< "$oldpath_unit" || { echo "test-deb-lifecycle-real: the old-path fixture unit does not start /usr/lib/custodio/custodiod" >&2; exit 1; }
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
@@ -113,7 +120,7 @@ scenarios() {
         if [ "$state" = none ]; then new_root none; else new_root; fi
         dp -i "$new_deb"
         [ "$rc" -eq 0 ] || bad "install ($state): dpkg exited $rc: $out"
-        [ -x "$root/usr/lib/custodio/custodiod" ] || bad "install ($state): the files are missing"
+        [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "install ($state): the files are missing"
         want_calls "install ($state)" "$BUS"$'\n'"$SYSUSERS"$'\n'"$RELOAD"$'\n'"$CATALOG"
         [ "$(cat "$root/stub/policy-at-sysusers" 2> /dev/null)" = absent ] || bad "install ($state): the bus policy was unpacked before the account was created: $(cat "$root/stub/policy-at-sysusers" 2> /dev/null)"
         grep -q '^custodio:' "$root/etc/passwd" || bad "install ($state): no account after unpack"
@@ -135,7 +142,7 @@ scenarios() {
         lc_reset "$root"
         dp -i "$new_deb"
         [ "$rc" -eq 0 ] || bad "upgrade ($state): dpkg exited $rc: $out"
-        [ -x "$root/usr/lib/custodio/custodiod" ] || bad "upgrade ($state): the new files are missing"
+        [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "upgrade ($state): the new files are missing"
         [ ! -e "$root/usr/libexec/custodiod" ] || bad "upgrade ($state): the old file is still there"
         expect="$BUS"$'\n'"$SYSUSERS"$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"
         [ "$state" = stopped ] || expect+=$'\n''deb-systemd-invoke restart custodio.service'
@@ -146,6 +153,28 @@ scenarios() {
         [ ! -e "$root/run/custodio-restart-after-upgrade" ] || bad "upgrade ($state): the marker is left"
         no_start "upgrade ($state)"
         state_intact "upgrade ($state)"
+    done
+
+    # ---- upgrade from the package with the daemon at the old path (F61): keys untouched, old file gone, one restart ----
+    for state in running stopped; do
+        new_root
+        dp -i "$oldpath_deb"
+        [ "$rc" -eq 0 ] || bad "old-path upgrade ($state): the old package did not install: $out"
+        [ -x "$root/usr/lib/custodio/custodiod" ] || bad "old-path upgrade ($state): the old daemon is missing"
+        [ "$state" = stopped ] || : > "$root/stub/active"
+        lc_reset "$root"
+        dp -i "$new_deb"
+        [ "$rc" -eq 0 ] || bad "old-path upgrade ($state): dpkg exited $rc: $out"
+        [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "old-path upgrade ($state): the new daemon is missing"
+        [ ! -e "$root/usr/lib/custodio/custodiod" ] || bad "old-path upgrade ($state): the old daemon is still there"
+        [ -x "$root/usr/lib/custodio/libcustodio_pkcs11.so" ] || [ -e "$root/usr/lib/custodio/libcustodio_pkcs11.so" ] || bad "old-path upgrade ($state): the module is gone"
+        grep -qx 'ExecStart=/usr/libexec/custodio/custodiod' "$root/usr/lib/systemd/system/custodio.service" || bad "old-path upgrade ($state): the unit does not start the new path"
+        expect="$BUS"$'\n'"$SYSUSERS"$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"
+        [ "$state" = stopped ] || expect+=$'\n''deb-systemd-invoke restart custodio.service'
+        want_calls "old-path upgrade ($state)" "$expect"
+        [ "$(grep -c 'restart custodio.service' "$root/recorded-calls" || true)" -eq "$([ "$state" = running ] && echo 1 || echo 0)" ] || bad "old-path upgrade ($state): not exactly the expected restarts"
+        no_start "old-path upgrade ($state)"
+        state_intact "old-path upgrade ($state)"
     done
 
     # ---- remove, then purge; and purge of an installed package ----

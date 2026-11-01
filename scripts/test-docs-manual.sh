@@ -32,6 +32,11 @@ check() {
         grep -qF -- "$w" "$doc" || bad "the page lacks '$w'"
     done
 
+    # F61: the sections that show the domain and the labels after an upgrade from the old path.
+    for h in 'F61 fedora44: old-path .rpm upgrade, labels' 'F61 bazzite: old-path .rpm layered with rpm-ostree, labels'; do
+        grep -qxF -- "### $h" "$doc" || bad "no section '### $h'"
+    done
+
     for m in fedora44 bazzite omarchy ubuntu2404; do
         part=$(section "$doc" "^## .*$m")
         [ -n "$part" ] || { bad "$m: no part with that heading"; continue; }
@@ -97,6 +102,15 @@ check() {
     return $fail
 }
 
+# F61: docs/decisions.md holds one entry about the package version scheme and the place of the service binary, not the old one that named
+# /usr/lib/custodio only, and it says why the binary is under /usr/libexec.
+DECISIONS=${DECISIONS:-docs/decisions.md}
+check_decisions() { # FILE
+    [ "$(grep -c '^## .*Package version scheme' "$1")" -eq 1 ] || { echo "decisions: the 'Package version scheme' heading must appear exactly once" >&2; return 1; }
+    ! grep -q 'the service under /usr/lib/custodio' "$1" || { echo "decisions: the old heading 'the service under /usr/lib/custodio' is still there" >&2; return 1; }
+    grep -q 'unconfined_service_t' "$1" || { echo "decisions: the entry does not say why (unconfined_service_t)" >&2; return 1; }
+}
+check_decisions "$DECISIONS" || { echo "test-docs-manual: decisions.md fails its checks" >&2; exit 1; }
 check "$DOC" "$INSTALL" || { echo "test-docs-manual: the page fails its checks" >&2; exit 1; }
 [ -z "${CHECK_ONLY:-}" ] || exit 0
 
@@ -142,5 +156,16 @@ control_in 'no logind check' ubuntu2404 's/loginctl/who/g'
 control_in 'no record of what broke' ubuntu2404 's/What broke/Notes/g'
 control_in 'no dbus-broker switch' ubuntu2404 's/sudo apt-get install dbus-broker/true/'
 control 'form lacks polkit version' 's/polkit version/polkit/g'
+
+# Controls of the F61 checks: the headings, the old decision entry restored or doubled.
+control 'no F61 fedora44 section' 's/^### F61 fedora44: old-path/### fedora44: old-path/'
+control 'no F61 bazzite section' 's/^### F61 bazzite: old-path/### bazzite: old-path/'
+sed 's/^## 2026-10-30 — Package version scheme and the place of the service binary/## 2026-10-30 — Package version scheme and the service under \/usr\/lib\/custodio/' "$DECISIONS" > "$tmp/decisions.md"
+if cmp -s "$DECISIONS" "$tmp/decisions.md"; then echo "control 'old decisions entry': the fixture equals the file" >&2; exit 1; fi
+if check_decisions "$tmp/decisions.md" 2> /dev/null; then echo "control 'old decisions entry': a decisions file with the old entry passed" >&2; exit 1; fi
+{ cat "$DECISIONS"; printf '\n## 2026-11-01 — Package version scheme again\n- Decision: x\n'; } > "$tmp/decisions.md"
+if check_decisions "$tmp/decisions.md" 2> /dev/null; then echo "control 'doubled decisions entry': a decisions file with two entries passed" >&2; exit 1; fi
+sed 's/unconfined_service_t/the right domain/g' "$DECISIONS" > "$tmp/decisions.md"
+if check_decisions "$tmp/decisions.md" 2> /dev/null; then echo "control 'decisions without the reason': passed" >&2; exit 1; fi
 
 echo "test-docs-manual: ok"

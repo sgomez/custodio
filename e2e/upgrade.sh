@@ -4,6 +4,7 @@
 # polkit and the running service survived. Usage: upgrade.sh PKG_FROM PKG_TO [ID_PREFIX] (needs WORK and MODULE).
 #   F48: PKG_FROM is package N, PKG_TO is N+1 (the same tree, only the version raised), ID_PREFIX is "upgrade" (the default).
 #   F60: PKG_FROM is the last cargo-deb .deb, PKG_TO is N+1, ID_PREFIX is "upgrade-cargo-deb".
+#   F61: PKG_FROM is the current package with the daemon at the old path (scripts/package-oldpath.sh), ID_PREFIX is "upgrade-oldpath".
 # E2E_INSTALL overrides the install step (the self-test of the case uses it to see that it is never reached).
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
@@ -64,6 +65,8 @@ sleep 5
 systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade"
 [ "$(installed_version "$fmt")" = "$vn1" ] || fail "after the upgrade the database holds $(installed_version "$fmt"), not N+1=$vn1"
 bin2=$(unit_binary "$(unit_file)") || fail "cannot read the executable of the unit after the upgrade"
+[ "$bin2" = "$(daemon_path "$fmt")" ] || fail "after the upgrade the unit starts $bin2, not $(daemon_path "$fmt"), the daemon of this package"
+if [ "$id" = upgrade-oldpath ]; then oldpath_problems "$bin1" "$bin2" || fail "the upgrade from the old path did not move the service (see above)"; fi
 service_problems /proc "$pid1" "$pid2" "$bin2" || fail "the service does not run the new binary"
 id2=$(stat -L -c '%d:%i' "/proc/$pid2/exe")
 echo "e2e: upgrade: after: version $vn1, pid $pid2, executable $bin2 device:inode $id2 (the installed file's), old pid $pid1 gone or deleted"

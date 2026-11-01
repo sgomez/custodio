@@ -182,15 +182,22 @@ Format: a title and three short bullets, a couple of lines each:
   Miri only checks `unsafe` code. Miri no longer covers those safe tests; ASan still runs all of them.
 - Rejected: running every test under Miri; skipping Miri. Widen the filter if a module gains `unsafe`.
 
-## 2026-10-30 — Package version scheme and the service under /usr/lib/custodio
+## 2026-10-30 — Package version scheme and the place of the service binary
 - Decision: the version comes from the workspace; `X.Y.Z-pre` becomes `X.Y.Z~pre-1` (.deb), release `1` with `~pre` (.rpm)
   and `X.Y.Z_pre` with pkgrel 1 (Arch, which forbids `-` in pkgver and where nfpm drops the prerelease). `just package
-  version=...` overrides it so a test can build an N+1 package. The service moved from `/usr/libexec/custodiod` to
-  `/usr/lib/custodio/custodiod` in all three formats; the unit's `ExecStart` follows. The D-Bus activation file keeps
-  `Exec=/bin/false`, so only the unit starts the service and there is one unit and one activation file.
-- Why: Arch has no `/usr/libexec`, and one path keeps one file list. A real `Exec=` in the activation file would start the
-  service outside the unit's hardening; with `/bin/false`, activation fails instead of bypassing it.
-- Rejected: `/usr/libexec` with an Arch-only override (two lists, two units); an `Exec=` pointing at the binary.
+  version=...` overrides it so a test can build an N+1 package. The D-Bus activation file keeps `Exec=/bin/false`, so only the
+  unit starts the service and there is one unit source and one activation file. Since F61 the service binary is at
+  `/usr/libexec/custodio/custodiod` in the .deb and the .rpm and at `/usr/lib/custodio/custodiod` in the Arch package
+  (`packaging/parity-exceptions.txt` lists the difference); the unit's `ExecStart` follows each path, derived per format from
+  `data/custodio.service` by `scripts/derive-units.sh` (SPEC's open question "Arch and `/usr/libexec`" was settled by the approved
+  feature list as option (b): one source, per-format path).
+- Why: on Fedora `/usr/lib/custodio` is labelled `lib_t`, so systemd leaves the service in `init_t`, systemd's own domain, and the
+  key files it writes get `init_var_lib_t` (seen in F54 and F55). From `/usr/libexec` (`bin_t`) it runs in `unconfined_service_t`,
+  as SPEC expects. Arch has no `/usr/libexec`, and its guidelines ask for `/usr/lib/<pkg>/`. The activation file stays on
+  `/bin/false`: a real `Exec=` there would start the service outside the unit's hardening.
+- Rejected: `/usr/lib/custodio` for all three (the first choice of M2; wrong SELinux domain on Fedora); `/usr/libexec` in the Arch
+  package too (against Arch's rules); two unit files (they would drift apart); an `Exec=` in the activation file; an SELinux policy
+  module to fix the domain (out of scope in SPEC).
 
 ## 2026-10-30 — The install-time ProcessFD check refuses when it has no tool to ask with
 - Decision: the check (`packaging/bus-check.sh`) asks with `busctl`, else `dbus-send`. A bus socket that exists with neither tool

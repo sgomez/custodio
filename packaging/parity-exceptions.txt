@@ -6,3 +6,5 @@
 /usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence | pacman ignores a failing pre_install, so only an alpm hook shipped in the package can refuse an upgrade or reinstall (F42); deb and rpm refuse in their pre-install script
 /usr/share/libalpm/scripts/custodio-bus-check | arch | presence | the check that hook runs (F42); deb and rpm embed the same check in their pre-install script
 /usr/share/libalpm/hooks/zz-custodio-restart.hook | arch | presence | pacman runs the scripts of a package before its hooks, so the restart after the daemon reload and the bus reload is a PostTransaction hook (F58); deb and rpm restart in postinst and %post
+/usr/libexec/custodio/custodiod | arch | presence | Arch has no /usr/libexec, so the Arch package keeps the daemon at /usr/lib/custodio/custodiod (F61); deb and rpm install internal binaries under /usr/libexec, where Fedora labels them bin_t and runs the service in unconfined_service_t
+/usr/lib/custodio/custodiod | arch | presence | the Arch-only path of the daemon (F61, see the entry above): deb and rpm have it at /usr/libexec/custodio/custodiod

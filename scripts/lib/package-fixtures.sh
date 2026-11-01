@@ -27,6 +27,7 @@ fx_init() {
     mkdir -p "$FX_DIR/target/doc"
     sed 's/@VERSION@/0.1.0-1/' "$ROOT/packaging/changelog.Debian" | gzip -9n > "$FX_DIR/target/doc/changelog.Debian.gz"
     cp -r "$ROOT/data" "$ROOT/packaging" "$ROOT/LICENSE" "$FX_DIR/"
+    "$ROOT/scripts/derive-units.sh" "$FX_DIR/data/custodio.service" "$FX_DIR/target/units"
 }
 
 fx_cleanup() { rm -rf "${FX_DIR:?}"; }

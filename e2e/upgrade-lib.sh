@@ -3,9 +3,11 @@
 # print one message per problem and return non-zero when there is any, so the self-test can feed each one fixtures.
 
 STATE_LINK=${STATE_LINK:-/var/lib/custodio}
+# shellcheck source=e2e/daemon-path.sh
+source "$(dirname "${BASH_SOURCE[0]}")/daemon-path.sh"
 
 # unit_binary UNIT_FILE: the executable the unit starts, from its last ExecStart line: the prefixes (- @ ! + :) and the arguments are
-# stripped. The old package (cargo-deb, M1) has its daemon at /usr/libexec/custodiod and the new one at /usr/lib/custodio/custodiod, so the
+# stripped. The old package (cargo-deb, M1) has its daemon at /usr/libexec/custodiod and the new one at its format's path (daemon_path), so the
 # path is read from the unit before and after the upgrade instead of being a constant.
 unit_binary() {
     local line path
@@ -18,6 +20,17 @@ unit_binary() {
     path=${line%%[[:space:]]*}
     [[ $path == /* ]] || { echo "unit_binary: ExecStart of '$1' is not an absolute path ('$path')" >&2; return 1; }
     printf '%s\n' "$path"
+}
+
+# oldpath_problems BEFORE AFTER: the upgrade from the package with the daemon at the old path (F61) moved the service: before it ran the old
+# path, after it runs the libexec path of the new package, and the two are different files.
+oldpath_problems() {
+    local before=$1 after=$2 bad=0
+    if [ "$before" != "$OLD_DAEMON_PATH" ]; then echo "oldpath: the service ran $before before the upgrade, not the old path $OLD_DAEMON_PATH"; bad=1; fi
+    if [ "$after" = "$before" ]; then echo "oldpath: the service runs $after after the upgrade, the same path as before"; bad=1; fi
+    if [ "$after" = "$OLD_DAEMON_PATH" ]; then echo "oldpath: the unit still names the old path $OLD_DAEMON_PATH after the upgrade"; bad=1; fi
+    if [ "$after" != "$(daemon_path deb)" ]; then echo "oldpath: the service runs $after after the upgrade, not $(daemon_path deb)"; bad=1; fi
+    [ "$bad" -eq 0 ]
 }
 
 # unit_file: the unit file of custodio.service as systemd resolves it now.

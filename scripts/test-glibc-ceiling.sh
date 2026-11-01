@@ -96,9 +96,12 @@ expect_ok "ceiling equal to $V" "$D" "$FX_DIR/equal.txt"
 expect_ok "ceiling above $V" "$D" "$FX_DIR/above.txt"
 n=$(grep -c ' highest ' "$FX_DIR/gate.out")
 [ "$n" -eq 9 ] || bad "expected 9 ELF lines (three per package), got $n"
-for f in /usr/lib/custodio/custodiod /usr/bin/custodio /usr/lib/custodio/libcustodio_pkcs11.so; do
+for f in /usr/bin/custodio /usr/lib/custodio/libcustodio_pkcs11.so; do
     [ "$(grep -c " $f highest $V" "$FX_DIR/gate.out")" -eq 3 ] || bad "$f is not listed once per package with highest $V"
 done
+# the daemon: at /usr/libexec in the .deb and the .rpm (two lines), at /usr/lib in the Arch package (one) (F61)
+[ "$(grep -c " /usr/libexec/custodio/custodiod highest $V" "$FX_DIR/gate.out")" -eq 2 ] || bad "the daemon is not listed in the .deb and the .rpm at /usr/libexec with highest $V"
+[ "$(grep -c " /usr/lib/custodio/custodiod highest $V" "$FX_DIR/gate.out")" -eq 1 ] || bad "the daemon is not listed in the Arch package at /usr/lib with highest $V"
 
 # Without a ceiling argument the committed file is used (the patched 2.0 still needs GLIBC_2.2.5 from the plain fixture).
 committed=$(sed -n 's/^ceiling = //p' "$COMMITTED")

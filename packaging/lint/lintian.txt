@@ -1,13 +1,12 @@
 # Exceptions for lintian (F38). One per line: TAG | SUBJECT-GLOB | REASON. The subject is lintian's text without the enclosing
 # brackets when the whole rest is bracketed. Only '*' and '?' are wildcards in a glob; '[' is literal.
-executable-in-usr-lib | usr/lib/custodio/custodiod | Arch has no /usr/libexec and the three packages share one file list (SPEC "Arch and /usr/libexec"); decided by a person
 
 extra-license-file | usr/share/licenses/custodio/LICENSE | the Arch package must hold the license under /usr/share/licenses (namcap errors without it) and the three packages share one file list
 package-contains-documentation-outside-usr-share-doc | usr/share/licenses/custodio/LICENSE | same file as the extra-license-file entry: Arch wants it under /usr/share/licenses
 hardening-no-fortify-functions | usr/bin/custodio | Rust binaries do not use glibc's _FORTIFY_SOURCE variants; the check reports it for every Rust program
-hardening-no-fortify-functions | usr/lib/custodio/custodiod | Rust binaries do not use glibc's _FORTIFY_SOURCE variants; the check reports it for every Rust program
+hardening-no-fortify-functions | usr/libexec/custodio/custodiod | Rust binaries do not use glibc's _FORTIFY_SOURCE variants; the check reports it for every Rust program
 hardening-no-fortify-functions | usr/lib/custodio/libcustodio_pkcs11.so | Rust libraries do not use glibc's _FORTIFY_SOURCE variants; the check reports it for every Rust library
 spelling-error-in-binary | onthe on the [usr/bin/custodio] | the string comes from a dependency's embedded text in the Rust binaries and is not in this repository's code
-spelling-error-in-binary | onthe on the [usr/lib/custodio/custodiod] | the string comes from a dependency's embedded text in the Rust binaries and is not in this repository's code
+spelling-error-in-binary | onthe on the [usr/libexec/custodio/custodiod] | the string comes from a dependency's embedded text in the Rust binaries and is not in this repository's code
 spelling-error-in-binary | onthe on the [usr/lib/custodio/libcustodio_pkcs11.so] | the string comes from a dependency's embedded text in the Rust binaries and is not in this repository's code
 initial-upload-closes-no-bugs | usr/share/doc/custodio/changelog.Debian.gz:1 | the package is not uploaded to Debian, so there is no ITP bug to close

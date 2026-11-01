@@ -1,7 +1,7 @@
 """Derive a throwaway nfpm config from packaging/nfpm.yaml for a fixture case (run as `python3 -I`).
 
 usage: nfpm_edit.py SRC DST OP [ARG...]
-Ops: none | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
+Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
      | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | predep-add DEP | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
 """
@@ -14,20 +14,51 @@ cfg = yaml.safe_load(open(src))
 contents = cfg["contents"]
 
 
-def entry(path):
-    return next(e for e in contents if e["dst"] == path)  # the first one: the Arch-only paths come once
+def entries(path):
+    """Every entry for the path: the daemon and the unit are listed once per format (F61)."""
+    found = [e for e in contents if e["dst"] == path]
+    if not found:
+        sys.exit(f"nfpm_edit: no entry for {path}")
+    return found
 
+
+def entry(path):
+    return entries(path)[0]
+
+
+PACKAGER = {"deb": "deb", "rpm": "rpm", "arch": "archlinux", "archlinux": "archlinux"}
 
 if op == "drop":
-    contents.remove(entry(args[0]))
+    for e in entries(args[0]):
+        contents.remove(e)
 elif op == "unpackager":  # an Arch-only file listed for every format
     entry(args[0]).pop("packager")
 elif op == "mode":
-    entry(args[0])["file_info"]["mode"] = int(args[1], 8)
+    for e in entries(args[0]):
+        e["file_info"]["mode"] = int(args[1], 8)
 elif op in ("owner", "group"):
-    entry(args[0])["file_info"][op] = args[1]
+    for e in entries(args[0]):
+        e["file_info"][op] = args[1]
 elif op == "dup":
     contents.append(dict(entry(args[0])))
+elif op == "daemon":  # daemon FMT PATH: the daemon of that format is installed at PATH
+    daemon = [e for e in contents if e.get("src") == "target/release/custodiod" and e.get("packager") == PACKAGER[args[0]]]
+    daemon[0]["dst"] = args[1]
+elif op == "unit-src":  # unit-src FMT SRC: the unit of that format comes from SRC
+    unit = [e for e in contents if e["dst"] == "/usr/lib/systemd/system/custodio.service" and e.get("packager") == PACKAGER[args[0]]]
+    unit[0]["src"] = args[1]
+elif op == "oldpath":  # the package as the current M2 ones were: the .deb and the .rpm have the daemon at /usr/lib/custodio, the unit starts it there (F61)
+    for e in contents:
+        if e.get("src") == "target/release/custodiod" and e.get("packager") in ("deb", "rpm"):
+            e["dst"] = "/usr/lib/custodio/custodiod"
+        if e["dst"] == "/usr/lib/systemd/system/custodio.service" and e.get("packager") in ("deb", "rpm"):
+            e["src"] = "target/units/archlinux/custodio.service"  # the unit source holds the old path
+    contents[:] = [e for e in contents if e["dst"] != "/usr/libexec/custodio"]  # the rpm-only directory of the new path
+elif op == "all-formats":  # all-formats DST: the entry for DST of the first format is listed for every format, the others dropped
+    first, *rest = entries(args[0])
+    first.pop("packager", None)
+    for e in rest:
+        contents.remove(e)
 elif op == "add":
     mode = int(args[1], 8) if len(args) > 1 else 0o644
     contents.append({"src": "data/custodio.module", "dst": args[0], "file_info": {"mode": mode, "owner": "root", "group": "root"}})
@@ -37,7 +68,8 @@ elif op == "dir":  # an explicit directory DST
     owner = args[2] if len(args) > 2 else "root"
     contents.append({"dst": args[0], "type": "dir", "file_info": {"mode": int(args[1], 8), "owner": owner, "group": owner}})
 elif op == "type":
-    entry(args[0])["type"] = args[1]
+    for e in entries(args[0]):
+        e["type"] = args[1]
 elif op == "override-contents":
     cfg["overrides"][args[0]]["contents"] = [{"src": "data/custodio.module", "dst": "/usr/share/x"}]
 elif op == "override-unknown":

@@ -74,48 +74,71 @@ def entries(label, pkg):
     return out
 
 
+NFPM_TO_LABEL = {"deb": "deb", "rpm": "rpm", "archlinux": "arch"}
+LABELS = ("deb", "rpm", "arch")
+
+
+def wanted_files(label):
+    """path -> mode of every file the package of this format installs."""
+    return {**expected.FILES, expected.DAEMON[label]: 0o755, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
+
+
 def check_config():
     cfg = yaml.safe_load(open(config_path))
-    seen = {}
+    seen = {label: {} for label in LABELS}
     dirs = {}
     for item in cfg["contents"]:
         dst, info = item["dst"], item.get("file_info", {})
+        packager = item.get("packager")
+        if packager is not None and packager not in NFPM_TO_LABEL:
+            fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which is not deb, rpm or archlinux")
+            continue
+        labels = LABELS if packager is None else (NFPM_TO_LABEL[packager],)
         if item.get("type") == "dir":
             if dst in dirs:
                 fail("nfpm.yaml", f"{dst} is listed twice")
             dirs[dst] = info.get("mode")
-            if item.get("packager") != "rpm" or dst not in expected.RPM_ONLY_DIRS:
+            if packager != "rpm" or dst not in expected.RPM_ONLY_DIRS:
                 fail("nfpm.yaml", f"the directory {dst} is not one of the rpm-only directories")
             if info.get("owner") != "root" or info.get("group") != "root":
                 fail("nfpm.yaml", f"{dst} is not owned by root:root")
             continue
-        if dst in seen:
-            fail("nfpm.yaml", f"{dst} is listed twice")
-        seen[dst] = info.get("mode")
-        packager = item.get("packager")
-        if packager not in (None, "archlinux") or (packager and dst not in expected.ARCH_ONLY_FILES):
-            fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files may be")
-        if dst in expected.ARCH_ONLY_FILES and packager != "archlinux":
-            fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
+        for label in labels:
+            if dst in seen[label]:
+                fail("nfpm.yaml", f"{dst} is listed twice" + ("" if packager is None else f" for {label}"))
+            seen[label][dst] = info.get("mode")
+            if packager is not None and dst not in expected.ARCH_ONLY_FILES and dst not in expected.DAEMON.values() and dst != expected.UNIT:
+                # A packager-limited entry is for a file of that format's own: the Arch-only files, the daemon, the unit.
+                fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files, the daemon and the unit may be")
+            if dst in expected.ARCH_ONLY_FILES and label != "arch":
+                fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
         if not dst.startswith("/usr/"):
             fail("nfpm.yaml", f"{dst} is not under /usr")
         if item.get("type", "file") != "file":
             fail("nfpm.yaml", f"{dst} has type {item['type']}")
         if info.get("owner") != "root" or info.get("group") != "root":
             fail("nfpm.yaml", f"{dst} is not owned by root:root")
+        if dst == expected.UNIT:
+            if len(labels) != 1:
+                fail("nfpm.yaml", "the unit must be listed once per format, each from its own derived file")
+            else:
+                want_src = f"target/units/{packager}/custodio.service"
+                if item.get("src") != want_src:
+                    fail("nfpm.yaml", f"the unit of {labels[0]} comes from {item.get('src')}, expected {want_src} (derived from the one unit source)")
     for dst, mode in expected.RPM_ONLY_DIRS.items():
         if dst not in dirs:
             fail("nfpm.yaml", f"the rpm-only directory {dst} is missing")
         elif dirs[dst] != mode:
             fail("nfpm.yaml", f"the directory {dst} has mode {dirs[dst]:o}, expected {mode:o}")
-    every = {**expected.FILES, **expected.ARCH_ONLY_FILES}
-    for dst in every.keys() - seen.keys():
-        fail("nfpm.yaml", f"{dst} is missing from the file list")
-    for dst in seen.keys() - every.keys():
-        fail("nfpm.yaml", f"{dst} is not in the expected file list")
-    for dst, mode in every.items():
-        if dst in seen and seen[dst] != mode:
-            fail("nfpm.yaml", f"{dst} has mode {seen[dst]:o}, expected {mode:o}")
+    for label in LABELS:
+        every = wanted_files(label)
+        for dst in every.keys() - seen[label].keys():
+            fail("nfpm.yaml", f"{dst} is missing from the file list of {label}")
+        for dst in seen[label].keys() - every.keys():
+            fail("nfpm.yaml", f"{dst} is not in the expected file list of {label}")
+        for dst, mode in every.items():
+            if dst in seen[label] and seen[label][dst] != mode:
+                fail("nfpm.yaml", f"{dst} has mode {seen[label][dst]:o}, expected {mode:o} in {label}")
     for fmt, block in (cfg.get("overrides") or {}).items():
         if "contents" in block:
             fail("nfpm.yaml", f"overrides.{fmt} has contents")
@@ -156,7 +179,7 @@ def check_package(label, nfpm_name, pattern):
                 fail(label, f"the directory {path} has mode {listed_dirs[path]:o}, expected {mode:o}")
         for path in listed_dirs.keys() - expected.RPM_ONLY_DIRS.keys():
             fail(label, f"the directory {path} is not one of the rpm-only directories")
-    wanted = {**expected.FILES, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
+    wanted = wanted_files(label)
     for path, mode in wanted.items():
         if path not in files:
             fail(label, f"{path} is missing from the package")
@@ -210,7 +233,7 @@ def check_deps(label, pkg):
 def check_needed(label, pkg, files):
     index = ("deb", "rpm", "arch").index(label)
     have = set(dependencies(label, pkg))
-    for path in expected.ELF_FILES:
+    for path in (*expected.ELF_FILES, expected.DAEMON[label]):
         full = os.path.join(extract_dir, label) + path
         if path not in files or not os.path.exists(full):
             continue  # already reported as missing
@@ -259,13 +282,17 @@ def check_unit(label, files):
         activation = open(root + expected.ACTIVATION).read().splitlines()
     except FileNotFoundError:
         return  # already reported as missing
+    daemon = expected.DAEMON[label]
     exec_start = re.findall(r"^ExecStart=(\S+)", unit, re.M)
-    if exec_start != ["/usr/lib/custodio/custodiod"]:
-        fail(label, f"ExecStart of the unit is {exec_start}, expected /usr/lib/custodio/custodiod")
+    if exec_start != [daemon]:
+        fail(label, f"ExecStart of the unit is {exec_start}, expected {daemon}, the daemon of this package")
     for path in exec_start:
         if files.get(path) != 0o755:
             fail(label, f"ExecStart {path} is not a regular file with mode 755 in the package")
-    if any(p.startswith("/usr/libexec") for p in files):
+    for other in set(expected.DAEMON.values()) - {daemon}:
+        if other in files:
+            fail(label, f"the daemon is also at {other}, the path of another format")
+    if label == "arch" and any(p.startswith("/usr/libexec") for p in files):
         fail(label, "the package has a /usr/libexec path")
     for line in expected.ACTIVATION_LINES:
         if line not in activation:

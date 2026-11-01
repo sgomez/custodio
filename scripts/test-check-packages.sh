@@ -48,7 +48,7 @@ done
 fx_build nofile 0.1.0 '' drop $CLI
 fx_build mode 0.1.0 '' mode $CLI 644
 fx_build owner 0.1.0 '' owner $CLI custodio
-fx_build group 0.1.0 '' group /usr/lib/custodio/custodiod custodio
+fx_build group 0.1.0 '' group /usr/libexec/custodio/custodiod custodio
 for i in 0 1 2; do
     fmt=${FORMATS[$i]}
     fx_mix "m-$fmt" good "$fmt" nofile
@@ -63,13 +63,71 @@ for i in 0 1 2; do
     fx_mix "o-$fmt" good "$fmt" owner
     expect_fail "wrong owner in $fmt" "$FX_DIR/out/o-$fmt" "${config:-$FX_DIR/nfpm-owner.yaml}" "$label:" $CLI custodio
     fx_mix "g-$fmt" good "$fmt" group
-    expect_fail "wrong group in $fmt" "$FX_DIR/out/g-$fmt" "${config:-$FX_DIR/nfpm-group.yaml}" "$label:" /usr/lib/custodio/custodiod custodio
+    expect_fail "wrong group in $fmt" "$FX_DIR/out/g-$fmt" "${config:-$FX_DIR/nfpm-group.yaml}" "$label:" /usr/libexec/custodio/custodiod custodio
 done
+
+# The daemon where each distribution wants it (F61): /usr/libexec/custodio in the .deb and the .rpm, /usr/lib/custodio in the Arch package. A package with
+# the daemon at the path of another format fails with a message naming the path; so does a unit whose ExecStart is not the daemon of its own package.
+fx_build deb-lib 0.1.0 '' daemon deb /usr/lib/custodio/custodiod
+fx_build rpm-lib 0.1.0 '' daemon rpm /usr/lib/custodio/custodiod
+fx_build arch-libexec 0.1.0 '' daemon archlinux /usr/libexec/custodio/custodiod
+fx_mix wrong-deb good deb deb-lib
+expect_fail "a .deb with the daemon at the Arch path" "$FX_DIR/out/wrong-deb" "$REAL" "deb:" "/usr/libexec/custodio/custodiod is missing" "/usr/lib/custodio/custodiod is not in the expected file list"
+fx_mix wrong-rpm good rpm rpm-lib
+expect_fail "an .rpm with the daemon at the Arch path" "$FX_DIR/out/wrong-rpm" "$REAL" "rpm:" "/usr/libexec/custodio/custodiod is missing" "/usr/lib/custodio/custodiod is not in the expected file list"
+fx_mix wrong-arch good archlinux arch-libexec
+expect_fail "an Arch package with the daemon at the libexec path" "$FX_DIR/out/wrong-arch" "$REAL" "arch:" "/usr/lib/custodio/custodiod is missing" "/usr/libexec/custodio/custodiod is not in the expected file list"
+# The same, as a mistake of nfpm.yaml.
+for fmt in deb rpm; do
+    expect_fail "nfpm.yaml: the $fmt daemon at the Arch path" "$FX_DIR/out/good" "$FX_DIR/nfpm-$fmt-lib.yaml" "nfpm.yaml:" "/usr/libexec/custodio/custodiod is missing from the file list of $fmt" "/usr/lib/custodio/custodiod is not in the expected file list of $fmt"
+done
+expect_fail "nfpm.yaml: the Arch daemon at the libexec path" "$FX_DIR/out/good" "$FX_DIR/nfpm-arch-libexec.yaml" "nfpm.yaml:" "/usr/lib/custodio/custodiod is missing from the file list of arch"
+# ExecStart: a unit that names the other format's path, in each package.
+for fmt in deb rpm archlinux; do
+    other=$FX_DIR/unit-other-$fmt
+    mkdir -p "$other"
+    case $fmt in
+    archlinux) sed 's#^ExecStart=.*#ExecStart=/usr/libexec/custodio/custodiod#' "$ROOT/data/custodio.service" > "$other/custodio.service" ;;
+    *) cp "$ROOT/data/custodio.service" "$other/custodio.service" ;; # still the Arch path
+    esac
+    fx_build "unit-$fmt" 0.1.0 '' unit-src "$fmt" "$other/custodio.service"
+    label=${fmt/archlinux/arch}
+    case $fmt in archlinux) path=/usr/libexec/custodio/custodiod ;; *) path=/usr/lib/custodio/custodiod ;; esac
+    fx_mix "unit-mix-$fmt" good "$fmt" "unit-$fmt"
+    expect_fail "the unit of the $label package names $path" "$FX_DIR/out/unit-mix-$fmt" "$FX_DIR/nfpm-unit-$fmt.yaml" "$label:" "ExecStart of the unit is ['$path']"
+done
+# The derivation: the three units come from the one source and differ in the ExecStart line only; a source that the derivation cannot rewrite is refused.
+DERIVE=$ROOT/scripts/derive-units.sh
+"$DERIVE" "$ROOT/data/custodio.service" "$FX_DIR/units-ok" || bad "derive-units failed on the repository's unit"
+for fmt in deb rpm archlinux; do
+    [ "$(diff "$ROOT/data/custodio.service" "$FX_DIR/units-ok/$fmt/custodio.service" | grep -c '^>')" -le 1 ] || bad "derive-units: the $fmt unit differs in more than one line"
+done
+grep -qx 'ExecStart=/usr/libexec/custodio/custodiod' "$FX_DIR/units-ok/deb/custodio.service" || bad "derive-units: the .deb unit lacks the libexec ExecStart"
+grep -qx 'ExecStart=/usr/libexec/custodio/custodiod' "$FX_DIR/units-ok/rpm/custodio.service" || bad "derive-units: the .rpm unit lacks the libexec ExecStart"
+cmp -s "$ROOT/data/custodio.service" "$FX_DIR/units-ok/archlinux/custodio.service" || bad "derive-units: the Arch unit is not the source"
+derive_fails() { # NAME WORD SRC_DIR: the derivation refuses the unit in SRC_DIR
+    if "$DERIVE" "$3/custodio.service" "$FX_DIR/units-$1" > "$FX_DIR/derive.out" 2>&1; then bad "derive-units accepted: $1"; return; fi
+    grep -qF -- "$2" "$FX_DIR/derive.out" || bad "derive-units ($1): output lacks '$2': $(cat "$FX_DIR/derive.out")"
+}
+mkdir -p "$FX_DIR/src-twice" "$FX_DIR/src-hard" "$FX_DIR/src-second" "$FX_DIR/src-other" "$FX_DIR/src-libexec"
+{ cat "$ROOT/data/custodio.service"; echo 'ExecStartPost=/usr/lib/custodio/custodiod --check'; } > "$FX_DIR/src-hard/custodio.service"
+derive_fails hard-coded-path "outside the ExecStart line" "$FX_DIR/src-hard"
+{ cat "$ROOT/data/custodio.service"; echo 'ExecStart=/bin/true'; } > "$FX_DIR/src-twice/custodio.service"
+derive_fails two-execstart "exactly one ExecStart" "$FX_DIR/src-twice"
+sed 's#^ExecStart=.*#ExecStart=/usr/bin/other#' "$ROOT/data/custodio.service" > "$FX_DIR/src-other/custodio.service"
+derive_fails other-execstart "is not /usr/lib/custodio/custodiod" "$FX_DIR/src-other"
+sed 's#^ExecStart=.*#ExecStart=/usr/libexec/custodio/custodiod#' "$ROOT/data/custodio.service" > "$FX_DIR/src-libexec/custodio.service"
+derive_fails libexec-source "is not /usr/lib/custodio/custodiod" "$FX_DIR/src-libexec"
+cp "$ROOT/data/custodio.service" "$FX_DIR/src-second/custodio.service"
+cp "$ROOT/data/custodio.service" "$FX_DIR/src-second/custodio-libexec.service"
+derive_fails second-unit-file "a second unit file" "$FX_DIR/src-second"
 
 # The rpm-only directories (F49: rpm owns no directory it is not told about, so `dnf remove` would leave them behind).
 fx_build nodir 0.1.0 '' drop /usr/lib/custodio
 expect_fail "rpm without an owned directory" "$FX_DIR/out/nodir" "$REAL" "rpm:" "the directory /usr/lib/custodio is missing from the package"
 expect_fail "nfpm.yaml without an owned directory" "$FX_DIR/out/good" "$FX_DIR/nfpm-nodir.yaml" "the rpm-only directory /usr/lib/custodio is missing"
+fx_build nolibexecdir 0.1.0 '' drop /usr/libexec/custodio
+expect_fail "rpm without the libexec directory" "$FX_DIR/out/nolibexecdir" "$REAL" "rpm:" "the directory /usr/libexec/custodio is missing from the package"
 fx_build dirmode 0.1.0 '' mode /usr/share/doc/custodio 700
 expect_fail "a wrong directory mode in rpm" "$FX_DIR/out/dirmode" "$REAL" "rpm:" "the directory /usr/share/doc/custodio has mode 700, expected 755"
 fx_build dirall 0.1.0 '' unpackager /usr/lib/custodio

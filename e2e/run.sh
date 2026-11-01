@@ -12,6 +12,7 @@ targets_dir=${E2E_TARGETS:-e2e/targets}
 packages=${E2E_PACKAGES:-target/packages}
 packages_next=${E2E_PACKAGES_NEXT:-target/packages-next} # package N+1 of the upgrade case (scripts/package-next.sh), never in $packages
 packages_old=${E2E_PACKAGES_OLD:-target/packages-old} # the old package of M1 (scripts/package-old.sh); only for targets with an old.pattern
+packages_oldpath=${E2E_PACKAGES_OLDPATH:-target/packages-oldpath} # the old-path fixture of F61 (scripts/package-oldpath.sh); not for a target with a no-oldpath marker
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
 
@@ -55,7 +56,7 @@ boot_container() {
 }
 
 run_target() {
-    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_old='' state log rc=0 line key value cases
+    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_old='' found_oldpath='' state log rc=0 line key value cases
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
@@ -72,6 +73,15 @@ run_target() {
     [ -n "$found_next" ] || { echo "e2e[$t]: no package N+1 '$pattern' in $packages_next (the e2e recipe builds it)" >&2; return 1; }
     [ "$(realpath "$found")" != "$(realpath "$found_next")" ] || { echo "e2e[$t]: N and N+1 are the same file" >&2; return 1; }
     bash e2e/check-next.sh "$found" "$found_next" || return 1
+    if [ ! -f "$dir/no-oldpath" ]; then
+        # F61: the upgrade from the package with the daemon at the old path, on every target that has one (a no-oldpath marker says why not: Arch)
+        found_oldpath=$(find "$packages_oldpath" -name "$pattern" 2> /dev/null | sort | tail -n 1)
+        [ -n "$found_oldpath" ] || { echo "e2e[$t]: no old-path package '$pattern' in $packages_oldpath (the e2e recipe builds it with scripts/package-oldpath.sh)" >&2; return 1; }
+        for f in "$found" "$found_next"; do
+            [ "$(realpath "$found_oldpath")" != "$(realpath "$f")" ] || { echo "e2e[$t]: the old-path package is the same file as N or N+1" >&2; return 1; }
+        done
+        ! cmp -s "$found" "$found_oldpath" || { echo "e2e[$t]: the old-path package has the same content as N" >&2; return 1; }
+    fi
     fi
     if [ -f "$dir/old.pattern" ]; then
         found_old=$(find "$packages_old" -name "$(head -n 1 "$dir/old.pattern")" 2> /dev/null | sort | tail -n 1)
@@ -89,6 +99,7 @@ run_target() {
     local mounts=("$PWD/$found:/pkg/$(basename "$found")")
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
     [ -z "$found_old" ] || mounts+=("$PWD/$found_old:/pkg-old/$(basename "$found_old")")
+    [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
     boot_container "$name" "$t" "${mounts[@]}" || return 1
     log="$out_dir/$t.log"
     "$engine" exec "$name" bash /e2e/guest.sh "$t" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
@@ -99,6 +110,13 @@ run_target() {
         boot_container "$name" "$t" "${mounts[@]}" || return 1
         "$engine" exec "$name" bash /e2e/guest.sh "$t" old 2>&1 | tee -a "$log" || rc=${PIPESTATUS[0]}
         [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the old package)" >&2; return 1; }
+    fi
+    if [ -n "$found_oldpath" ]; then
+        # F61: the same, from the package with the old daemon path, on a fresh container
+        "$engine" rm -f "$name" > /dev/null 2>&1 || true
+        boot_container "$name" "$t" "${mounts[@]}" || return 1
+        "$engine" exec "$name" bash /e2e/guest.sh "$t" oldpath 2>&1 | tee -a "$log" || rc=${PIPESTATUS[0]}
+        [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the old-path package)" >&2; return 1; }
     fi
     bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" || return 1
     rm -f "$cases"

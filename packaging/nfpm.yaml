@@ -26,8 +26,19 @@ deb:
     - systemd
 
 contents:
+  # The service binary where each distribution wants it (F61, docs/decisions.md): /usr/libexec in the .deb and the .rpm, /usr/lib in the Arch
+  # package (Arch has no /usr/libexec). The unit of each format comes from the one source data/custodio.service (scripts/derive-units.sh).
+  - src: target/release/custodiod
+    dst: /usr/libexec/custodio/custodiod
+    packager: deb
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/custodiod
+    dst: /usr/libexec/custodio/custodiod
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
   - src: target/release/custodiod
     dst: /usr/lib/custodio/custodiod
+    packager: archlinux
     file_info: {mode: 0755, owner: root, group: root}
   - src: target/release/custodio-cli
     dst: /usr/bin/custodio
@@ -35,11 +46,23 @@ contents:
   - src: target/release/libcustodio_pkcs11.so
     dst: /usr/lib/custodio/libcustodio_pkcs11.so
     file_info: {mode: 0644, owner: root, group: root}
-  - src: data/custodio.service
+  - src: target/units/deb/custodio.service
     dst: /usr/lib/systemd/system/custodio.service
+    packager: deb
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/units/rpm/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    packager: rpm
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/units/archlinux/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    packager: archlinux
     file_info: {mode: 0644, owner: root, group: root}
   - src: data/sysusers.d/custodio.conf
     dst: /usr/lib/sysusers.d/custodio.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/tmpfiles.d/custodio.conf
+    dst: /usr/lib/tmpfiles.d/custodio.conf
     file_info: {mode: 0644, owner: root, group: root}
   - src: data/com.rfirma.Custodio1.conf
     dst: /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
@@ -62,6 +85,10 @@ contents:
   # rpm owns no directory it is not told about, so `dnf remove` would leave these three behind (found by the removal case of the e2e suite,
   # F49). dpkg and pacman own the parents of the files they list; for them these entries would add nothing.
   - dst: /usr/lib/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/libexec/custodio
     type: dir
     packager: rpm
     file_info: {mode: 0755, owner: root, group: root}

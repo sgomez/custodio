@@ -5,86 +5,9 @@
 # NOT checked here: that a real container boots and the suite passes in it; that is the real run of `just e2e debian13`.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-tmp=$(mktemp -d)
-fail=0
-bad() { echo "test-e2e-host: $*" >&2; fail=1; }
-
-# Real (small) packages: the host checks that N+1 is N with only the version raised (e2e/check-next.sh), which needs the contents.
-# shellcheck source=scripts/lib/package-fixtures.sh
-. "$ROOT/scripts/lib/package-fixtures.sh"
-fx_init
-trap 'fx_cleanup; rm -rf "$tmp"' EXIT
-fx_build cur 0.1.0 '' none
-fx_build next 0.1.1 '' none
-mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/old"
-# the old package (F60) is a third file, distinct from N and N+1; only its name matters to the host
-cp "$(fx_file cur deb)" "$tmp/old/custodio_0.0.9-1_amd64.deb"
-export E2E_PACKAGES_OLD=$tmp/old
-for f in deb rpm archlinux; do
-    cp "$(fx_file cur "$f")" "$tmp/pkgs/"
-    cp "$(fx_file next "$f")" "$tmp/next/"
-done
-export E2E_PACKAGES_NEXT=$tmp/next
-cat > "$tmp/bin/podman" <<'STUB'
-#!/usr/bin/env bash
-# Logs the arguments; `exec ... guest.sh` prints what the fake guest would, from STUB_* variables.
-echo "$*" >> "$STUB_LOG"
-case $1 in
-run)
-    sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg"
-    sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.next"
-    sed -n 's|.*:/pkg-old/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.old"
-    ;;
-exec)
-    case "$*" in
-    *"is-system-running"*) echo running ;;
-    *"/e2e/guest.sh"*)
-        mode=main
-        t=${*: -1}
-        if [ "$t" = old ]; then mode=old; t=${*: -2:1}; fi
-        if [ "$mode" = old ]; then
-            echo "e2e: installed $(cat "$STUB_LOG.old") from the mounted file"
-            list=${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list
-            [ "$t" != "${STUB_FAIL_OLD:-}" ] || { echo "e2e: FAIL: stubbed (old)"; exit 1; }
-        else
-            echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
-            # the main run reports the common cases and the target's own, except the ones of the old-package run (F60)
-            list=$STUB_LOG.main
-            : > "$list"
-            [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
-            grep -v '^upgrade-cargo-deb-' "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
-        fi
-        while IFS= read -r c; do
-            case $c in '' | '#'*) continue ;; esac
-            if [ "$mode" = old ]; then case $c in upgrade-cargo-deb-*) ;; *) continue ;; esac; fi
-            [ "$c" = "${STUB_OMIT:-}" ] && continue
-            if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
-            [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
-        done < "$list"
-        [ "$mode" = old ] && exit 0
-        [ -z "${STUB_EXTRA:-}" ] || echo "E2E-CASE run $STUB_EXTRA"
-        if [ -z "${STUB_NOPROBE:-}" ]; then
-            echo "E2E-RECORD bus-daemon=dbus-daemon"
-            echo "E2E-RECORD polkit-version=126"
-        fi
-        [ "$t" != "${STUB_FAIL:-}" ] || { echo "e2e: FAIL: stubbed"; exit 1; }
-        echo "e2e: all checks passed"
-        ;;
-    esac
-    ;;
-esac
-STUB
-chmod +x "$tmp/bin/podman"
-export STUB_ROOT=$ROOT
-
-# run_host NAME ARGS...: runs e2e/run.sh with the stub; the log of the engine in $tmp/log, the output in $tmp/out.
-run_host() {
-    : > "$tmp/log"
-    rm -rf "$tmp/o"
-    STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" "$@" > "$tmp/out" 2>&1
-}
-expect_ok() { local n=$1; shift; run_host "$@" || { bad "$n: failed: $(tail -n 5 "$tmp/out")"; return 1; }; }
-expect_fail() { local n=$1; shift; if run_host "$@"; then bad "$n: passed"; return 1; fi; }
+TEST_NAME=test-e2e-host
+# shellcheck source=scripts/lib/e2e-host-fixtures.sh
+. "$ROOT/scripts/lib/e2e-host-fixtures.sh"
 
 # --- every real target: the order and shape of the calls
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
@@ -108,23 +31,39 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
     [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
+    # the mounts and the containers: N and N+1, the old package of F60 (old.pattern) and the old-path fixture of F61 (every target without a no-oldpath marker)
+    mounts=2 runs=1
+    [ ! -f "$ROOT/e2e/targets/$T/old.pattern" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
+    [ -f "$ROOT/e2e/targets/$T/no-oldpath" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
+    [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq "$mounts" ] || bad "$T: expected $mounts different read-only mounts: $(grep '^run ' "$tmp/log")"
+    [ "$(grep -c '^run ' "$tmp/log")" -eq "$runs" ] || bad "$T: expected $runs containers, each upgrade source in a fresh one: $(grep -c '^run ' "$tmp/log")"
+    [ "$(grep -c '^rm .*custodio-e2e-' "$tmp/log")" -ge "$runs" ] || bad "$T: a container is not removed before the next"
     if [ -f "$ROOT/e2e/targets/$T/old.pattern" ]; then
-        # F60: the old package is a third read-only mount, in the fresh container of the second guest run
-        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 3 ] || bad "$T: N, N+1 and the old package are not three different read-only mounts"
+        # F60: the old package is a read-only mount, in the fresh container of the second guest run
         grep '^run ' "$tmp/log" | grep -q -- "$tmp/old/custodio_0.0.9-1_amd64.deb:/pkg-old/custodio_0.0.9-1_amd64.deb:ro" || bad "$T: the old package is not mounted read-only at /pkg-old"
-        [ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "$T: the upgrade from the old package does not run in a fresh container"
-        [ "$(grep -c '^rm .*custodio-e2e-' "$tmp/log")" -ge 2 ] || bad "$T: the first container is not removed before the second"
         r1=$(grep -n '^run ' "$tmp/log" | head -n 1 | cut -d: -f1)
         rm1=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
-        r2=$(grep -n '^run ' "$tmp/log" | tail -n 1 | cut -d: -f1)
+        r2=$(grep -n '^run ' "$tmp/log" | sed -n 2p | cut -d: -f1)
         { [ "$r1" -lt "$rm1" ] && [ "$rm1" -lt "$r2" ]; } || bad "$T: the order run, rm, run is wrong: $(cat "$tmp/log")"
         grep -q "exec .* bash /e2e/guest.sh $T old" "$tmp/log" || bad "$T: the guest is not run in the old mode"
         grep -q "installed custodio_0.0.9-1_amd64.deb from the mounted file" "$tmp/out" || bad "$T: the old guest's output is not passed through"
     else
-        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 2 ] || bad "$T: N and N+1 are not two different read-only mounts"
-        grep -q 'pkg-old' "$tmp/log" && bad "$T: the old package is mounted on a target that has no old.pattern"
-        [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "$T: more than one container ran"
-        grep -q 'guest.sh [a-z0-9]* old' "$tmp/log" && bad "$T: the old-package run happened on a target without old.pattern"
+        grep -q 'pkg-old/' "$tmp/log" && bad "$T: the old package is mounted on a target that has no old.pattern"
+        grep -q 'guest.sh [a-z0-9]* old$' "$tmp/log" && bad "$T: the old-package run happened on a target without old.pattern"
+    fi
+    if [ -f "$ROOT/e2e/targets/$T/no-oldpath" ]; then
+        grep -q 'pkg-oldpath' "$tmp/log" && bad "$T: the old-path package is mounted on a target with a no-oldpath marker"
+        grep -q 'guest.sh [a-z0-9]* oldpath' "$tmp/log" && bad "$T: the old-path run happened on a target with a no-oldpath marker"
+    else
+        # F61: the old-path fixture is a read-only mount at /pkg-oldpath, upgraded from in a fresh container
+        oldp=$(find "$tmp/oldpath" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
+        grep '^run ' "$tmp/log" | grep -q -- "$tmp/oldpath/$oldp:/pkg-oldpath/$oldp:ro" || bad "$T: the old-path package is not mounted read-only at /pkg-oldpath"
+        grep -q "exec .* bash /e2e/guest.sh $T oldpath" "$tmp/log" || bad "$T: the guest is not run in the oldpath mode"
+        [ "$(grep -c "guest.sh $T oldpath" "$tmp/log")" -eq 1 ] || bad "$T: the oldpath run happened more than once"
+        rl=$(grep -n "guest.sh $T oldpath" "$tmp/log" | cut -d: -f1)
+        rr=$(grep -n '^run ' "$tmp/log" | tail -n 1 | cut -d: -f1)
+        rrm=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
+        { [ "$rrm" -lt "$rr" ] && [ "$rr" -lt "$rl" ]; } || bad "$T: the oldpath run is not in its own fresh container: $(cat "$tmp/log")"
     fi
     grep -q "exec .* bash /e2e/guest.sh $T" "$tmp/log" || bad "the shared guest script is not executed"
     grep -q "installed $pkg from the mounted file" "$tmp/out" || bad "the guest's output is not passed through"

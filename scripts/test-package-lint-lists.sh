@@ -47,13 +47,15 @@ sys.path.insert(0, os.path.join(sys.argv[1], "scripts"))
 import package_lint as g
 root = sys.argv[1]
 lint = os.path.join(root, "packaging", "lint")
-path = "usr/lib/custodio/custodiod"
+path = "usr/lib/custodio/custodiod"  # the Arch package (namcap)
+libexec = "usr/libexec/custodio/custodiod"  # the .deb and the .rpm (lintian, rpmlint)
+paths = (path, libexec)
 files = "['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so']"
-# The (linter, tag, subject) pairs a person decided for the path (F38 contract, option 1 of the BLOCKED.md); subjects as the gate prints them.
+# The (linter, tag, subject) pairs decided for the daemon path (F38 contract, option 1 of the BLOCKED.md; F61 moved it to /usr/libexec in the .deb and
+# the .rpm, where lintian no longer reports executable-in-usr-lib); subjects as the gate prints them.
 decided = {
-    ("lintian", "executable-in-usr-lib", path),
-    ("lintian", "hardening-no-fortify-functions", path),
-    ("lintian", "spelling-error-in-binary", f"onthe on the [{path}]"),
+    ("lintian", "hardening-no-fortify-functions", libexec),
+    ("lintian", "spelling-error-in-binary", f"onthe on the [{libexec}]"),
     ("namcap", "incorrect-owner", f"{path} (0:0)"),
     ("namcap", "unused-sodepend", f"/usr/lib64/ld-linux-x86-64.so.2 {path}"),
     ("namcap", "libdepends-missing-provides", f"ld-linux-x86-64.so=2-64 glibc ({files})"),
@@ -72,7 +74,7 @@ named = set()
 with open(os.path.join(root, "reports", "package-lint-container.txt")) as f:
     for line in f:
         m = re.fullmatch(r"(lintian|rpmlint|namcap) \| (\S+) \| (.*?)  \((?:excepted: [^)]*|NOT excepted)\)\n?", line)
-        if m and path in m[3]:
+        if m and any(p in m[3] for p in paths):
             named.add((m[1], m[2], m[3]))
 assert named == decided, f"findings naming the path differ from the decided pairs: extra {sorted(named - decided)}, missing {sorted(decided - named)}"
 for linter, tag, subject in sorted(named):
@@ -86,7 +88,7 @@ for linter, tag, subject in sorted(named):
 for linter, lst in entries.items():
     for entry in lst:
         tag, glob, reason, where = entry
-        for p in (path, "/" + path, f"onthe on the [{path}]"):
+        for p in [x for q in paths for x in (q, "/" + q, f"onthe on the [{q}]")]:
             if g.covers(entry, tag, p):
                 assert (linter, tag, p) in decided and glob == p, f"{where} covers {p}"
         for l, t, subject in decided:
@@ -97,8 +99,11 @@ for linter, tag, subject in decided:
     entry = (tag, subject, "r", "t")
     assert not g.covers(entry, "some-other-tag", subject)
     assert not g.covers(entry, tag, subject + "x")
-    assert not g.covers(entry, tag, subject.replace(path, "usr/lib/custodio/libcustodio_pkcs11.so"))
-assert not [e for e in entries["rpmlint"] if path in e[1]], "rpmlint.txt names the path"
+    for q in [x for x in paths if x in subject]:
+        assert not g.covers(entry, tag, subject.replace(q, "usr/lib/custodio/libcustodio_pkcs11.so"))
+assert not [e for e in entries["rpmlint"] if any(q in e[1] for q in paths)], "rpmlint.txt names the path"
+# executable-in-usr-lib is gone with the move: the .deb has no executable under /usr/lib any more. Nothing may still excuse it.
+assert not [e for e in entries["lintian"] if e[0] == "executable-in-usr-lib"], "lintian.txt still excuses executable-in-usr-lib"
 PY
 # No committed list holds a line without a reason (the parser also rejects it; this is the plain check).
 for l in lintian rpmlint namcap; do
