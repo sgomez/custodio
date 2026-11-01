@@ -138,7 +138,7 @@
         "F72"
       ],
       "verify": "just quick && just api-contract && just mutants-diff F76",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F77",
