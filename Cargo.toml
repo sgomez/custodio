@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/custodiod", "crates/custodio-pkcs11", "crates/custodio-cli", "crates/crap"]
+members = [
+  "crates/custodiod",
+  "crates/custodio-pkcs11",
+  "crates/custodio-cli",
+  "crates/crap",
+  "crates/custodio-client",
+  "crates/custodio-it",
+]
 
 [workspace.package]
 version = "0.1.0"

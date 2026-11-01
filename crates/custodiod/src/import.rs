@@ -27,8 +27,7 @@ const OID_P256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3
 /// Modulus size accepted for RSA keys, in bits.
 const RSA_BITS: usize = 2048;
 
-/// Largest `.p12` accepted. Real files are a few kilobytes.
-pub const MAX_P12_LEN: usize = 1024 * 1024;
+pub use custodio_client::MAX_P12_LEN;
 
 /// Key types Custodio accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

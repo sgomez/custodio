@@ -18,8 +18,12 @@ hasnt "$p" "custodiod" "crap source"
 hasnt "$p" "scripts/test-" "crap source"
 
 p=$(plan --files crates/custodiod/src/main.rs)
-has "$p" "cargo test -p custodio-cli -p custodio-pkcs11 -p custodiod --locked" "custodiod source (and its dependents)"
-has "$p" "cargo test -p custodio-pkcs11 --features fuzzing --lib --locked" "custodiod source"
+has "$p" "cargo test -p custodio-it -p custodiod --locked" "custodiod source (and its dependents)"
+hasnt "$p" "-p custodio-pkcs11" "custodiod source (the clients do not depend on it, F64)"
+
+p=$(plan --files crates/custodio-client/src/lib.rs)
+has "$p" "cargo test -p custodio-cli -p custodio-client -p custodio-it -p custodio-pkcs11 -p custodiod --locked" "client crate source (and its dependents)"
+has "$p" "cargo test -p custodio-pkcs11 --features fuzzing --lib --locked" "client crate source"
 
 p=$(plan --files data/com.rfirma.custodio.policy)
 has "$p" "just system-gates" "policy file"
@@ -27,7 +31,7 @@ grep -q '^cargo test .*-p custodiod' <<< "$p" || bad "policy file: the crate who
 
 p=$(plan --files Cargo.lock)
 has "$p" "cargo deny check" "lockfile"
-grep -q '^cargo test -p crap -p custodio-cli -p custodio-pkcs11 -p custodiod' <<< "$p" || bad "lockfile: not every crate"
+grep -q '^cargo test -p crap -p custodio-cli -p custodio-client -p custodio-it -p custodio-pkcs11 -p custodiod' <<< "$p" || bad "lockfile: not every crate"
 
 # A Markdown file nothing references, so no check can depend on it.
 md=$(mktemp "$ROOT/test-changed-checks-XXXXXX.md")

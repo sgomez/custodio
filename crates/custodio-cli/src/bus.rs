@@ -1,6 +1,6 @@
 //! `ImportP12` over D-Bus.
 
-use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
+use custodio_client::{BUS_NAME, OBJECT_PATH};
 use secrecy::{ExposeSecret, SecretString};
 use zbus::{Connection, block_on};
 

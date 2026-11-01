@@ -1,0 +1,35 @@
+[package]
+name = "custodio-it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Integration tests that run a client against the real service code"
+
+[lints]
+workspace = true
+
+# Only tests live here: `custodiod` may be a dependency of this crate, never of the clients.
+[dev-dependencies]
+const-oid = { version = "0.10.2", features = ["db"] }
+cryptoki = "0.12.1"
+cryptoki-sys = "0.5.0"
+custodio-cli = { path = "../custodio-cli", version = "0.1.0" }
+custodio-client = { path = "../custodio-client", version = "0.1.0" }
+custodio-pkcs11 = { path = "../custodio-pkcs11", version = "0.1.0" }
+custodiod = { path = "../custodiod", version = "0.1.0" }
+der = { version = "0.8.3", features = ["alloc", "oid"] }
+libc = "0.2.191"
+libloading = "0.8.9"
+p256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa"] }
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["std", "sha2"] }
+secrecy = "0.10.3"
+spki = { version = "0.8.1", default-features = false, features = ["alloc"] }
+tempfile = "3.27.0"
+x509-cert = { version = "0.3.0", default-features = false }
+zbus = { version = "6", default-features = false, features = [
+  "comms",
+  "proxy",
+  "default-rt",
+  "service",
+] }

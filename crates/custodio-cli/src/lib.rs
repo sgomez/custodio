@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
-use custodiod::import::MAX_P12_LEN;
+use custodio_client::MAX_P12_LEN;
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 

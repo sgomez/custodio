@@ -37,7 +37,12 @@ lint:
     zizmor --offline .github/workflows
     cargo deny check
     cargo machete
+    just deps-check
     scripts/check-files.sh
+
+# Fails, naming the path, when custodio-cli or custodio-pkcs11 reaches the custodiod crate in any dependency kind (normal, build, dev).
+deps-check:
+    scripts/deps_check.py
 
 # Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
 # another configuration, so they run with the nightly checks, not in `check`.
@@ -103,6 +108,7 @@ test-scripts:
     scripts/test-bus-check-sync.sh
     scripts/test-sysusers-sync.sh
     scripts/test-bus-check.sh
+    scripts/test-deps-check.sh
     scripts/test-docs-install.sh
     scripts/test-docs-manual.sh
     scripts/test-install-real.sh
@@ -207,7 +213,7 @@ bus-policy:
 # The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
 test-integration:
     cargo test -p custodiod --locked --test dbus --test polkit --test audit
-    cargo test -p custodio-pkcs11 --locked --test cryptoki
+    cargo test -p custodio-it --locked --test cryptoki
 
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
 # use a fake service, because Miri cannot talk to a bus. Only `ffi::` tests: the other modules forbid

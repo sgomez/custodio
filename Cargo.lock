@@ -303,12 +303,39 @@ dependencies = [
 name = "custodio-cli"
 version = "0.1.0"
 dependencies = [
- "custodiod",
+ "custodio-client",
  "rustix",
  "secrecy",
  "tempfile",
  "zbus",
  "zeroize",
+]
+
+[[package]]
+name = "custodio-client"
+version = "0.1.0"
+
+[[package]]
+name = "custodio-it"
+version = "0.1.0"
+dependencies = [
+ "const-oid",
+ "cryptoki",
+ "cryptoki-sys",
+ "custodio-cli",
+ "custodio-client",
+ "custodio-pkcs11",
+ "custodiod",
+ "der",
+ "libc",
+ "libloading",
+ "p256",
+ "rsa",
+ "secrecy",
+ "spki",
+ "tempfile",
+ "x509-cert",
+ "zbus",
 ]
 
 [[package]]
@@ -318,12 +345,13 @@ dependencies = [
  "const-oid",
  "cryptoki",
  "cryptoki-sys",
- "custodiod",
+ "custodio-client",
  "der",
  "libc",
  "libloading",
  "p256",
  "pkcs1",
+ "rand",
  "rsa",
  "secrecy",
  "sha2",
@@ -337,6 +365,7 @@ dependencies = [
 name = "custodiod"
 version = "0.1.0"
 dependencies = [
+ "custodio-client",
  "p12-keystore",
  "p256",
  "pkcs8",

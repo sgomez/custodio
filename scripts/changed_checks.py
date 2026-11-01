@@ -135,7 +135,7 @@ def plan(opts):
     if any(f.startswith(".github/workflows/") for f in changed):
         cmds += [["actionlint"], ["zizmor", "--offline", ".github/workflows"]]
     if changed & ALL_CRATES or any(f.endswith("/Cargo.toml") for f in changed):
-        cmds += [["cargo", "deny", "check"], ["cargo", "machete"]]
+        cmds += [["cargo", "deny", "check"], ["cargo", "machete"], ["just", "deps-check"]]
     if existing:
         cmds.append(["scripts/check-files.sh"])
     hit = sorted(affected_crates(changed, affected))

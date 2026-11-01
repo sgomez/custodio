@@ -12,9 +12,10 @@ use custodio_cli::{
     ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, parse_args, read_secret_line,
     run_import,
 };
+use custodio_client::{BUS_NAME, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
 use custodiod::credentials::BusCredentials;
-use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
+use custodiod::dbus::Custodio;
 use custodiod::polkit::{AuthError, Authorizer};
 use custodiod::store::KeyStore;
 use secrecy::{ExposeSecret, SecretString};
@@ -189,7 +190,7 @@ fn missing_and_oversized_files_are_refused_before_asking() -> TestResult {
     assert!(matches!(err, Some(ImportFailure::Read(_))));
 
     let big = dir.path().join("big.p12");
-    std::fs::write(&big, vec![0_u8; custodiod::import::MAX_P12_LEN + 1])?;
+    std::fs::write(&big, vec![0_u8; MAX_P12_LEN + 1])?;
     let big = ImportArgs {
         file: big,
         id: "k".into(),

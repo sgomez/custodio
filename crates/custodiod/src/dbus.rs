@@ -18,10 +18,7 @@ use crate::polkit::{AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash, SignError, sign};
 use crate::store::{KeyStore, StoreError};
 
-/// Well-known bus name of the service.
-pub const BUS_NAME: &str = "com.rfirma.Custodio1";
-/// Object path of the service.
-pub const OBJECT_PATH: &str = "/com/rfirma/Custodio1";
+pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 
 /// `CKM_RSA_PKCS`.
 pub const CKM_RSA_PKCS: u32 = 0x0001;

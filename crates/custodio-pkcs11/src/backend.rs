@@ -4,10 +4,7 @@
 
 use zbus::{Connection, block_on};
 
-/// Name and object path of the service (`custodiod::dbus::BUS_NAME` and `OBJECT_PATH`; the
-/// integration test checks they agree, so this crate does not link the service).
-const BUS_NAME: &str = "com.rfirma.Custodio1";
-const OBJECT_PATH: &str = "/com/rfirma/Custodio1";
+use custodio_client::{BUS_NAME, OBJECT_PATH};
 
 /// Why a call to the service failed, reduced to what the PKCS#11 layer needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
