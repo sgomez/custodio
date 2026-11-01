@@ -35,7 +35,7 @@
         "F65"
       ],
       "verify": "just quick && just api-contract",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F67",
