@@ -78,8 +78,11 @@ Build and test the packages; publishing them waits for M5.
   on atomic systems such as Bazzite every browser is a Flatpak. Needs its own investigation (the
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
   `flatpak override`) or a documented limitation.
-- **Firefox without p11-kit:** Mozilla's builds bundle their own NSS and ignore `.module` files.
-  Shipping an enterprise policy overrides the administrator's; another registration path is needed.
+- **Firefox without p11-kit:** Mozilla's builds bundle their own NSS, and Arch's and Debian's NSS
+  load no p11-kit proxy (`docs/findings.md`, F56), so Firefox ignores `.module` files there. M2
+  documents registration by hand (`docs/install.md`, "Firefox"). An enterprise policy is one file and
+  would override the administrator's. Candidate: a `custodio` command that registers the module in
+  the user's NSS profiles, for Firefox and its derivatives (each with its own profile root).
 - **Several dialogs per page in TLS client authentication:** correct by design, but tiring on real
   sites. A short grace window would conflict with "never cache an authorization".
 - **Document details in the dialog:** what polkit can show safely, and whether it is worth it when

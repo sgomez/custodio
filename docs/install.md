@@ -79,6 +79,26 @@ bus check prints a notice and does not refuse. The service checks again every ti
 that the keys stay on disk and does not stop the service; reboot after it. The keys stay, as described in
 [Removing and purging](#removing-and-purging).
 
+## Firefox
+
+Firefox finds the module by itself only where the system NSS loads p11-kit's proxy. Fedora and RHEL/Alma
+do: their NSS reads `/etc/crypto-policies/back-ends/nss.config`, which loads `p11-kit-proxy.so`, and the proxy
+loads every module in `/usr/share/p11-kit/modules/`, Custodio's among them. Arch's and Debian's NSS read no
+such file, so there Firefox needs the module registered by hand, once per profile. Checked on Arch (Omarchy 4);
+not tried on Debian or Ubuntu.
+
+With Firefox closed:
+
+```bash
+modutil -dbdir sql:<profile directory> -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so
+```
+
+The profile directory is the "Root Directory" shown in `about:profiles`. `modutil` is in Arch's `nss` package
+and in Debian's `libnss3-tools`. The same can be done in Firefox under Settings > Privacy & Security > Security
+Devices > Load, with the same path (not tried). Firefox's derivatives (LibreWolf, Thunderbird and others) take
+the same command with their own profile directory (not tried). A Flatpak or snap Firefox does not see the
+module at all.
+
 ## Why a bus without ProcessFD is refused
 
 polkit identifies the process that asks for a signature from what the bus tells it. Newer buses

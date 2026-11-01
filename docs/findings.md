@@ -1049,6 +1049,9 @@ question "Firefox on Arch and Omarchy").
   `p11-kit-proxy.so`, and the server's request ends in `SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT` with no certificate offered. Arch's nss
   ships no `/etc/pki/nssdb` and no p11-kit proxy configuration, unlike Fedora's (F54). Custodio's `custodio.module` is in
   `/usr/share/p11-kit/modules/`, so p11-kit clients other than NSS see it.
+- **Why Fedora's does.** Fedora 44's `libnss3.so` holds the path `/etc/crypto-policies/back-ends/nss.config` (NSS built to read a system
+  policy file); that file, from `crypto-policies-20251128-3`, starts with `library=p11-kit-proxy.so`, so every NSS database loads the proxy.
+  The `libnss3.so` of Arch and Debian 13 hold no such path and neither system has the file (checked in the e2e images with `grep -a`).
 - **Registration used**, with Firefox closed:
   `modutil -dbdir sql:$HOME/.config/mozilla/firefox/<profile> -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so`
   (`modutil` from Arch's nss; it asks to confirm). `modutil -list` then shows module "Custodio" with tokens `p256` and `rsa2048`. Settings >

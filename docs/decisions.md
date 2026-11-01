@@ -255,3 +255,10 @@ Format: a title and three short bullets, a couple of lines each:
 - Rejected: `enqueue-marked` with `Markers=needs-restart` (runs before `dbus-reload`, needs a script to set the property); reloads repeated in `post_*`;
   a marker file as in the deb; a `useradd` fallback.
 - Not covered: `pacman --noscriptlet` and `pacman -U` into a `--root` without hooks run no scripts or hooks, as for any package. A real running systemd is F45.
+
+## 2026-11-01 — Firefox without the p11-kit proxy: registration by hand in M2
+- Decision: where the system NSS does not load `p11-kit-proxy.so` (Arch, Debian), `docs/install.md` documents registering the
+  module per profile with `modutil`; the packages register nothing in Firefox. Settled by the milestone approver after F56.
+- Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings.md`, F56); elsewhere nothing system-wide is read.
+- Rejected: an enterprise policy (`/etc/firefox/policies/policies.json` is one file, it would override the administrator's); for
+  M2, a `custodio` command that edits the user's profiles (left in `docs/milestones.md`, "Firefox without p11-kit").
