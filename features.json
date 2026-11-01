@@ -43,7 +43,7 @@
       "description": "Settles the open question 'How custodiod can read the app-id' before anything is built on it. A section `## F67` in `docs/findings.md` reports, with the commands run and their output, trying each candidate under the real `custodio.service` unit (unchanged: ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, empty capability set) on a supported target in the e2e container: (a) loosening the unit, rejected and why; (b) a separate privileged reader, not built in M3 and why; (c) a source that needs no /proc access of another uid (for example the caller's cgroup and the app-flatpak-<id>-*.scope convention, reached through the pinned ProcessFD); (d) the deviation. It ends with a line `Decision: (c)` or `Decision: (d)` and, for (c), the exact source, its format and the bounds a reader needs. If it decides (d), it adds a pending entry `## F67` to `SPEC_DEVIATIONS.md` amending acceptances 9 and 15 as SPEC section 5 says.",
       "depends_on": [],
       "verify": "sec=$(awk '/^## F67/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in '(a)' '(b)' '(c)' '(d)' 'ProtectProc' 'custodio.service'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(](c|d)[)]' && { ! printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(]d[)]' || grep -q '^## F67' SPEC_DEVIATIONS.md; }",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F68",
