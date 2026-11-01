@@ -1,3 +1,217 @@
+## [0.4.0] - 2026-11-01
+
+### 🚀 Features
+
+- *(F36)* Add nfpm file list, lifecycle scripts and their fixture test
+- *(F36)* Add package gate for file list, modes, owners and unit path
+- *(F36)* Add package gate for dependencies, sonames, scripts and versions
+- *(F36)* Add package recipe with version override and gate
+- *(F36)* Remove cargo-deb and lint maintainer scripts by shebang
+- *(harness)* Report loop status to herdr-core via osc 7501
+- *(F37)* Add package parity and glibc ceiling gates
+- *(F38)* Add package linters with justified exception lists
+- *(F38)* List the decided findings on the daemon path as literal pairs
+- *(F39)* Refuse sign calls whose bus credentials lack a matching ProcessFD
+- *(F40)* Prove pidfd mismatch is refused like missing processfd and pin unit hardening
+- *(F42)* Check at install time that the system bus provides processfd
+- *(F43)* Add lifecycle scripts of the deb for install, upgrade, remove, purge
+- *(F44)* Add lifecycle scriptlets of the rpm for install, upgrade, erase
+- *(F58)* Add lifecycle scripts and restart hook of the arch package
+- *(F45)* Add per-target e2e harness with debian13 and skip lists
+- *(F59)* Add ubuntu 26.04 e2e target and the journal catalog check
+- *(F46)* Add fedora 44 and alma 10 e2e targets
+- *(F47)* Add arch e2e target and correct its bus daemon in the findings
+- *(F48)* Add the upgrade case to the e2e suite on every target
+- *(F60)* Add the upgrade from the last cargo-deb .deb to the e2e suite on debian13
+- *(F49)* Add removal, purge and reinstall cases to the e2e suite on every target
+- *(F50)* Add the end-to-end refusal on ubuntu 24.04 with dbus-daemon
+- *(F51)* Add administrator guide for installing and removing
+- *(F52)* Add manual acceptance steps for the M2 machines
+- *(F61)* Put the service binary where each distribution wants it
+
+### 🐛 Bug Fixes
+
+- Skip binaries and features.json in the file size check
+- *(F36)* Stop gate writing bytecode and run shell-scripts-test in ci
+- *(F36)* Check and document the system packages the package tests need on the host
+- *(harness)* Send a feature with no open steps to the gate instead of another builder session
+- *(F38)* Address evaluator findings on postinst reload, host version and list tests
+- *(harness)* Stop without a verdict when agent_stop cuts a session short
+- *(F40)* Handle spaced settings in the hardening gate and fail on a failed pidfd clone
+- *(F44)* Gate rpm user() and group() provides, drop stale blocked pointers
+- *(F58)* Gate the decision table, check the unit stays disabled, trim the decision
+- *(harness)* Leave test-changed-checks out of the plans it checks
+- *(harness)* Shellcheck every script when one changes, as just lint does
+- *(F45)* Read the user name from passwd and free each rpm lifecycle root
+- *(F59)* Run the stub e2e test on every target and make the catalog control real
+- *(F52)* Check every verify word in the manual acceptance test
+- *(F52)* Make the manual acceptance test independent of grep -q sigpipe
+- *(harness)* Show why the loop stopped in just status
+
+### 📚 Documentation
+
+- Close milestone M1
+- Add the polkit custodian report and plan non-exportable keys
+- Mark M1 done and add Arch packaging to M2
+- Rescope M2 to building and testing packages
+- Open milestone M2
+- Set the supported distributions for M2
+- Add spec drafted by the planner
+- *(F36)* Add contract
+- *(F36)* Revise contract after evaluator review
+- *(F36)* Revise contract after second evaluator review
+- *(F36)* Revise contract after third evaluator review
+- *(F36)* Fix step order and references after fourth evaluator review
+- *(F36)* Fix recipe wording and step references after fifth evaluator review
+- *(F37)* Add contract
+- *(F37)* Revise contract after evaluator review
+- *(F37)* Address evaluator review of contract
+- *(F37)* Revise contract after second evaluator review
+- *(F38)* Add contract
+- *(F38)* Revise contract after evaluator review
+- *(F38)* Address evaluator review of contract
+- *(F38)* Address second evaluator review of contract
+- *(F38)* Research linter pins and block on missing container runtime
+- *(F38)* Record sudo and nested rootless podman answer in findings
+- Answer the blocked question
+- *(F38)* Record raw linter findings, add linter images and block on the lintian path finding
+- *(F38)* Allow one literal lintian exception for executable-in-usr-lib
+- Answer the blocked question
+- *(F38)* Amend contract to allow the fortify tag on the daemon path, rootless user and namcap -m
+- *(F38)* Amend contract body for two path entries, podman user and namcap -m
+- *(F38)* Block on findings that name the daemon path
+- *(F38)* Amend contract to list the person-approved pairs on the daemon path
+- *(F38)* Record the session that applied the person's answer
+- Answer the blocked question
+- *(F38)* Record the re-verification session
+- *(F39)* Add contract
+- *(F39)* Revise contract after evaluator findings
+- *(F40)* Add contract
+- *(F40)* Revise contract after evaluator findings
+- *(F40)* Revise contract after second evaluator review
+- *(F41)* Add contract
+- *(F41)* Revise contract after evaluator review
+- *(F41)* Revise contract after second evaluator review
+- *(F41)* Require proof of the first good polkit release and scope the support grep
+- *(F41)* Require step 1 to brief the later-tag reading and tie the minimum to the pinned tag
+- *(F41)* Record that polkit 124 reads ProcessFD from the bus (outcome A)
+- *(F41)* Amend contract to skip outcome B steps and exclude harness paths from the diff
+- *(F41)* Record that outcome B steps are skipped
+- *(F42)* Add contract
+- *(F42)* Add real-tool install evidence to contract
+- *(F42)* Block on pacman ignoring a failing pre_install
+- *(F42)* Amend contract for Arch warn-on-install, abort-on-upgrade
+- Answer the blocked question
+- *(F42)* Let arch warn on first install and refuse upgrades and reinstalls
+- *(F43)* Add contract
+- *(F43)* Revise contract after review
+- *(F43)* Fold in evaluator notes
+- *(F43)* Pre-depend on systemd and cover remaining script paths
+- *(F44)* Add contract
+- *(F44)* Revise contract after review
+- *(F44)* Amend contract to use plain Requires, nfpm has no Requires(pre)
+- *(F44)* Accept that rpm-ostree uninstall cannot print the removal notice
+- *(F44)* Record rpm-ostree removal notice as a spec deviation
+- Answer the blocked question
+- *(F44)* Record full verify run and tick last contract step
+- *(F58)* Add contract
+- *(F58)* Amend contract after evaluator review
+- *(F58)* Fold in evaluator notes on the contract
+- Add research on the fnmt configurador
+- *(F45)* Add contract
+- *(F45)* Require the real e2e run in the contract
+- *(F45)* Amend contract to drop the package build from step 4
+- *(F45)* Ask for a restart of the dev container
+- *(F45)* Record the real e2e run and tick the last step
+- Answer the blocked question
+- *(harness)* Test only the diff between steps and probe the environment in contracts
+- *(F59)* Add contract
+- *(F59)* Amend contract after review
+- *(F46)* Add contract
+- *(F46)* Revise contract after review
+- *(F47)* Add contract
+- *(F47)* Revise contract after review
+- *(F47)* Revise contract after second review
+- *(F48)* Add contract
+- *(F48)* Revise contract after review
+- *(F60)* Add contract
+- *(F60)* Fold evaluator notes into contract
+- *(F60)* Address evaluator notes in contract
+- *(F49)* Add contract
+- *(F49)* Fold evaluator notes into contract
+- *(F49)* Address evaluator notes in contract
+- *(F50)* Add contract
+- *(F51)* Add contract
+- *(F51)* Address evaluator findings on contract
+- *(F51)* Restore contract and apply evaluator findings
+- *(F51)* Dedupe contract and address evaluator findings
+- *(F52)* Add contract
+- *(F52)* Put the ubuntu2404 install command in its own block
+- *(F53)* Record the end-to-end matrix and gates run on a podman host
+- *(F54)* Record the fedora44 selinux manual acceptance run
+- Fix the ausearch window in the manual acceptance steps
+- *(F55)* Record the bazzite layered rpm manual acceptance run
+- *(F55)* Trace the init_t domain to the lib_t label of custodiod
+- List firefox flatpak as an unassigned investigation
+- *(F55)* Explain the uid 65534 owner of the state directory
+- *(F61)* Add contract
+- *(F61)* Revise contract after review
+- *(F61)* Clarify before/after paths in the contract
+- *(F61)* Add old-path e2e upgrade case to the contract
+- *(F61)* Limit old-path upgrade case to targets that can run it
+- Record acceptance 6 with libfprint's virtual fingerprint device
+- *(F56)* Record the omarchy manual acceptance run
+- *(F56)* Document registering the module in firefox without the p11-kit proxy
+- *(F57)* Record the ubuntu2404 dbus-broker manual acceptance run
+- *(F57)* Point to the polkit 124 ProcessFD reading of F41
+- Settle the ubuntu 24.04 and polkit 124 open questions
+- *(F62)* Record the fedora44 and bazzite selinux domain runs after the move
+
+### ⚡ Performance
+
+- Run the script tests of check in parallel, slowest first
+- Skip just check and test-changed on a tree that already passed
+
+### 🎨 Styling
+
+- *(F61)* Disable sc2329 instead of sc2317 for indirectly called functions
+
+### 🧪 Testing
+
+- *(F38)* Assert 0:0 user only without a subuid range
+- *(F38)* Make the per-linter list cases able to fail and cover namcap list sorting
+- *(F39)* Make the other-process pidfd test fail when the pidfd cannot be opened
+- Delete each case's root and drop directory sizes from the arch snapshot
+
+### ⚙️ Miscellaneous Tasks
+
+- *(harness)* Create the milestone branch on milestone open
+- Update milestone definition
+- Add feature list drafted by the initializer
+- Split rpm/arch scripts, ubuntu e2e target and cargo-deb upgrade into own features
+- Drop just test-scripts from the verify commands
+- Update features
+
+### 💼 Other
+
+- Drop typos
+- *(harness)* Let builders amend contracts with evaluator approval
+- *(harness)* Add mutants-diff and use it for new verify gates
+- *(harness)* Block contracts only on blocking points and re-review against the last review
+- *(harness)* Let builders skip conditional steps and stop after two idle sessions
+- *(harness)* Have the initializer split by area and settle open questions first
+- *(harness)* Record proven-impossible spec requirements as deviations instead of blocking
+- *(harness)* Keep a stopped builder's leftovers for the next session
+- *(harness)* Ask contracts and evaluator for proportionate evidence
+- *(harness)* Stream each claude session to the console
+- Check only shellcheck and file size on commits of harness scripts
+- *(harness)* Open a herdr terminal for each claude session
+- Follow sourced files in the commit shellcheck of harness scripts
+- *(F45)* Let the dev container run privileged systemd containers
+- *(harness)* Group herdr terminals by feature and keep the main console short
+- *(F45)* Replace --privileged with the three options nested systemd needs
+- *(harness)* Run only the checks a change can break between steps and on commit
+- Exclude the justfile from the file size limit
 ## [0.3.0] - 2026-10-29
 
 ### 🚀 Features
