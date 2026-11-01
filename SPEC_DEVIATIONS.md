@@ -21,4 +21,4 @@ Format:
   removal triggers are not run: "not running *un scripts for removals yet").
 - Instead: on rpm-ostree the notice is documentation only. `docs/install.md` (F51) says where the keys are and that removal keeps them.
   The service stops with the reboot into the deployment without the package. `dnf remove` and `rpm -e` still stop, keep and print.
-- Status: pending
+- Status: accepted

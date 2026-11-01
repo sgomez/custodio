@@ -147,7 +147,8 @@ The behaviours below are decisions. Each format implements them with its own con
     accounts are not removed by convention on any of these distributions, and because a reinstall
     must find the keys owned by the same uid. Otherwise the store rejects them.
   - Print a notice saying that the keys are still on disk, where they are, and that deleting them
-    by hand destroys them for good.
+    by hand destroys them for good. rpm-ostree runs no removal scriptlet: there the notice is in
+    `docs/install.md`, and the service stops with the reboot into the deployment without the package.
 - **Purge** (`apt purge`; the other formats have no purge): **the same as removal.** The state
   directory is never deleted by a package script. Debian's convention is that purge removes a
   package's data. Here that data is private keys that cannot be exported or recreated, so one
