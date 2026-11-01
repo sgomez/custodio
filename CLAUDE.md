@@ -15,14 +15,14 @@ Everything in this repository is in English: code, comments, docs, commit messag
 1. **Get your bearings.** Read the latest entries in `PROGRESS.md`, `NEXT_FINDINGS.md` if it exists
    (the evaluator's or the loop's findings from the previous attempt; fix those first), and
    `git log --oneline -15`. Run `just test-changed <id>`; if it is red, fix that before anything
-   else. The full `just check` runs once, at the end (step 3).
+   else. The full `just check` runs at the release, not per feature.
 2. **Build one feature, following its contract.** Only the feature you were given; do not start the
    next one, even if you have context left. Tick contract steps as they are done. Change the
    rest of the contract only by an amendment the evaluator approves (`harness/builder-prompt.md`).
    A feature may take several sessions.
 3. **Tests first.** Write the failing test, then the code. Between steps run that test and
    `just test-changed <id>`, not `just check`. When every step is ticked, run the feature's
-   `verify` command and the contract's evidence until they pass: the one full run of the session.
+   `verify` command and the contract's evidence until they pass.
 4. **Hand off.** Append an entry to `PROGRESS.md` (template in that file) and commit with a
    [Conventional Commits](https://www.conventionalcommits.org) message scoped to the feature id,
    e.g. `feat(F05): add key store with 0700/0600 permissions`. Types: `feat`, `fix`, `docs`,

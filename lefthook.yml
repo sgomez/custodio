@@ -3,7 +3,7 @@ pre-commit:
   commands:
     lint:
       # Lints of the staged files and of the crates they affect; the tests run in `just check`, the loop and CI.
-      # The harness excludes it (LEFTHOOK_EXCLUDE): its verify runs `just check`.
+      # The harness excludes it (LEFTHOOK_EXCLUDE): its verify runs `just test-changed <id>`, which lints the diff.
       run: scripts/changed_checks.py --staged --lint-only
     harness:
       glob: "harness/*.sh"

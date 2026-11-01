@@ -7,7 +7,7 @@ parent directory of two or more components, or by base name for siblings in scri
 affected when a file under it changed or its sources mention an affected file outside crates/.
 
 Usage: changed_checks.py [--lint-only] [--dry-run] (--base REV | --staged | --files F...)
-`just check` stays the gate: this is for the steps in between and the pre-commit hook.
+The gate of a feature's `verify` and of the steps in between; `just check` runs in full at the release.
 """
 
 import argparse

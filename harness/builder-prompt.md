@@ -13,8 +13,8 @@ Follow "Every session" in CLAUDE.md:
    Between steps, run the test you are writing and `just test-changed <id>` (lints, crates and
    script tests the diff can break), never `just check` or the `verify`.
 3. When every step is ticked, run the feature's `verify` command and every piece of evidence in
-   the contract until they pass. This is the one full `just check` of the session; the loop
-   runs the `verify` again as the gate.
+   the contract until they pass; the loop runs the `verify` again as the gate. `just check` runs
+   in full only when `just test-changed` escalates to it, and at the release (`just check-slow`).
    Mutants: run `just mutants-diff <id>`; the full `just mutants` only when the `verify` runs it,
    once at the end. While killing survivors, narrow it with `--re <regex>` or `--iterate`.
 4. Append your entry to PROGRESS.md and commit with a Conventional Commits message scoped to the

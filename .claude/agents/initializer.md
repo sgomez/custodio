@@ -43,7 +43,8 @@ Rules:
   it, a feature that adds it comes first.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
-  Never use a command that always succeeds. Use `just check` and the feature's own tests (unit
+  Never use a command that always succeeds. Use `just test-changed <id>` (never `just check`: the
+  release runs it in full) and the feature's own tests (unit
   and integration tests are cheap: always run the ones the feature touches), plus only the slow
   gates the feature's files reach, never `just check-slow`: the release runs it in full. A slow
   gate is in `verify` only when the feature changes what it checks:
