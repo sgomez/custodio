@@ -78,3 +78,13 @@ with an empty context.
   `cargo test -p custodio-it --test cli --test cryptoki` green with no edited expectation.
 - Not done: nothing. Not run: the explicit negative controls by hand (a mutant mapping authorization unavailable to `Unavailable` is covered by the mutants run being clean).
 - Next session should: nothing for F65.
+
+### 2026-11-01 — F66 — attempt 1
+- Done: `docs/api.md` (fixed-shape lines: `### Method`, `- in`, `- out`, `- bounds:`, `- p12 size:`, `- error`, `- action`) and `crates/custodiod/tests/api_contract.rs`, plus `just api-contract`
+  (`cargo test -p custodiod --test api_contract`; a workspace test, so `just test` runs it too). It starts the service on a private bus, reads `Introspect`
+  restricted to the `com.rfirma.Custodio1` interface (standard interfaces ignored), and compares methods/arguments/results/properties, `ServiceError::ALL` names and the
+  `.policy` action ids, in both directions. The `.p12` size is compared with `MAX_P12_LEN`; other bounds only need a `- bounds:` line per method (a stated choice).
+- Controls (second test, all on edits of the real document): method removed, extra method `Bogus`, `Sign` data `ay`→`s`, extra and removed error, extra and removed action,
+  wrong `.p12` bound, missing bounds line; each asserted to name the item and the direction.
+- Evidence: `just quick` exit 0, `just api-contract` green. Not done: the contract's "failing first" run against a missing document was not kept as a separate step (the test treats a missing file as empty and so fails).
+- Next session should: nothing for F66. Later features that add methods, errors or actions must add them to `docs/api.md`.

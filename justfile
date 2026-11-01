@@ -57,6 +57,10 @@ lint-fuzz:
     fi
     grep -q "must not be built outside fuzz or debug builds" <<< "$out" || { echo "$out" >&2; exit 1; }
 
+# The client document docs/api.md against the live service, the error type and the policy file (also part of `test`).
+api-contract:
+    cargo test -p custodiod --test api_contract --locked
+
 # Unit tests.
 test:
     cargo test --workspace --locked
