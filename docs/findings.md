@@ -1154,8 +1154,8 @@ checks look at, so the run gives no reason to refuse Ubuntu 24.04 with dbus-brok
   warnings (an AppArmor denial of `org.freedesktop.host.portal.Registry.Register` from a snap, jackdbus and UPower lookups, gdm's
   `GDM_IS_REMOTE_DISPLAY` assertions) also occur in the boots on dbus-daemon of the same image. Not checked: Bluetooth, printing,
   suspend, a non-autologin login at gdm, snaps beyond the desktop integration one, and a later `apt upgrade`.
-- The switch does not settle the other open question, whether polkit 124 reads `ProcessFD` rather than the PID; this run only shows that
-  the dialog appears and a cancel fails.
+- polkit 124 takes the caller's pidfd from `ProcessFD` (section 3a, read in the same `124-2ubuntu1.24.04.4` package as this VM); with
+  dbus-broker the bus now returns it, so the subject is pinned. This run does not observe the pinning, only the dialog and the cancel.
 - `custodiod` is bus-activated: `systemctl is-active custodio` is `inactive` right after the install, until the first call.
 - Client: `pkcs11-tool` with `/usr/lib/custodio/libcustodio_pkcs11.so`, started in the session with `labvm-gui`, input of 2000 bytes.
   `custodio import` reads the password from the terminal; piping it under `script` fails (`no input`), a Python `pty` works.
