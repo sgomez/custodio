@@ -1,0 +1,333 @@
+{
+  "milestone": "M3",
+  "features": [
+    {
+      "id": "F63",
+      "title": "Run a chosen subset of end-to-end cases on one target",
+      "description": "A new recipe `just e2e-cases <target> <case-or-glob>...` builds the packages as `just e2e` does, boots one target and runs the shared setup (install, service, users, import) plus only the cases whose ids match the given names or shell globs. The case accounting (`e2e/check-cases.sh`) then requires each selected case to be reported exactly once and no other case to be reported. A name or glob that matches no case of `e2e/cases.list` (or of the target's own cases.list) fails before any container starts. The stub-engine tests of the e2e host (`scripts/test-e2e-*.sh`, run by `just test-scripts`) cover the selection, the accounting of a subset and the unknown-name refusal. `just e2e` with no subset behaves as before.",
+      "depends_on": [],
+      "verify": "just check && just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*' && ! just e2e-cases debian13 no-such-case",
+      "passes": false
+    },
+    {
+      "id": "F64",
+      "title": "Client crate and the dependency check",
+      "description": "Neither `custodio-cli` nor `custodio-pkcs11` depends on the `custodiod` crate in any dependency kind (normal, build or dev) at any depth. What they share (bus name, object path, the documented bounds) moves to a small client-side crate used by both, holding only what the client documentation will describe. Tests that need a real service together with a client live in a workspace crate of their own or start the service binary. A new recipe `just deps-check`, run by `just lint`, reads `cargo metadata` and fails, naming the path, when the CLI or the module reaches the service crate; its own test proves it fails on a fixture workspace where a client does depend on the service. Behaviour of the CLI and the module is unchanged.",
+      "depends_on": [],
+      "verify": "just check && just deps-check && just test-integration",
+      "passes": false
+    },
+    {
+      "id": "F65",
+      "title": "Give each failure its own D-Bus error name",
+      "description": "The service has one error type whose variants map to D-Bus error names in a project namespace under `com.rfirma.Custodio1`, at least: invalid arguments; no such key; key id already taken; polkit denied; authorization unavailable; wrong password or unreadable .p12; unsupported key type; certificate does not match the key; audit unavailable; internal or storage failure. Every existing failure of ListKeys/ListCertificates, ImportP12 and Sign returns the matching name instead of a generic fdo error. Message texts are fixed strings for people: a test proves no message contains key material, a password, a path or the rejected input. The client crate holds the names; the PKCS#11 module maps them to CKR codes and the CLI to its messages, with tests, and the module's existing behaviour (CKR values per case) is unchanged.",
+      "depends_on": ["F64"],
+      "verify": "just check && just test-integration && just mutants-diff F65",
+      "passes": false
+    },
+    {
+      "id": "F66",
+      "title": "Client API document and the API contract check",
+      "description": "A client document (`docs/api.md`) lists the current interface: every method with its arguments, results and bounds, every error name of the service's error type, and every polkit action of the shipped `.policy` file. A new recipe `just api-contract` runs a test (also part of `just test`, so of `just check`) that starts the service on a private bus and compares the document with three sources: the live introspection data (methods, arguments, properties), the service's error type (error names) and `data/com.rfirma.custodio.policy` (action ids). An item in a source missing from the document fails, and an item in the document missing from its source fails. Negative controls on copies of the document (a method removed, an extra error name, a wrong argument signature, an extra action) each fail.",
+      "depends_on": ["F65"],
+      "verify": "just check && just api-contract",
+      "passes": false
+    },
+    {
+      "id": "F67",
+      "title": "Research: how custodiod can read the caller's flatpak app-id",
+      "description": "Settles the open question 'How custodiod can read the app-id' before anything is built on it. A section `## F67` in `docs/findings.md` reports, with the commands run and their output, trying each candidate under the real `custodio.service` unit (unchanged: ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, empty capability set) on a supported target in the e2e container: (a) loosening the unit, rejected and why; (b) a separate privileged reader, not built in M3 and why; (c) a source that needs no /proc access of another uid (for example the caller's cgroup and the app-flatpak-<id>-*.scope convention, reached through the pinned ProcessFD); (d) the deviation. It ends with a line `Decision: (c)` or `Decision: (d)` and, for (c), the exact source, its format and the bounds a reader needs. If it decides (d), it adds a pending entry `## F67` to `SPEC_DEVIATIONS.md` amending acceptances 9 and 15 as SPEC section 5 says.",
+      "depends_on": [],
+      "verify": "sec=$(awk '/^## F67/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in '(a)' '(b)' '(c)' '(d)' 'ProtectProc' 'custodio.service'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(](c|d)[)]' && { ! printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(]d[)]' || grep -q '^## F67' SPEC_DEVIATIONS.md; }",
+      "passes": false
+    },
+    {
+      "id": "F68",
+      "title": "Research: service detection through xdg-dbus-proxy",
+      "description": "Settles the open question 'Detection through the flatpak proxy'. A section `## F68` in `docs/findings.md` reports, from `xdg-dbus-proxy`'s filtering source (version and file named), which bus-driver calls pass for a `--system-talk-name=com.rfirma.Custodio1` peer: NameHasOwner, ListActivatableNames, StartServiceByName, GetNameOwner, and a method call to an unowned activatable name. For each of 'service installed and running', 'installed but not activatable (Exec=/bin/false, not started)', 'not installed' and 'name not allowed by the sandbox', it states the error name or result a client sees, on the host and through the proxy, and the detection steps the client documentation will give. It ends with a line `Detection:` summarising the recommended steps.",
+      "depends_on": [],
+      "verify": "sec=$(awk '/^## F68/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in NameHasOwner ListActivatableNames StartServiceByName GetNameOwner 'system-talk-name' 'Exec=/bin/false' 'Detection:'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done",
+      "passes": false
+    },
+    {
+      "id": "F69",
+      "title": "polkit actions for import, delete and replace certificate",
+      "description": "`data/com.rfirma.custodio.policy` declares three new actions, one each for import, delete and replace certificate, apart from the unchanged signing action. Each has its own message text, `auth_self` on allow_any, allow_inactive and allow_active (never a `_keep` variant), and the owner annotation the signing action has (docs/decisions.md, 'Fixes for a live systemd'). The policy test (`crates/custodiod/tests/policy.rs`) checks every action's defaults, annotation and distinct message, and fails on a `_keep` default. `docs/api.md` lists the actions, so `just api-contract` passes. The packages ship the file and pass the package gates.",
+      "depends_on": ["F66"],
+      "verify": "just check && cargo test -p custodiod --locked --test policy && just api-contract && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F70",
+      "title": "Per-owner state format in the key store",
+      "description": "The key store records the owner uid of each key with the key, in a new state format, and keeps each owner's keys apart so that a lookup by (owner, id) never reads another owner's keys. Key ids are unique per owner: two owners may each store `my-key`. No argument can set or change the owner; the service passes the caller's bus uid. The store's rules extend to the new layout: exact modes, owner checks, no symlinks, refuse rather than repair, atomic writes that never overwrite silently; two concurrent inserts of the same id by the same owner leave exactly one key. There is no migration code and no reader for earlier state. Store unit tests cover each rule for the new layout, two owners with the same id, and the concurrent insert.",
+      "depends_on": ["F65"],
+      "verify": "just check && cargo test -p custodiod --locked --lib store && just test-integration && just mutants-diff F70",
+      "passes": false
+    },
+    {
+      "id": "F71",
+      "title": "Upgrade cases start from an M3 build only",
+      "description": "Because the state format changed with no migration, the end-to-end upgrade from the last cargo-deb .deb of M1 (F60: `scripts/package-old.sh`, the debian13 old.pattern, the upgrade-cargo-deb-* cases and their host tests) is removed, and `just e2e` no longer builds the old package. The N to N+1 and old-path upgrade cases remain, both built from this tree, and still keep keys and certificates. `docs/install.md` and the e2e catalog no longer mention an upgrade from a pre-M3 package.",
+      "depends_on": ["F63", "F70"],
+      "verify": "just check && just e2e-cases debian13 'upgrade-*' && ! grep -rqs 'package-old.sh' justfile e2e scripts",
+      "passes": false
+    },
+    {
+      "id": "F72",
+      "title": "Scope list, sign and import to the caller's uid",
+      "description": "Every call takes the owner from the bus credentials of its own connection (UnixUserID with the existing ProcessFD cross-check), never from an argument. List returns only the caller's keys, each with id, key type and DER certificate (one method or the current pair: the choice is documented in docs/api.md and the module needs nothing else); with no uid or a failed cross-check it fails as 'authorization unavailable', never an empty or unfiltered list, and asks no polkit. Import stores under the caller's uid and succeeds for an id another uid uses; it reports 'key id already taken' only for the caller's own id. Sign looks the key up among the caller's keys before polkit and fails with 'no such key', with no polkit call, for a missing id and for another uid's id alike. Integration tests with two caller uids through the replaceable credentials interface (joining `just test-integration`) prove another uid's key gives exactly the result of a missing key, the same polkit calls and the same journal behaviour. The PKCS#11 module, the CLI and the e2e setup follow any change to list. Root is a uid like any other.",
+      "depends_on": ["F63", "F66", "F70"],
+      "verify": "just check && just test-integration && just api-contract && just mutants-diff F72 && just e2e-cases debian13 pkcs11-tool-approve-rsa nss-approve",
+      "passes": false
+    },
+    {
+      "id": "F73",
+      "title": "Import asks polkit before decrypting the .p12",
+      "description": "Import (a .p12, its password and a client-chosen key id; returns the key type) checks its arguments against documented bounds, then whether the caller already has the id, then asks polkit once with AllowUserInteraction under the import action, and only after approval decodes the .p12. Integration tests with a test double of the .p12 decoder prove the decoder is never called when polkit denies or is unavailable, so a wrong password then fails as 'denied' or 'authorization unavailable'. After approval a wrong password or unreadable file and an unsupported key type each give their own error name. polkit is asked exactly once per call, a second call asks again, and denial or unavailability leave the state unchanged. polkit fails closed as for signing. docs/api.md describes the method and its order. The e2e setup approves the import through the test agent, so the existing signing cases still pass.",
+      "depends_on": ["F69", "F72"],
+      "verify": "just check && just test-integration && just api-contract && just mutants-diff F73 && just e2e-cases debian13 pkcs11-tool-approve-rsa",
+      "passes": false
+    },
+    {
+      "id": "F74",
+      "title": "Journal entries name the operation",
+      "description": "Every audit entry carries an operation field (sign, import, delete, replace certificate) an administrator can query by. Signing entries gain `sign` and otherwise stay valid under the compatibility rule of docs/audit.md. The entry model defines the fields, outcome values and messages (and their MESSAGE_IDs, with entries in `data/custodio.catalog`) that the import, delete and replace certificate entries will use, forbidding the .p12, the password, certificate bytes, data and signature. docs/audit.md documents the field, the new values and a query per operation, and its documentation tests check every documented query and value against the code. The shipped catalog passes the package gates and the e2e journal cases.",
+      "depends_on": ["F63", "F65"],
+      "verify": "just check && cargo test -p custodiod --locked --test audit && just mutants-diff F74 && just package-gates && just e2e-cases debian13 'journal-*'",
+      "passes": false
+    },
+    {
+      "id": "F75",
+      "title": "Import leaves one journal entry and fails closed",
+      "description": "Every import that reaches the authorization step leaves exactly one entry once the outcome is known (approved and stored, denied, authorization unavailable, wrong password, unsupported key, storage failure), naming the operation, the caller's uid and pid, the key id, the key type when known and the outcome, and never the .p12 or the password. When the entry cannot be submitted, the imported key is not kept (the state is as before the call) and the call fails as 'audit unavailable'. Refusals before authorization keep M1's behaviour. Two concurrent imports of the same id by the same owner leave exactly one key and one success entry. Audit integration tests with the in-memory and failing sinks cover every outcome and the forbidden content.",
+      "depends_on": ["F73", "F74"],
+      "verify": "just check && just test-integration && just mutants-diff F75",
+      "passes": false
+    },
+    {
+      "id": "F76",
+      "title": "Delete a key",
+      "description": "A new method deletes one of the caller's keys with its certificate. The id is checked against its documented bound, then looked up among the caller's keys before polkit: a missing id or another uid's id fails with 'no such key' and asks no polkit. polkit is asked once per call under the delete action with AllowUserInteraction; denial or unavailability leave the key in place. After a delete the key is absent from list, sign fails with 'no such key', its file is gone from the state directory and the id can be imported again. A signature in progress either completes with the key or fails with 'no such key'. docs/api.md documents the method. Integration tests cover each case, including two uids.",
+      "depends_on": ["F69", "F72"],
+      "verify": "just check && just test-integration && just api-contract && just mutants-diff F76",
+      "passes": false
+    },
+    {
+      "id": "F77",
+      "title": "Delete leaves one journal entry and fails closed",
+      "description": "Every delete that reaches the authorization step leaves exactly one entry with the operation, uid, pid, key id and outcome. After approval the service first makes the key unusable (sign then fails with 'no such key'), submits the entry, and only then removes the files. If the entry cannot be submitted the key is restored, still signs, and the call fails as 'audit unavailable'. A deleted key never lacks an entry. Audit integration tests cover approved, denied, unavailable and the failing sink, and the sign-during-delete ordering.",
+      "depends_on": ["F74", "F76"],
+      "verify": "just check && just test-integration && just mutants-diff F77",
+      "passes": false
+    },
+    {
+      "id": "F78",
+      "title": "Replace the certificate of a key",
+      "description": "A new method takes a key id and a DER X.509 certificate within a documented size bound; an over-bound or unparsable certificate is refused as invalid arguments before any key, file or polkit is touched. The id is looked up among the caller's keys before polkit ('no such key' for a missing or another uid's id, no polkit). polkit is asked once per call under the replace certificate action. The certificate is accepted only if its public key equals the key's public key, otherwise 'certificate does not match the key' and nothing changes; no chain, revocation or date checks. The key itself is untouched, and the replacement is atomic: a concurrent list sees the old or the new certificate, never neither. docs/api.md documents the method and bound. Integration tests cover each case, two uids, and a signature after replacement verifying with the new certificate.",
+      "depends_on": ["F69", "F72"],
+      "verify": "just check && just test-integration && just api-contract && just mutants-diff F78",
+      "passes": false
+    },
+    {
+      "id": "F79",
+      "title": "Replace certificate leaves one journal entry and fails closed",
+      "description": "Every replace certificate call that reaches the authorization step leaves exactly one entry with the operation, uid, pid, key id and outcome (replaced, denied, unavailable, mismatch, storage failure), never the certificate bytes. When the entry cannot be submitted the old certificate stays in place and the call fails as 'audit unavailable'. Audit integration tests cover every outcome, the failing sink and the forbidden content.",
+      "depends_on": ["F74", "F78"],
+      "verify": "just check && just test-integration && just mutants-diff F79",
+      "passes": false
+    },
+    {
+      "id": "F80",
+      "title": "Parse and validate the flatpak app-id",
+      "description": "A module `app_id` in custodiod parses the app-id source F67 decided on (the `[Application] name=` of `/.flatpak-info`, or the source of decision (c)) from bounded bytes and accepts a value only if it is a valid flatpak application id (flatpak's rules: element count, characters, lengths); anything else yields 'could not be determined' and the invalid text is never returned or kept. It is pure, has no I/O, and joins the `mutants` recipe. Unit tests cover valid ids, every validation rule, malformed and non-UTF-8 input, oversized input and the absent case. If F67 decided (d), the module still defines the three outcomes (read, none, could not be determined) the entries use.",
+      "depends_on": ["F67"],
+      "verify": "just check && cargo test -p custodiod --locked --lib app_id && just mutants-diff F80",
+      "passes": false
+    },
+    {
+      "id": "F81",
+      "title": "Read the app-id from hostile input within bounds",
+      "description": "Behind a replaceable source interface, the service reads the app-id of the process pinned by the bus's ProcessFD, from the source F67 decided on, then confirms the process is still the same one. Symlinks are not followed, only a regular file up to a fixed size is read, and a FIFO, device, FUSE or slow file cannot hold the call beyond a documented time bound; stuck reads are bounded in number so they cannot exhaust the service. A failure never refuses or delays the operation beyond the bound. A fake source covers the three cases (app-id read; no source, i.e. not sandboxed; could not be determined) and tests prove a symlink, a FIFO, an oversized file, an invalid id and a reader that never returns each give 'could not be determined' within the bound. The unit is not loosened: `just system-gates` still passes. If F67 decided (d), the source always reports 'could not be determined', under the deviation.",
+      "depends_on": ["F80"],
+      "verify": "just check && cargo test -p custodiod --locked --lib app_id && just test-integration && just system-gates && just mutants-diff F81",
+      "passes": false
+    },
+    {
+      "id": "F82",
+      "title": "Journal entries name the flatpak app-id",
+      "description": "Every sign, import, delete and replace certificate entry tells apart the three app-id cases (the app-id; no app-id, the caller is not sandboxed; could not be determined) in documented fields. Only a validated app-id is copied into an entry. The app-id never changes the outcome or the polkit subject. docs/audit.md documents the fields, values, a query by app-id and that the app-id is not authenticated and the pid of a flatpak caller is the proxy's. Audit integration tests with the fake source cover the three cases for every operation and prove the outcome is the same as with no source.",
+      "depends_on": ["F75", "F77", "F79", "F81"],
+      "verify": "just check && just test-integration && just mutants-diff F82",
+      "passes": false
+    },
+    {
+      "id": "F83",
+      "title": "Fuzz targets for the new methods, certificates and the app-id parser",
+      "description": "The fuzz workspace of custodiod has targets `delete_args` (argument parsing of delete), `replace_cert_args` (arguments and certificate input of replace certificate) and `app_id` (the parser of F80), and `dbus_args` is extended to the changed import, list and sign arguments. A new recipe `just fuzz-smoke` runs every fuzz target for a fixed number of runs with a fixed seed and fails on a crash or on a missing target. Lints of the fuzz workspace pass.",
+      "depends_on": ["F76", "F78", "F80"],
+      "verify": "just check && just fuzz-build && just lint-fuzz && just fuzz-smoke",
+      "passes": false
+    },
+    {
+      "id": "F84",
+      "title": "Checkpoint: the service API",
+      "description": "The full suites pass on the service API group: `just check`, the integration tests, the API contract and dependency checks, `just e2e` on every target and the package gates. Any failure found here is fixed in this feature.",
+      "depends_on": ["F63", "F64", "F65", "F66", "F69", "F70", "F71", "F72", "F73", "F74", "F75", "F76", "F77", "F78", "F79", "F80", "F81", "F82", "F83"],
+      "verify": "just check && just test-integration && just api-contract && just deps-check && just e2e && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F85",
+      "title": "PKCS#11 module on the documented API",
+      "description": "The module uses only what docs/api.md describes, through the client crate, and maps the documented error names to CKR codes. A process sees only its own uid's keys as tokens; a replaced certificate is what the module exposes on the next call; a deleted key has no token. Every M1 and M2 guarantee stays: a connection per call, fork safety, no thread left behind, no slots when the service is absent. The FFI layer (`src/ffi`) is unchanged. cryptoki integration tests cover two uids, a replaced certificate and a deleted key.",
+      "depends_on": ["F64", "F65", "F72", "F76", "F78"],
+      "verify": "just check && just test-integration && just deps-check && just mutants-diff F85",
+      "passes": false
+    },
+    {
+      "id": "F86",
+      "title": "custodio import on the documented API, with error names",
+      "description": "`custodio import` calls the documented import through the client crate only, shows each documented error name as its own message (denied, authorization unavailable, wrong password, unsupported key, id taken, audit unavailable, ...) and exits non-zero on every failure, while usage errors keep their own exit status. Tests against a service on a private bus with the fake polkit cover approval, denial, unavailability and each error.",
+      "depends_on": ["F64", "F65", "F73"],
+      "verify": "just check && cargo test -p custodio-cli --locked && just test-integration",
+      "passes": false
+    },
+    {
+      "id": "F87",
+      "title": "custodio list",
+      "description": "`custodio list` shows each of the caller's keys with its id, key type, certificate subject and end of validity; with no keys it says there are none and exits 0; on an error it shows the error name's message and exits non-zero. It asks no polkit. The man page (`packaging/custodio.1`) documents it. Tests against a service on a private bus cover several keys, no keys, two uids and an unavailable service.",
+      "depends_on": ["F72", "F86"],
+      "verify": "just check && cargo test -p custodio-cli --locked && just test-integration && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F88",
+      "title": "custodio delete with confirmation",
+      "description": "`custodio delete <id>` asks on the terminal for confirmation, saying the key cannot be recovered, before calling the service; polkit then asks too. Declining the confirmation calls nothing; declining polkit deletes nothing; both exit non-zero. There is no flag that skips the confirmation, and without a terminal it refuses. Errors are shown from the documented names. The man page documents the command. Tests on a pseudo-terminal against a service on a private bus cover confirm, decline, polkit denial, a missing id and no terminal.",
+      "depends_on": ["F76", "F86"],
+      "verify": "just check && cargo test -p custodio-cli --locked && just test-integration && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F89",
+      "title": "Start pkttyagent when no polkit agent answers",
+      "description": "When stdin is a terminal and no polkit agent answers for the session, `custodio import` and `custodio delete` start `pkttyagent` registered for the CLI's own process only, as systemctl does, and stop it when the call returns, on success, failure or interruption. It never registers an agent for another process or for the whole session. Tests with a fake `pkttyagent` on PATH prove the arguments name only the CLI's process, that it is not started without a terminal or when an agent answers, and that no agent process outlives the command.",
+      "depends_on": ["F86", "F88"],
+      "verify": "just check && cargo test -p custodio-cli --locked",
+      "passes": false
+    },
+    {
+      "id": "F90",
+      "title": "Checkpoint: the clients",
+      "description": "The full suites pass on the clients group (module, CLI import, list, delete, pkttyagent): `just check`, the integration tests, the API contract and dependency checks, `just e2e` on every target and the package gates. Any failure found here is fixed in this feature.",
+      "depends_on": ["F84", "F85", "F86", "F87", "F88", "F89"],
+      "verify": "just check && just test-integration && just api-contract && just deps-check && just e2e && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F91",
+      "title": "End-to-end ownership cases with two real accounts",
+      "description": "New e2e cases `owner-*` (in e2e/cases.list) with two real accounts: A imports a key; A's `custodio list` shows it and B's does not; B's sign, delete and replace certificate on that id fail with the same error name as an id nobody has, the test agent sees no polkit request, and the journal behaves as for a missing id (acceptance 1). A and B each import a key with the same id, each signs with their own, and each signature verifies against that uid's certificate (acceptance 2).",
+      "depends_on": ["F63", "F72", "F76", "F78", "F87"],
+      "verify": "just check && just e2e-cases debian13 'owner-*'",
+      "passes": false
+    },
+    {
+      "id": "F92",
+      "title": "End-to-end polkit cases for import, delete and replace certificate",
+      "description": "New e2e cases `ops-polkit-*`: under the real polkit and the test agent, import, delete and replace certificate each ask exactly once per call; with the agent denying, or polkit stopped, each call fails with the documented error name and the state is unchanged; a second call asks again (acceptance 3). An import with a wrong password denied by polkit fails as denied; approved, it gives the wrong-password error (acceptance 4, the decoder part stays in the integration tests).",
+      "depends_on": ["F63", "F73", "F76", "F78"],
+      "verify": "just check && just e2e-cases debian13 'ops-polkit-*'",
+      "passes": false
+    },
+    {
+      "id": "F93",
+      "title": "End-to-end replace certificate and delete cases",
+      "description": "New e2e cases `replace-*`: a certificate for the same key replaces the old one, `custodio list` and the PKCS#11 module (pkcs11-tool) show the new one, and a signature made afterwards verifies with it; a certificate for a different key fails with the documented error and changes nothing (acceptance 5). New cases `delete-*`: after `custodio delete` the key is absent from list, the module shows no token for it, sign fails with 'no such key', its file is gone from the state directory, and the id can be imported again (acceptance 6).",
+      "depends_on": ["F63", "F78", "F85", "F87", "F88"],
+      "verify": "just check && just e2e-cases debian13 'replace-*' 'delete-*'",
+      "passes": false
+    },
+    {
+      "id": "F94",
+      "title": "End-to-end journal cases for every operation",
+      "description": "New e2e cases `journal-ops-*`: every sign, import, delete and replace certificate call that reaches authorization, approved or denied, leaves exactly one entry of custodio.service naming the operation, the caller's uid and pid, the key id and the outcome; no entry contains the .p12, the password, the certificate bytes, the signed data or the signature (raw, hex or base64); every query docs/audit.md documents returns the expected entries (acceptance 7).",
+      "depends_on": ["F63", "F75", "F77", "F79", "F82"],
+      "verify": "just check && just e2e-cases debian13 'journal-ops-*'",
+      "passes": false
+    },
+    {
+      "id": "F95",
+      "title": "End-to-end app-id cases",
+      "description": "New e2e cases `appid-*` under the real unit: a fake flatpak caller (a process with the app-id source F67 decided on, for example in its own user and mount namespace) gets an entry naming its app-id; a non-sandboxed caller gets 'none'; a hostile source (symlink, FIFO, oversized, invalid id) gets 'could not be determined', no invalid text appears in the journal, the outcome is unaffected and the call returns within the documented bound (acceptance 9). If F67 decided (d), the cases check the deviation: always 'could not be determined'.",
+      "depends_on": ["F63", "F67", "F82"],
+      "verify": "just check && just e2e-cases debian13 'appid-*'",
+      "passes": false
+    },
+    {
+      "id": "F96",
+      "title": "End-to-end upgrade keeps keys, owners and certificates",
+      "description": "The upgrade cases (`upgrade-*`, N to N+1 and old-path, both M3 builds) import keys for two accounts and replace one certificate before upgrading, and after the upgrade check that each account lists exactly its own keys, the replaced certificate is the new one, and each signs with polkit (acceptance 10).",
+      "depends_on": ["F71", "F78", "F87", "F91"],
+      "verify": "just check && just e2e-cases debian13 'upgrade-*'",
+      "passes": false
+    },
+    {
+      "id": "F97",
+      "title": "End-to-end CLI cases",
+      "description": "New e2e cases `cli-*`: `custodio list` prints the caller's keys with id, type, subject and end of validity, and says there are none when there are none; `custodio delete <id>` asks for confirmation, then polkit, and deletes; declining either deletes nothing and exits non-zero; on a pseudo-terminal with no polkit agent registered, `custodio import` and `custodio delete` ask for the account password through pkttyagent and succeed when it is typed (acceptance 11).",
+      "depends_on": ["F63", "F87", "F88", "F89"],
+      "verify": "just check && just e2e-cases debian13 'cli-*'",
+      "passes": false
+    },
+    {
+      "id": "F98",
+      "title": "Complete client documentation",
+      "description": "docs/api.md covers, for people who write clients: detection on the host and from a flatpak with --system-talk-name (from F68), and what a client sees when the service is absent, not activatable or blocked by the sandbox; every method with arguments, bounds and results; every error name and when it occurs; ownership and its consequences; which calls show a polkit dialog and under which action; what is journalled, the app-id record; that hashing stays in the client; the compatibility rule of docs/audit.md; and a short busctl example per operation. A test `scripts/test-docs-api.sh` (in `just test-scripts`) runs every busctl example of the document against the service on a private bus with the fake polkit and checks its documented result, with a negative control on a broken copy. README links the document. `just api-contract` still passes.",
+      "depends_on": ["F68", "F84"],
+      "verify": "just check && scripts/test-docs-api.sh && just api-contract",
+      "passes": false
+    },
+    {
+      "id": "F99",
+      "title": "Written manual acceptance steps for M3",
+      "description": "docs/manual-acceptance.md gains an M3 part with the steps for acceptance 14 (detect, import, list, replace certificate, sign and delete with busctl or gdbus following only docs/api.md, seeing each dialog and error), 15 (a test flatpak, whose manifest the repository ships, with --system-talk-name=com.rfirma.Custodio1, detecting by the documented steps and signing or importing after the dialog; the journal entry names its app-id and the person's uid, or the F67 deviation) and 16 (Firefox and LibreOffice still sign; a second account sees no token). A test `scripts/test-docs-manual-m3.sh` (in `just test-scripts`) checks each part holds its items, that its commands match docs/api.md and docs/audit.md, and that the flatpak manifest parses and names the talk permission, with negative controls.",
+      "depends_on": ["F67", "F98"],
+      "verify": "just check && scripts/test-docs-manual-m3.sh",
+      "passes": false
+    },
+    {
+      "id": "F100",
+      "title": "Checkpoint: end-to-end cases and documentation",
+      "description": "Before the manual features, the full suites pass on the whole milestone: `just check`, the integration tests, the API contract and dependency checks, `just e2e` on every target (including every M0–M2 case it automates, acceptance 13) and the package gates. Any failure found here is fixed in this feature.",
+      "depends_on": ["F84", "F90", "F91", "F92", "F93", "F94", "F95", "F96", "F97", "F98", "F99"],
+      "verify": "just check && just test-integration && just api-contract && just deps-check && just e2e && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F101",
+      "title": "Acceptance 14 by hand: a client built from the documentation",
+      "description": "On a supported target VM in a graphical session, a person follows only docs/api.md and the M3 steps of docs/manual-acceptance.md to detect the service, then import, list, replace the certificate of, sign with and delete a key with busctl or gdbus, and sees each documented polkit dialog and error. The result is recorded in docs/findings.md.",
+      "depends_on": ["F99", "F100"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F102",
+      "title": "Acceptance 15 by hand: a test flatpak",
+      "description": "On a supported target VM in a graphical session, the test flatpak shipped by F99, with --system-talk-name=com.rfirma.Custodio1, detects the service by the documented steps and signs (or imports) after the polkit dialog; the journal entry names its app-id and the person's uid (or, under the F67 deviation, says the app-id could not be determined). The result is recorded in docs/findings.md.",
+      "depends_on": ["F99", "F100"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F103",
+      "title": "Acceptance 16 by hand: Firefox, LibreOffice and a second account",
+      "description": "On a supported target VM, Firefox and LibreOffice, as in M1/M2, still sign with a key the person imported with `custodio import`; a second account on the same machine sees no token for that key. The result is recorded in docs/findings.md.",
+      "depends_on": ["F99", "F100"],
+      "manual": true,
+      "passes": false
+    }
+  ]
+}
