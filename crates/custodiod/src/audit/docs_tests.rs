@@ -511,3 +511,51 @@ fn api_describes_the_delete_entry() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn replace_order_and_outcomes_documented() -> TestResult {
+    let text = docs()?;
+    let section = text
+        .split("### replace_certificate")
+        .nth(1)
+        .and_then(|s| s.split("## Mechanisms").next())
+        .ok_or("no replace section")?;
+    let flat = section.split_whitespace().collect::<Vec<_>>().join(" ");
+    for statement in [
+        "A replace that reaches polkit leaves exactly one entry",
+        "the new certificate is stored (atomically), then the entry is submitted, still under the lock of that key",
+        "the old certificate (read before the store) is put back",
+        "the call fails as `AuditUnavailable`",
+        "never lacks an entry",
+        "The outcome `storage_failure` covers every failure after the approval that is not a mismatch",
+        "the key is of a type the comparison does not support (the reply is `Internal`)",
+        "a key or certificate that vanished after the lookup",
+        "leaves no entry",
+        "a `ListKeys` while the entry is pending may show either certificate",
+        "Queries by outcome are under \"By outcome\" below",
+    ] {
+        assert!(flat.contains(statement), "missing: {statement}");
+    }
+    assert!(text.contains("**A failed restore after a replace.**"));
+    assert!(
+        text.contains(
+            "CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch"
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn api_describes_the_replace_entry() -> TestResult {
+    let text = read("docs/api.md")?;
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    for statement in [
+        "the call leaves exactly one journal entry (`replace_certificate`), submitted after the store and before the reply",
+        "the call fails as `AuditUnavailable` with the old certificate put back",
+        "If that restore fails too, the reply is still `AuditUnavailable`",
+    ] {
+        assert!(flat.contains(statement), "missing: {statement}");
+    }
+    assert!(!flat.contains("This method does not write a journal entry"));
+    Ok(())
+}

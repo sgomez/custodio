@@ -101,6 +101,19 @@ one key run one at a time.
 | `certificate_mismatch` | 4 | Authorized, but the certificate does not belong to the key; nothing changed |
 | `storage_failure` | 3 | Authorized, but the certificate could not be stored |
 
+A replace that reaches polkit leaves exactly one entry. After an approval the order is fixed: the key is
+read again and its public key compared with the certificate's, the new certificate is stored (atomically),
+then the entry is submitted, still under the lock of that key, and only then does the call reply. If the
+entry cannot be submitted, the old certificate (read before the store) is put back, atomically like the
+replace, and the call fails as `AuditUnavailable`; this holds for every outcome, so a replaced certificate
+never lacks an entry. The outcome `storage_failure` covers every failure after the approval that is not a mismatch:
+the store cannot replace the certificate, the key or its certificate cannot be read, the key is of a type
+the comparison does not support (the reply is `Internal`), and a key or certificate that vanished after the
+lookup (the reply is then `NoSuchKey` or `Internal`, as without the entry). A call that fails before polkit
+is asked (invalid arguments, no such key) leaves no entry. Replaces and deletes of one key run one at a
+time, and a `ListKeys` while the entry is pending may show either certificate. The entry never holds the
+old or the new certificate, only the fields above. Queries by outcome are under "By outcome" below.
+
 ## Mechanisms
 
 `CUSTODIO_MECHANISM` holds one of:
@@ -197,11 +210,20 @@ By outcome (add `-o json` for the fields):
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OUTCOME=denied
 ```
 
+A replace that was refused because the certificate belongs to another key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch
+```
+
 ## Not guaranteed
 
 - **A crash during a delete.** The `deleted` entry is submitted before the files are removed. If
   the service dies between the two, the key is still stored although an entry says `deleted`.
   Removal after the entry is the choice that keeps a deleted key from ever lacking one.
+- **A failed restore after a replace.** If the entry cannot be submitted and the old certificate cannot
+  be put back either, the call still fails as `AuditUnavailable`, but the new certificate may stay in place
+  without an entry. A crash between the store and the restore has the same effect.
 - **Identity of a person.** `CUSTODIO_UID` and `CUSTODIO_PID` name the calling process only.
   They do not say who sat at the keyboard, and a shared account looks like one user.
 - **Pid reuse.** A process id is reused after the process exits; `CUSTODIO_PID` may no longer

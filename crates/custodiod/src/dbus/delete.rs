@@ -86,7 +86,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     }
 
     /// Submits an entry on its own thread; the reply waits for it.
-    async fn submit(&self, entry: OperationEntry) -> Result<(), ServiceError> {
+    pub(super) async fn submit(&self, entry: OperationEntry) -> Result<(), ServiceError> {
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record_operation(&entry)).await {
             Some(Ok(())) => Ok(()),

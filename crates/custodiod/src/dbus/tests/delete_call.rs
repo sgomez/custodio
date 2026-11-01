@@ -9,7 +9,7 @@ type R = Result<(), Box<dyn std::error::Error>>;
 
 /// Runs `f` to the end. A delete that waits for a lock nobody releases would stop the test run, so
 /// after 20 s the process exits and the run fails instead.
-fn guarded<T>(f: impl Future<Output = T>) -> T {
+pub(super) fn guarded<T>(f: impl Future<Output = T>) -> T {
     let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let seen = Arc::clone(&done);
     std::thread::spawn(move || {

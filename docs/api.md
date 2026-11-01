@@ -110,7 +110,11 @@ so a concurrent `ListKeys` sees the old or the new certificate, never an error o
 before the rename the old certificate stays and no temporary file is left; a failure of the final directory sync
 comes after the rename (the new certificate is in place). Either way the call fails as `Internal`. A replace and a
 `DeleteKey` of one id never run at the same time (the second waits for the first); a replace that finds the key gone
-fails as `NoSuchKey` and leaves no certificate behind. This method does not write a journal entry.
+fails as `NoSuchKey` and leaves no certificate behind.
+
+Once polkit has been asked, the call leaves exactly one journal entry (`replace_certificate`), submitted after the
+store and before the reply, and the call fails as `AuditUnavailable` with the old certificate put back if the entry
+cannot be submitted. If that restore fails too, the reply is still `AuditUnavailable`. See `audit.md`.
 
 - in `id`: `s`
 - in `certificate`: `ay`
@@ -147,7 +151,7 @@ Every failure is one of these names, with a fixed message that repeats nothing t
   `.p12` with no private key, several private keys, or a key without a certificate.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key (`ImportP12`, `ReplaceCertificate`).
-- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored).
+- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored; a replaced certificate is put back).
 - error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate).
 
 ## Polkit actions
