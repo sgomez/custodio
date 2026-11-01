@@ -252,7 +252,7 @@
         "F53"
       ],
       "manual": true,
-      "passes": false
+      "passes": true
     },
     {
       "id": "F57",
