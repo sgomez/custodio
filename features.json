@@ -15,7 +15,7 @@
       "description": "Neither `custodio-cli` nor `custodio-pkcs11` depends on the `custodiod` crate in any dependency kind (normal, build or dev) at any depth. What they share (bus name, object path, the documented bounds) moves to a small client-side crate used by both, holding only what the client documentation will describe. Tests that need a real service together with a client live in a workspace crate of their own or start the service binary. A new recipe `just deps-check`, run by `just lint`, reads `cargo metadata` and fails, naming the path, when the CLI or the module reaches the service crate; its own test proves it fails on a fixture workspace where a client does depend on the service. Behaviour of the CLI and the module is unchanged.",
       "depends_on": [],
       "verify": "just test-changed F64 && just deps-check && just test-integration",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F65",
