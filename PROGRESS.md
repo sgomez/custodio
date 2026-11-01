@@ -246,3 +246,8 @@ with an empty context.
 - Docs: `docs/audit.md` (delete section, "Not guaranteed" crash case), `docs/api.md` (`DeleteKey` order, `AuditUnavailable`); doc tests added.
 - Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F77`: 27 caught, 10 unviable, none missed.
 - Next session should: nothing for F77.
+
+### 2026-11-01 — F77 — attempt 2
+- Fixed NEXT_FINDINGS: `docs/api.md` no longer says a second `DeleteKey` clears a leftover certificate after a failed removal; it says a `DeleteKey` after the service restarts does (or for a certificate left by a crash). `api_describes_the_delete_entry` checks the new sentence and that the old wording is gone.
+- Evidence: `just quick` exit 0, `just api-contract` green. Code unchanged, so the F77 mutants result stands.
+- Next session should: nothing for F77.

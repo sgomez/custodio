@@ -74,8 +74,8 @@ leaves exactly one entry, whatever the outcome. If the entry cannot be submitted
 The key goes first, so a failure never leaves a key without its certificate. If the key could not be removed,
 both files stay and the call fails as `Internal`. If the certificate could not be removed after the key went, the
 call fails as `Internal`; the id is no longer listed and `Sign` fails as `NoSuchKey`, but a leftover certificate
-still counts as taken for `ImportP12`. Calling `DeleteKey` again for that id removes the leftover certificate (a
-certificate without a key is found by the lookup). Anything in the area that is not a plain file of the service
+still counts as taken for `ImportP12`. A `DeleteKey` after the service restarts removes the leftover certificate (a
+certificate without a key is found by the lookup), as it does for one left over some other way, such as a crash. Anything in the area that is not a plain file of the service
 is never touched; such an entry keeps the id taken until an administrator removes it. A key whose removal failed
 after the entry went out stays unusable (not listed, `NoSuchKey` for `Sign` and `DeleteKey`) until the service
 restarts, though its files may still be there.

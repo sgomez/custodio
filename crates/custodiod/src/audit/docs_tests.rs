@@ -501,9 +501,13 @@ fn api_describes_the_delete_entry() -> TestResult {
         "`ImportP12` of it still fails as `KeyIdTaken`",
         "stays unusable (not listed, `NoSuchKey` for `Sign` and `DeleteKey`) until the service restarts",
         "Deletes of one id run one at a time",
+        "A `DeleteKey` after the service restarts removes the leftover certificate",
     ] {
         assert!(flat.contains(statement), "missing: {statement}");
     }
     assert!(!flat.contains("says nothing about journal entries"));
+    assert!(
+        !flat.contains("Calling `DeleteKey` again for that id removes the leftover certificate")
+    );
     Ok(())
 }
