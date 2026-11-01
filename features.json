@@ -127,7 +127,7 @@
         "F74"
       ],
       "verify": "just quick && just mutants-diff F75",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F76",
