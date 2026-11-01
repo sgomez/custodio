@@ -290,10 +290,16 @@ fn imports_through_the_service_and_reports_wrong_password() -> TestResult {
     let err = run_import(&a, &mut FixedPrompt(Some("wrong")), &importer, &mut out).err();
     assert!(matches!(err, Some(ImportFailure::Service(_))), "{err:?}");
     assert_eq!(out, b"");
-    assert_eq!(store.list()?, Vec::<String>::new());
+    assert_eq!(store.list(owner()?)?, Vec::<String>::new());
 
     run_import(&a, &mut FixedPrompt(Some(PASSWORD)), &importer, &mut out)?;
     assert!(String::from_utf8(out)?.contains("delete the original"));
-    assert!(store.list()?.contains(&"k".to_owned()));
+    assert!(store.list(owner()?)?.contains(&"k".to_owned()));
     Ok(())
+}
+
+/// The uid the bus reports for this process, which owns what the service stores for it.
+fn owner() -> Result<u32, Box<dyn Error>> {
+    use std::os::unix::fs::MetadataExt;
+    Ok(std::fs::metadata("/proc/self")?.uid())
 }

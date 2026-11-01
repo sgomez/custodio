@@ -129,9 +129,10 @@ fn lists_certificates_and_signs_through_the_service() -> TestResult {
     let (ok, stdout) = f.run("basic")?;
     assert!(ok);
     let store = f.store()?;
-    let secret = |id: &str| store.get(id);
+    let owner = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
+    let secret = |id: &str| store.get(owner, id);
     for line in lines(&stdout, "CERT") {
-        let cert = store.get(&format!("{}-cert", line[0]))?;
+        let cert = store.get(owner, &format!("{}-cert", line[0]))?;
         assert_eq!(line[1], hex(secrecy::ExposeSecret::expose_secret(&cert)));
     }
     let mut seen = 0;

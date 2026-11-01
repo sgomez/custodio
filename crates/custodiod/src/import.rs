@@ -151,7 +151,7 @@ pub fn check_archive(archive: &Pkcs12Archive) -> Result<ParsedP12, ImportError> 
     })
 }
 
-/// Parse a `.p12` and store its key as `id` and its certificate as `<id>-cert`.
+/// Parse a `.p12` and store, for `owner`, its key as `id` and its certificate as `<id>-cert`.
 ///
 /// The certificate is written first: it is public, so a failure between the two writes leaves
 /// nothing sensitive behind.
@@ -160,18 +160,19 @@ pub fn check_archive(archive: &Pkcs12Archive) -> Result<ParsedP12, ImportError> 
 /// See [`ImportError`].
 pub fn import_p12(
     store: &KeyStore,
+    owner: u32,
     id: &str,
     data: &[u8],
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
     let parsed = parse_p12(data, password)?;
     // Check up front so a refused key write cannot leave a certificate without a key behind.
-    let ids = store.list()?;
+    let ids = store.list(owner)?;
     if ids.iter().any(|i| i == id || *i == cert_id(id)) {
         return Err(StoreError::AlreadyExists.into());
     }
-    store.put(&cert_id(id), &SecretSlice::from(parsed.certificate))?;
-    store.put(id, &parsed.key)?;
+    store.put(owner, &cert_id(id), &SecretSlice::from(parsed.certificate))?;
+    store.put(owner, id, &parsed.key)?;
     Ok(parsed.kind)
 }
 

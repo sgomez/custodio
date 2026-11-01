@@ -84,6 +84,7 @@ mod wiring {
         let password = SecretString::from("test-password".to_owned());
         import_p12(
             &store,
+            rustix::process::geteuid().as_raw(),
             "ec",
             include_bytes!("../tests/fixtures/p256.p12"),
             &password,

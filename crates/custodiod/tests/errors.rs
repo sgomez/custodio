@@ -167,11 +167,20 @@ fn import_failures_have_their_names() -> TestResult {
     })
 }
 
+/// Makes the caller's area unusable (a loose mode is refused, never repaired).
+fn break_area(f: &Fixture) -> TestResult {
+    use std::os::unix::fs::PermissionsExt;
+    let area = f.store_dir().join(common::uid().to_string());
+    std::fs::set_permissions(area, std::fs::Permissions::from_mode(0o755))?;
+    Ok(())
+}
+
 #[test]
 fn store_failures_are_internal() -> TestResult {
     block_on(async {
         let f = start(Answer::Yes).await?;
-        std::fs::remove_dir(f.store_dir())?;
+        import(&f, "ec", EC_P12).await?;
+        break_area(&f)?;
         is(
             &failure(call(&f.client, "ListKeys", &()).await)?,
             ServiceError::Internal,
@@ -284,7 +293,10 @@ fn a_bad_key_file_is_internal() -> TestResult {
     block_on(async {
         let f = start(Answer::Yes).await?;
         import(&f, "ec", EC_P12).await?;
-        std::fs::write(f.store_dir().join("ec"), b"not a pkcs8 key")?;
+        std::fs::write(
+            f.store_dir().join(common::uid().to_string()).join("ec"),
+            b"not a pkcs8 key",
+        )?;
         is(
             &failure(sign_call(&f, "ec", ec_sign(), &[7; 32]).await)?,
             ServiceError::Internal,
@@ -354,7 +366,7 @@ async fn sentinel_replies() -> Result<(Vec<String>, Vec<(String, String)>), Box<
     out.push(failure(sign_call(&f, "ec", ec_sign(), &[7; 32]).await)?);
     f.set_answer(Answer::Fail);
     out.push(failure(sign_call(&f, "ec", ec_sign(), &[7; 32]).await)?);
-    std::fs::remove_dir_all(f.store_dir())?;
+    break_area(&f)?;
     out.push(failure(call(&f.client, "ListKeys", &()).await)?);
     out.push(failure(
         import_call(&f, "s4", EC_P12, SENTINEL_PASSWORD).await,

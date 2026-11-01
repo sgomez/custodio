@@ -1,6 +1,7 @@
-//! Key store: one plain file per key in a private state directory.
+//! Key store: one plain file per key, kept in a private directory per owner uid:
+//! `<root>/<uid>/<id>`.
 //!
-//! The directory is `0700` and every file `0600`. A key is written to a temporary file in the
+//! Every directory is `0700` and every file `0600`. A key is written to a temporary file in the
 //! same directory, synced, then linked into place, so a reader never sees a partial key and an
 //! existing key is never overwritten.
 
@@ -92,7 +93,8 @@ impl KeyStore {
     ///
     /// An existing directory with any other mode, or an owner other than the effective uid, is
     /// rejected rather than silently fixed. Leftover `.tmp-*` files from a crashed `put` are
-    /// removed, so only one process may use a state directory at a time.
+    /// removed from the root and from every well-formed owner area, so only one process may use a
+    /// state directory at a time. Any other entry in the root is left alone and never read.
     ///
     /// # Errors
     /// Fails if the directory cannot be created or has unsafe permissions or owner.
@@ -111,28 +113,24 @@ impl KeyStore {
                 }
             }
         }
-        let meta = fs::symlink_metadata(&dir)?;
-        if !meta.is_dir() {
-            return Err(StoreError::BadFileType(dir));
-        }
-        if meta.mode() & PERM_MASK != DIR_MODE {
-            return Err(StoreError::BadPermissions(dir));
-        }
-        if meta.uid() != uid {
-            return Err(StoreError::BadOwner(dir));
-        }
+        check_dir(&dir, uid)?;
         let store = Self { dir, uid };
         store.remove_stale_temp_files()?;
         Ok(store)
     }
 
     fn remove_stale_temp_files(&self) -> Result<(), StoreError> {
+        remove_temp_files(&self.dir)?;
         for entry in fs::read_dir(&self.dir)? {
             let entry = entry?;
-            if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX)
-                && entry.file_type()?.is_file()
-            {
-                fs::remove_file(entry.path())?;
+            let is_area = entry
+                .file_name()
+                .to_str()
+                .and_then(|n| n.parse::<u32>().ok().map(|u| (u, n.to_owned())))
+                .is_some_and(|(u, n)| u.to_string() == n);
+            // Only a well-formed area is touched; anything else is left for `get`/`put` to refuse.
+            if is_area && check_dir(&entry.path(), self.uid).is_ok() {
+                remove_temp_files(&entry.path())?;
             }
         }
         Ok(())
@@ -144,21 +142,51 @@ impl KeyStore {
         &self.dir
     }
 
-    fn path_for(&self, id: &str) -> Result<PathBuf, StoreError> {
-        if valid_key_id(id) {
-            Ok(self.dir.join(id))
-        } else {
-            Err(StoreError::InvalidId)
+    /// The area of `owner`: `<root>/<uid in decimal>`. The name is derived from the `u32` alone,
+    /// so no id can reach another owner's area.
+    fn area_path(&self, owner: u32) -> PathBuf {
+        self.dir.join(owner.to_string())
+    }
+
+    /// The checked area of `owner`, or `None` if it does not exist. Creates nothing.
+    fn existing_area(&self, owner: u32) -> Result<Option<PathBuf>, StoreError> {
+        let area = self.area_path(owner);
+        match check_dir(&area, self.uid) {
+            Ok(()) => Ok(Some(area)),
+            Err(StoreError::Io(e)) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
         }
     }
 
-    /// Store `key` under `id`, atomically and without overwriting.
+    /// The checked area of `owner`, created with mode `0700` if missing.
+    fn ensure_area(&self, owner: u32) -> Result<PathBuf, StoreError> {
+        let area = self.area_path(owner);
+        match DirBuilder::new().mode(DIR_MODE).create(&area) {
+            Ok(()) => {
+                // The umask can only remove bits; make the mode exact regardless.
+                fs::set_permissions(&area, fs::Permissions::from_mode(DIR_MODE))?;
+                File::open(&self.dir)
+                    .and_then(|d| d.sync_all())
+                    .map_err(StoreError::SyncFailed)?;
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
+        check_dir(&area, self.uid)?;
+        Ok(area)
+    }
+
+    /// Store `key` for `owner` under `id`, atomically and without overwriting.
     ///
     /// # Errors
-    /// `AlreadyExists` if the id is taken, `InvalidId` for a bad id, `Io` otherwise.
-    pub fn put(&self, id: &str, key: &SecretSlice<u8>) -> Result<(), StoreError> {
-        let dest = self.path_for(id)?;
-        let tmp = self.dir.join(format!(
+    /// `AlreadyExists` if the owner already has this id, `InvalidId` for a bad id, `Io` otherwise.
+    pub fn put(&self, owner: u32, id: &str, key: &SecretSlice<u8>) -> Result<(), StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let area = self.ensure_area(owner)?;
+        let dest = area.join(id);
+        let tmp = area.join(format!(
             "{TMP_PREFIX}{}-{}",
             std::process::id(),
             TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -174,18 +202,25 @@ impl KeyStore {
                 StoreError::Io(e)
             }
         })?;
-        File::open(&self.dir)
+        File::open(&area)
             .and_then(|d| d.sync_all())
             .map_err(StoreError::SyncFailed)
     }
 
-    /// Read the key stored under `id`.
+    /// Read the key `owner` stored under `id`.
     ///
     /// # Errors
-    /// `NotFound`; `BadPermissions`, `BadOwner` or `BadFileType` if the file is not a regular
-    /// `0600` file owned by the service uid (symlinks are not followed); `Io` otherwise.
-    pub fn get(&self, id: &str) -> Result<SecretSlice<u8>, StoreError> {
-        let path = self.path_for(id)?;
+    /// `NotFound`; `BadPermissions`, `BadOwner` or `BadFileType` if the area or the file is not
+    /// as required (a plain `0700` directory / `0600` file owned by the service uid, symlinks not
+    /// followed); `Io` otherwise.
+    pub fn get(&self, owner: u32, id: &str) -> Result<SecretSlice<u8>, StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let path = self
+            .existing_area(owner)?
+            .ok_or(StoreError::NotFound)?
+            .join(id);
         let file = match OpenOptions::new()
             .read(true)
             // NONBLOCK so a FIFO cannot hang the open; NOCTTY so a tty cannot become ours.
@@ -231,17 +266,20 @@ impl KeyStore {
         Ok(SecretSlice::from(buf.to_vec()))
     }
 
-    /// Ids of all stored keys, sorted.
+    /// Ids of all keys of `owner`, sorted. An owner without an area has none; nothing is created.
     ///
     /// # Errors
-    /// `Io` if the directory cannot be read.
-    pub fn list(&self) -> Result<Vec<String>, StoreError> {
+    /// `Io` if the area cannot be read; the area errors of `get`.
+    pub fn list(&self, owner: u32) -> Result<Vec<String>, StoreError> {
+        let Some(area) = self.existing_area(owner)? else {
+            return Ok(Vec::new());
+        };
         let mut ids = Vec::new();
-        for entry in fs::read_dir(&self.dir)? {
+        for entry in fs::read_dir(&area)? {
             let name = entry?.file_name();
             if let Some(name) = name.to_str()
                 && !name.starts_with(TMP_PREFIX)
-                && self.path_for(name).is_ok()
+                && valid_key_id(name)
             {
                 ids.push(name.to_owned());
             }
@@ -249,6 +287,34 @@ impl KeyStore {
         ids.sort();
         Ok(ids)
     }
+}
+
+/// Check that `path` is a real directory (not a symlink) with mode `0700` owned by `uid`.
+/// A missing path is `Io` with kind `NotFound`.
+fn check_dir(path: &Path, uid: u32) -> Result<(), StoreError> {
+    let meta = fs::symlink_metadata(path)?;
+    if !meta.is_dir() {
+        return Err(StoreError::BadFileType(path.to_owned()));
+    }
+    if meta.mode() & PERM_MASK != DIR_MODE {
+        return Err(StoreError::BadPermissions(path.to_owned()));
+    }
+    if meta.uid() != uid {
+        return Err(StoreError::BadOwner(path.to_owned()));
+    }
+    Ok(())
+}
+
+fn remove_temp_files(dir: &Path) -> Result<(), StoreError> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX)
+            && entry.file_type()?.is_file()
+        {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 fn write_synced(path: &Path, data: &[u8]) -> io::Result<()> {

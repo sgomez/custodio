@@ -126,6 +126,8 @@ mod sign_call {
     use super::*;
     use crate::audit::{FailingSink, MemorySink};
     use crate::credentials::CredentialsError;
+    use crate::store::StoreError;
+    use secrecy::SecretSlice;
 
     struct Counting {
         result: fn() -> Result<(), AuthError>,
@@ -154,6 +156,7 @@ mod sign_call {
     struct Rig {
         service: Custodio<Counting, Creds>,
         sink: Arc<MemorySink>,
+        store: Arc<KeyStore>,
         auth_calls: Arc<AtomicUsize>,
         cred_calls: Arc<AtomicUsize>,
         _dir: tempfile::TempDir,
@@ -166,7 +169,7 @@ mod sign_call {
         let cred_calls = Arc::new(AtomicUsize::new(0));
         let sink = Arc::new(MemorySink::default());
         let service = Custodio::new(
-            store,
+            store.clone(),
             Counting {
                 result,
                 calls: auth_calls.clone(),
@@ -177,6 +180,7 @@ mod sign_call {
         Ok(Rig {
             service,
             sink,
+            store,
             auth_calls,
             cred_calls,
             _dir: dir,
@@ -266,6 +270,84 @@ mod sign_call {
         assert_eq!(got.as_ref().err(), Some(&ServiceError::AuditUnavailable));
         let ok = audit_parts("good", &Mechanism::RsaPkcs).map(|(k, m)| (k.as_str().to_owned(), m));
         assert_eq!(ok.ok(), Some(("good".to_owned(), AuditMechanism::RsaPkcs)));
+    }
+
+    const P12: &[u8] = include_bytes!("../../tests/fixtures/p256.p12");
+    const SENDER: Option<&str> = Some(":1.1");
+
+    /// Owner 11 is the fake caller; the test process must be none of the two uids used here.
+    fn other_uid() -> u32 {
+        let euid = rustix::process::geteuid().as_raw();
+        assert_ne!(euid, 11);
+        assert_ne!(euid, 12);
+        12
+    }
+
+    fn import(r: &Rig, id: &str) -> Result<String, ServiceError> {
+        zbus::block_on(r.service.import_call(SENDER, id, P12, "test-password"))
+    }
+
+    #[test]
+    fn import_stores_key_and_certificate_under_the_bus_uid()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        let euid = rustix::process::geteuid().as_raw();
+        assert_ne!(euid, 11);
+        assert_eq!(import(&r, "mine")?, "ecdsa-p256");
+        assert_ne!(r.store.get(11, "mine")?.expose_secret().len(), 0);
+        assert_ne!(r.store.get(11, &cert_id("mine"))?.expose_secret().len(), 0);
+        for uid in [euid, 0, other_uid()] {
+            assert!(matches!(
+                r.store.get(uid, "mine"),
+                Err(StoreError::NotFound)
+            ));
+            assert!(matches!(
+                r.store.get(uid, &cert_id("mine")),
+                Err(StoreError::NotFound)
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn lists_read_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        let key = SecretSlice::from(b"k".to_vec());
+        r.store.put(11, "mine", &key)?;
+        r.store
+            .put(11, &cert_id("mine"), &SecretSlice::from(b"c".to_vec()))?;
+        r.store.put(other_uid(), "theirs", &key)?;
+        r.store.put(other_uid(), &cert_id("theirs"), &key)?;
+        assert_eq!(zbus::block_on(r.service.list_keys_call(SENDER))?, ["mine"]);
+        assert_eq!(
+            zbus::block_on(r.service.list_certificates_call(SENDER))?,
+            [("mine".to_owned(), b"c".to_vec())]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sign_uses_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        import(&r, "mine")?;
+        let got = zbus::block_on(r.service.sign_call(SENDER, "mine", CKM_ECDSA, 0, 0, b"x"));
+        assert!(got.is_ok(), "{got:?}");
+        // The same key stored only under another uid is not found.
+        let key = r.store.get(11, "mine")?;
+        r.store.put(other_uid(), "theirs", &key)?;
+        let got = zbus::block_on(r.service.sign_call(SENDER, "theirs", CKM_ECDSA, 0, 0, b"x"));
+        assert_eq!(got, Err(ServiceError::from(&StoreError::NotFound)));
+        Ok(())
+    }
+
+    #[test]
+    fn owner_needs_a_sender() -> Result<(), Box<dyn std::error::Error>> {
+        let r = rig(|| Ok(()))?;
+        assert_eq!(
+            zbus::block_on(r.service.list_keys_call(None)),
+            Err(ServiceError::AuthorizationUnavailable)
+        );
+        Ok(())
     }
 
     #[test]

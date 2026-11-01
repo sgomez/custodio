@@ -14,6 +14,7 @@ use secrecy::{ExposeSecret, SecretSlice, SecretString};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
+const OWNER: u32 = 1000;
 const PASSWORD: &str = "test-password";
 
 fn pw(s: &str) -> SecretString {
@@ -168,19 +169,19 @@ fn rejects_file_without_private_key() -> TestResult {
 fn import_stores_key_and_certificate() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    let kind = import_p12(&store, "fnmt", &fixture("p256")?, &pw(PASSWORD))?;
+    let kind = import_p12(&store, OWNER, "fnmt", &fixture("p256")?, &pw(PASSWORD))?;
     assert_eq!(kind, KeyKind::EcdsaP256);
 
     let parsed = parse("p256")?;
     assert_eq!(
-        store.get("fnmt")?.expose_secret(),
+        store.get(OWNER, "fnmt")?.expose_secret(),
         parsed.key.expose_secret()
     );
     assert_eq!(
-        store.get(&cert_id("fnmt"))?.expose_secret(),
+        store.get(OWNER, &cert_id("fnmt"))?.expose_secret(),
         &parsed.certificate
     );
-    assert_eq!(store.list()?, ["fnmt", "fnmt-cert"]);
+    assert_eq!(store.list(OWNER)?, ["fnmt", "fnmt-cert"]);
     Ok(())
 }
 
@@ -188,8 +189,14 @@ fn import_stores_key_and_certificate() -> TestResult {
 fn rejected_import_stores_nothing() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    err_of(import_p12(&store, "k", &fixture("rsa3072")?, &pw(PASSWORD)))?;
-    assert_eq!(store.list()?.len(), 0);
+    err_of(import_p12(
+        &store,
+        OWNER,
+        "k",
+        &fixture("rsa3072")?,
+        &pw(PASSWORD),
+    ))?;
+    assert_eq!(store.list(OWNER)?.len(), 0);
     Ok(())
 }
 
@@ -197,8 +204,14 @@ fn rejected_import_stores_nothing() -> TestResult {
 fn import_does_not_overwrite() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    import_p12(&store, "k", &fixture("p256")?, &pw(PASSWORD))?;
-    let err = err_of(import_p12(&store, "k", &fixture("rsa2048")?, &pw(PASSWORD)))?;
+    import_p12(&store, OWNER, "k", &fixture("p256")?, &pw(PASSWORD))?;
+    let err = err_of(import_p12(
+        &store,
+        OWNER,
+        "k",
+        &fixture("rsa2048")?,
+        &pw(PASSWORD),
+    ))?;
     assert!(matches!(err, ImportError::Store(_)), "{err:?}");
     Ok(())
 }
@@ -314,9 +327,15 @@ fn failed_key_write_leaves_no_certificate() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
     let existing = SecretSlice::from(b"other".to_vec());
-    store.put("k", &existing)?;
-    let err = err_of(import_p12(&store, "k", &fixture("p256")?, &pw(PASSWORD)))?;
+    store.put(OWNER, "k", &existing)?;
+    let err = err_of(import_p12(
+        &store,
+        OWNER,
+        "k",
+        &fixture("p256")?,
+        &pw(PASSWORD),
+    ))?;
     assert!(matches!(err, ImportError::Store(_)), "{err:?}");
-    assert_eq!(store.list()?, ["k"]);
+    assert_eq!(store.list(OWNER)?, ["k"]);
     Ok(())
 }

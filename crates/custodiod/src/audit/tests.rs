@@ -162,7 +162,7 @@ fn key_id_matches_store_rule() -> TestResult {
     for s in [
         "", "a", "A-b_9", "a.b", "../x", "a b", "a\n", "é", &long, &ok64, "a/b", "a\0",
     ] {
-        let rejected = matches!(store.get(s), Err(crate::store::StoreError::InvalidId));
+        let rejected = matches!(store.get(1, s), Err(crate::store::StoreError::InvalidId));
         assert_eq!(KeyId::new(s).is_ok(), !rejected, "{s:?}");
     }
     Ok(())

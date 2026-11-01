@@ -8,7 +8,7 @@ use custodiod::audit::{AuditMechanism, Caller, Entry, MemorySink, Outcome};
 use custodiod::credentials::{BusCredentials, CallerCredentials, CredentialsError, caller_from};
 use zbus::{Connection, OwnedVariant};
 
-use super::bus::{Answer, Fixture, TestResult, call};
+use super::bus::{Answer, Fixture, TestResult};
 
 pub const EC_P12: &[u8] = include_bytes!("../fixtures/p256.p12");
 pub const RSA_P12: &[u8] = include_bytes!("../fixtures/rsa2048.p12");
@@ -57,8 +57,13 @@ pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
     import_with(f, id, p12, PASSWORD).await
 }
 
+/// Puts the key straight into the store under the test process's uid (the owner the real
+/// credentials give), so tests with failing or odd credentials can still set a key up.
+// Stays `async` so the many call sites keep their `.await`.
+#[allow(clippy::unused_async)]
 pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
-    call(&f.client, "ImportP12", &(id, p12.to_vec(), password)).await?;
+    let password = secrecy::SecretString::from(password.to_owned());
+    custodiod::import::import_p12(&f.store, uid(), id, p12, &password)?;
     Ok(())
 }
 

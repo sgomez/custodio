@@ -145,10 +145,12 @@ impl Fixture {
                 polkit.request_name("org.freedesktop.PolicyKit1").await?;
                 let mut connections = vec![polkit];
                 if service {
+                    let owner =
+                        std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
                     let store = Arc::new(KeyStore::open(path)?);
                     let password = SecretString::from(PASSWORD);
-                    import_p12(&store, "rsa", RSA_P12, &password)?;
-                    import_p12(&store, "ec", EC_P12, &password)?;
+                    import_p12(&store, owner, "rsa", RSA_P12, &password)?;
+                    import_p12(&store, owner, "ec", EC_P12, &password)?;
                     let conn = Builder::address(address.as_str()).build().await?;
                     conn.object_server()
                         .at(

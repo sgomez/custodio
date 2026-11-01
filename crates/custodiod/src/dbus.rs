@@ -237,6 +237,67 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         }
     }
 
+    /// The owner of this call: the uid the bus reports for the sender, never an argument.
+    async fn owner(&self, sender: Option<&str>) -> Result<u32, ServiceError> {
+        let sender = sender.ok_or(ServiceError::AuthorizationUnavailable)?;
+        self.credentials
+            .credentials(sender)
+            .await
+            .map(|c| c.uid)
+            .map_err(|_| ServiceError::AuthorizationUnavailable)
+    }
+
+    /// `ListKeys` after the bus handed over the sender.
+    ///
+    /// # Errors
+    /// A D-Bus error if the caller is unknown or the store cannot be read.
+    pub async fn list_keys_call(&self, sender: Option<&str>) -> Result<Vec<String>, ServiceError> {
+        let owner = self.owner(sender).await?;
+        let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
+        Ok(ids
+            .into_iter()
+            .filter(|i| !i.ends_with(CERT_SUFFIX))
+            .collect())
+    }
+
+    /// `ListCertificates` after the bus handed over the sender.
+    ///
+    /// # Errors
+    /// A D-Bus error if the caller is unknown or the store cannot be read.
+    pub async fn list_certificates_call(
+        &self,
+        sender: Option<&str>,
+    ) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+        let owner = self.owner(sender).await?;
+        let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
+        let mut out = Vec::new();
+        for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
+            if let Ok(cert) = self.store.get(owner, &cert_id(id)) {
+                out.push((id.clone(), cert.expose_secret().to_vec()));
+            }
+        }
+        Ok(out)
+    }
+
+    /// `ImportP12` after the bus handed over the sender.
+    ///
+    /// # Errors
+    /// A D-Bus error for bad arguments, an unknown caller or a failed import.
+    pub async fn import_call(
+        &self,
+        sender: Option<&str>,
+        id: &str,
+        p12: &[u8],
+        password: &str,
+    ) -> Result<String, ServiceError> {
+        let request =
+            parse_import_request(id, p12, password).map_err(|e| ServiceError::from(&e))?;
+        let owner = self.owner(sender).await?;
+        let kind = import_p12(&self.store, owner, &request.id, p12, &request.password)
+            .map_err(|e| ServiceError::from(&e))?;
+        Ok(kind_name(kind).to_owned())
+    }
+
     /// Credentials, polkit and signing, with the outcome to record.
     async fn attempt(
         &self,
@@ -267,7 +328,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         }
         let signed = self
             .store
-            .get(&request.id)
+            .get(caller.uid, &request.id)
             .map_err(|e| ServiceError::from(&e))
             .and_then(|key| {
                 sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
@@ -287,36 +348,41 @@ where
     A: Authorizer + Send + Sync + 'static,
     C: CallerCredentials + Send + Sync + 'static,
 {
-    /// Ids of the stored keys.
-    fn list_keys(&self) -> Result<Vec<String>, ServiceError> {
-        let ids = self.store.list().map_err(|e| ServiceError::from(&e))?;
-        Ok(ids
-            .into_iter()
-            .filter(|i| !i.ends_with(CERT_SUFFIX))
-            .collect())
+    /// Ids of the caller's stored keys.
+    async fn list_keys(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> Result<Vec<String>, ServiceError> {
+        self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
+            .await
     }
 
-    /// `(key id, DER certificate)` for every key that has a certificate.
-    fn list_certificates(&self) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
-        let ids = self.store.list().map_err(|e| ServiceError::from(&e))?;
-        let mut out = Vec::new();
-        for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
-            if let Ok(cert) = self.store.get(&cert_id(id)) {
-                out.push((id.clone(), cert.expose_secret().to_vec()));
-            }
-        }
-        Ok(out)
+    /// `(key id, DER certificate)` for every key of the caller that has a certificate.
+    async fn list_certificates(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+        self.list_certificates_call(header.sender().map(zbus::names::UniqueName::as_str))
+            .await
     }
 
-    /// Imports a `.p12` as key `id`; returns the key type.
+    /// Imports a `.p12` as key `id` of the caller; returns the key type.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
-    fn import_p12(&self, id: &str, p12: Vec<u8>, password: &str) -> Result<String, ServiceError> {
-        let request =
-            parse_import_request(id, &p12, password).map_err(|e| ServiceError::from(&e))?;
-        let kind = import_p12(&self.store, &request.id, &p12, &request.password)
-            .map_err(|e| ServiceError::from(&e))?;
-        Ok(kind_name(kind).to_owned())
+    async fn import_p12(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+        p12: Vec<u8>,
+        password: &str,
+    ) -> Result<String, ServiceError> {
+        self.import_call(
+            header.sender().map(zbus::names::UniqueName::as_str),
+            id,
+            &p12,
+            password,
+        )
+        .await
     }
 
     /// Signs `data` with key `id`, after polkit approves this one call.
