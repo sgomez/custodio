@@ -274,6 +274,7 @@ SYSLOG_IDENTIFIER=custodiod\n\
 CUSTODIO_UID=1234567\n\
 CUSTODIO_PID=7654321\n\
 CUSTODIO_KEY_ID=key-1_A\n\
+CUSTODIO_OPERATION=sign\n\
 CUSTODIO_OUTCOME=signed\n\
 CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n";
     assert_eq!(recv(&s)?, expected);
@@ -340,6 +341,7 @@ fn all_entries_decode_to_expected_fields() -> TestResult {
                     ("CUSTODIO_UID".into(), b"0".to_vec()),
                     ("CUSTODIO_PID".into(), u32::MAX.to_string().into_bytes()),
                     ("CUSTODIO_KEY_ID".into(), k.into()),
+                    ("CUSTODIO_OPERATION".into(), b"sign".to_vec()),
                     ("CUSTODIO_OUTCOME".into(), o.name().into()),
                 ];
                 if let Some(m) = m {
@@ -412,7 +414,7 @@ fn one_datagram_per_call() -> TestResult {
         sink.record(&entry(Outcome::Denied, None)?)?;
     }
     for _ in 0..3 {
-        assert_eq!(decode(&recv(&s)?)?.len(), 8);
+        assert_eq!(decode(&recv(&s)?)?.len(), 9);
     }
     would_block(&s)?;
     Ok(())

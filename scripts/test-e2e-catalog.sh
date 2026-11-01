@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # F59: the journal catalog check of the e2e suite (`journal.py catalog`, the function the guest case calls), on captured `journalctl -x`
 # text, with no container engine. Also: e2e/catalog-text.txt (the explanation the guest matches, since only /e2e is mounted there) is the
-# body of BOTH entries of data/custodio.catalog (the unmarked one that C/POSIX locales show, and the one marked `en`).
+# body of BOTH entries of the signing id in data/custodio.catalog (the unmarked one that C/POSIX locales show, and the one marked `en`).
+# Every other id of the catalog (import, delete, replace certificate) also has both entries, and a body that is not the signing one.
 # NOT checked here: that a booted system registers the catalog and shows it; that is the real run of `just e2e <target>`.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -16,13 +17,15 @@ check() { python3 -I "$ROOT/e2e/journal.py" catalog --text "$1" --expect "${2:-$
 cat > "$tmp/split.py" <<'PY'
 import os, sys
 catalog, expect, out = sys.argv[1:4]
-bodies, cur, header = [], None, False
+SIGN_ID = "29c3d30e6c4242406c6db3f120d36401"
+bodies, ids, cur, header = [], [], None, False
 for line in open(catalog, encoding="utf-8").read().splitlines():
     if line.startswith("#") and cur is None:
         continue
     if line.startswith("-- "):
         cur = []
         bodies.append(cur)
+        ids.append(line.split()[1])
         header = True
         continue
     if cur is None:
@@ -35,16 +38,25 @@ for line in open(catalog, encoding="utf-8").read().splitlines():
 want = [l for l in open(expect, encoding="utf-8").read().splitlines() if l.strip()]
 if len(bodies) < 1:
     sys.exit("no entry in the catalog")
-for i, body in enumerate(bodies):
+signing = 0
+for i, (ident, body) in enumerate(zip(ids, bodies)):
     got = [l for l in body if l.strip()]
-    if got != want:
-        sys.exit(f"entry {i + 1} of the catalog differs from e2e/catalog-text.txt")
-open(os.path.join(out, "bodies"), "w").write(str(len(bodies)))
+    if ident == SIGN_ID:
+        signing += 1
+        if got != want:
+            sys.exit(f"entry {i + 1} of the catalog differs from e2e/catalog-text.txt")
+    elif got == want:
+        sys.exit(f"entry {i + 1} of the catalog (id {ident}) has the signing explanation")
+others = sorted(set(ids) - {SIGN_ID})
+for ident in others:
+    if ids.count(ident) != 2:
+        sys.exit(f"id {ident} needs exactly two entries")
+open(os.path.join(out, "bodies"), "w").write(f"{signing} {len(others)}")
 PY
 # split_check CATALOG: succeeds when every entry of CATALOG has the committed body
 split_check() { rm -f "$tmp/bodies"; python3 -I "$tmp/split.py" "$1" "$EXPECT" "$tmp"; }
 split_check "$ROOT/data/custodio.catalog" || bad "the catalog differs from e2e/catalog-text.txt"
-[ "$(cat "$tmp/bodies" 2> /dev/null)" = 2 ] || bad "expected two entries (unmarked and en) in data/custodio.catalog"
+[ "$(cat "$tmp/bodies" 2> /dev/null)" = "2 3" ] || bad "expected two signing entries (unmarked and en) and three other ids in data/custodio.catalog"
 # control: a change to only one entry is caught
 sed '0,/^identifies this kind of entry\./s//identifies this kind of entry (changed)./' "$ROOT/data/custodio.catalog" > "$tmp/changed.catalog"
 if cmp -s "$tmp/changed.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the catalog copy was not changed"; fi
@@ -52,6 +64,13 @@ if split_check "$tmp/changed.catalog" > /dev/null 2>&1; then bad "control: a cha
 sed '0,/^identifies this kind of entry\./!s/^identifies this kind of entry\./identifies this kind of entry (changed)./' "$ROOT/data/custodio.catalog" > "$tmp/changed2.catalog"
 if cmp -s "$tmp/changed2.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the second copy was not changed"; fi
 if split_check "$tmp/changed2.catalog" > /dev/null 2>&1; then bad "control: a change to only the last entry was accepted"; fi
+
+# control: an id with one entry only, and a non-signing id that carries the signing explanation, are caught
+awk '/^-- 13d1a981ea8f64fc1a6f390bee7fd66c$/ {skip=1} /^-- / && !/^-- 13d1a981ea8f64fc1a6f390bee7fd66c$/ {skip=0} !skip' "$ROOT/data/custodio.catalog" > "$tmp/one.catalog"
+if cmp -s "$tmp/one.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the one-entry copy was not changed"; fi
+if split_check "$tmp/one.catalog" > /dev/null 2>&1; then bad "control: an id with one entry was accepted"; fi
+sed 's/^-- 13d1a981ea8f64fc1a6f390bee7fd66c\( en\)\?$/-- 29c3d30e6c4242406c6db3f120d36401\1/' "$ROOT/data/custodio.catalog" > "$tmp/mixed.catalog"
+if split_check "$tmp/mixed.catalog" > /dev/null 2>&1; then bad "control: a signing id with another body was accepted"; fi
 
 # --- fixtures of journalctl -x
 entry='Oct 31 10:00:00 host custodiod[321]: signature made: uid 1000 pid 99 key rsa1'

@@ -183,3 +183,16 @@ with an empty context.
   Not run: a real `just e2e` (F90/F100).
 - Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F73` 4 caught, 2 unviable, none missed; `cargo test -p custodio-it -p custodio-pkcs11 -p custodio-cli` green.
 - Next session should: nothing for F73. F74/F75 add the import journal entries.
+
+### 2026-11-01 — F74 — attempt 1
+- Done: `CUSTODIO_OPERATION` on every entry. Signing entries gain `sign` (field after `CUSTODIO_KEY_ID`, before `CUSTODIO_OUTCOME`); same id, priority, message.
+  New `audit/operation.rs`: `Operation` (+`all()`), per-operation outcome enums (`ImportOutcome`, `DeleteOutcome`, `ReplaceOutcome`, so a wrong pairing does not compile), `AuditKeyType`
+  (`CUSTODIO_KEY_TYPE`: `rsa_2048`/`ecdsa_p256`, import only, omitted when unknown) and `OperationEntry` (typed parts only). `AuditSink` gains `record_operation` (Journal, Memory (`operation_entries()`), Failing).
+  One new `MESSAGE_ID` per operation (import `4c7163ce…`, delete `13d1a981…`, replace certificate `336e0b53…`). Priorities: 6 ok, 5 denied, 4 authorization unavailable / wrong password / unsupported key /
+  certificate mismatch, 3 storage failure. F75/F77/F79 only construct `OperationEntry::{import,delete,replace_certificate}` and call `record_operation`.
+- Catalog: both forms for each id; the signing body gained one sentence naming `CUSTODIO_OPERATION` (contract amendment, `e2e/catalog-text.txt` updated). `scripts/test-e2e-catalog.sh` handles several ids (+2 controls).
+  `e2e/journal.py` also checks `CUSTODIO_OPERATION=sign` (selftest +2 cases).
+- Docs: `docs/audit.md` (ids table, fields, outcomes per operation, message examples, a query per operation). `docs_tests` enumerate through `Operation::all()` and the outcome `all()`s; the field test now requires every field in the catalog bodies of the ids that use it.
+- Adapted, not weakened: field counts/wire literals in `audit/tests.rs`, `GateSink` in `tests/audit/timing.rs`, one extra expected line in `tests/audit.rs`.
+- Evidence: `just quick` exit 0, `scripts/test-e2e-catalog.sh`, `bash e2e/journal-selftest.sh` (187 ok), `just mutants-diff F74`: 18 caught, 1 unviable. Guest journal cases and package gates run at F90/F100.
+- Next session should: nothing for F74. F75 writes the import entries.

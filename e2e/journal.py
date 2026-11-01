@@ -69,6 +69,7 @@ def check_entries(entries, ledger, total=None, forbid_pidless=False):
         want = {
             "CUSTODIO_KEY_ID": key,
             "CUSTODIO_UID": uid,
+            "CUSTODIO_OPERATION": "sign",
             "CUSTODIO_OUTCOME": outcome,
             "PRIORITY": priority,
             "MESSAGE": f"{text}: uid {uid} pid {pid} key {key}",
