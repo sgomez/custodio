@@ -966,8 +966,8 @@ Firefox 150.0-1.fc44 (Fedora package), nss-tools 3.131.0. Package `custodio-0.1.
 
 Acceptance 12: pass.
 
-- `custodiod` runs as `system_u:system_r:init_t`: the package ships no SELinux policy module. No denial is expected from a domain
-  that permissive, so the step-7 result says little about how a confined service would fare.
+- `custodiod` runs as `system_u:system_r:init_t`, not `unconfined_service_t` as SPEC expects: see F55. No denial is expected from a
+  domain that permissive, so the step-7 result says little about how a confined service would fare.
 - `ausearch` reads standard input when it is not a terminal (over `ssh host 'sudo ausearch ...'`) and prints `<no matches>`
   for every query; `--input-logs` makes it read the log. Check with a query that must match, such as `-m USER_AUTH`
   (49 hits in the window). The run crossed midnight: `--start` needs a date, which `LC_ALL=C` takes as `10/31/26`; `10/31/2026` is
@@ -1001,10 +1001,16 @@ Journal (base query of `docs/audit.md`): 9 entries for 9 actions, 6 `signed`, 3 
 
 Acceptance 13: pass.
 
-- Bazzite's Firefox is a Flatpak and does not see the module, so the client was `pkcs11-tool` on the host (OpenSC, in the image), started in
+- Bazzite's Firefox is a Flatpak (out of scope, SPEC "Out of scope"); it was not tried here, F54 saw Fedora's Flatpak Firefox miss
+  the module. The client was `pkcs11-tool` on the host (OpenSC, in the image), started in
   the desktop session with `labvm-gui`; over plain ssh there is no polkit agent. Input of 2000 bytes, so `pkcs11-tool` uses
   `C_SignUpdate`/`C_SignFinal` and a cancel asks once.
 - The dialogs were answered from the hypervisor with `virsh send-key` (the lab account's password, or Escape to cancel), after a
   screenshot showed the dialog open each time. No person clicked them.
 - `custodio import` needs a terminal; the image has neither `script` nor `expect`, so it ran under a Python `pty`.
-- `custodiod` runs as `system_u:system_r:init_t`, as on fedora44: "no denial" says little about a confined service.
+- `custodiod` runs as `system_u:system_r:init_t`, as on fedora44, not in the "generic unconfined service domain" SPEC expects
+  (`unconfined_service_t`). Cause, checked on the VM: `/usr/lib/custodio/custodiod` is labelled `lib_t`, and systemd moves a service
+  into `unconfined_service_t` only from an executable such as `bin_t` (`systemd-run /usr/bin/id -Z` prints `unconfined_service_t`);
+  from `lib_t` it stays in `init_t`, systemd's own domain. `matchpathcon` gives `bin_t` for `/usr/libexec/custodio/custodiod`.
+  Neither domain confines the service, but in `init_t` SELinux sees it as systemd (rules that let confined domains talk to
+  systemd apply to it), and "no denial" says little. Not fixed in F55: moving the binary changes the package on every target.
