@@ -88,3 +88,14 @@ with an empty context.
   wrong `.p12` bound, missing bounds line; each asserted to name the item and the direction.
 - Evidence: `just quick` exit 0, `just api-contract` green. Not done: the contract's "failing first" run against a missing document was not kept as a separate step (the test treats a missing file as empty and so fails).
 - Next session should: nothing for F66. Later features that add methods, errors or actions must add them to `docs/api.md`.
+
+### 2026-11-01 — F67 — attempt 1
+- Done: `## F67` in `docs/findings.md`, run on `debian13` (rootless podman, packaged unit, kernel 7.0, systemd 257, dbus-daemon 1.16.2) with `alice` (uid 1001, lingering user manager) and
+  forged `app-flatpak-…\x2d…-<n>.scope` / `app-gnome-gedit-…` / no-scope callers. Baseline with controls; (a) loosening works only with `CAP_SYS_PTRACE` + 3 more settings and fails
+  `security-score` (1.3) and `unit-hardening`; (b) not built; (c) works: bus `ProcessFD` → fdinfo `Pid` → `cgroup.procs` scan of `user@<uid>.service/app.slice` (any kernel), or `PIDFD_GET_INFO`
+  cgroup id (kernel ≥ 6.13, checked in kernel tags) matched by `st_ino`; `open_by_handle_at` is killed by the unit's seccomp filter; systemd `GetUnitByPID(FD)` only returns `user@<uid>.service`.
+  Flatpak source (tags 1.16.1 and 1.18.4) fixes the name, the placement and the proxy-inside-the-scope order. **Decision: (c)**; no `SPEC_DEVIATIONS.md` entry.
+- Not done / not observed: real flatpak and a real `xdg-dbus-proxy` were not run (source reading only); the direct host path of `app.slice` (the container nests cgroups under its id) and a
+  6.12 kernel were not tried; the packaged unit differs from `data/custodio.service` only in `ExecStart=` (stated in the finding); the probe used a drop-in that replaces `Type`/`ExecStart` only.
+- Verify: the feature's `verify` exits 0; the same command on a copy without the `Decision:` line exits 1.
+- Next session should: nothing for F67. The reader feature must test the direct `/sys/fs/cgroup/user.slice/…` path (or locate the cgroup2 mount) and the 6.12 fallback.
