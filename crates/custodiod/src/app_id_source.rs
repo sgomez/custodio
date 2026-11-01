@@ -14,11 +14,12 @@
 //!   are looked at; more is `Undetermined`;
 //! - a read that does not return (a FUSE file, say) leaves a thread behind, but at most [`MAX_STUCK`] such
 //!   threads exist at a time (per reader); at that number a lookup is `Undetermined` at once and starts no
-//!   thread. A stuck thread that finishes gives its slot back. At most `MAX_STUCK` plus the lookups in
-//!   flight threads run at a time.
+//!   thread. A stuck thread that finishes gives its slot back. A lookup uses two threads (worker and
+//!   watchdog), so at most `MAX_STUCK` plus twice the lookups in flight run at a time.
 //!
-//! The cgroup2 mount is `/sys/fs/cgroup` and the layout under it is the one a host has. A nested cgroup
-//! root (the e2e containers) has the same tree one level down; the reader reports that as no scope found.
+//! The cgroup2 mount is `/sys/fs/cgroup`. On a host the tree starts there; in a container sharing the host's
+//! cgroup namespace (the e2e containers) it starts at `/sys/fs/cgroup/<container id>`. The reader takes the
+//! prefix from the service's own `/proc/self/cgroup`: everything in front of `system.slice`.
 //!
 //! A missing `ProcessFD` never reaches a source: it takes a borrowed pidfd, so the caller (the audit wiring)
 //! maps "no `ProcessFD`" to `Undetermined` itself.
@@ -97,10 +98,13 @@ pub struct CgroupAppIdSource {
 }
 
 impl CgroupAppIdSource {
-    /// The reader of the service: `/sys/fs/cgroup`, the documented deadline and cap.
+    /// The reader of the service: the cgroup tree under `/sys/fs/cgroup` (below the container's own prefix when
+    /// the service runs in one, found from `/proc/self/cgroup` once), the documented deadline and cap.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_root(CGROUP_ROOT.into(), LOOKUP_DEADLINE, MAX_STUCK)
+        let mount = std::path::Path::new(CGROUP_ROOT);
+        let own = std::fs::read("/proc/self/cgroup").unwrap_or_default();
+        Self::with_root(scan::tree_root(mount, &own), LOOKUP_DEADLINE, MAX_STUCK)
     }
 
     /// A reader of another cgroup tree, deadline and cap (tests).

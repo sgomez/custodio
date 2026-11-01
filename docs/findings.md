@@ -1375,6 +1375,15 @@ Every (c) source above was tried first and two of them (c2b, c3) work, so the co
 
 Decision: (c)
 
+### F81 follow-up: where the cgroup tree starts
+
+The F67 setup observed the e2e container (`--cgroupns=host`) nesting the tree as `/sys/fs/cgroup/<container id>/user.slice/…`, a host as
+`/sys/fs/cgroup/user.slice/…`. The service's own `/proc/self/cgroup` is `0::/<prefix>/system.slice/custodio.service` in both, so the reader
+(`app_id_source/scan.rs` `tree_root`) takes everything in front of the first `system.slice` component as the prefix, once, at start. An unexpected
+shape (no `0::` line, no `system.slice`, `.`, `..`, empty or NUL component) gives the bare mount, which finds no scope (`None`), never a wrong id.
+Tested on fixture trees only (`tests/tree_root.rs`); the real container run is F95. Not re-run in a container here.
+
+
 ## F68
 
 Service detection through `xdg-dbus-proxy` (SPEC open question "Detection through the flatpak proxy"). Date 2026-11-01. Markers: `read` = from source only,

@@ -304,3 +304,9 @@ with an empty context.
 - Mutants: the `|` on `OFlags` was replaced with `.union` (a `|`→`^` mutant is equivalent); tests wait with a 20 s limit (`block_on_limited`, `within`) so a broken limiter fails instead of timing out. `just mutants-diff F81` was run per file (the whole run exceeds 10 min): none missed. New files need `git add -N` before `mutants-diff` sees them.
 - Evidence: `just quick`, `just system-gates` green.
 - Next session should: nothing for F81. F82 maps a missing `ProcessFD` to `Undetermined` and calls the source.
+
+### 2026-11-01 — F81 — attempt 2
+- Fixed NEXT_FINDINGS: `CgroupAppIdSource::new()` now finds the cgroup tree root from `/proc/self/cgroup` (`scan::tree_root`: the prefix in front of `system.slice`), so the e2e container layout `/sys/fs/cgroup/<cid>/user.slice/…` is read; odd input falls back to the bare mount (`None`, never a wrong id). Tests in `tests/tree_root.rs` (prefix cases, nested fixture tree read, flat root shows nothing). Recorded in `docs/findings.md` (F81 follow-up). Module doc fixed to mention the watchdog thread (2 threads per lookup). `production_constants` test now asserts the root starts with `/sys/fs/cgroup`.
+- Not run in a real container; F95 proves it there.
+- Evidence: see commit; `just quick`, `just mutants-diff F81` (scan.rs, app_id_source.rs).
+- Next session should: nothing for F81.

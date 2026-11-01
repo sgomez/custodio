@@ -128,3 +128,29 @@ fn lists(slice: &OwnedFd, name: &CStr, pid: u32) -> Option<bool> {
         Err(ReadError::Refused) => None,
     }
 }
+
+/// The directory the cgroup tree of the machine starts at, from the text of the service's own
+/// `/proc/self/cgroup` (`0::/<prefix>/system.slice/custodio.service`): `mount` plus everything in front of the
+/// first `system.slice` component. On a host that is `mount` itself; in a container whose cgroup namespace is the
+/// host's it is `mount/<container id>`. Anything unexpected (no `0::` line, no `system.slice`, a `.` or `..`
+/// component, a NUL) gives `mount`, which finds no scope: the answer is then `None`, never a wrong app-id.
+pub(super) fn tree_root(mount: &std::path::Path, own_cgroup: &[u8]) -> std::path::PathBuf {
+    use std::os::unix::ffi::OsStrExt;
+    let path = own_cgroup
+        .split(|&b| b == b'\n')
+        .find_map(|line| line.strip_prefix(b"0::"));
+    let Some(path) = path.and_then(|p| p.strip_prefix(b"/")) else {
+        return mount.to_owned();
+    };
+    let mut root = mount.to_owned();
+    for part in path.split(|&b| b == b'/') {
+        if part == b"system.slice" {
+            return root;
+        }
+        if part.is_empty() || part == b"." || part == b".." || part.contains(&0) {
+            break;
+        }
+        root.push(std::ffi::OsStr::from_bytes(part));
+    }
+    mount.to_owned()
+}

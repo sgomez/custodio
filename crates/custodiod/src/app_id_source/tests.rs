@@ -9,6 +9,7 @@ use zbus::block_on;
 mod bounded;
 mod limiter;
 mod reader_bounds;
+mod tree_root;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -360,7 +361,7 @@ fn production_constants_are_documented_values() {
     assert_eq!(MAX_CHILDREN, 4096);
     assert_eq!(MAX_STUCK, 8);
     let source = CgroupAppIdSource::new();
-    assert_eq!(source.root, Path::new("/sys/fs/cgroup"));
+    assert!(source.root.starts_with("/sys/fs/cgroup"));
     assert_eq!(source.deadline, LOOKUP_DEADLINE);
     assert_eq!(source.limiter.cap(), MAX_STUCK);
 }
