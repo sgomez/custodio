@@ -199,6 +199,27 @@ pub fn store_parsed(
     Ok(parsed.kind)
 }
 
+/// Undo [`store_parsed`] for `id`: remove the key, then the certificate.
+///
+/// The key goes first, so a partial rollback never leaves a key without its certificate (the
+/// certificate is written first, see [`store_parsed`]). If the key cannot be removed the
+/// certificate is left alone.
+///
+/// # Errors
+/// The first [`StoreError`] of a removal.
+pub fn rollback_import(store: &KeyStore, owner: u32, id: &str) -> Result<(), StoreError> {
+    rollback_with(id, |name| store.remove(owner, name))
+}
+
+/// [`rollback_import`] with the removal given, so a test can see the order.
+fn rollback_with(
+    id: &str,
+    mut remove: impl FnMut(&str) -> Result<(), StoreError>,
+) -> Result<(), StoreError> {
+    remove(id)?;
+    remove(&cert_id(id))
+}
+
 /// Parse a `.p12` and store it for `owner`: [`parse_p12`], then [`store_parsed`].
 ///
 /// # Errors
@@ -341,3 +362,6 @@ fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -2,9 +2,14 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::future::Future;
 use std::io::{BufRead, BufReader};
+use std::pin::Pin;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
 
 use custodiod::audit::AuditSink;
 use custodiod::credentials::CallerCredentials;
@@ -56,19 +61,45 @@ pub enum Answer {
     Fail,
 }
 
+/// A callback the polkit double runs on every request, after it has recorded it.
+pub type Hook = Arc<dyn Fn() + Send + Sync>;
+
+/// Pending once, then ready: lets the other tasks of the executor run without a timer.
+struct YieldNow(bool);
+
+impl Future for YieldNow {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.0 {
+            return Poll::Ready(());
+        }
+        self.0 = true;
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
+/// How long the double holds a request for the others before it gives up.
+const HOLD_LIMIT: Duration = Duration::from_secs(10);
+
 /// Fake polkit: answers as told and records the bus name of every subject.
 pub struct FakePolkit {
     pub answer: Arc<Mutex<Answer>>,
     pub asked: Arc<Mutex<Vec<String>>>,
     /// `(action id, flags)` of every request.
     pub requests: Arc<Mutex<Vec<(String, u32)>>>,
+    /// When not 0, a request is not answered until this many have arrived (or `HOLD_LIMIT` passed,
+    /// then it fails), so concurrent calls are all past polkit before any of them goes on.
+    pub hold: Arc<AtomicUsize>,
+    pub hook: Arc<Mutex<Option<Hook>>>,
 }
 
 #[interface(name = "org.freedesktop.PolicyKit1.Authority")]
 impl FakePolkit {
     // The `interface` macro needs owned argument types to deserialize the D-Bus message.
     #[allow(clippy::needless_pass_by_value)]
-    fn check_authorization(
+    async fn check_authorization(
         &self,
         subject: (String, HashMap<String, OwnedVariant>),
         action_id: String,
@@ -91,6 +122,22 @@ impl FakePolkit {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(name);
+        let hook = self
+            .hook
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(hook) = hook {
+            hook();
+        }
+        let wanted = self.hold.load(Ordering::SeqCst);
+        let start = Instant::now();
+        while wanted > 0 && self.asked.lock().map_or(0, |a| a.len()) < wanted {
+            if start.elapsed() > HOLD_LIMIT {
+                return Err(zbus::fdo::Error::Failed("held too long".into()));
+            }
+            YieldNow(false).await;
+        }
         let answer = *self.answer.lock().unwrap_or_else(PoisonError::into_inner);
         match answer {
             Answer::Yes => Ok((true, false, HashMap::new())),
@@ -114,6 +161,11 @@ pub struct Fixture {
     // Read by `tests/import_polkit.rs`, which includes this file; the other test files do not need it.
     #[allow(dead_code)]
     pub requests: Arc<Mutex<Vec<(String, u32)>>>,
+    // Used by `tests/import_audit.rs`, which includes this file.
+    #[allow(dead_code)]
+    pub hold: Arc<AtomicUsize>,
+    #[allow(dead_code)]
+    pub hook: Arc<Mutex<Option<Hook>>>,
 }
 
 impl Fixture {
@@ -143,6 +195,8 @@ impl Fixture {
         let answer = Arc::new(Mutex::new(answer));
         let asked = Arc::new(Mutex::new(Vec::new()));
         let requests = Arc::new(Mutex::new(Vec::new()));
+        let hold = Arc::new(AtomicUsize::new(0));
+        let hook = Arc::new(Mutex::new(None));
         let polkit = bus.connect().await?;
         polkit
             .object_server()
@@ -152,6 +206,8 @@ impl Fixture {
                     answer: answer.clone(),
                     asked: asked.clone(),
                     requests: requests.clone(),
+                    hold: hold.clone(),
+                    hook: hook.clone(),
                 },
             )
             .await?;
@@ -182,6 +238,8 @@ impl Fixture {
             answer,
             asked,
             requests,
+            hold,
+            hook,
         })
     }
 
@@ -193,6 +251,13 @@ impl Fixture {
 
     pub fn set_answer(&self, answer: Answer) {
         *self.answer.lock().unwrap_or_else(PoisonError::into_inner) = answer;
+    }
+
+    // Used by `tests/import_audit.rs`, which includes this file.
+    #[allow(dead_code)]
+    /// Runs `hook` at every polkit request, while the request is being answered.
+    pub fn on_request(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *self.hook.lock().unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(hook));
     }
 
     pub fn asked(&self) -> Vec<String> {

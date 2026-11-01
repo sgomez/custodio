@@ -341,3 +341,81 @@ fn errors_display_their_cause() {
 }
 
 mod owners;
+
+#[test]
+fn remove_deletes_only_that_id() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.put(OWNER, "k2", &secret(b"b"))?;
+    store.put(OWNER + 1, "k1", &secret(b"c"))?;
+    store.remove(OWNER, "k1")?;
+    assert_eq!(store.list(OWNER)?, vec!["k2".to_owned()]);
+    assert_eq!(store.list(OWNER + 1)?, vec!["k1".to_owned()]);
+    assert!(matches!(store.get(OWNER, "k1"), Err(StoreError::NotFound)));
+    // The id can be stored again.
+    store.put(OWNER, "k1", &secret(b"d"))?;
+    Ok(())
+}
+
+#[test]
+fn remove_of_a_missing_key_or_area_is_not_an_error() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.remove(OWNER, "nothing")?;
+    assert!(!area(&store).exists(), "remove must not create the area");
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.remove(OWNER, "nothing")?;
+    assert_eq!(store.list(OWNER)?, vec!["k1".to_owned()]);
+    Ok(())
+}
+
+#[test]
+fn remove_rejects_a_bad_id() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    for id in ["", "../k1", "a/b", ".tmp-1"] {
+        assert!(matches!(
+            store.remove(OWNER, id),
+            Err(StoreError::InvalidId)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn remove_refuses_a_symlink_and_a_foreign_owner() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let mut store = KeyStore::open(tmp.path().join("s"))?;
+    let outside = tmp.path().join("outside");
+    fs::write(&outside, b"x")?;
+    store.put(OWNER, "real", &secret(b"a"))?;
+    std::os::unix::fs::symlink(&outside, area(&store).join("link"))?;
+    assert!(matches!(
+        store.remove(OWNER, "link"),
+        Err(StoreError::BadFileType(_))
+    ));
+    assert!(area(&store).join("link").symlink_metadata().is_ok());
+    assert!(outside.exists());
+    store.file_uid = Some(store.uid.wrapping_add(1));
+    assert!(matches!(
+        store.remove(OWNER, "real"),
+        Err(StoreError::BadOwner(_))
+    ));
+    assert!(area(&store).join("real").exists());
+    Ok(())
+}
+
+#[test]
+fn remove_refuses_a_directory() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    fs::create_dir(area(&store).join("dir"))?;
+    assert!(matches!(
+        store.remove(OWNER, "dir"),
+        Err(StoreError::BadFileType(_))
+    ));
+    Ok(())
+}

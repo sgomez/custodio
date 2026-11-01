@@ -42,6 +42,10 @@ password (`WrongPasswordOrBadP12`, `UnsupportedKeyType`, `CertificateMismatch`) 
 is reported as `PolkitDenied` or `AuthorizationUnavailable` when polkit refuses, and the `.p12` is never opened
 without approval. Every call asks again; nothing is cached. A refused call changes nothing.
 
+Once the caller is identified and owns no such id, every call leaves exactly one import entry in the journal (see
+`docs/audit.md`), recorded before the reply. If the entry cannot be recorded, the imported key and its certificate
+are removed again and the call fails with `AuditUnavailable`: a key is never kept without its entry.
+
 - in `id`: `s`
 - in `p12`: `ay`
 - in `password`: `s`
@@ -80,7 +84,7 @@ Every failure is one of these names, with a fixed message that repeats nothing t
   `.p12` with no private key, several private keys, or a key without a certificate.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key.
-- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done.
+- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again).
 - error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing).
 
 ## Polkit actions

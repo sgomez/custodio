@@ -206,3 +206,17 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `journal_sink_datagram_per_call` (`tests/audit/leaks.rs`) now expects `CUSTODIO_OPERATION=sign` in the datagram of a sign over the private bus. The attempt 1 claim about `tests/audit.rs` is corrected.
 - Evidence: `just quick` exit 0.
 - Next session should: nothing for F74.
+
+### 2026-11-01 — F75 — attempt 1
+- Done: `import_call` now leaves one `OperationEntry::import` once polkit has been asked (and, without caller, for a missing sender or failed credentials), recorded on a worker thread before the reply.
+  Outcome mapping in `dbus/import.rs` (`import_outcome`, literal table in `dbus/tests/sign_call.rs`; `TooLarge` → `storage_failure` is unreachable after the argument check, commented). Key type only once decoded (`stored`, `storage_failure`).
+  Sink failure → `AuditUnavailable` for every outcome; for `stored` the key and certificate are removed (`import::rollback_import`: key first, then certificate; the certificate is left if the key cannot go). A failed rollback still returns `AuditUnavailable`.
+  New `KeyStore::remove` (reuses `get`'s checks, so symlinks/foreign owners/directories are refused; a missing key or area is `Ok`, nothing created).
+- Moved, not changed: import code to `src/dbus/import.rs` (file-size gate), sign_call unit tests to `src/dbus/tests/sign_call.rs`, rollback tests to `src/import/tests.rs`.
+  `justfile` `mutants` now also lists `dbus/import.rs` (a stricter gate; the moved code would otherwise leave the mutation scope).
+- Tests: `tests/import_audit.rs` (+ `import_audit/concurrent.rs`): per outcome (bus cases, failed credentials via `NoCredentials`), no secrets (+ negative control), rollback, failing sink for every outcome, rollback failure, refusals leave no entry (also with the failing sink), 20 rounds of concurrent imports (polkit double holds both calls; gives up after 10 s so a serial server fails instead of hanging; zbus does run the calls concurrently).
+  Unit tests: missing sender (entry, and failing sink), polkit denied/unavailable/`BadSender`, all `ImportError` variants. Tests that need an unwritable store skip when run as root.
+  Polkit double (`tests/audit/bus.rs`) is now async with a `hold` count and an `on_request` hook.
+- Docs: `docs/api.md` (entry recorded before the reply, rollback), `docs/audit.md` (`KeyIdTaken` leaves no entry).
+- Evidence: `just quick` exit 0, `just mutants-diff F75`: 6 caught, 3 unviable, none missed; `just api-contract` and `cargo test -p custodio-it` green.
+- Next session should: nothing for F75.

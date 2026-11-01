@@ -277,6 +277,32 @@ impl KeyStore {
         Ok(SecretSlice::from(buf.to_vec()))
     }
 
+    /// Remove the key `owner` stored under `id`. A missing key or area is not an error and creates
+    /// nothing. Used to undo an import whose journal entry could not be written.
+    ///
+    /// # Errors
+    /// `InvalidId`; `BadFileType` or `BadOwner` for a file that is not a plain file of the service
+    /// uid (a symlink is never followed or removed); `Io` otherwise.
+    pub fn remove(&self, owner: u32, id: &str) -> Result<(), StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let Some(area) = self.existing_area(owner)? else {
+            return Ok(());
+        };
+        // `get` refuses what is not a plain file of the service uid, without following symlinks, so
+        // `remove_file` below only ever sees a file this store wrote.
+        match self.get(owner, id) {
+            Ok(_) => {}
+            Err(StoreError::NotFound) => return Ok(()),
+            Err(e) => return Err(e),
+        }
+        fs::remove_file(area.join(id))?;
+        File::open(&area)
+            .and_then(|d| d.sync_all())
+            .map_err(StoreError::SyncFailed)
+    }
+
     /// Ids of all keys of `owner`, sorted. An owner without an area has none; nothing is created.
     ///
     /// # Errors

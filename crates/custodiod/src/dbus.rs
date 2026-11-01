@@ -13,11 +13,9 @@ use zbus::message::Header;
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
-use crate::import::{
-    KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify, id_taken, store_parsed,
-};
+use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify};
 use crate::offload::run_on_thread;
-use crate::polkit::{ACTION_ID, AuthError, Authorizer, IMPORT_ACTION_ID};
+use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash, sign};
 use crate::store::{KeyStore, StoreError};
 
@@ -298,41 +296,6 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(out)
     }
 
-    /// `ImportP12` after the bus handed over the sender: arguments, credentials, whether the
-    /// caller already has the id, polkit (once, under the import action), and only then the
-    /// decoding of the `.p12` and the store.
-    ///
-    /// # Errors
-    /// A D-Bus error for bad arguments, an unknown caller, a taken id, a refusal of polkit or a
-    /// failed import.
-    pub async fn import_call(
-        &self,
-        sender: Option<&str>,
-        id: &str,
-        p12: &[u8],
-        password: &str,
-    ) -> Result<String, ServiceError> {
-        let request =
-            parse_import_request(id, p12, password).map_err(|e| ServiceError::from(&e))?;
-        let owner = self.owner(sender).await?;
-        if id_taken(&self.store, owner, &request.id).map_err(|e| ServiceError::from(&e))? {
-            return Err(ServiceError::KeyIdTaken);
-        }
-        // `owner` succeeded, so there is a sender.
-        let sender = sender.ok_or(ServiceError::AuthorizationUnavailable)?;
-        self.authorizer
-            .authorize(sender, IMPORT_ACTION_ID)
-            .await
-            .map_err(|e| ServiceError::from(&e))?;
-        let parsed = self
-            .decoder
-            .decode(p12, &request.password)
-            .map_err(|e| ServiceError::from(&e))?;
-        let kind = store_parsed(&self.store, owner, &request.id, parsed)
-            .map_err(|e| ServiceError::from(&e))?;
-        Ok(kind_name(kind).to_owned())
-    }
-
     /// Credentials, the caller's key, polkit and signing, with the outcome to record. `Ok(None)`:
     /// the caller has no key with this id; nothing is recorded and polkit was not asked.
     async fn attempt(
@@ -460,5 +423,6 @@ where
     }
 }
 
+mod import;
 #[cfg(test)]
 mod tests;

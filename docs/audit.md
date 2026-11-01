@@ -3,7 +3,8 @@
 `custodiod` writes one journal entry for every request to sign, import a key, delete a key or replace a
 certificate that reaches authorization, whatever the result; `CUSTODIO_OPERATION` says which
 (`sign`, `import`, `delete` or `replace_certificate`). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
-(missing, or another user's: `NoSuchKey`, no polkit call). A request whose caller the bus cannot name gets an
+(missing, or another user's: `NoSuchKey`, no polkit call), and, for an import, an id the caller already has
+(`KeyIdTaken`, no polkit call). A request whose caller the bus cannot name gets an
 entry without uid and pid. This page
 is the interface administrators can rely on when they search, alert on or forward these entries.
 
