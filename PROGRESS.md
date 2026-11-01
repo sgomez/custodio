@@ -99,3 +99,14 @@ with an empty context.
   6.12 kernel were not tried; the packaged unit differs from `data/custodio.service` only in `ExecStart=` (stated in the finding); the probe used a drop-in that replaces `Type`/`ExecStart` only.
 - Verify: the feature's `verify` exits 0; the same command on a copy without the `Decision:` line exits 1.
 - Next session should: nothing for F67. The reader feature must test the direct `/sys/fs/cgroup/user.slice/…` path (or locate the cgroup2 mount) and the 6.12 fallback.
+
+### 2026-11-01 — F68 — attempt 1
+- Done: `## F68` in `docs/findings.md`. Source read at xdg-dbus-proxy tag 0.1.6 (`flatpak-proxy.c`, `get_dbus_method_handler`) and flatpak 1.16.1 (`--system-talk-name` → `--filter --talk=NAME`).
+  Run in the e2e debian13 systemd container (rootless podman) with Debian's `xdg-dbus-proxy 0.1.6-1+deb13u3`, on **dbus-broker 37** and on **dbus-daemon 1.16.2** (systemd activation),
+  the real activation file, situations running / masked / missing unit / failing unit / not installed, host vs `--filter --talk` vs `--filter` alone; plus a private dbus-daemon as a labelled extra.
+- Results: `--talk` makes the proxy identical to the host (ListActivatableNames only filtered); without `--talk` every probe is rewritten to "not installed" (not distinguishable from it).
+  "Not activatable" is **not** `Spawn.*` on a supported host: broker gives `ServiceUnknown`/`NameHasNoOwner`, dbus-daemon gives `systemd1.UnitMasked`/`NoSuchUnit` or no reply; `Spawn.ChildExited` only on a bus without systemd.
+- **Conflicts for a person (SPEC not edited):** the feature text expects `Spawn.*`; SPEC "Detection" lists absent / not activatable / blocked as distinct, but absent and blocked cannot be told apart through the proxy.
+- Not run: real flatpak (acceptance 15 stays a separate feature); the Debian patches of the proxy were not diffed against the tag.
+- Verify: the feature's `verify` exits 0; a copy without the `Detection:` line exits 1.
+- Next session should: nothing for F68. The client documentation feature takes the five steps from the section.

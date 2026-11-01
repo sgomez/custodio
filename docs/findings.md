@@ -1374,3 +1374,124 @@ Every (c) source above was tried first and two of them (c2b, c3) work, so the co
 - The app-id is a record, not an authorization: any process of a person can create an `app-flatpak-*.scope` in its own user manager (done above with `systemd-run --user --scope`), as the SPEC says.
 
 Decision: (c)
+
+## F68
+
+Service detection through `xdg-dbus-proxy` (SPEC open question "Detection through the flatpak proxy"). Date 2026-11-01. Markers: `read` = from source only,
+`run` = measured here. Nothing here edits the SPEC; the conflicts with it are at the end.
+
+### Sources and setup
+
+- **Proxy source**: `flatpak/xdg-dbus-proxy` tag **0.1.6**, file `flatpak-proxy.c`. The binary that was run is Debian trixie's `xdg-dbus-proxy 0.1.6-1+deb13u3`
+  (`xdg-dbus-proxy --version` → `0.1.6`); the Debian patches were not diffed against the tag. Function and rule table: `get_dbus_method_handler()` (bus-driver
+  calls, lines ~1985–2090) decides the handler of each call; `flatpak_proxy_client_get_max_policy_and_matched()` gives the policy of the destination; the switch
+  in the client-to-bus path (lines ~2490–2600) applies the handler; the rule table is the comment at lines ~60–186.
+- **How flatpak starts the proxy** (`read`, flatpak tag **1.16.1**): `--system-talk-name=NAME` is a flatpak option, not a proxy option
+  (`common/flatpak-context.c` `option_system_talk_name_cb` → `flatpak_context_set_system_bus_policy(…, FLATPAK_POLICY_TALK)`). `flatpak_context_add_bus_filters()`
+  (same file, ~2665) writes `--filter` and then `--talk=NAME` for each entry (`flatpak_policy_to_string()` → `talk`), and `common/flatpak-run-dbus.c` (~347–362) calls
+  it with `app_id = NULL` for the system bus, so there is no `--own`. The proxy command line is therefore
+  `xdg-dbus-proxy unix:path=/run/dbus/system_bus_socket <socket> --filter --talk=com.rfirma.Custodio1`; the client sees `<socket>` as its system bus.
+  Without `--filter` the proxy forwards everything and would show every call passing, so it is always given.
+- **Run on** (`run`): the e2e image `custodio-e2e-debian13` booted with systemd as PID 1 in rootless podman (`podman run -d --privileged --cgroupns=host --tmpfs /run
+  --tmpfs /run/lock --tmpfs /tmp`, as `e2e/run.sh`), kernel 7.0.0-42, systemd 257.13. Two system buses, both started by systemd:
+  **dbus-broker 37-2** (`dbus-broker-launch --scope system --audit`; `apt-get install dbus-broker`, container restarted) and **dbus-daemon 1.16.2**
+  (`--system --systemd-activation`, the image's own). The real `data/com.rfirma.Custodio1.service` (`Exec=/bin/false`, `User=custodio`,
+  `SystemdService=custodio.service`) and `data/com.rfirma.Custodio1.conf` are installed; user `custodio` from `data/sysusers.d`.
+  Proxies: `systemd-run --unit=f68-proxy-talk xdg-dbus-proxy unix:path=/run/dbus/system_bus_socket /run/f68-talk.sock --filter --talk=com.rfirma.Custodio1`
+  and `… /run/f68-none.sock --filter` (the "name not allowed by the sandbox" case: `--filter` with no `--talk` for the name).
+  Client: `dbus-send --bus=ADDRESS --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.<Call> …`; `call-unowned` is
+  `dbus-send --dest=com.rfirma.Custodio1 /com/rfirma/Custodio1 org.freedesktop.DBus.Peer.Ping` (auto-start allowed, the default).
+- **The situations** (`run`, by `setup.sh` in the container):
+  - *running*: `/etc/systemd/system/custodio.service` is a stub (`Type=dbus`, `BusName=com.rfirma.Custodio1`, `User=custodio`, `ExecStart=python3` owning the name through
+    Gio), started; the activation file and policy installed.
+  - *not activatable*, three setups, because they give different errors: **masked** (`systemctl mask custodio.service`), **missing** (activation file installed, no
+    `custodio.service`), **failing** (`custodio.service` with `ExecStart=/bin/false`, `Type=dbus`). In all of them the activation file is the real one, `Exec=/bin/false`.
+    The Debian package ships neither a stub nor a masked unit, so the one that matches "installed, not started" best on a real host is **failing** or **missing**.
+  - *not installed*: activation file, policy and unit removed.
+  - *name not allowed*: the `--filter` proxy without `--talk`.
+- Also run, **labelled extra**: a private `dbus-daemon` (`--config-file` with `<servicedir>`, no systemd, no policy) with the real activation file and its proxy with
+  `--talk`. It is a third stand-in for hosts where dbus-daemon execs `Exec=` itself, never for the host baseline; it gives `Spawn.ChildExited` (below).
+
+### What the proxy does with each call (`--filter --talk=com.rfirma.Custodio1`) — `read`, each confirmed by `run`
+
+| Call | Rule in `flatpak-proxy.c` 0.1.6 | With `--talk` | Without `--talk` (name has policy NONE) |
+|---|---|---|---|
+| NameHasOwner | `HANDLE_FILTER_HAS_OWNER_REPLY`: passed only if arg0 has policy ≥ SEE (`validate_arg0_name`), otherwise **rewritten** to a synthetic reply `false` | **pass** | **rewritten**: `false` |
+| GetNameOwner | `HANDLE_FILTER_GET_OWNER_REPLY`, same test, else synthetic error | **pass** | **rewritten**: `org.freedesktop.DBus.Error.NameHasNoOwner` |
+| ListActivatableNames | `HANDLE_FILTER_NAME_LIST_REPLY`: always sent, the reply is **filtered** to names with policy ≥ SEE (`EXPECTED_REPLY_LIST_NAMES`) | **filtered**: our name stays (run: 9 names → 2 on broker, `org.freedesktop.DBus` and ours) | **filtered**: ours removed (1 name left, `org.freedesktop.DBus`) |
+| StartServiceByName | `HANDLE_VALIDATE_TALK`: passed if arg0 has policy ≥ TALK; with policy NONE the call is hidden (`handle_hide`) | **pass** | **rewritten**: `org.freedesktop.DBus.Error.ServiceUnknown` (no message text) |
+| call-unowned (any method to the name) | policy of the destination: `< SEE` → `HANDLE_HIDE`, `SEE` only → `HANDLE_DENY` (`AccessDenied`), `TALK` → forwarded if `any_filter_matches()` accepts the call, which `--talk` satisfies (measured: `Ping` passes, the bus activates) | **pass** (the bus activates and answers) | **rewritten**: `ServiceUnknown` (or `NameHasNoOwner` if the call has `NO_AUTO_START` or the destination is a unique name) |
+
+Not seen: `AccessDenied` for a hidden name (it needs `--see`, which flatpak never gives a system-bus name from `--system-talk-name`). `ListNames` is filtered the same
+way as `ListActivatableNames` (not run). `UpdateActivationEnvironment` and `BecomeMonitor` are denied.
+
+### What a client sees (`run`)
+
+Columns: **host** = plain bus; **talk** = through the proxy with `--talk`; **none** = through `--filter` without `--talk`. On every cell of every bus **talk is identical to host**
+(compared line by line, apart from the `ListActivatableNames` total); only the `none` column differs, so it is given once per bus. "msg" is the message text, which is not API.
+Unique names (`:1.N`) vary. `NoReply` = `dbus-send`'s 25 s reply timeout.
+
+**dbus-broker 37 (the baseline target), host = talk:**
+
+| Situation | NameHasOwner | ListActivatableNames | StartServiceByName | GetNameOwner | call-unowned |
+|---|---|---|---|---|---|
+| running | `true` | lists the name | `uint32 2` (already running) | `":1.40"` | `Ping` returns |
+| not activatable, **masked** | `false` | lists the name | `ServiceUnknown`, msg `…activation request failed: unit is masked` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…unit is masked` |
+| not activatable, **missing** unit | `false` | lists the name | `ServiceUnknown`, msg `…unknown unit` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…unknown unit` |
+| not activatable, **failing** unit | `false` | lists the name | `ServiceUnknown`, msg `…startup job failed` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…startup job failed` |
+| not installed | `false` | **absent** | `ServiceUnknown`, msg `The name is not activatable` | `NameHasNoOwner` | `ServiceUnknown`, msg `The name is not activatable` |
+| **none** (not allowed), any of the above four | `false` (rewritten) | **absent** (filtered) | `ServiceUnknown`, msg = the error name (rewritten) | `NameHasNoOwner`, msg = the error name (rewritten) | `ServiceUnknown`, msg = the error name (rewritten) |
+
+**dbus-daemon 1.16.2 (`--systemd-activation`, the Debian/Ubuntu default), host = talk:**
+
+| Situation | NameHasOwner | ListActivatableNames | StartServiceByName | GetNameOwner | call-unowned |
+|---|---|---|---|---|---|
+| running | `true` | lists the name | `uint32 2` | `":1.2"` | `Ping` returns |
+| not activatable, **masked** | `false` | lists the name | `org.freedesktop.systemd1.UnitMasked` | `NameHasNoOwner` | `org.freedesktop.systemd1.UnitMasked` |
+| not activatable, **missing** unit | `false` | lists the name | `org.freedesktop.systemd1.NoSuchUnit` | `NameHasNoOwner` | `org.freedesktop.systemd1.NoSuchUnit` |
+| not activatable, **failing** unit | `false` | lists the name | `NoReply` after 25 s (no reply at all) | `NameHasNoOwner` | `NoReply` after 25 s |
+| not installed | `false` | **absent** | `ServiceUnknown`, msg `The name com.rfirma.Custodio1 was not provided by any .service files` | `NameHasNoOwner` | same `ServiceUnknown` |
+| **none** (not allowed), any | `false` (rewritten) | **absent** (filtered) | `ServiceUnknown` (rewritten) | `NameHasNoOwner` (rewritten) | `ServiceUnknown` (rewritten) |
+
+**Extra, private `dbus-daemon` without systemd (labelled; the real file `Exec=/bin/false` is executed):** not activatable → `StartServiceByName` and `call-unowned` both
+`org.freedesktop.DBus.Error.Spawn.ChildExited` (msg `Process com.rfirma.Custodio1 exited with status 1`), `ListActivatableNames` lists the name; not installed →
+`ServiceUnknown` (msg `…was not provided by any .service files`), name absent; through `--talk` identical in every cell.
+
+Findings that the documentation must not get wrong:
+
+1. **`Spawn.*` is not what the supported hosts return** for "installed but not activatable". Under systemd activation the name is `ServiceUnknown` (dbus-broker, on
+   `StartServiceByName`), `NameHasNoOwner` (dbus-broker, on a plain call), `org.freedesktop.systemd1.UnitMasked` / `NoSuchUnit` (dbus-daemon), or no reply (dbus-daemon, failing
+   unit). `Spawn.ChildExited` appears only on a bus without systemd that executes `Exec=/bin/false`. The documentation must not name one error for this case.
+2. What is **stable** across both buses and all three setups: `ListActivatableNames` lists the name exactly when the activation file is installed (broker 9 vs 8 names, daemon
+   likewise); `NameHasOwner` is `true` only when the service runs; `GetNameOwner` fails with `NameHasNoOwner` whenever it does not run.
+3. Through the proxy, **`--talk` makes every one of these results identical to the host** (including the error names and messages), so the same steps work.
+4. Without `--talk`, **three situations collapse** into one: not installed, not activatable and running all look like *not installed* (`NameHasOwner false`, name absent from
+   `ListActivatableNames`, `ServiceUnknown`). "Name not allowed by the sandbox" is therefore **indistinguishable from "not installed"** to the client; the proxy never answers
+   `AccessDenied` for it. Only the documentation (the missing `--system-talk-name`) can separate them.
+
+### Detection steps for the client documentation
+
+Each step names the rows it separates.
+
+1. Connect to the system bus (`DBUS_SYSTEM_BUS_ADDRESS`, or `/run/dbus/system_bus_socket`; inside flatpak it is the proxy socket). If it cannot connect: no system bus (not Custodio's problem).
+2. `NameHasOwner("com.rfirma.Custodio1")` = `true` → **installed and running**; go on to call. Separates *running* from every other row.
+3. `false` → `ListActivatableNames`, and look for the name. Present → **installed but not running**: go to step 4. Absent → **not installed, or not allowed by the sandbox**
+   (the two cannot be told apart through the proxy, see finding 4): tell the person to install Custodio and, inside flatpak, to check that the app has
+   `--system-talk-name=com.rfirma.Custodio1`. Separates *installed* from *not installed / not allowed*.
+4. Installed, not running: `StartServiceByName("com.rfirma.Custodio1", 0)` (or just make the call; the bus activates it). Result `1` or `2` → started, go on. Any error (`ServiceUnknown`,
+   `NameHasNoOwner`, `UnitMasked`, `NoSuchUnit`, `Spawn.*`, no reply) → **installed but not activatable**: report the error name and message to the person. Do not branch on
+   which name, only on that it failed (finding 1).
+5. After a successful start, use the interface; any error from it is a Custodio error (`docs/api.md`), not a detection result.
+
+Distinguished: running / not activatable / not installed-or-not-allowed. Not distinguished: not installed vs not allowed by the sandbox (proxy rewrites every probe to the
+same answers).
+
+### Conflicts with the SPEC
+
+- SPEC "Detection": "what a client sees when the service is absent, not activatable, or blocked by the sandbox" cannot be three different results: absent and blocked
+  look the same through the proxy (finding 4). The documentation should say so and give the permission as the cause to check.
+- SPEC line 116 and the feature text name `org.freedesktop.DBus.Error.Spawn.*` for "not activatable"; that is wrong for dbus-broker and for dbus-daemon under systemd (finding 1). SPEC is not edited; listed in PROGRESS.md.
+- Acceptance 15 ("detects the service by the documented steps") holds with steps 1–5: with `--talk`, every call the steps make passes. Real flatpak was not run here; the
+  proxy was started with the command line flatpak 1.16.1 builds (`read`).
+
+Detection: connect to the system bus; `NameHasOwner` true → running; else `ListActivatableNames` has the name → installed, try `StartServiceByName` and treat any error as not activatable (do not rely on one error name); the name absent → not installed or not allowed (`--system-talk-name` missing), indistinguishable through the proxy.
