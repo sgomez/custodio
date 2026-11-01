@@ -120,4 +120,5 @@ fn import_request_debug_shows_id() -> Result<(), RequestError> {
 }
 
 mod delete_call;
+mod replace_call;
 mod sign_call;

@@ -251,3 +251,16 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `docs/api.md` no longer says a second `DeleteKey` clears a leftover certificate after a failed removal; it says a `DeleteKey` after the service restarts does (or for a certificate left by a crash). `api_describes_the_delete_entry` checks the new sentence and that the old wording is gone.
 - Evidence: `just quick` exit 0, `just api-contract` green. Code unchanged, so the F77 mutants result stands.
 - Next session should: nothing for F77.
+
+### 2026-11-01 — F78 — attempt 1
+- Done: `ReplaceCertificate(id: s, certificate: ay)` (`Custodio::replace_call` in new `src/dbus/replace.rs`). Order: id bound + certificate bound (`MAX_CERT_LEN` = 16384, in `custodio-client`) + exactly one DER X.509 (`InvalidArgs`, nothing touched) → credentials → lookup among the caller's keys (`NoSuchKey`, no polkit; also for a key F77 made unusable) → polkit once under `REPLACE_ACTION_ID` → public-key comparison (`CertificateMismatch`; unsupported key → `Internal`) → atomic store. No journal entry (F79).
+  Runs under F77's per-(owner, id) lock (`delete_state`), so a replace and a delete never interleave; a replace after a delete is `NoSuchKey`. The key is read again after polkit (not held across the wait).
+  New `KeyStore::replace_existing` (temp file, sync, `rename`, dir sync; never creates; `get`'s checks on the target; temp file removed on failure). `import.rs`: `public_key_of` / `cert_public_key` are `pub(crate)` for the comparison.
+- Tests: `tests/replace.rs` (+ `replace/concurrent.rs`), one per Evidence row; unit tests in `dbus/replace/tests.rs` (exact bound, trailing bytes, key/cert matching, docs), `dbus/tests/replace_call.rs` (order, error mapping, lock shared with delete, unusable key), `store/tests/replace.rs`.
+  Evaluator notes taken: atomicity is deterministic (`replace_with` takes a hook between the temp write and the rename; the negative control is a remove-then-write whose gap hook shows the entry missing); store-failure unit tests hold the refused-target details and the integration row only checks `Internal` + `Sign` still works, and the polkit ask is recorded before the failure; one credentials case (no `ProcessFD`) in the integration test; foreign/missing with polkit `Yes` only; `sign_after_replace…` asserts the old certificate is gone and the signature verifies with the key taken from the returned DER.
+  `concurrent_replace_and_delete`: the delete always succeeds, so the end state is always "neither file"; the test checks that, and that both orders happen over the rounds.
+- Fixtures: `gen.sh` makes `cert-*.der` from the existing `.p12` keys (nothing existing changes).
+- Docs: `docs/api.md` `### Method ReplaceCertificate` + errors; `api_contract.rs` also checks a `- certificate size:` line against `MAX_CERT_LEN`.
+- `justfile` `mutants` also lists `dbus/replace.rs`.
+- Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F78`: 16 caught, 7 unviable, none missed.
+- Next session should: nothing for F78. F79 writes the replace journal entry.

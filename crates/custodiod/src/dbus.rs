@@ -420,6 +420,24 @@ where
             .await
     }
 
+    /// Replaces the certificate of key `id` of the caller with one for the same key, after polkit
+    /// approves this one call.
+    // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
+    #[allow(clippy::needless_pass_by_value)]
+    async fn replace_certificate(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+        certificate: Vec<u8>,
+    ) -> Result<(), ServiceError> {
+        self.replace_call(
+            header.sender().map(zbus::names::UniqueName::as_str),
+            id,
+            &certificate,
+        )
+        .await
+    }
+
     /// Signs `data` with key `id`, after polkit approves this one call.
     async fn sign(
         &self,
@@ -445,5 +463,6 @@ where
 mod delete;
 mod delete_state;
 mod import;
+mod replace;
 #[cfg(test)]
 mod tests;

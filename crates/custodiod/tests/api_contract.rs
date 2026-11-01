@@ -11,6 +11,7 @@
 //! - out: `sig`                one line per result
 //! - bounds: ...               required in every method section
 //! - p12 size: `N` bytes       the `.p12` bound, in `ImportP12`
+//! - certificate size: `N` bytes   the certificate bound, in `ReplaceCertificate`
 //! - property `Name`: `sig`, `access`
 //! - error `com.rfirma.Custodio1.Error.Name`
 //! - action `com.rfirma.custodio.name`
@@ -28,7 +29,7 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::Arc;
 
-use custodio_client::{BUS_NAME, MAX_P12_LEN, OBJECT_PATH};
+use custodio_client::{BUS_NAME, MAX_CERT_LEN, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
 use custodiod::error::ServiceError;
 
@@ -109,6 +110,7 @@ struct Doc {
     errors: Items,
     actions: Items,
     p12_size: Option<String>,
+    cert_size: Option<String>,
     without_bounds: Vec<String>,
 }
 
@@ -118,6 +120,7 @@ fn parse_doc(text: &str) -> Doc {
         errors: Items::new(),
         actions: Items::new(),
         p12_size: None,
+        cert_size: None,
         without_bounds: Vec::new(),
     };
     let mut method = String::new();
@@ -158,6 +161,8 @@ fn parse_doc(text: &str) -> Doc {
             has_bounds = true;
         } else if line.starts_with("- p12 size:") {
             doc.p12_size = ticks.first().map(|s| (*s).to_owned());
+        } else if line.starts_with("- certificate size:") {
+            doc.cert_size = ticks.first().map(|s| (*s).to_owned());
         } else if line.starts_with("- property ") {
             if let [name, sig, access] = ticks[..] {
                 doc.methods
@@ -215,6 +220,13 @@ fn differences(text: &str, sources: &Sources) -> Vec<String> {
         out.push(format!(
             ".p12 size bound is {:?}, the code enforces {want}",
             doc.p12_size
+        ));
+    }
+    let want = MAX_CERT_LEN.to_string();
+    if doc.cert_size.as_deref() != Some(want.as_str()) {
+        out.push(format!(
+            "certificate size bound is {:?}, the code enforces {want}",
+            doc.cert_size
         ));
     }
     out
@@ -332,6 +344,10 @@ fn edited_copies_of_the_document_fail() -> Result<(), Box<dyn Error>> {
     let bound = format!("`{MAX_P12_LEN}`");
     let wrong_bound = edited(&text, &bound, "`1`");
     expect_fail(&wrong_bound, &sources, ".p12 size bound", "");
+
+    // A wrong certificate bound.
+    let wrong_cert = edited(&text, &format!("`{MAX_CERT_LEN}`"), "`1`");
+    expect_fail(&wrong_cert, &sources, "certificate size bound", "");
 
     // A method without a bounds entry.
     let no_bounds = edited(&text, "- bounds:", "- limits:");

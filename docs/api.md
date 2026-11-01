@@ -88,6 +88,34 @@ already found the key when the delete finishes completes with it; one that looks
 - in `id`: `s`
 - bounds: `id` as above.
 
+### Method `ReplaceCertificate`
+
+Replaces the certificate stored for the caller's key `id` with another DER X.509 certificate for the same public
+key. The key itself is not changed. Afterwards `ListKeys` shows the new certificate with the same id and key type.
+
+The order is fixed: (1) `id` is checked against the bounds below, and `certificate` against the size bound and
+against parsing as exactly one DER X.509 certificate, no trailing bytes (`InvalidArgs`), before the caller, any
+key, any file or polkit is touched; (2) the caller is identified (`AuthorizationUnavailable`); (3) the id is
+looked up among the caller's keys only: a missing id, another user's id and a key a `DeleteKey` has made unusable
+all fail as `NoSuchKey`, with no polkit call; (4) polkit is asked once, with `AllowUserInteraction`, under the
+action `com.rfirma.custodio.replace-certificate` (`PolkitDenied`, or `AuthorizationUnavailable` if polkit cannot be
+asked); (5) the public key of the certificate is compared with the public key of the stored private key: a
+certificate for another key, or for a key of another type (including P-384, Ed25519 and RSA of other sizes), fails as
+`CertificateMismatch` and nothing changes; (6) the certificate is stored. Every call asks again; nothing is cached.
+A refused call changes nothing. There are no chain, revocation or date checks, and no check of key usage or subject:
+an expired or self-signed certificate for the key is accepted, and so is the certificate already stored.
+
+The replacement is atomic: the new certificate is written to a temporary file, synced, and renamed over the old one,
+so a concurrent `ListKeys` sees the old or the new certificate, never an error or a missing one. If anything fails
+the old certificate stays, no temporary file is left, and the call fails as `Internal`. A replace and a
+`DeleteKey` of one id never run at the same time (the second waits for the first); a replace that finds the key gone
+fails as `NoSuchKey` and leaves no certificate behind. This method does not write a journal entry.
+
+- in `id`: `s`
+- in `certificate`: `ay`
+- bounds: `id` as above; one DER X.509 certificate, nothing else.
+- certificate size: `16384` bytes at most.
+
 ### Method `Sign`
 
 Signs `data` with the caller's key `id`, after polkit approves this one call. The key is looked up among the
@@ -107,19 +135,19 @@ that finds the key asks polkit; nothing is cached.
 
 Every failure is one of these names, with a fixed message that repeats nothing the caller sent.
 
-- error `com.rfirma.Custodio1.Error.InvalidArgs`: a bad key id, mechanism, hash, salt length, or an argument too
-  large.
-- error `com.rfirma.Custodio1.Error.NoSuchKey`: the caller has no key with this id (also another user's id); `Sign` and `DeleteKey`.
+- error `com.rfirma.Custodio1.Error.InvalidArgs`: a bad key id, mechanism, hash, salt length, an argument too
+  large, or a `certificate` that is not exactly one DER X.509 certificate.
+- error `com.rfirma.Custodio1.Error.NoSuchKey`: the caller has no key with this id (also another user's id); `Sign`, `DeleteKey` and `ReplaceCertificate`.
 - error `com.rfirma.Custodio1.Error.KeyIdTaken`: `ImportP12` with an id the caller already uses.
-- error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the call (`Sign`, `ImportP12` or `DeleteKey`).
+- error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the call (`Sign`, `ImportP12`, `DeleteKey` or `ReplaceCertificate`).
 - error `com.rfirma.Custodio1.Error.AuthorizationUnavailable`: polkit could not be asked or the caller could not
   be identified.
 - error `com.rfirma.Custodio1.Error.WrongPasswordOrBadP12`: the `.p12` did not open or is not usable, including a
   `.p12` with no private key, several private keys, or a key without a certificate.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256.
-- error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key.
+- error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key (`ImportP12`, `ReplaceCertificate`).
 - error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored).
-- error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file).
+- error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate).
 
 ## Polkit actions
 

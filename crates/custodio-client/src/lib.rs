@@ -10,6 +10,8 @@ pub const BUS_NAME: &str = "com.rfirma.Custodio1";
 pub const OBJECT_PATH: &str = "/com/rfirma/Custodio1";
 /// Largest `.p12` accepted. Real files are a few kilobytes.
 pub const MAX_P12_LEN: usize = 1024 * 1024;
+/// Largest DER certificate `ReplaceCertificate` accepts. Real certificates are one to a few kilobytes.
+pub const MAX_CERT_LEN: usize = 16 * 1024;
 
 /// The call was malformed: bad key id, mechanism, hash, salt length, data size or password size,
 /// or a data length the mechanism cannot take.

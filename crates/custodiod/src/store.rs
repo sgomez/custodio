@@ -315,6 +315,51 @@ impl KeyStore {
         Ok(true)
     }
 
+    /// Replace the content of the existing file `owner` stored under `id` with `data`, atomically:
+    /// a temporary file in the same directory is written and synced, then renamed over the target,
+    /// then the directory is synced. A reader sees the old or the new content, never neither. It
+    /// never creates an entry and never follows or replaces a symlink, a directory or a file of
+    /// another owner (`get`'s checks apply to the target). A failure leaves the old content and no
+    /// temporary file.
+    ///
+    /// # Errors
+    /// `NotFound` if there is no such file; the errors of `get` for a target that is not a plain
+    /// `0600` file of the service uid; `SyncFailed` if the new content is in place but the directory
+    /// could not be synced; `Io` otherwise.
+    pub fn replace_existing(&self, owner: u32, id: &str, data: &[u8]) -> Result<(), StoreError> {
+        self.replace_with(owner, id, data, || Ok(()))
+    }
+
+    /// [`Self::replace_existing`] with `before_rename` run after the temporary file is written and
+    /// before the rename; if it fails, nothing is renamed. Lets a test look at the moment between.
+    fn replace_with(
+        &self,
+        owner: u32,
+        id: &str,
+        data: &[u8],
+        before_rename: impl FnOnce() -> io::Result<()>,
+    ) -> Result<(), StoreError> {
+        // `get` refuses what is not a plain file of the service uid, so `rename` below only ever
+        // replaces a file this store wrote.
+        drop(self.get(owner, id)?);
+        let area = self.existing_area(owner)?.ok_or(StoreError::NotFound)?;
+        let tmp = area.join(format!(
+            "{TMP_PREFIX}{}-{}",
+            std::process::id(),
+            TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let result = write_synced(&tmp, data)
+            .and_then(|()| before_rename())
+            .and_then(|()| fs::rename(&tmp, area.join(id)));
+        if result.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        result?;
+        File::open(&area)
+            .and_then(|d| d.sync_all())
+            .map_err(StoreError::SyncFailed)
+    }
+
     /// Ids of all keys of `owner`, sorted. An owner without an area has none; nothing is created.
     ///
     /// # Errors

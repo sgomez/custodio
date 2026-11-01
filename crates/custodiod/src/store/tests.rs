@@ -341,6 +341,7 @@ fn errors_display_their_cause() {
 }
 
 mod owners;
+mod replace;
 
 #[test]
 fn remove_deletes_only_that_id() -> TestResult {

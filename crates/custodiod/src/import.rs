@@ -299,7 +299,7 @@ fn trim(bytes: &[u8]) -> &[u8] {
 /// Canonical public key of a PKCS#8 private key: `n || e` (each length-prefixed) for RSA, the
 /// uncompressed SEC1 point for P-256. The point is computed from the private scalar, never taken
 /// from the file.
-fn public_key_of(kind: KeyKind, pkcs8_der: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn public_key_of(kind: KeyKind, pkcs8_der: &[u8]) -> Option<Vec<u8>> {
     let info = PrivateKeyInfoRef::from_der(pkcs8_der).ok()?;
     match kind {
         KeyKind::Rsa2048 => {
@@ -335,7 +335,7 @@ fn rsa_canonical(n: &[u8], e: &[u8]) -> Vec<u8> {
 
 /// Public key of a certificate in the same form as [`public_key_of`]; `None` if the certificate
 /// does not parse or holds a key of another type.
-fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
     let cert = X509::from_der(cert_der).ok()?;
     let spki = cert.tbs_certificate().subject_public_key_info();
     let oid = spki.algorithm.oid;
