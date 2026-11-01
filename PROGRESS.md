@@ -123,3 +123,15 @@ with an empty context.
 - Evidence: `cargo test -p custodiod --test policy` 10 passed, `just api-contract` green, `just quick` exit 0. Package gates left to F90/F100 (nfpm.yaml already ships the whole file).
 - Notes for later: the test hard-codes the three new ids; the first feature adding the Rust constants must switch the test to them (as `ACTION_ID` is used). The `ImportP12` doc line "Needs no polkit authorization" in `docs/api.md` is now stale and is left for the import feature to fix.
 - Next session should: nothing for F69.
+
+### 2026-11-01 — F70 — attempt 2
+- Done: `store.rs` keeps `<root>/<uid>/<id>`; `put/get/list` take `owner: u32` (never derived from an id). Areas are created only by `put` (0700, exact under any umask), checked
+  by `check_dir` (no symlink, mode 0700, service uid) on every `get/list/put`; refused, never repaired. `open` removes stale `.tmp-*` in the root and in well-formed areas only.
+  Old-layout decision (test `old_layout_flat_files_are_ignored_and_untouched`): flat files in the root are ignored and untouched; a flat file named like an owner uid makes that
+  owner's area a non-directory → `BadFileType`. No reader or migration. Tests: `store/tests.rs` (adapted) and `store/tests/owners.rs` (new layout, two owners, concurrent insert).
+- Callers: `dbus.rs` has `list_keys_call`, `list_certificates_call`, `import_call` (owner = `CallerCredentials` uid of the sender; no sender/credentials error → `AuthorizationUnavailable`);
+  sign uses the caller uid. `dbus/tests.rs` has the three owner tests with the fake at uid 11 (rig shares the same `Arc<KeyStore>`).
+- Test adaptations (not weakened): audit helper `import_with` now imports straight into the store under the test uid (the credentials fakes would fail `ImportP12`);
+  `tests/errors.rs` breaks the store by loosening the owner area's mode instead of removing the root (a missing area is now just empty); cli/cryptoki/import tests pass the process uid.
+- For F72: `list_keys`, `list_certificates`, `import_p12` now call `CallerCredentials`, but their "authorization unavailable" path is not proven here (only `owner_needs_a_sender` for ListKeys).
+- Next session should: nothing for F70 once `just mutants-diff F70` is clean (see below if it lists survivors).
