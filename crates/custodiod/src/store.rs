@@ -161,16 +161,14 @@ impl KeyStore {
     /// The checked area of `owner`, created with mode `0700` if missing.
     fn ensure_area(&self, owner: u32) -> Result<PathBuf, StoreError> {
         let area = self.area_path(owner);
-        match DirBuilder::new().mode(DIR_MODE).create(&area) {
-            Ok(()) => {
-                // The umask can only remove bits; make the mode exact regardless.
-                fs::set_permissions(&area, fs::Permissions::from_mode(DIR_MODE))?;
-                File::open(&self.dir)
-                    .and_then(|d| d.sync_all())
-                    .map_err(StoreError::SyncFailed)?;
-            }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e.into()),
+        // Any failure to create (already there, missing root, no permission) is judged by
+        // `check_dir` below, which looks at what is actually on disk.
+        if DirBuilder::new().mode(DIR_MODE).create(&area).is_ok() {
+            // The umask can only remove bits; make the mode exact regardless.
+            fs::set_permissions(&area, fs::Permissions::from_mode(DIR_MODE))?;
+            File::open(&self.dir)
+                .and_then(|d| d.sync_all())
+                .map_err(StoreError::SyncFailed)?;
         }
         check_dir(&area, self.uid)?;
         Ok(area)

@@ -381,3 +381,19 @@ fn concurrent_inserts_of_different_owners_all_succeed() -> TestResult {
     }
     Ok(())
 }
+
+#[test]
+fn a_root_that_stopped_being_a_directory_is_an_io_error_not_an_empty_store() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let root = tmp.path().join("s");
+    let store = KeyStore::open(&root)?;
+    fs::remove_dir(&root)?;
+    fs::write(&root, b"file")?;
+    assert!(matches!(store.get(1, "k"), Err(StoreError::Io(_))));
+    assert!(matches!(store.list(1), Err(StoreError::Io(_))));
+    assert!(matches!(
+        store.put(1, "k", &secret(b"x")),
+        Err(StoreError::Io(_))
+    ));
+    Ok(())
+}
