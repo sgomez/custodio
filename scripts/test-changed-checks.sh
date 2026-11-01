@@ -29,7 +29,10 @@ p=$(plan --files Cargo.lock)
 has "$p" "cargo deny check" "lockfile"
 grep -q '^cargo test -p crap -p custodio-cli -p custodio-pkcs11 -p custodiod' <<< "$p" || bad "lockfile: not every crate"
 
-p=$(plan --files docs/milestones/M2/PROGRESS.md)
+# A Markdown file nothing references, so no check can depend on it.
+md=$(mktemp "$ROOT/test-changed-checks-XXXXXX.md")
+trap 'rm -f "$md"' EXIT
+p=$(plan --files "${md#"$ROOT"/}")
 hasnt "$p" "cargo" "Markdown only"
 hasnt "$p" "scripts/test-" "Markdown only"
 
