@@ -352,7 +352,7 @@ are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** u
    ```
 
    Expected: the first `ls` finds the file, the second says `No such file or directory`; the service is active with a new main PID; `ps -eZ` shows
-   `system_u:system_r:unconfined_service_t`. `ls -Z /var/lib/private/custodio` may still show `init_var_lib_t` here: the label comes back at the next boot.
+   `system_u:system_r:unconfined_service_t`. `ls -Z /var/lib/private/custodio` already shows `var_lib_t`: systemd's rpm file trigger runs `systemd-tmpfiles --create` at the end of the transaction (F62).
 3. Restore the labels and check them. The tmpfiles line runs at every boot; to see its effect at once, and to check that nothing but the label changes:
 
    ```sh
@@ -364,8 +364,8 @@ are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** u
    ```
 
    Expected: the two `stat` outputs are equal (mode, owner, size); `ls -Z` shows `var_lib_t` (what `matchpathcon` prints as the default); the key listing
-   still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). Then repeat the old-path steps 1 and 2 up to the upgrade, `sudo reboot` instead of the
-   `systemd-tmpfiles` command, and check `ls -Z` after the reboot: `var_lib_t` without any command.
+   still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). The `stat` and `ls -Z` lines need root (`/var/lib/private` is `0700 root`;
+   run them under `sudo sh -c '…'` so the glob expands as root). dnf's file trigger already restored the label, so the boot path is shown on bazzite (next section).
 4. Sign with the dialog and cancel it (acceptance 12, steps 5 and 6 of the section above): the dialog appears, approving signs, cancelling fails.
 5. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
 

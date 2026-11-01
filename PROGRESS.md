@@ -496,3 +496,13 @@ with an empty context.
 - Manual run on labvm `ubuntu2404` (24.04.5, polkit 124): `dpkg -i` refused on dbus-daemon 1.14.10, nothing created; after `apt-get install dbus-broker` and a reboot (dbus-broker 35) desktop, logind, the polkit agent and NetworkManager work; `apt-get install ./…deb`, both keys sign with the dialog every time, a cancel fails. Record in `docs/findings.md` "F57".
 - `docs/manual-acceptance.md` §14: the checks are no longer marked unverified; the agent row uses `pkexec true` (GNOME's agent is in `gnome-shell`).
 - Next session should: the milestone approver settles the open question "Ubuntu 24.04: does switching the bus break something?", then a person runs `just milestone pass F57`.
+
+### 2026-11-01 — F62 — session 1
+- Host: `just e2e all` exit 0 on the six targets (only arch's six `upgrade-oldpath-*` skipped); needs `PATH=$HOME/.cargo/bin:$PATH mise exec --`.
+- labvm `fedora44` and `bazzite`, SELinux enforcing: old-path 0.1.0 (`init_t`, key files `init_var_lib_t`) upgraded to 0.1.1: `unconfined_service_t`,
+  key files `var_lib_t`, same mode/owner/size; the same keys sign with the dialog, a cancel fails; no AVC names custodio, polkit or the module.
+  Record in `docs/findings.md` "F62".
+- With dnf the label comes back during the upgrade (systemd's tmpfiles file trigger), not at the next boot; fixed that claim in
+  `docs/findings.md` "F61" and `docs/manual-acceptance.md` "F61 fedora44". On bazzite it comes back at the reboot, as expected.
+- Dialogs answered with `virsh send-key` after a screenshot, not by a person.
+- Next session should: a person runs `just milestone pass F62`.
