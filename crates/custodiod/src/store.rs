@@ -86,6 +86,10 @@ impl From<io::Error> for StoreError {
 pub struct KeyStore {
     dir: PathBuf,
     uid: u32,
+    /// Test seam: the uid expected for key files only, so the file check can fail while the
+    /// directory checks pass.
+    #[cfg(test)]
+    file_uid: Option<u32>,
 }
 
 impl KeyStore {
@@ -114,7 +118,12 @@ impl KeyStore {
             }
         }
         check_dir(&dir, uid)?;
-        let store = Self { dir, uid };
+        let store = Self {
+            dir,
+            uid,
+            #[cfg(test)]
+            file_uid: None,
+        };
         store.remove_stale_temp_files()?;
         Ok(store)
     }
@@ -248,7 +257,11 @@ impl KeyStore {
         if !meta.is_file() {
             return Err(StoreError::BadFileType(path));
         }
-        if meta.uid() != self.uid {
+        #[cfg(test)]
+        let expected = self.file_uid.unwrap_or(self.uid);
+        #[cfg(not(test))]
+        let expected = self.uid;
+        if meta.uid() != expected {
             return Err(StoreError::BadOwner(path));
         }
         if meta.mode() & PERM_MASK != FILE_MODE {

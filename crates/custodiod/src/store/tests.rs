@@ -104,7 +104,7 @@ fn rejects_foreign_owner() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let mut store = KeyStore::open(tmp.path().join("s"))?;
     store.put(OWNER, "k", &secret(b"x"))?;
-    store.uid = store.uid.wrapping_add(1);
+    store.file_uid = Some(store.uid.wrapping_add(1));
     assert!(matches!(
         store.get(OWNER, "k"),
         Err(StoreError::BadOwner(_))

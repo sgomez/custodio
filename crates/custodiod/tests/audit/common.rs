@@ -8,7 +8,7 @@ use custodiod::audit::{AuditMechanism, Caller, Entry, MemorySink, Outcome};
 use custodiod::credentials::{BusCredentials, CallerCredentials, CredentialsError, caller_from};
 use zbus::{Connection, OwnedVariant};
 
-use super::bus::{Answer, Fixture, TestResult};
+use super::bus::{Answer, Fixture, TestResult, call};
 
 pub const EC_P12: &[u8] = include_bytes!("../fixtures/p256.p12");
 pub const RSA_P12: &[u8] = include_bytes!("../fixtures/rsa2048.p12");
@@ -64,6 +64,13 @@ pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
 pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
     let password = secrecy::SecretString::from(password.to_owned());
     custodiod::import::import_p12(&f.store, uid(), id, p12, &password)?;
+    Ok(())
+}
+
+/// Imports through the service's `ImportP12`, so the password goes through the real method.
+/// Needs credentials that work (the owner is the caller's uid).
+pub async fn import_via_bus(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
+    call(&f.client, "ImportP12", &(id, p12.to_vec(), password)).await?;
     Ok(())
 }
 

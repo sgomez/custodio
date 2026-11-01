@@ -12,7 +12,7 @@ use zbus::{Connection, block_on};
 use super::bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use super::common::{
     CKM_ECDSA, CKM_RSA_PKCS, EC_P12, EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, digest,
-    digest_info, fixture, import, import_with, uid,
+    digest_info, fixture, import, import_via_bus, uid,
 };
 use super::scan::{base64, hex, leaks};
 
@@ -56,7 +56,7 @@ async fn no_secrets(
 ) -> TestResult {
     let sink = Arc::new(MemorySink::default());
     let f = fixture(Answer::Yes, &sink).await?;
-    import_with(&f, key, p12, SENTINEL_PASSWORD).await?;
+    import_via_bus(&f, key, p12, SENTINEL_PASSWORD).await?;
     let signature = sign(&f.client, key, mechanism, data).await?;
     sign(&f.client, key, other, data)
         .await

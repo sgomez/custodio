@@ -165,11 +165,11 @@ fn foreign_owned_area_and_key_are_refused() -> TestResult {
     ));
     assert_eq!(names(&store.dir().join("4"))?, ["k"]);
     // The file check alone: the area belongs to us, the file does not.
-    let dir = store.dir().to_owned();
-    assert!(matches!(
-        KeyStore::open_as(dir, real.wrapping_add(1)),
-        Err(StoreError::BadOwner(_))
-    ));
+    store.uid = real;
+    assert!(store.get(4, "k").is_ok());
+    store.file_uid = Some(real.wrapping_add(1));
+    assert!(matches!(store.get(4, "k"), Err(StoreError::BadOwner(_))));
+    assert_eq!(names(&store.dir().join("4"))?, ["k"]);
     Ok(())
 }
 

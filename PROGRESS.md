@@ -136,3 +136,11 @@ with an empty context.
 - For F72: `list_keys`, `list_certificates`, `import_p12` now call `CallerCredentials`, but their "authorization unavailable" path is not proven here (only `owner_needs_a_sender` for ListKeys).
 - Mutants: first run 2 missed in `existing_area`/`ensure_area`; `ensure_area` now leaves create errors to `check_dir`, new test for a root that became a file; `just mutants-diff F70 --re store.rs` 25 caught, 10 unviable, none missed (full run before the fix: 54 caught, 16 unviable, 2 missed).
 - Next session should: nothing for F70.
+
+### 2026-11-01 — F70 — attempt 3
+- Fixed NEXT_FINDINGS: (1) `KeyStore` has a `#[cfg(test)] file_uid` seam that changes only the expected owner of key files; `rejects_foreign_owner` and `foreign_owned_area_and_key_are_refused`
+  now reach the file check in `get` with the area check passing (false comment removed). (2) `tests/audit/common.rs` has `import_via_bus`; `no_secrets` imports the sentinel password through D-Bus `ImportP12` again
+  (other fixtures keep the direct store import because their fake credentials fail the method).
+- Not changed: the `ensure_area` umask race note (non-blocking; only under a umask like 0277 with racing first puts).
+- Evidence: `just quick` exit 0; `just mutants-diff F70 --re store.rs`: 26 caught, 10 unviable, none missed.
+- Next session should: nothing for F70.
