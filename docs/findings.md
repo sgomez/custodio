@@ -1401,7 +1401,46 @@ Service detection through `xdg-dbus-proxy` (SPEC open question "Detection throug
   and `… /run/f68-none.sock --filter` (the "name not allowed by the sandbox" case: `--filter` with no `--talk` for the name).
   Client: `dbus-send --bus=ADDRESS --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.<Call> …`; `call-unowned` is
   `dbus-send --dest=com.rfirma.Custodio1 /com/rfirma/Custodio1 org.freedesktop.DBus.Peer.Ping` (auto-start allowed, the default).
-- **The situations** (`run`, by `setup.sh` in the container):
+- **The situations** (`run`, by `setup.sh <situation>` in the container; the script and the stub are inlined below, `/root/activation.service` and `/root/com.rfirma.Custodio1.conf`
+  are copies of `data/com.rfirma.Custodio1.service` and `data/com.rfirma.Custodio1.conf`):
+  ```sh
+  #!/bin/bash
+  # usage: setup.sh running|masked|missing|failing|notinstalled
+  S=/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
+  U=/etc/systemd/system/custodio.service
+  systemctl stop custodio.service 2>/dev/null; systemctl unmask custodio.service 2>/dev/null; systemctl reset-failed custodio.service 2>/dev/null
+  rm -f $U $S /etc/dbus-1/system.d/com.rfirma.Custodio1.conf
+  case $1 in
+   notinstalled) ;;
+   *) cp /root/activation.service $S; cp /root/com.rfirma.Custodio1.conf /etc/dbus-1/system.d/ ;;
+  esac
+  case $1 in
+   running) cp /root/custodio-run.service $U ;;
+   masked) systemctl mask custodio.service >/dev/null 2>&1 ;;
+   failing) sed 's#ExecStart=.*#ExecStart=/bin/false#' /root/custodio-run.service > $U ;;
+  esac   # missing: nothing more (no custodio.service)
+  systemctl daemon-reload; systemctl reload dbus-broker   # on the dbus-daemon run: systemctl reload dbus
+  [ "$1" = running ] && systemctl start custodio.service
+  ```
+  `/root/custodio-run.service`:
+  ```ini
+  [Unit]
+  Description=F68 stub for custodio.service
+  [Service]
+  Type=dbus
+  BusName=com.rfirma.Custodio1
+  User=custodio
+  ExecStart=/usr/bin/python3 /usr/local/bin/f68-stub.py
+  ```
+  `/usr/local/bin/f68-stub.py` (owns the name through Gio):
+  ```python
+  import gi
+  gi.require_version("Gio", "2.0")
+  from gi.repository import Gio, GLib
+  Gio.bus_own_name(Gio.BusType.SYSTEM, "com.rfirma.Custodio1", Gio.BusNameOwnerFlags.NONE, None, None, None)
+  GLib.MainLoop().run()
+  ```
+  The situations:
   - *running*: `/etc/systemd/system/custodio.service` is a stub (`Type=dbus`, `BusName=com.rfirma.Custodio1`, `User=custodio`, `ExecStart=python3` owning the name through
     Gio), started; the activation file and policy installed.
   - *not activatable*, three setups, because they give different errors: **masked** (`systemctl mask custodio.service`), **missing** (activation file installed, no
@@ -1490,7 +1529,7 @@ same answers).
 
 - SPEC "Detection": "what a client sees when the service is absent, not activatable, or blocked by the sandbox" cannot be three different results: absent and blocked
   look the same through the proxy (finding 4). The documentation should say so and give the permission as the cause to check.
-- SPEC line 116 and the feature text name `org.freedesktop.DBus.Error.Spawn.*` for "not activatable"; that is wrong for dbus-broker and for dbus-daemon under systemd (finding 1). SPEC is not edited; listed in PROGRESS.md.
+- Not a conflict with the SPEC, but a correction to the contract's example: it names `org.freedesktop.DBus.Error.Spawn.*` for "not activatable" (to be measured), and that name does not occur on dbus-broker or on dbus-daemon under systemd (finding 1). The SPEC names no error; it is not edited.
 - Acceptance 15 ("detects the service by the documented steps") holds with steps 1–5: with `--talk`, every call the steps make passes. Real flatpak was not run here; the
   proxy was started with the command line flatpak 1.16.1 builds (`read`).
 

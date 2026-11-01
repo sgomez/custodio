@@ -106,7 +106,12 @@ with an empty context.
   the real activation file, situations running / masked / missing unit / failing unit / not installed, host vs `--filter --talk` vs `--filter` alone; plus a private dbus-daemon as a labelled extra.
 - Results: `--talk` makes the proxy identical to the host (ListActivatableNames only filtered); without `--talk` every probe is rewritten to "not installed" (not distinguishable from it).
   "Not activatable" is **not** `Spawn.*` on a supported host: broker gives `ServiceUnknown`/`NameHasNoOwner`, dbus-daemon gives `systemd1.UnitMasked`/`NoSuchUnit` or no reply; `Spawn.ChildExited` only on a bus without systemd.
-- **Conflicts for a person (SPEC not edited):** the feature text expects `Spawn.*`; SPEC "Detection" lists absent / not activatable / blocked as distinct, but absent and blocked cannot be told apart through the proxy.
+- **Conflicts for a person (SPEC not edited):** SPEC "Detection" lists absent / not activatable / blocked as distinct, but absent and blocked cannot be told apart through the proxy.
 - Not run: real flatpak (acceptance 15 stays a separate feature); the Debian patches of the proxy were not diffed against the tag.
 - Verify: the feature's `verify` exits 0; a copy without the `Detection:` line exits 1.
 - Next session should: nothing for F68. The client documentation feature takes the five steps from the section.
+
+### 2026-11-01 — F68 — attempt 2
+- Fixed NEXT_FINDINGS: the false "SPEC/feature text names `Spawn.*`" conflict is now a correction of the contract's example only (docs/findings.md, PROGRESS.md); the setup script,
+  stub unit and Gio stub are inlined in `## F68`. Note kept: client docs should give a timeout shorter than the 25 s default for the "no reply" case.
+- Next session should: nothing for F68.
