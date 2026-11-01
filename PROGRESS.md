@@ -58,3 +58,23 @@ with an empty context.
   (an attribute cannot take a constant).
 - Not done: nothing.
 - Verify: `just test-changed F64`, `just deps-check`, `just test-integration` all exit 0. `scripts/test-changed-checks.sh` expectations were updated for the new crate graph (custodiod no longer has pkcs11/cli as dependents).
+
+### 2026-11-01 — F65 — attempt 1
+- Baseline (step 1), read from the code before the change. Service failure → fdo name it arrived as (old `dbus.rs`) → `BackendError` (`backend.rs::map_error`) → CKR (`module/signing.rs` `sign_with`):
+  polkit unavailable, no sender, credentials failure, polkit denied → `AccessDenied` → `Denied` → `CKR_FUNCTION_FAILED`;
+  no such key, audit unavailable, bad key, signing failure, store failure → `Failed` → `Unavailable` → `CKR_DEVICE_ERROR`;
+  every invalid-argument case → `InvalidArgs` → `Invalid` → `CKR_DATA_INVALID`.
+  The end value is pinned by `composed_failure_ends_the_operation` for **Sign only**; `ListCertificates` failures reach the module through `list_certificates`, not `sign_with`,
+  so for them only the `BackendError` is pinned (`backend/tests.rs`); that code is untouched.
+- Done: names are constants in `custodio-client` (`ERROR_*`, `com.rfirma.Custodio1.Error.<Name>`); `custodiod::error::ServiceError` (10 variants, `ALL`, fixed `&'static str` messages,
+  manual `zbus::DBusError`) and `From<&RequestError|StoreError|ImportError|SignError|AuthError>`; `dbus.rs` returns it everywhere (no `fdo::Error` left). Pick for the contract's open case:
+  no private key / several keys / key without certificate → `WrongPasswordOrBadP12` (doc comment in `error.rs`). Messages contain no `/` (checked by the leak test).
+  pkcs11 `error_for_name`/`map_error`: polkit denied + authorization unavailable → `Denied`, invalid args → `Invalid`, everything else (new names, unknown names) → `Unavailable`; the generic
+  fdo `AccessDenied`/`InvalidArgs` keep their old meaning (the bus itself answers `AccessDenied` on a policy refusal). CLI: `bus.rs::message_for_name/error_message` (service text no longer shown).
+  Tests: `error/tests.rs` (table, distinct, mappings), `tests/errors.rs` (one D-Bus test per failure, leak test with sentinels, fixed-message test), `backend/tests.rs`, `bus/tests.rs`, `custodio-client/src/tests.rs`.
+  Existing expectations edited only to the new names (`tests/dbus.rs`, `tests/audit*`, `dbus/tests.rs`). `Fixture._store` became `store` + `store_dir()`; the client's inline tests moved to `tests.rs` (file-layout gate).
+- Evidence: `grep -rln --include=*.rs '"com\.rfirma\.Custodio1\.Error' crates --exclude-dir=tests --exclude=tests.rs` prints only `crates/custodio-client/src/lib.rs`; `cargo tree -p custodio-client` shows no dependency.
+  `just quick` exit 0; `just mutants-diff F65` (recipe extended with `error.rs` and `backend.rs`): custodiod 16 caught/7 unviable, pkcs11 3 caught/2 unviable, none missed.
+  `cargo test -p custodio-it --test cli --test cryptoki` green with no edited expectation.
+- Not done: nothing. Not run: the explicit negative controls by hand (a mutant mapping authorization unavailable to `Unavailable` is covered by the mutants run being clean).
+- Next session should: nothing for F65.

@@ -98,7 +98,7 @@ impl FakePolkit {
 pub struct Fixture {
     pub bus: Bus,
     pub _state: tempfile::TempDir,
-    pub _store: Arc<KeyStore>,
+    pub store: Arc<KeyStore>,
     pub polkit: Connection,
     pub _service: Connection,
     pub client: Connection,
@@ -147,13 +147,19 @@ impl Fixture {
         Ok(Self {
             bus,
             _state: state,
-            _store: store,
+            store,
             polkit,
             _service: service,
             client,
             answer,
             asked,
         })
+    }
+
+    // Used by `tests/errors.rs`, which includes this file; the audit tests do not need it.
+    #[allow(dead_code)]
+    pub fn store_dir(&self) -> &std::path::Path {
+        self.store.dir()
     }
 
     pub fn set_answer(&self, answer: Answer) {

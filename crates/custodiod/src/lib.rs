@@ -4,6 +4,7 @@
 pub mod audit;
 pub mod credentials;
 pub mod dbus;
+pub mod error;
 pub mod import;
 mod offload;
 pub mod polkit;

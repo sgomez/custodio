@@ -4,7 +4,9 @@
 
 use zbus::{Connection, block_on};
 
-use custodio_client::{BUS_NAME, OBJECT_PATH};
+use custodio_client::{
+    BUS_NAME, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_INVALID_ARGS, ERROR_POLKIT_DENIED, OBJECT_PATH,
+};
 
 /// Why a call to the service failed, reduced to what the PKCS#11 layer needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,13 +47,30 @@ pub trait Backend: Send + Sync {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DbusBackend;
 
+/// The `BackendError` for a failure of the service. The CKR value of each case is the one the module
+/// has always returned: polkit's refusal and "authorization unavailable" are `Denied`
+/// (`CKR_FUNCTION_FAILED`), a rejected request is `Invalid` (`CKR_DATA_INVALID`), everything else,
+/// including a name this version does not know, is `Unavailable` (`CKR_DEVICE_ERROR`).
+///
+/// The two generic `org.freedesktop.DBus.Error` names keep their old meaning: the bus itself
+/// answers `AccessDenied` when its policy refuses the call, and a service older than the project
+/// error names answers both.
+fn error_for_name(name: &str) -> BackendError {
+    match name {
+        ERROR_POLKIT_DENIED | ERROR_AUTHORIZATION_UNAVAILABLE | FDO_ACCESS_DENIED => {
+            BackendError::Denied
+        }
+        ERROR_INVALID_ARGS | FDO_INVALID_ARGS => BackendError::Invalid,
+        _ => BackendError::Unavailable,
+    }
+}
+
+const FDO_ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+const FDO_INVALID_ARGS: &str = "org.freedesktop.DBus.Error.InvalidArgs";
+
 fn map_error(e: &zbus::Error) -> BackendError {
     match e {
-        zbus::Error::MethodError(name, _, _) => match name.as_str() {
-            "org.freedesktop.DBus.Error.AccessDenied" => BackendError::Denied,
-            "org.freedesktop.DBus.Error.InvalidArgs" => BackendError::Invalid,
-            _ => BackendError::Unavailable,
-        },
+        zbus::Error::MethodError(name, _, _) => error_for_name(name.as_str()),
         zbus::Error::FDO(e) => match **e {
             zbus::fdo::Error::AccessDenied(_) => BackendError::Denied,
             zbus::fdo::Error::InvalidArgs(_) => BackendError::Invalid,
@@ -91,3 +110,6 @@ impl Backend for DbusBackend {
         .map_err(|e| map_error(&e))
     }
 }
+
+#[cfg(test)]
+mod tests;

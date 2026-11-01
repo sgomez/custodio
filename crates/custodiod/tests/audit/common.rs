@@ -19,7 +19,10 @@ pub const RSA_SENTINEL_P12: &[u8] = include_bytes!("../fixtures/rsa2048-sentinel
 pub const SENTINEL_PASSWORD: &str = "P@ss-sentinel-7f3a91c4";
 pub const CKM_RSA_PKCS: u32 = 0x0001;
 pub const CKM_ECDSA: u32 = 0x1041;
-pub const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+pub use custodio_client::{
+    ERROR_AUDIT_UNAVAILABLE as ERR_AUDIT, ERROR_AUTHORIZATION_UNAVAILABLE as ERR_AUTH,
+    ERROR_POLKIT_DENIED as ERR_DENIED,
+};
 
 /// SHA-256 `DigestInfo` prefix.
 const SHA256_PREFIX: [u8; 19] = [

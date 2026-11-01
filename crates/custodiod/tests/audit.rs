@@ -21,8 +21,8 @@ use zbus::{Connection, block_on};
 
 use bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use common::{
-    ACCESS_DENIED, CKM_ECDSA, CKM_RSA_PKCS, EC_P12, MissingPid, NoCredentials, RSA_P12, Recording,
-    Reply, assert_entry, digest, digest_info, fixture, import, pidfd, uid,
+    CKM_ECDSA, CKM_RSA_PKCS, EC_P12, ERR_AUDIT, ERR_AUTH, ERR_DENIED, MissingPid, NoCredentials,
+    RSA_P12, Recording, Reply, assert_entry, digest, digest_info, fixture, import, pidfd, uid,
 };
 
 const ECDSA: AuditMechanism = AuditMechanism::Ecdsa;
@@ -115,7 +115,7 @@ fn outcome_denied() -> TestResult {
             let f = fixture(answer, &sink).await?;
             // No key file: a read would give `SigningFailed`, not `Denied`.
             let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-            assert_eq!(error_name(&err), ACCESS_DENIED);
+            assert_eq!(error_name(&err), ERR_DENIED);
             let entries = sink.entries();
             assert_eq!(entries.len(), 1);
             assert_entry(
@@ -136,11 +136,11 @@ fn outcome_authorization_unavailable() -> TestResult {
         let sink = Arc::new(MemorySink::default());
         let f = fixture(Answer::Fail, &sink).await?;
         let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERR_AUTH);
         // polkit is not on the bus.
         f.polkit.release_name("org.freedesktop.PolicyKit1").await?;
         let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERR_AUTH);
         let entries = sink.entries();
         assert_eq!(entries.len(), 2);
         for e in &entries {
@@ -234,7 +234,7 @@ fn failing_sink_withholds_the_signature() -> TestResult {
         )
         .await;
         let err = reply.err().ok_or("a reply came back")?;
-        assert_eq!(error_name(&err), "org.freedesktop.DBus.Error.Failed");
+        assert_eq!(error_name(&err), ERR_AUDIT);
         let text = format!("{err:?} {err}");
         assert!(text.contains("audit unavailable"));
         for value in [&signature, &data] {
@@ -298,7 +298,7 @@ fn credentials_unavailable_refuses_and_records() -> TestResult {
         let f = Fixture::start(Answer::Yes, |_: &Connection| NoCredentials, sink.clone()).await?;
         // The key file is absent: no key is read.
         let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERR_AUTH);
         assert_eq!(f.asked(), Vec::<String>::new());
         let entries = sink.entries();
         assert_eq!(entries.len(), 1);
@@ -313,7 +313,7 @@ fn credentials_unavailable_refuses_and_records() -> TestResult {
         let sink = Arc::new(MemorySink::default());
         let f = Fixture::start(Answer::Yes, |_: &Connection| MissingPid, sink.clone()).await?;
         let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERR_AUTH);
         assert_eq!(f.asked(), Vec::<String>::new());
         let entries = sink.entries();
         assert_eq!(entries.len(), 1);
@@ -337,7 +337,7 @@ fn refused_for_process_fd(
             Fixture::start(Answer::Yes, move |_: &Connection| Reply(edit), sink.clone()).await?;
         import(&f, "ec", EC_P12).await?;
         let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERR_AUTH);
         assert_eq!(f.asked(), Vec::<String>::new());
         let [e] = sink
             .entries()
@@ -449,7 +449,7 @@ fn assert_refused_like_missing(
 ) -> TestResult {
     let missing = refusal_with(|_| {})?;
     let got = refusal_with(mismatch)?;
-    assert_eq!(got.0, ACCESS_DENIED);
+    assert_eq!(got.0, ERR_AUTH);
     assert_eq!(got.0, missing.0, "error name");
     assert_eq!(got.1, missing.1, "error message");
     assert_eq!(got.2, Vec::<String>::new(), "polkit was asked");

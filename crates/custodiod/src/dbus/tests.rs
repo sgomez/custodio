@@ -119,21 +119,6 @@ fn import_request_debug_shows_id() -> Result<(), RequestError> {
     Ok(())
 }
 
-#[test]
-fn store_errors_map_to_distinct_dbus_errors() {
-    assert!(matches!(
-        store_error(&StoreError::InvalidId),
-        fdo::Error::InvalidArgs(_)
-    ));
-    let msg = |e: StoreError| match store_error(&e) {
-        fdo::Error::Failed(m) => m,
-        other => format!("unexpected {other:?}"),
-    };
-    assert_eq!(msg(StoreError::AlreadyExists), "key already exists");
-    assert_eq!(msg(StoreError::NotFound), "no such key");
-    assert_eq!(msg(StoreError::TooLarge), "key store error");
-}
-
 mod sign_call {
     use std::future::{Future, ready};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -198,20 +183,11 @@ mod sign_call {
         })
     }
 
-    fn err_name(e: &fdo::Error) -> &str {
-        match e {
-            fdo::Error::AccessDenied(_) => "denied",
-            fdo::Error::Failed(_) => "failed",
-            fdo::Error::InvalidArgs(_) => "invalid",
-            _ => "other",
-        }
-    }
-
     #[test]
     fn sign_without_sender_records_unavailable() -> Result<(), Box<dyn std::error::Error>> {
         let r = rig(|| Ok(()))?;
         let got = zbus::block_on(r.service.sign_call(None, "k", CKM_ECDSA, 0, 0, b"x"));
-        assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+        assert_eq!(got, Err(ServiceError::AuthorizationUnavailable));
         assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
         assert_eq!(r.cred_calls.load(Ordering::SeqCst), 0);
         let entries = r.sink.entries();
@@ -235,7 +211,7 @@ mod sign_call {
                 r.service
                     .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
             );
-            assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+            assert_eq!(got, Err(ServiceError::AuthorizationUnavailable));
             let entries = r.sink.entries();
             let e = entries.first().ok_or("no entry")?;
             assert_eq!(entries.len(), 1);
@@ -252,7 +228,7 @@ mod sign_call {
             r.service
                 .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
         );
-        assert_eq!(got.as_ref().map_err(err_name), Err("denied"));
+        assert_eq!(got, Err(ServiceError::PolkitDenied));
         let r2 = rig(|| Ok(()))?;
         let got = zbus::block_on(
             r2.service
@@ -278,7 +254,7 @@ mod sign_call {
             r.service
                 .sign_call(Some(":1.1"), "a/b", CKM_ECDSA, 0, 0, b"x"),
         );
-        assert_eq!(got.as_ref().map_err(err_name), Err("invalid"));
+        assert_eq!(got, Err(ServiceError::InvalidArgs));
         assert_eq!(r.cred_calls.load(Ordering::SeqCst), 0);
         assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
         Ok(())
@@ -287,7 +263,7 @@ mod sign_call {
     #[test]
     fn sign_with_unconstructible_key_id_is_refused() {
         let got = audit_parts("bad/id", &Mechanism::Ecdsa);
-        assert_eq!(got.as_ref().map_err(err_name).err(), Some("failed"));
+        assert_eq!(got.as_ref().err(), Some(&ServiceError::AuditUnavailable));
         let ok = audit_parts("good", &Mechanism::RsaPkcs).map(|(k, m)| (k.as_str().to_owned(), m));
         assert_eq!(ok.ok(), Some(("good".to_owned(), AuditMechanism::RsaPkcs)));
     }
@@ -306,7 +282,7 @@ mod sign_call {
             Arc::new(FailingSink),
         );
         let got = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
-        assert_eq!(got.as_ref().map_err(err_name), Err("failed"));
+        assert_eq!(got, Err(ServiceError::AuditUnavailable));
         Ok(())
     }
 }

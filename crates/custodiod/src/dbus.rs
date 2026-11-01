@@ -7,16 +7,17 @@ use std::fmt;
 use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretString};
+use zbus::interface;
 use zbus::message::Header;
-use zbus::{fdo, interface};
 
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
+use crate::error::ServiceError;
 use crate::import::{KeyKind, MAX_P12_LEN, cert_id, import_p12};
 use crate::offload::run_on_thread;
 use crate::polkit::{AuthError, Authorizer};
-use crate::sign::{Mechanism, PssHash, SignError, sign};
-use crate::store::{KeyStore, StoreError};
+use crate::sign::{Mechanism, PssHash, sign};
+use crate::store::KeyStore;
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 
@@ -166,20 +167,6 @@ pub fn parse_import_request(
     })
 }
 
-fn invalid(e: &RequestError) -> fdo::Error {
-    fdo::Error::InvalidArgs(e.to_string())
-}
-
-/// Store errors go to the caller without paths.
-fn store_error(e: &StoreError) -> fdo::Error {
-    match e {
-        StoreError::InvalidId => fdo::Error::InvalidArgs("invalid key id".into()),
-        StoreError::AlreadyExists => fdo::Error::Failed("key already exists".into()),
-        StoreError::NotFound => fdo::Error::Failed("no such key".into()),
-        _ => fdo::Error::Failed("key store error".into()),
-    }
-}
-
 fn kind_name(kind: KeyKind) -> &'static str {
     match kind {
         KeyKind::Rsa2048 => "rsa2048",
@@ -187,14 +174,9 @@ fn kind_name(kind: KeyKind) -> &'static str {
     }
 }
 
-/// Why a signature was refused without a reason the caller may know.
-fn audit_unavailable() -> fdo::Error {
-    fdo::Error::Failed("audit unavailable".into())
-}
-
 /// The key id and mechanism for the audit entry of a checked request.
-fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), fdo::Error> {
-    let key_id = KeyId::new(id).map_err(|_| audit_unavailable())?;
+fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), ServiceError> {
+    let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
     Ok((key_id, AuditMechanism::from(mechanism)))
 }
 
@@ -229,7 +211,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// that fails nothing is returned but an error.
     ///
     /// # Errors
-    /// A D-Bus error for a refused or failed call, `Failed("audit unavailable")` if the entry could
+    /// A D-Bus error for a refused or failed call, [`ServiceError::AuditUnavailable`] if the entry could
     /// not be recorded.
     pub async fn sign_call(
         &self,
@@ -239,9 +221,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         hash: u32,
         salt_len: u32,
         data: &[u8],
-    ) -> fdo::Result<Vec<u8>> {
-        let request =
-            parse_sign_request(id, mechanism, hash, salt_len, data).map_err(|e| invalid(&e))?;
+    ) -> Result<Vec<u8>, ServiceError> {
+        let request = parse_sign_request(id, mechanism, hash, salt_len, data)
+            .map_err(|e| ServiceError::from(&e))?;
         let (key_id, audit_mechanism) = audit_parts(&request.id, &request.mechanism)?;
         let (outcome, caller, result) = self.attempt(sender, &request, data).await;
         let entry = match caller {
@@ -251,7 +233,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record(&entry)).await {
             Some(Ok(())) => result,
-            _ => Err(audit_unavailable()),
+            _ => Err(ServiceError::AuditUnavailable),
         }
     }
 
@@ -261,8 +243,8 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         sender: Option<&str>,
         request: &SignRequest,
         data: &[u8],
-    ) -> (Outcome, Option<Caller>, fdo::Result<Vec<u8>>) {
-        let unavailable = || fdo::Error::AccessDenied("authorization unavailable".into());
+    ) -> (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>) {
+        let unavailable = || ServiceError::AuthorizationUnavailable;
         let Some(sender) = sender else {
             return (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
         };
@@ -272,8 +254,11 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         match self.authorizer.authorize(sender).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
-                let denied = fdo::Error::AccessDenied("not authorized".into());
-                return (Outcome::Denied, Some(caller), Err(denied));
+                return (
+                    Outcome::Denied,
+                    Some(caller),
+                    Err(ServiceError::PolkitDenied),
+                );
             }
             Err(AuthError::BadSender | AuthError::Unavailable(_)) => {
                 let outcome = Outcome::AuthorizationUnavailable;
@@ -283,14 +268,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let signed = self
             .store
             .get(&request.id)
-            .map_err(|e| store_error(&e))
+            .map_err(|e| ServiceError::from(&e))
             .and_then(|key| {
-                sign(&key, request.mechanism, data).map_err(|e| match e {
-                    SignError::BadData | SignError::MechanismMismatch => {
-                        fdo::Error::InvalidArgs(e.to_string())
-                    }
-                    SignError::BadKey | SignError::Failed => fdo::Error::Failed(e.to_string()),
-                })
+                sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
             });
         let outcome = if signed.is_ok() {
             Outcome::Signed
@@ -308,8 +288,8 @@ where
     C: CallerCredentials + Send + Sync + 'static,
 {
     /// Ids of the stored keys.
-    fn list_keys(&self) -> fdo::Result<Vec<String>> {
-        let ids = self.store.list().map_err(|e| store_error(&e))?;
+    fn list_keys(&self) -> Result<Vec<String>, ServiceError> {
+        let ids = self.store.list().map_err(|e| ServiceError::from(&e))?;
         Ok(ids
             .into_iter()
             .filter(|i| !i.ends_with(CERT_SUFFIX))
@@ -317,8 +297,8 @@ where
     }
 
     /// `(key id, DER certificate)` for every key that has a certificate.
-    fn list_certificates(&self) -> fdo::Result<Vec<(String, Vec<u8>)>> {
-        let ids = self.store.list().map_err(|e| store_error(&e))?;
+    fn list_certificates(&self) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+        let ids = self.store.list().map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
         for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
             if let Ok(cert) = self.store.get(&cert_id(id)) {
@@ -331,10 +311,11 @@ where
     /// Imports a `.p12` as key `id`; returns the key type.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
-    fn import_p12(&self, id: &str, p12: Vec<u8>, password: &str) -> fdo::Result<String> {
-        let request = parse_import_request(id, &p12, password).map_err(|e| invalid(&e))?;
+    fn import_p12(&self, id: &str, p12: Vec<u8>, password: &str) -> Result<String, ServiceError> {
+        let request =
+            parse_import_request(id, &p12, password).map_err(|e| ServiceError::from(&e))?;
         let kind = import_p12(&self.store, &request.id, &p12, &request.password)
-            .map_err(|e| fdo::Error::Failed(e.to_string()))?;
+            .map_err(|e| ServiceError::from(&e))?;
         Ok(kind_name(kind).to_owned())
     }
 
@@ -347,7 +328,7 @@ where
         hash: u32,
         salt_len: u32,
         data: Vec<u8>,
-    ) -> fdo::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>, ServiceError> {
         self.sign_call(
             header.sender().map(zbus::names::UniqueName::as_str),
             &id,

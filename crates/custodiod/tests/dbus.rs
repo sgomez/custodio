@@ -24,7 +24,7 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 const P256_P12: &[u8] = include_bytes!("fixtures/p256.p12");
 const PASSWORD: &str = "test-password";
-const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+use custodio_client::{ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_INVALID_ARGS, ERROR_POLKIT_DENIED};
 
 struct Bus {
     child: Child,
@@ -250,7 +250,7 @@ fn denial_returns_an_error_and_no_signature() -> TestResult {
         f.approve.store(false, Ordering::SeqCst);
         let err = f.sign("alice", CKM_ECDSA, &[7u8; 32]).await.err();
         let err = err.ok_or("denied sign returned a signature")?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERROR_POLKIT_DENIED);
         assert_eq!(f.asked().len(), 1);
         Ok(())
     })
@@ -264,7 +264,7 @@ fn polkit_missing_is_a_refusal() -> TestResult {
         f.polkit.release_name("org.freedesktop.PolicyKit1").await?;
         let err = f.sign("alice", CKM_ECDSA, &[7u8; 32]).await.err();
         let err = err.ok_or("sign succeeded without polkit")?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERROR_AUTHORIZATION_UNAVAILABLE);
         Ok(())
     })
 }
@@ -297,11 +297,7 @@ fn bad_arguments_are_rejected_before_polkit() -> TestResult {
         ] {
             let err = f.sign(id, mechanism, &[7u8; 32]).await.err();
             let err = err.ok_or("bad request succeeded")?;
-            assert_eq!(
-                error_name(&err),
-                "org.freedesktop.DBus.Error.InvalidArgs",
-                "{id}"
-            );
+            assert_eq!(error_name(&err), ERROR_INVALID_ARGS, "{id}");
         }
         // A mechanism that does not fit the key is refused after approval, with no signature.
         assert!(f.sign("alice", CKM_RSA_PKCS, &[7u8; 32]).await.is_err());

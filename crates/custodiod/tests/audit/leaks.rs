@@ -133,7 +133,7 @@ fn rejected_id_is_not_copied() -> TestResult {
                 .await
                 .err()
                 .ok_or("signed")?;
-            assert_eq!(error_name(&err), "org.freedesktop.DBus.Error.InvalidArgs");
+            assert_eq!(error_name(&err), custodio_client::ERROR_INVALID_ARGS);
         }
         assert_eq!(f.asked(), Vec::<String>::new());
         for entry in sink.entries() {
