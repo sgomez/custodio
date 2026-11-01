@@ -8,6 +8,9 @@ mod bus;
 #[allow(dead_code, unused_imports)]
 #[path = "audit/common.rs"]
 mod common;
+#[allow(dead_code, unused_imports)]
+#[path = "audit/deadline.rs"]
+mod deadline;
 
 use std::collections::HashMap;
 use std::future::{Future, ready};
@@ -148,10 +151,12 @@ impl Rig {
 }
 
 async fn delete(c: &Connection, id: &str) -> Result<(), String> {
-    call(c, "DeleteKey", &(id,))
-        .await
-        .map(|_| ())
-        .map_err(|e| error_name(&e))
+    let body = (id,);
+    let pending = call(c, "DeleteKey", &body);
+    match deadline::within(std::time::Duration::from_secs(15), pending).await {
+        Some(reply) => reply.map(|_| ()).map_err(|e| error_name(&e)),
+        None => Err("DeleteKey did not return".to_owned()),
+    }
 }
 
 async fn list(c: &Connection) -> zbus::Result<Listed> {
@@ -407,26 +412,38 @@ fn delete_store_failures() -> TestResult {
             *r.f.hook.lock().unwrap_or_else(PoisonError::into_inner) = None;
             std::fs::set_permissions(&area, std::fs::Permissions::from_mode(0o700))?;
             assert_eq!(snapshot(&area)?, before);
-            assert_eq!(sign_err(r.a(), "k").await, "ok");
+            // The entry already said `deleted`, so the key stays unusable although its files are
+            // all still there (`delete_removal_failure_keeps_key_unusable` in `delete_audit.rs`).
+            assert_eq!(sign_err(r.a(), "k").await, ERROR_NO_SUCH_KEY);
+            assert_eq!(listed_ids(r.a()).await?, NONE);
+            // Take the files away by hand, so the next part starts from a clean area.
+            std::fs::remove_file(area.join("k"))?;
+            std::fs::remove_file(area.join("k-cert"))?;
         }
+        r.import(r.a(), "m", EC_P12, Answer::Yes).await?;
         // The certificate is replaced by a directory while polkit answers: the key goes, the
         // certificate cannot.
-        let cert = area.join("k-cert");
+        let cert = area.join("m-cert");
         let c = cert.clone();
         r.f.on_request(move || {
             let _ = std::fs::remove_file(&c);
             let _ = std::fs::create_dir(&c);
         });
         r.forget_asks();
-        assert_eq!(delete(r.a(), "k").await, Err(ERROR_INTERNAL.to_owned()));
+        assert_eq!(delete(r.a(), "m").await, Err(ERROR_INTERNAL.to_owned()));
         *r.f.hook.lock().unwrap_or_else(PoisonError::into_inner) = None;
-        assert_eq!(names(&area)?, ["k-cert"]);
-        assert_eq!(sign_err(r.a(), "k").await, ERROR_NO_SUCH_KEY);
+        let left: Vec<_> = names(&area)?
+            .into_iter()
+            .filter(|n| n.starts_with('m'))
+            .collect();
+        assert_eq!(left, ["m-cert"]);
+        assert_eq!(sign_err(r.a(), "m").await, ERROR_NO_SUCH_KEY);
         assert_eq!(listed_ids(r.a()).await?, NONE);
-        // Not a plain file: never touched, the id stays taken.
-        assert_eq!(delete(r.a(), "k").await, Err(ERROR_INTERNAL.to_owned()));
+        // The key is unusable for good (its entry said `deleted`), so a second delete finds
+        // nothing. The directory is never touched and the id stays taken.
+        assert_eq!(delete(r.a(), "m").await, Err(ERROR_NO_SUCH_KEY.to_owned()));
         assert!(cert.is_dir());
-        let again = call(r.a(), "ImportP12", &("k", EC_P12.to_vec(), PASSWORD)).await;
+        let again = call(r.a(), "ImportP12", &("m", EC_P12.to_vec(), PASSWORD)).await;
         assert_eq!(
             again.map_err(|e| error_name(&e)).err(),
             Some(ERROR_KEY_ID_TAKEN.to_owned())

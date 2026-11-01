@@ -130,9 +130,11 @@ impl FakePolkit {
         if let Some(hook) = hook {
             hook();
         }
-        let wanted = self.hold.load(Ordering::SeqCst);
         let start = Instant::now();
-        while wanted > 0 && self.asked.lock().map_or(0, |a| a.len()) < wanted {
+        // `hold` is read again at every turn, so a test can let a held request go by setting it to 0.
+        while self.hold.load(Ordering::SeqCst) > 0
+            && self.asked.lock().map_or(0, |a| a.len()) < self.hold.load(Ordering::SeqCst)
+        {
             if start.elapsed() > HOLD_LIMIT {
                 return Err(zbus::fdo::Error::Failed("held too long".into()));
             }

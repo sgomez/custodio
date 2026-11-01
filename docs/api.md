@@ -63,18 +63,26 @@ The order is fixed: (1) `id` is checked against the bounds below (`InvalidArgs`)
 (`AuthorizationUnavailable`); (3) the id is looked up among the caller's keys only: a missing id and another user's
 id both fail as `NoSuchKey`, with no polkit call; (4) polkit is asked once, with `AllowUserInteraction`, under the
 action `com.rfirma.custodio.delete-certificate` (`PolkitDenied`, or `AuthorizationUnavailable` if polkit cannot be
-asked); (5) the key file is removed, then the certificate. Every call asks again; nothing is cached. A denied or
-unavailable polkit leaves the key and the certificate in place. This document says nothing about journal entries
-for `DeleteKey`.
+asked); (5) the key is made unusable, the journal entry is submitted, and only then the key file is removed, then
+the certificate. Every call asks again; nothing is cached. A denied or unavailable polkit leaves the key and the
+certificate in place. Once polkit has been asked (and also when the caller is unknown, once `id` is valid) the call
+leaves exactly one entry, whatever the outcome. If the entry cannot be submitted the call fails as
+`AuditUnavailable` and the key is as it was: listed, signing, both files untouched. While the entry is pending
+`Sign` and a second `DeleteKey` fail as `NoSuchKey`, `ListKeys` omits the id and `ImportP12` of it still fails as
+`KeyIdTaken`.
 
 The key goes first, so a failure never leaves a key without its certificate. If the key could not be removed,
 both files stay and the call fails as `Internal`. If the certificate could not be removed after the key went, the
 call fails as `Internal`; the id is no longer listed and `Sign` fails as `NoSuchKey`, but a leftover certificate
 still counts as taken for `ImportP12`. Calling `DeleteKey` again for that id removes the leftover certificate (a
 certificate without a key is found by the lookup). Anything in the area that is not a plain file of the service
-is never touched; such an entry keeps the id taken until an administrator removes it.
+is never touched; such an entry keeps the id taken until an administrator removes it. A key whose removal failed
+after the entry went out stays unusable (not listed, `NoSuchKey` for `Sign` and `DeleteKey`) until the service
+restarts, though its files may still be there.
 
-Of two simultaneous deletes of one id exactly one succeeds and the other fails as `NoSuchKey`. A `Sign` that
+Deletes of one id run one at a time, from the lookup to the end: the second one waits, and asks polkit only if the
+key is still there once the first has finished. Of two simultaneous deletes of one id exactly one succeeds and the
+other fails as `NoSuchKey`. A `Sign` that
 already found the key when the delete finishes completes with it; one that looks up later fails as `NoSuchKey`.
 
 - in `id`: `s`
@@ -110,7 +118,7 @@ Every failure is one of these names, with a fixed message that repeats nothing t
   `.p12` with no private key, several private keys, or a key without a certificate.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key.
-- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again).
+- error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored).
 - error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file).
 
 ## Polkit actions

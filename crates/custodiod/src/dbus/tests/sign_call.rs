@@ -8,8 +8,8 @@ use crate::import::import_p12;
 use crate::store::StoreError;
 
 pub(super) struct Counting {
-    result: fn() -> Result<(), AuthError>,
-    calls: Arc<AtomicUsize>,
+    pub(super) result: fn() -> Result<(), AuthError>,
+    pub(super) calls: Arc<AtomicUsize>,
 }
 
 impl Authorizer for Counting {
@@ -19,7 +19,7 @@ impl Authorizer for Counting {
     }
 }
 
-pub(super) struct Creds(Arc<AtomicUsize>);
+pub(super) struct Creds(pub(super) Arc<AtomicUsize>);
 
 impl CallerCredentials for Creds {
     fn credentials(

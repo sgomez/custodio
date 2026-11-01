@@ -230,3 +230,19 @@ with an empty context.
 - `justfile` `mutants` now also lists `dbus/delete.rs`. Note: `mutants-diff` only sees new files after `git add -N`.
 - Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F76`: 18 caught, 1 unviable, none missed.
 - Next session should: nothing for F76. F77 writes the delete journal entry.
+
+### 2026-11-01 — F77 — attempt 1
+- Done: `delete_call` leaves one `OperationEntry::delete` once polkit was asked (`deleted`, `denied`, `authorization_unavailable`), and without caller (no uid/pid, no polkit) for a missing
+  sender/failed credentials; none for `InvalidArgs`/`NoSuchKey`. Order after approval: mark unusable → submit (worker thread) → remove key, then certificate. Sink failure (any outcome) → `AuditUnavailable`,
+  mark undone, files untouched. Removal failure after the entry → `Internal`, the mark stays for the life of the process. `StorageFailure` of `DeleteOutcome` is reserved (doc comment, docs, doc test).
+- New `src/dbus/delete_state.rs` (+ `delete_state/tests.rs`): in-memory unusable set and a small async per-(owner, id) lock (no async-lock dependency exists; wakers, entry removed on release so the table does not
+  grow). `Sign` (after credentials) and `ListKeys` honour the mark; `delete_call` checks it before and after taking the lock, so a delete during a pending entry gets `NoSuchKey` at once while a delete
+  waiting on polkit waits. `ImportP12` still sees the files, so `KeyIdTaken`. Mark is cleared after a successful removal (the id is free again).
+- Tests: `tests/delete_audit.rs` (+ `delete_audit/order.rs`, `concurrent.rs`): one test per Evidence row; `TestSink` fails, counts attempts (evaluator note), and can block. Unit tests in `dbus/tests/delete_call.rs`.
+  Evaluator notes taken: lock released on denied/unavailable/sink failure/removal failure (a later delete does not hang), `ImportP12` after restore gives `KeyIdTaken`, table empties (unit test).
+- Adapted, not weakened: `tests/delete.rs` (a failed removal now leaves the key unusable; second delete is `NoSuchKey`), `concurrent_deletes_one_wins` → `concurrent_deletes_run_one_at_a_time` (the second delete no longer reaches polkit).
+  `tests/audit/bus.rs`: the polkit double re-reads `hold` so a test can release a held request. `tests/audit/deadline.rs`: delete helpers fail after 15 s instead of hanging (a leaked lock otherwise
+  times out cargo-mutants); the unit tests exit the process after 20 s for the same reason. `justfile` mutants also lists `dbus/delete_state.rs`.
+- Docs: `docs/audit.md` (delete section, "Not guaranteed" crash case), `docs/api.md` (`DeleteKey` order, `AuditUnavailable`); doc tests added.
+- Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F77`: 27 caught, 10 unviable, none missed.
+- Next session should: nothing for F77.

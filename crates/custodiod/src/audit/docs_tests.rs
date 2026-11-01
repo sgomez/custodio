@@ -461,3 +461,49 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
     assert!(seen >= 8);
     Ok(())
 }
+
+#[test]
+fn delete_order_and_outcomes_documented() -> TestResult {
+    let text = docs()?;
+    let section = text
+        .split("### delete")
+        .nth(1)
+        .and_then(|s| s.split("### replace_certificate").next())
+        .ok_or("no delete section")?;
+    let flat = section.split_whitespace().collect::<Vec<_>>().join(" ");
+    for statement in [
+        "the key was made unusable and this entry submitted before any file was removed",
+        "| `storage_failure` | 3 | Reserved: delete never emits it |",
+        "Delete never emits `storage_failure`",
+        "first made unusable",
+        "then the entry is submitted, and only then are the files removed",
+        "the key is restored",
+        "`AuditUnavailable`",
+        "never lacks an entry",
+        "A crash between the entry and the removal",
+        "stays unusable until the service restarts",
+        "leaves no entry",
+    ] {
+        assert!(flat.contains(statement), "missing: {statement}");
+    }
+    assert!(text.contains("**A crash during a delete.**"));
+    Ok(())
+}
+
+#[test]
+fn api_describes_the_delete_entry() -> TestResult {
+    let text = read("docs/api.md")?;
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    for statement in [
+        "the key is made unusable, the journal entry is submitted, and only then the key file is removed",
+        "leaves exactly one entry",
+        "the call fails as `AuditUnavailable` and the key is as it was",
+        "`ImportP12` of it still fails as `KeyIdTaken`",
+        "stays unusable (not listed, `NoSuchKey` for `Sign` and `DeleteKey`) until the service restarts",
+        "Deletes of one id run one at a time",
+    ] {
+        assert!(flat.contains(statement), "missing: {statement}");
+    }
+    assert!(!flat.contains("says nothing about journal entries"));
+    Ok(())
+}

@@ -112,7 +112,8 @@ pub enum DeleteOutcome {
     Denied,
     /// polkit could not decide, or the caller was unknown.
     AuthorizationUnavailable,
-    /// Approved, but the key could not be removed.
+    /// Reserved: delete never emits it. The entry goes out before the files are removed, so a
+    /// removal that fails afterwards cannot change what it says.
     StorageFailure,
 }
 

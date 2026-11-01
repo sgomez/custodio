@@ -75,10 +75,21 @@ data or a signature.
 
 | Outcome | Priority | Meaning |
 |---|---|---|
-| `deleted` | 6 | Authorized and removed |
+| `deleted` | 6 | Authorized; the key was made unusable and this entry submitted before any file was removed |
 | `denied` | 5 | polkit denied the request |
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was deleted |
-| `storage_failure` | 3 | Authorized, but the key could not be removed |
+| `storage_failure` | 3 | Reserved: delete never emits it |
+
+A delete that reaches polkit leaves exactly one entry. After an approval the order is fixed: the key is
+first made unusable (`Sign` then fails as `NoSuchKey`, and `ListKeys` omits it), then the entry is
+submitted, and only then are the files removed. If the entry cannot be submitted, the key is restored
+(listed, signs, both files untouched) and the call fails as `AuditUnavailable`; this holds for every
+outcome. A deleted key therefore never lacks an entry. Delete never emits `storage_failure`: the entry is
+submitted before the removal, so a removal that fails afterwards (`Internal`) cannot change it. The key then
+stays unusable until the service restarts, because an entry already said `deleted`. A crash between the
+entry and the removal leaves the files in place with a `deleted` entry; this is accepted, see "Not
+guaranteed". A call that fails before polkit is asked (invalid id, no such key) leaves no entry. Deletes of
+one key run one at a time.
 
 ### replace_certificate
 
@@ -188,6 +199,9 @@ journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OUTCOM
 
 ## Not guaranteed
 
+- **A crash during a delete.** The `deleted` entry is submitted before the files are removed. If
+  the service dies between the two, the key is still stored although an entry says `deleted`.
+  Removal after the entry is the choice that keeps a deleted key from ever lacking one.
 - **Identity of a person.** `CUSTODIO_UID` and `CUSTODIO_PID` name the calling process only.
   They do not say who sat at the keyboard, and a shared account looks like one user.
 - **Pid reuse.** A process id is reused after the process exits; `CUSTODIO_PID` may no longer

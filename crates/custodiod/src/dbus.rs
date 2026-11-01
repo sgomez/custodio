@@ -190,6 +190,7 @@ pub struct Custodio<A, C> {
     credentials: C,
     sink: Arc<dyn AuditSink>,
     decoder: Arc<dyn P12Decoder>,
+    deletes: delete_state::DeleteState,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -206,6 +207,7 @@ impl<A, C> Custodio<A, C> {
             credentials,
             sink,
             decoder: Arc::new(RealDecoder),
+            deletes: delete_state::DeleteState::default(),
         }
     }
 
@@ -277,7 +279,11 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let owner = self.owner(sender).await?;
         let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
-        for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
+        // A key a delete has made unusable is not listed, whatever is still on disk.
+        let listed = ids
+            .iter()
+            .filter(|i| !i.ends_with(CERT_SUFFIX) && !self.deletes.is_unusable(owner, i));
+        for id in listed {
             let key = self
                 .store
                 .get(owner, id)
@@ -321,6 +327,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         };
         // Only the caller's own keys are looked at. Any other store failure is reported after
         // polkit, as a failed signature, as before.
+        if self.deletes.is_unusable(caller.uid, &request.id) {
+            return Ok(None);
+        }
         let key = match self.store.get(caller.uid, &request.id) {
             Err(StoreError::NotFound) => return Ok(None),
             other => other.map_err(|e| ServiceError::from(&e)),
@@ -434,6 +443,7 @@ where
 }
 
 mod delete;
+mod delete_state;
 mod import;
 #[cfg(test)]
 mod tests;
