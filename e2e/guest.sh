@@ -75,11 +75,8 @@ head -c 32 /dev/urandom > "$work/data.bin"
 for kind in rsa ec; do openssl x509 -in "$work/$kind.crt" -pubkey -noout > "$work/$kind.pub"; done
 chmod 644 "$work"/*
 
-# Import as the user, on a pseudo-terminal (the password is only read from /dev/tty).
-for k in rsa1 ec1; do
-    su -l alice -c "python3 -I /e2e/import.py $work/$k.p12 $k e2e-password" >/dev/null \
-        || fail "import of $k failed"
-done
+# Import as the user. Import asks polkit, so import-user.sh starts the test agent and approves in the same login session.
+su -l alice -c "WORK=$work bash /e2e/import-user.sh" || fail "import-user.sh failed"
 rm -f "$work"/*.key "$work"/*.p12
 
 if [ "$mode" = oldpath ]; then

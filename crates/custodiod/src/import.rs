@@ -151,10 +151,55 @@ pub fn check_archive(archive: &Pkcs12Archive) -> Result<ParsedP12, ImportError> 
     })
 }
 
-/// Parse a `.p12` and store, for `owner`, its key as `id` and its certificate as `<id>-cert`.
+/// Decodes a `.p12`. The service holds one; tests replace it to prove when it runs.
+pub trait P12Decoder: Send + Sync {
+    /// # Errors
+    /// See [`ImportError`].
+    fn decode(&self, data: &[u8], password: &SecretString) -> Result<ParsedP12, ImportError>;
+}
+
+/// The real decoder: [`parse_p12`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RealDecoder;
+
+impl P12Decoder for RealDecoder {
+    fn decode(&self, data: &[u8], password: &SecretString) -> Result<ParsedP12, ImportError> {
+        parse_p12(data, password)
+    }
+}
+
+/// Whether `owner` already has a key `id` (or a certificate entry of that name).
+///
+/// # Errors
+/// [`StoreError`] if the owner's area cannot be listed.
+pub fn id_taken(store: &KeyStore, owner: u32, id: &str) -> Result<bool, StoreError> {
+    let ids = store.list(owner)?;
+    Ok(ids.iter().any(|i| i == id || *i == cert_id(id)))
+}
+
+/// Store, for `owner`, the key of `parsed` as `id` and its certificate as `<id>-cert`.
 ///
 /// The certificate is written first: it is public, so a failure between the two writes leaves
 /// nothing sensitive behind.
+///
+/// # Errors
+/// See [`ImportError`].
+pub fn store_parsed(
+    store: &KeyStore,
+    owner: u32,
+    id: &str,
+    parsed: ParsedP12,
+) -> Result<KeyKind, ImportError> {
+    // Check up front so a refused key write cannot leave a certificate without a key behind.
+    if id_taken(store, owner, id)? {
+        return Err(StoreError::AlreadyExists.into());
+    }
+    store.put(owner, &cert_id(id), &SecretSlice::from(parsed.certificate))?;
+    store.put(owner, id, &parsed.key)?;
+    Ok(parsed.kind)
+}
+
+/// Parse a `.p12` and store it for `owner`: [`parse_p12`], then [`store_parsed`].
 ///
 /// # Errors
 /// See [`ImportError`].
@@ -165,15 +210,7 @@ pub fn import_p12(
     data: &[u8],
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
-    let parsed = parse_p12(data, password)?;
-    // Check up front so a refused key write cannot leave a certificate without a key behind.
-    let ids = store.list(owner)?;
-    if ids.iter().any(|i| i == id || *i == cert_id(id)) {
-        return Err(StoreError::AlreadyExists.into());
-    }
-    store.put(owner, &cert_id(id), &SecretSlice::from(parsed.certificate))?;
-    store.put(owner, id, &parsed.key)?;
-    Ok(parsed.kind)
+    store_parsed(store, owner, id, parse_p12(data, password)?)
 }
 
 /// Key store id of the certificate belonging to key `id`.

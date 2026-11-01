@@ -32,7 +32,15 @@ method for certificates.
 ### Method `ImportP12`
 
 Imports a `.p12` as key `id` of the caller; returns the key type. A different user may use the same `id`;
-`KeyIdTaken` is only for the caller's own ids. Needs no polkit authorization.
+`KeyIdTaken` is only for the caller's own ids.
+
+The order is fixed: (1) the arguments are checked against the bounds below (`InvalidArgs`); (2) the caller is
+identified; (3) the caller's own ids are checked (`KeyIdTaken`); (4) polkit is asked once, with
+`AllowUserInteraction`, under the action `com.rfirma.custodio.import-certificate` (`PolkitDenied`, or
+`AuthorizationUnavailable` if polkit cannot be asked); (5) only after approval is the `.p12` decoded with the
+password (`WrongPasswordOrBadP12`, `UnsupportedKeyType`, `CertificateMismatch`) and stored. So a wrong password
+is reported as `PolkitDenied` or `AuthorizationUnavailable` when polkit refuses, and the `.p12` is never opened
+without approval. Every call asks again; nothing is cached. A refused call changes nothing.
 
 - in `id`: `s`
 - in `p12`: `ay`
@@ -65,7 +73,7 @@ Every failure is one of these names, with a fixed message that repeats nothing t
   large.
 - error `com.rfirma.Custodio1.Error.NoSuchKey`: the caller has no key with this id (also another user's id).
 - error `com.rfirma.Custodio1.Error.KeyIdTaken`: `ImportP12` with an id the caller already uses.
-- error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the signature.
+- error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the call (`Sign` or `ImportP12`).
 - error `com.rfirma.Custodio1.Error.AuthorizationUnavailable`: polkit could not be asked or the caller could not
   be identified.
 - error `com.rfirma.Custodio1.Error.WrongPasswordOrBadP12`: the `.p12` did not open or is not usable, including a

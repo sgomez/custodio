@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use custodiod::audit::AuditSink;
 use custodiod::credentials::CallerCredentials;
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
+use custodiod::import::P12Decoder;
 use custodiod::polkit::PolkitAuthorizer;
 use custodiod::store::KeyStore;
 use zbus::connection::Builder;
@@ -59,6 +60,8 @@ pub enum Answer {
 pub struct FakePolkit {
     pub answer: Arc<Mutex<Answer>>,
     pub asked: Arc<Mutex<Vec<String>>>,
+    /// `(action id, flags)` of every request.
+    pub requests: Arc<Mutex<Vec<(String, u32)>>>,
 }
 
 #[interface(name = "org.freedesktop.PolicyKit1.Authority")]
@@ -73,7 +76,11 @@ impl FakePolkit {
         flags: u32,
         cancellation_id: String,
     ) -> zbus::fdo::Result<(bool, bool, HashMap<String, String>)> {
-        let _ = (action_id, details, flags, cancellation_id);
+        let _ = (details, cancellation_id);
+        self.requests
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((action_id, flags));
         let name = subject
             .1
             .get("name")
@@ -104,6 +111,9 @@ pub struct Fixture {
     pub client: Connection,
     pub answer: Arc<Mutex<Answer>>,
     pub asked: Arc<Mutex<Vec<String>>>,
+    // Read by `tests/import_polkit.rs`, which includes this file; the other test files do not need it.
+    #[allow(dead_code)]
+    pub requests: Arc<Mutex<Vec<(String, u32)>>>,
 }
 
 impl Fixture {
@@ -116,9 +126,23 @@ impl Fixture {
     where
         C: CallerCredentials + Send + Sync + 'static,
     {
+        Self::start_with(answer, credentials, sink, None).await
+    }
+
+    /// As [`Fixture::start`], with a replacement `.p12` decoder.
+    pub async fn start_with<C>(
+        answer: Answer,
+        credentials: impl FnOnce(&Connection) -> C,
+        sink: Arc<dyn AuditSink>,
+        decoder: Option<Arc<dyn P12Decoder>>,
+    ) -> Result<Self, Box<dyn Error>>
+    where
+        C: CallerCredentials + Send + Sync + 'static,
+    {
         let bus = Bus::start()?;
         let answer = Arc::new(Mutex::new(answer));
         let asked = Arc::new(Mutex::new(Vec::new()));
+        let requests = Arc::new(Mutex::new(Vec::new()));
         let polkit = bus.connect().await?;
         polkit
             .object_server()
@@ -127,6 +151,7 @@ impl Fixture {
                 FakePolkit {
                     answer: answer.clone(),
                     asked: asked.clone(),
+                    requests: requests.clone(),
                 },
             )
             .await?;
@@ -135,12 +160,15 @@ impl Fixture {
         let state = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(state.path().join("keys"))?);
         let service = bus.connect().await?;
-        let object = Custodio::new(
+        let mut object = Custodio::new(
             store.clone(),
             PolkitAuthorizer::new(service.clone()),
             credentials(&service),
             sink,
         );
+        if let Some(decoder) = decoder {
+            object = object.with_decoder(decoder);
+        }
         service.object_server().at(OBJECT_PATH, object).await?;
         service.request_name(BUS_NAME).await?;
         let client = bus.connect().await?;
@@ -153,6 +181,7 @@ impl Fixture {
             client,
             answer,
             asked,
+            requests,
         })
     }
 

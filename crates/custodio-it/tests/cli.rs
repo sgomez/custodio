@@ -241,11 +241,16 @@ impl Drop for Bus {
     }
 }
 
-struct Deny;
+/// Approves every call, as a person at the polkit prompt would.
+struct Approve;
 
-impl Authorizer for Deny {
-    fn authorize(&self, _sender: &str) -> impl Future<Output = Result<(), AuthError>> + Send {
-        std::future::ready(Err(AuthError::Denied))
+impl Authorizer for Approve {
+    fn authorize(
+        &self,
+        _sender: &str,
+        _action: &str,
+    ) -> impl Future<Output = Result<(), AuthError>> + Send {
+        std::future::ready(Ok(()))
     }
 }
 
@@ -257,7 +262,7 @@ fn serve(bus: &Bus, store: Arc<KeyStore>) -> Result<zbus::Connection, Box<dyn Er
                 OBJECT_PATH,
                 Custodio::new(
                     store,
-                    Deny,
+                    Approve,
                     BusCredentials::new(conn.clone()),
                     Arc::new(MemorySink::default()),
                 ),

@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
-use custodiod::polkit::{AuthError, Authorizer, PolkitAuthorizer};
+use custodiod::polkit::{ACTION_ID, AuthError, Authorizer, IMPORT_ACTION_ID, PolkitAuthorizer};
 use zbus::OwnedVariant;
 use zbus::connection::Builder;
 use zbus::{Connection, block_on, interface};
@@ -110,6 +110,11 @@ type Outcome = (Vec<Result<(), AuthError>>, Vec<Call>, String);
 
 /// Starts a bus with the fake authority, calls `authorize` from a second connection.
 fn run(answers: &[Answer]) -> Result<Outcome, Box<dyn Error>> {
+    run_for(answers, ACTION_ID)
+}
+
+/// As [`run`], asking under `action`.
+fn run_for(answers: &[Answer], action: &str) -> Result<Outcome, Box<dyn Error>> {
     let bus = Bus::start()?;
     block_on(async {
         let calls = Arc::new(Mutex::new(Vec::new()));
@@ -134,7 +139,7 @@ fn run(answers: &[Answer]) -> Result<Outcome, Box<dyn Error>> {
                 )
                 .await?;
             server.request_name("org.freedesktop.PolicyKit1").await?;
-            results.push(authorizer.authorize(&sender).await);
+            results.push(authorizer.authorize(&sender, action).await);
             drop(server);
         }
         let calls = calls.lock().map_err(|_| "poisoned")?.clone();
@@ -152,6 +157,24 @@ fn approval_passes_and_request_is_well_formed() -> TestResult {
             kind: "system-bus-name".into(),
             name: sender,
             action: "com.rfirma.custodio.sign".into(),
+            details: 0,
+            flags: 1,
+            cancellation_id: String::new(),
+        }]
+    );
+    Ok(())
+}
+
+#[test]
+fn import_request_names_the_import_action_with_interaction() -> TestResult {
+    let (results, calls, sender) = run_for(&[Answer::Yes], IMPORT_ACTION_ID)?;
+    assert!(matches!(results.as_slice(), [Ok(())]));
+    assert_eq!(
+        calls,
+        vec![Call {
+            kind: "system-bus-name".into(),
+            name: sender,
+            action: "com.rfirma.custodio.import-certificate".into(),
             details: 0,
             flags: 1,
             cancellation_id: String::new(),
@@ -191,7 +214,11 @@ fn no_polkit_on_the_bus_is_a_refusal() -> TestResult {
     let result = block_on(async {
         let client = bus.connect().await?;
         let sender = client.unique_name().ok_or("no name")?.to_string();
-        Ok::<_, Box<dyn Error>>(PolkitAuthorizer::new(client).authorize(&sender).await)
+        Ok::<_, Box<dyn Error>>(
+            PolkitAuthorizer::new(client)
+                .authorize(&sender, ACTION_ID)
+                .await,
+        )
     })?;
     assert!(matches!(result, Err(AuthError::Unavailable(_))));
     Ok(())
@@ -204,7 +231,7 @@ fn bad_sender_never_reaches_polkit() -> TestResult {
         let client = bus.connect().await?;
         Ok::<_, Box<dyn Error>>(
             PolkitAuthorizer::new(client)
-                .authorize("org.freedesktop.DBus")
+                .authorize("org.freedesktop.DBus", ACTION_ID)
                 .await,
         )
     })?;

@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn request_uses_system_bus_name_subject_and_interaction() -> Result<(), AuthError> {
-    let ((kind, details), action, extra, flags, cancel) = request(":1.42")?;
+    let ((kind, details), action, extra, flags, cancel) = request(":1.42", ACTION_ID)?;
     assert_eq!(kind, "system-bus-name");
     assert_eq!(details.len(), 1);
     assert_eq!(details.get("name"), Some(&Variant::from(":1.42")));
@@ -10,6 +10,14 @@ fn request_uses_system_bus_name_subject_and_interaction() -> Result<(), AuthErro
     assert!(extra.is_empty());
     assert_eq!(flags, 1);
     assert_eq!(cancel, "");
+    Ok(())
+}
+
+#[test]
+fn request_carries_the_given_action() -> Result<(), AuthError> {
+    let (_, action, _, flags, _) = request(":1.42", IMPORT_ACTION_ID)?;
+    assert_eq!(action, "com.rfirma.custodio.import-certificate");
+    assert_eq!(flags, 1);
     Ok(())
 }
 
@@ -22,7 +30,10 @@ fn non_unique_senders_are_rejected() {
         "1.42",
         ":",
     ] {
-        assert!(matches!(request(bad), Err(AuthError::BadSender)), "{bad}");
+        assert!(
+            matches!(request(bad, ACTION_ID), Err(AuthError::BadSender)),
+            "{bad}"
+        );
     }
 }
 

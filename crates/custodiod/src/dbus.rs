@@ -13,9 +13,11 @@ use zbus::message::Header;
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, MAX_P12_LEN, cert_id, classify, import_p12};
+use crate::import::{
+    KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify, id_taken, store_parsed,
+};
 use crate::offload::run_on_thread;
-use crate::polkit::{AuthError, Authorizer};
+use crate::polkit::{ACTION_ID, AuthError, Authorizer, IMPORT_ACTION_ID};
 use crate::sign::{Mechanism, PssHash, sign};
 use crate::store::{KeyStore, StoreError};
 
@@ -189,6 +191,7 @@ pub struct Custodio<A, C> {
     authorizer: A,
     credentials: C,
     sink: Arc<dyn AuditSink>,
+    decoder: Arc<dyn P12Decoder>,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -204,7 +207,15 @@ impl<A, C> Custodio<A, C> {
             authorizer,
             credentials,
             sink,
+            decoder: Arc::new(RealDecoder),
         }
+    }
+
+    /// Replaces the `.p12` decoder. Production uses the real parser; tests count the calls.
+    #[must_use]
+    pub fn with_decoder(mut self, decoder: Arc<dyn P12Decoder>) -> Self {
+        self.decoder = decoder;
+        self
     }
 }
 
@@ -287,10 +298,13 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(out)
     }
 
-    /// `ImportP12` after the bus handed over the sender.
+    /// `ImportP12` after the bus handed over the sender: arguments, credentials, whether the
+    /// caller already has the id, polkit (once, under the import action), and only then the
+    /// decoding of the `.p12` and the store.
     ///
     /// # Errors
-    /// A D-Bus error for bad arguments, an unknown caller or a failed import.
+    /// A D-Bus error for bad arguments, an unknown caller, a taken id, a refusal of polkit or a
+    /// failed import.
     pub async fn import_call(
         &self,
         sender: Option<&str>,
@@ -301,7 +315,20 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let request =
             parse_import_request(id, p12, password).map_err(|e| ServiceError::from(&e))?;
         let owner = self.owner(sender).await?;
-        let kind = import_p12(&self.store, owner, &request.id, p12, &request.password)
+        if id_taken(&self.store, owner, &request.id).map_err(|e| ServiceError::from(&e))? {
+            return Err(ServiceError::KeyIdTaken);
+        }
+        // `owner` succeeded, so there is a sender.
+        let sender = sender.ok_or(ServiceError::AuthorizationUnavailable)?;
+        self.authorizer
+            .authorize(sender, IMPORT_ACTION_ID)
+            .await
+            .map_err(|e| ServiceError::from(&e))?;
+        let parsed = self
+            .decoder
+            .decode(p12, &request.password)
+            .map_err(|e| ServiceError::from(&e))?;
+        let kind = store_parsed(&self.store, owner, &request.id, parsed)
             .map_err(|e| ServiceError::from(&e))?;
         Ok(kind_name(kind).to_owned())
     }
@@ -351,7 +378,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         data: &[u8],
     ) -> Attempt {
         let unavailable = || ServiceError::AuthorizationUnavailable;
-        match self.authorizer.authorize(sender).await {
+        match self.authorizer.authorize(sender, ACTION_ID).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
                 return (

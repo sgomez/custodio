@@ -2,7 +2,7 @@
 
 use std::error::Error;
 
-use custodiod::polkit::ACTION_ID;
+use custodiod::polkit::{ACTION_ID, DELETE_ACTION_ID, IMPORT_ACTION_ID, REPLACE_ACTION_ID};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -31,9 +31,9 @@ fn without_comments(xml: &str) -> String {
     out
 }
 
-const IMPORT_ID: &str = "com.rfirma.custodio.import-certificate";
-const DELETE_ID: &str = "com.rfirma.custodio.delete-certificate";
-const REPLACE_ID: &str = "com.rfirma.custodio.replace-certificate";
+const IMPORT_ID: &str = IMPORT_ACTION_ID;
+const DELETE_ID: &str = DELETE_ACTION_ID;
+const REPLACE_ID: &str = REPLACE_ACTION_ID;
 const OWNER: &str =
     "<annotate key=\"org.freedesktop.policykit.owner\">unix-user:custodio</annotate>";
 
@@ -195,4 +195,12 @@ fn every_action_is_owned_by_the_service_user() -> TestResult {
 fn owner_check_rejects_a_block_without_it() {
     assert!(check_owner(OWNER).is_ok());
     assert!(check_owner("<defaults/>").is_err());
+}
+
+#[test]
+fn constants_are_the_ids_of_the_policy_file() {
+    assert_eq!(ACTION_ID, "com.rfirma.custodio.sign");
+    assert_eq!(IMPORT_ID, "com.rfirma.custodio.import-certificate");
+    assert_eq!(DELETE_ID, "com.rfirma.custodio.delete-certificate");
+    assert_eq!(REPLACE_ID, "com.rfirma.custodio.replace-certificate");
 }

@@ -126,6 +126,7 @@ mod sign_call {
     use super::*;
     use crate::audit::{FailingSink, MemorySink};
     use crate::credentials::CredentialsError;
+    use crate::import::import_p12;
     use crate::store::StoreError;
 
     struct Counting {
@@ -134,7 +135,11 @@ mod sign_call {
     }
 
     impl Authorizer for Counting {
-        fn authorize(&self, _: &str) -> impl Future<Output = Result<(), AuthError>> + Send {
+        fn authorize(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> impl Future<Output = Result<(), AuthError>> + Send {
             self.calls.fetch_add(1, Ordering::SeqCst);
             ready((self.result)())
         }
@@ -210,7 +215,7 @@ mod sign_call {
             || Err(AuthError::Unavailable("x".into())),
         ] {
             let r = rig(result)?;
-            import(&r, "k")?;
+            seed(&r, "k")?;
             let got = zbus::block_on(
                 r.service
                     .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
@@ -228,7 +233,7 @@ mod sign_call {
     #[test]
     fn denied_and_missing_key_are_distinct() -> Result<(), Box<dyn std::error::Error>> {
         let r = rig(|| Err(AuthError::Denied))?;
-        import(&r, "k")?;
+        seed(&r, "k")?;
         let got = zbus::block_on(
             r.service
                 .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
@@ -284,6 +289,13 @@ mod sign_call {
         assert_ne!(euid, 11);
         assert_ne!(euid, 12);
         12
+    }
+
+    /// Puts the key straight into the store, for tests whose authorizer refuses.
+    fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let password = SecretString::from("test-password".to_owned());
+        import_p12(&r.store, 11, id, P12, &password)?;
+        Ok(())
     }
 
     fn import(r: &Rig, id: &str) -> Result<String, ServiceError> {
@@ -374,6 +386,75 @@ mod sign_call {
         );
         let got = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
         assert_eq!(got, Err(ServiceError::AuditUnavailable));
+        Ok(())
+    }
+
+    /// A decoder that counts and always fails.
+    struct FailingDecoder(Arc<AtomicUsize>);
+
+    impl crate::import::P12Decoder for FailingDecoder {
+        fn decode(
+            &self,
+            _: &[u8],
+            _: &SecretString,
+        ) -> Result<crate::import::ParsedP12, crate::import::ImportError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Err(crate::import::ImportError::NoPrivateKey)
+        }
+    }
+
+    type Answer = fn() -> Result<(), AuthError>;
+
+    /// The reply of an import, the polkit calls and the decoder calls.
+    type Imported = (Result<String, ServiceError>, usize, usize);
+
+    fn import_with(
+        result: fn() -> Result<(), AuthError>,
+        sender: Option<&str>,
+    ) -> Result<Imported, Box<dyn std::error::Error>> {
+        let mut r = rig(result)?;
+        let decoded = Arc::new(AtomicUsize::new(0));
+        r.service = r
+            .service
+            .with_decoder(Arc::new(FailingDecoder(decoded.clone())));
+        let got = zbus::block_on(r.service.import_call(sender, "k", b"x", "pw"));
+        Ok((
+            got,
+            r.auth_calls.load(Ordering::SeqCst),
+            decoded.load(Ordering::SeqCst),
+        ))
+    }
+
+    #[test]
+    fn import_without_sender_asks_and_decodes_nothing() -> Result<(), Box<dyn std::error::Error>> {
+        let (got, polkit, decoded) = import_with(|| Ok(()), None)?;
+        assert_eq!(got, Err(ServiceError::AuthorizationUnavailable));
+        assert_eq!((polkit, decoded), (0, 0));
+        Ok(())
+    }
+
+    #[test]
+    fn import_refusals_never_decode() -> Result<(), Box<dyn std::error::Error>> {
+        let cases: [(Answer, ServiceError); 3] = [
+            (|| Err(AuthError::Denied), ServiceError::PolkitDenied),
+            (
+                || Err(AuthError::BadSender),
+                ServiceError::AuthorizationUnavailable,
+            ),
+            (
+                || Err(AuthError::Unavailable("x".into())),
+                ServiceError::AuthorizationUnavailable,
+            ),
+        ];
+        for (result, want) in cases {
+            let (got, polkit, decoded) = import_with(result, Some(":1.1"))?;
+            assert_eq!(got, Err(want));
+            assert_eq!((polkit, decoded), (1, 0));
+        }
+        // Control: approval reaches the decoder.
+        let (got, polkit, decoded) = import_with(|| Ok(()), Some(":1.1"))?;
+        assert_eq!(got, Err(ServiceError::WrongPasswordOrBadP12));
+        assert_eq!((polkit, decoded), (1, 1));
         Ok(())
     }
 }

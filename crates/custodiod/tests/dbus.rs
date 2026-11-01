@@ -165,7 +165,22 @@ impl Fixture {
         let reply = self
             .call("ImportP12", &(id, P256_P12.to_vec(), PASSWORD))
             .await?;
-        reply.body().deserialize()
+        let kind = reply.body().deserialize()?;
+        // The import asked polkit under its own action; the tests below count the signatures.
+        let asked = std::mem::take(
+            &mut *self
+                .asked
+                .lock()
+                .map_err(|_| zbus::Error::Failure("poisoned".into()))?,
+        );
+        assert_eq!(
+            asked,
+            vec![format!(
+                "com.rfirma.custodio.import-certificate {}",
+                self.client_name()
+            )]
+        );
+        Ok(kind)
     }
 
     async fn sign(&self, id: &str, mechanism: u32, data: &[u8]) -> zbus::Result<Vec<u8>> {
@@ -315,6 +330,9 @@ fn import_errors_do_not_leak_the_password_or_store() -> TestResult {
             .err()
             .ok_or("wrong password imported")?;
         assert!(!format!("{err:?}").contains("wrong-password"));
+        // polkit was asked before the wrong password was found out.
+        assert_eq!(f.asked().len(), 1);
+        f.asked.lock().map_err(|_| "poisoned")?.clear();
         let keys: Vec<(String, String, Vec<u8>)> =
             f.call("ListKeys", &()).await?.body().deserialize()?;
         assert_eq!(keys.len(), 0);

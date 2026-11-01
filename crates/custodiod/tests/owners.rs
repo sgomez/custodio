@@ -157,8 +157,8 @@ fn list_is_scoped_to_the_caller() -> TestResult {
             assert_ne!(cert_of(EC_P12)?, cert_of(OTHER_EC_P12)?);
             assert_eq!(list(t.a()).await?, want_a, "{ua} {ub}");
             assert_eq!(list(&t.b).await?, want_b, "{ua} {ub}");
-            // Listing asks no polkit.
-            assert_eq!(t.f.asked().len(), 0);
+            // Listing asks no polkit: only the four imports did.
+            assert_eq!(t.f.asked().len(), 4);
         }
         Ok(())
     })
@@ -256,9 +256,10 @@ fn import_is_per_owner() -> TestResult {
             assert_eq!(list(t.a()).await?, [entry("k", "ecdsa-p256", EC_P12)?]);
             assert_eq!(list(&t.b).await?, [entry("k", "ecdsa-p256", OTHER_EC_P12)?]);
             assert!(t.f.store.get(ua, "k").is_ok() && t.f.store.get(ub, "k").is_ok());
-            // A signs with its own key.
+            // A signs with its own key. The two imports asked; the refused ones did not.
+            assert_eq!(t.f.asked().len(), 2);
             sign(t.a(), "k", CKM_ECDSA, &digest()).await?;
-            assert_eq!(t.f.asked().len(), 1);
+            assert_eq!(t.f.asked().len(), 3);
         }
         Ok(())
     })
@@ -269,9 +270,12 @@ fn sign_foreign_equals_missing() -> TestResult {
     block_on(async {
         for (ua, ub) in UID_PAIRS {
             for answer in [Answer::Yes, Answer::No] {
-                let t = Two::start(answer, ua, ub).await?;
+                let t = Two::start(Answer::Yes, ua, ub).await?;
                 import(t.a(), "k", EC_P12).await?;
                 import(&t.b, "own", EC_P12).await?;
+                // The imports asked; from here on count only the signatures.
+                t.f.asked.lock().map_err(|_| "poisoned")?.clear();
+                t.f.set_answer(answer);
                 let foreign = error_of(sign(&t.b, "k", CKM_ECDSA, &digest()).await)?;
                 let asked_foreign = t.f.asked();
                 let entries_foreign = t.sink.entries();

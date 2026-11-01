@@ -167,3 +167,19 @@ with an empty context.
 - Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F72`: dbus.rs 18 caught 2 unviable, backend.rs 7 caught, none missed.
 - Not done: the optional static "no uid/owner argument" check (the two-uid tests cover it behaviourally).
 - Next session should: nothing for F72.
+
+### 2026-11-01 — F73 — attempt 1
+- Done: `ImportP12` order is arguments → credentials → own-id check (`KeyIdTaken`) → polkit once under `IMPORT_ACTION_ID` (AllowUserInteraction) → decode → store.
+  `Authorizer::authorize` now takes the action; `polkit.rs` has the four action constants and `tests/policy.rs` uses them. The decoder is a `P12Decoder` trait object
+  (`Custodio::with_decoder`, default `RealDecoder`); `import::{id_taken, store_parsed}` split out of `import_p12`, which stays for direct store imports.
+  `docs/api.md` describes the order and the action; `PolkitDenied` text says "refused the call".
+- Tests: new `tests/import_polkit.rs` (8 tests, one per Evidence row, counting decoder, fake polkit now records action and flags via `Fixture::requests`/`start_with`),
+  unit tests in `dbus/tests.rs` (`import_without_sender...`, `import_refusals_never_decode` incl. `BadSender`), wire test `import_request_names_the_import_action_with_interaction`.
+- Adapted, not weakened: `tests/dbus.rs` (the import helper asserts the import action was asked, then clears the log so the sign counts stay), `tests/owners.rs` (ask counts include
+  the imports; `sign_foreign_equals_missing` imports with Yes, then sets the answer), `dbus/tests.rs` (two refusing-authorizer tests seed the store directly), `custodio-it/tests/cli.rs`
+  (`Deny` → `Approve`, since the CLI import must now be approved). No test deleted or ignored.
+- e2e: `e2e/import-user.sh` (agent in `$WORK/agent-import`, waits for registration, `approve`, imports `rsa1`/`ec1`, checks exactly 2 requests); `guest.sh` calls it once under `su -l alice`
+  before the oldpath branch, `user.sh` and `upgrade.sh`. Selftest `scripts/test-e2e-import.sh` (in `just test-scripts`) with 10 negative controls; the host e2e tests that read `guest.sh` pass.
+  Not run: a real `just e2e` (F90/F100).
+- Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F73` 4 caught, 2 unviable, none missed; `cargo test -p custodio-it -p custodio-pkcs11 -p custodio-cli` green.
+- Next session should: nothing for F73. F74/F75 add the import journal entries.
