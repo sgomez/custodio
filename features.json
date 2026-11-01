@@ -82,7 +82,7 @@
         "F70"
       ],
       "verify": "just quick && just e2e-cases debian13 'upgrade-*' && ! grep -rqs 'package-old.sh' justfile e2e scripts",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F72",
