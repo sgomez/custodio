@@ -1014,3 +1014,8 @@ Acceptance 13: pass.
   from `lib_t` it stays in `init_t`, systemd's own domain. `matchpathcon` gives `bin_t` for `/usr/libexec/custodio/custodiod`.
   Neither domain confines the service, but in `init_t` SELinux sees it as systemd (rules that let confined domains talk to
   systemd apply to it), and "no denial" says little. Not fixed in F55: moving the binary changes the package on every target.
+- On disk the state directory and key files belong to uid 65534 (`nfsnobody` on this image), not to `custodio` (956), although
+  `custodiod` runs as 956. systemd 259 mounts `/var/lib/private/custodio` into the service idmapped (`idmapped` in the service's
+  mountinfo), so inside it the files show as 956. Other processes running as 65534 cannot reach them: `/var/lib/private` is
+  `0700 root`. Expected systemd behaviour for `DynamicUser=yes`, not a Custodio defect; the e2e snapshot compares uids before and
+  after, so it is unaffected.
