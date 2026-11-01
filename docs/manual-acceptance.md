@@ -490,13 +490,13 @@ dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file na
    sudo apt-get install dbus-broker
    sudo systemctl reboot
    ```
-3. After the reboot, what to check, with the commands (**unverified**). Write what broke:
+3. After the reboot, what to check, with the commands (checked in the F57 run). Write what broke:
 
    | Check | Command | Expected | What broke |
    |---|---|---|---|
    | the desktop session | log in; `echo $XDG_SESSION_TYPE` | the desktop starts | |
    | logind | `loginctl list-sessions` | your session is listed, `active` | |
-   | the polkit agent | `pgrep -a polkit`; run `pkexec true` | the agent runs, the dialog appears | |
+   | the polkit agent | run `pkexec true` in the session | the dialog appears; approved, exit 0 (GNOME's agent is in `gnome-shell`: `pgrep -a polkit` shows only `polkitd`) | |
    | NetworkManager | `systemctl is-active NetworkManager; nmcli general status` | `active`, connected | |
    | bus daemon | `busctl status \| head -n 3`; `systemctl status dbus-broker` | `dbus-broker` | |
 4. Install (`apt-get` here, so that any missing dependency is installed too):

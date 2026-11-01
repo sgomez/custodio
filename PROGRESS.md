@@ -491,3 +491,8 @@ with an empty context.
 - Manual run on labvm `omarchy` (Omarchy 4.0.6, polkit 128, Firefox 158 from Arch): `pacman -U` installs; the Quickshell agent shows the dialog for every signature, a second one asks again, a cancel fails. Record in `docs/findings.md` "F56".
 - Arch's Firefox loads no p11-kit proxy: the certificate appears only after `modutil -add` of `/usr/lib/custodio/libcustodio_pkcs11.so` in the profile. Recorded, not decided.
 - Next session should: the milestone approver settles the open question "Firefox on Arch and Omarchy", then a person runs `just milestone pass F56` or not.
+
+### 2026-11-01 — F57 — session 1
+- Manual run on labvm `ubuntu2404` (24.04.5, polkit 124): `dpkg -i` refused on dbus-daemon 1.14.10, nothing created; after `apt-get install dbus-broker` and a reboot (dbus-broker 35) desktop, logind, the polkit agent and NetworkManager work; `apt-get install ./…deb`, both keys sign with the dialog every time, a cancel fails. Record in `docs/findings.md` "F57".
+- `docs/manual-acceptance.md` §14: the checks are no longer marked unverified; the agent row uses `pkexec true` (GNOME's agent is in `gnome-shell`).
+- Next session should: the milestone approver settles the open question "Ubuntu 24.04: does switching the bus break something?", then a person runs `just milestone pass F57`.
