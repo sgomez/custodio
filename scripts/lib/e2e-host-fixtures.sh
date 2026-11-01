@@ -41,6 +41,9 @@ exec)
     case "$*" in
     *"is-system-running"*) echo running ;;
     *"/e2e/guest.sh"*)
+        # F63: with -e E2E_SELECT=ids the fake guest reports only those cases (and STUB_EXTRA still adds one)
+        sel=''
+        for a in "$@"; do case $a in E2E_SELECT=*) sel=${a#E2E_SELECT=} ;; esac; done
         mode=main
         t=${*: -1}
         if [ "$t" = old ] || [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
@@ -67,6 +70,7 @@ exec)
             if [ "$mode" = old ]; then case $c in upgrade-cargo-deb-*) ;; *) continue ;; esac; fi
             if [ "$mode" = oldpath ]; then case $c in upgrade-oldpath-*) ;; *) continue ;; esac; fi
             [ "$c" = "${STUB_OMIT:-}" ] && continue
+            if [ -n "$sel" ]; then case " $sel " in *" $c "*) ;; *) continue ;; esac; fi
             if [ "$mode" = main ] && [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then case $c in upgrade-oldpath-*) echo "E2E-CASE skipped $c"; continue ;; esac; fi
             if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"

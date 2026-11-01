@@ -71,7 +71,7 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     grep -q 'cargo\|nfpm\|just package' "$ROOT/e2e/run.sh" && bad "the host script builds packages"
 done
 # the recipe: package is its dependency and the default target is all
-grep -Eq '^e2e target="all": package$' "$ROOT/justfile" || bad "the e2e recipe does not take a target (default all) and depend on package"
+grep -Eq '^e2e target="all": e2e-packages$' "$ROOT/justfile" || bad "the e2e recipe does not take a target (default all) and depend on the shared package build"
 grep -q 'bash e2e/run.sh {{target}}' "$ROOT/justfile" || bad "the e2e recipe does not pass the target"
 
 # --- the record

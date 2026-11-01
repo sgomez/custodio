@@ -131,6 +131,8 @@ else grep -q 'not a commit' "$tmp/stdout" || bad "an unknown pin was not named";
 
 # --- the script is where it should be: not in a recipe other than e2e, no other tool list names cargo-deb
 grep -q 'scripts/package-old.sh' "$ROOT/justfile" || bad "the e2e recipe does not call scripts/package-old.sh"
-awk '/^e2e target/{f=1;next} /^[a-z-]+.*:/{f=0} f && /package-old/{ok=1} END{exit !ok}' "$ROOT/justfile" || bad "package-old.sh is not called in the e2e recipe"
+# F63: the build lines moved into the recipe e2e-packages, which the e2e recipe depends on (checked in test-e2e-host.sh)
+awk '/^e2e-packages:/{f=1;next} /^[a-z-]+.*:/{f=0} f && /package-old/{ok=1} END{exit !ok}' "$ROOT/justfile" || bad "package-old.sh is not called in the e2e-packages recipe"
+grep -Eq '^e2e target="all": e2e-packages$' "$ROOT/justfile" || bad "the e2e recipe does not depend on e2e-packages"
 if grep -rqsE 'cargo[- ]deb' "$ROOT/mise.toml" "$ROOT/mise.lock" "$ROOT/harness/Containerfile" "$ROOT/.github"; then bad "cargo-deb is named in mise.toml, mise.lock, harness/Containerfile or .github"; fi
 exit "$fail"

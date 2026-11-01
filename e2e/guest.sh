@@ -6,19 +6,31 @@
 # imports the keys and runs only the upgrade case from it to package N+1 (/pkg-next); it reports the upgrade-cargo-deb-* cases only.
 # With "oldpath" (F61, on a fresh container) the same from the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
 # it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path) skips them in the main run.
+# With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
+# needs is not run (select.sh); the setup (install, service, user, import) always is.
 set -euo pipefail
 mode=${2:-main}
 case $mode in main | old | oldpath) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+# shellcheck source=e2e/select.sh
+source /e2e/select.sh
+if [ -n "${E2E_SELECT:-}" ]; then
+    # shellcheck disable=SC2086 # one id per word; globbing is off, an id has no character the shell would expand
+    (set -f; printf '%s\n' $E2E_SELECT) > "$E2E_SELECT_FILE"
+else
+    rm -f "$E2E_SELECT_FILE"
+fi
 
 # A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
 if [ -f /e2e-target/refusal-only ]; then
     [ "$mode" = main ] || fail "a refusal-only target has no old-package or old-path run"
     pkg=$(find /pkg -type f | head -n 1)
     [ -n "$pkg" ] || fail "no package is mounted in /pkg"
-    bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
-    bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
+    if phase_runs refusal; then
+        bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
+        bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
+    fi
     probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
     while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
     echo "e2e: all checks passed (refusal)"
@@ -85,24 +97,34 @@ if [ "$mode" = old ]; then
     exit 0
 fi
 
-# User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session.
-su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
+# User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session. With a selection, the steps that no selected case
+# needs are left out (select.sh); user.sh also leaves the agent state that the unavailable and journal steps read.
+if phase_runs user; then
+    su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
+fi
 
 # Polkit unavailable: stopped and masked, so that D-Bus activation cannot start it either. The trap only
 # restores it if the explicit restore below was not reached.
 restore_polkit() { systemctl unmask --runtime polkit && systemctl start polkit; }
-trap 'restore_polkit >/dev/null 2>&1 || true' EXIT
-total=$(wc -l < "$work/agent/requests") # requests of the agent so far: one per signature up to here
-systemctl stop polkit
-systemctl mask --runtime polkit >/dev/null 2>&1
-if systemctl is-active --quiet polkit; then fail "polkit still active"; fi
-timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/unavailable.sh" || fail "unavailable.sh failed"
-restore_polkit || fail "polkit could not be restored"
-systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
-WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
+if phase_runs unavailable; then
+    trap 'restore_polkit >/dev/null 2>&1 || true' EXIT
+    total=$(wc -l < "$work/agent/requests") # requests of the agent so far: one per signature up to here
+    systemctl stop polkit
+    systemctl mask --runtime polkit >/dev/null 2>&1
+    if systemctl is-active --quiet polkit; then fail "polkit still active"; fi
+    timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/unavailable.sh" || fail "unavailable.sh failed"
+    restore_polkit || fail "polkit could not be restored"
+    systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
+fi
+if phase_runs journal; then
+    WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
+fi
 
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
-WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
+# The lifecycle cases start from the state it leaves, so they need it too.
+if phase_runs upgrade; then
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
+fi
 
 # A target without an old path (Arch) skips the cases of the upgrade from it, with the reason its marker holds.
 if [ -f /e2e-target/no-oldpath ]; then
@@ -113,7 +135,9 @@ if [ -f /e2e-target/no-oldpath ]; then
 fi
 
 # The removal, purge and reinstall cases come after the upgrade: they remove N+1 and install it again, from the state the upgrade left.
-WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
+if phase_runs lifecycle; then
+    WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
+fi
 
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"

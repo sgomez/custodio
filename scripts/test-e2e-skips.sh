@@ -56,6 +56,38 @@ if "$CHK" check "$tmp/two" "$tmp/empty" "$tmp/out" > /dev/null 2>&1; then bad "m
 ok unused-entry "$tmp/skip" "${all_run[@]}"
 grep -q "skip list entry 'beta' matches no skipped case" "$tmp/stderr" || bad "unused entry not reported on stderr"
 
+# F63: a subset (`just e2e-cases`): check gets the selected ids as a fifth argument, a file
+sub_ok() { # sub_ok NAME SKIPLIST "SELECTED IDS" REPORT-LINES...
+    local n=$1 s=$2 sel=$3; shift 3
+    report "$tmp/out" "$@"; tr ' ' '\n' <<< "$sel" > "$tmp/sel"
+    "$CHK" check "$tmp/cases" "$s" "$tmp/out" "$tmp/sel" > "$tmp/stdout" 2> "$tmp/stderr" || bad "$n: failed: $(cat "$tmp/stderr")"
+}
+sub_nok() { # sub_nok NAME SKIPLIST "SELECTED IDS" EXPECTED-MESSAGE REPORT-LINES...
+    local n=$1 s=$2 sel=$3 msg=$4; shift 4
+    report "$tmp/out" "$@"; tr ' ' '\n' <<< "$sel" > "$tmp/sel"
+    if "$CHK" check "$tmp/cases" "$s" "$tmp/out" "$tmp/sel" > "$tmp/stdout" 2> "$tmp/stderr"; then bad "$n: passed"; return; fi
+    grep -q -- "$msg" "$tmp/stderr" || bad "$n: the message lacks '$msg': $(cat "$tmp/stderr")"
+}
+sub_ok subset-exact "$tmp/empty" "alpha gamma.1" "run alpha" "run gamma.1"
+grep -q '2 cases accounted for' "$tmp/stdout" || bad "subset-exact: the count is not 2: $(cat "$tmp/stdout")"
+sub_ok subset-single "$tmp/empty" "alpha-2" "run alpha-2"
+sub_nok subset-omitted "$tmp/empty" "alpha gamma.1" "'gamma.1' was not reported" "run alpha"
+sub_nok subset-twice "$tmp/empty" "alpha gamma.1" "'alpha' reported twice" "run alpha" "run alpha" "run gamma.1"
+sub_nok subset-unselected-reported "$tmp/empty" "alpha gamma.1" "'beta' was reported and is not selected" "run alpha" "run beta" "run gamma.1"
+sub_nok subset-unselected-skipped "$tmp/skip" "alpha gamma.1" "'beta' was reported and is not selected" "run alpha" "skipped beta" "run gamma.1"
+sub_nok subset-unknown "$tmp/empty" "alpha" "unknown case 'delta'" "run alpha" "run delta"
+sub_nok subset-skipped-unlisted "$tmp/empty" "alpha beta" "'beta' was skipped and is not on the skip list" "run alpha" "skipped beta"
+sub_ok subset-skipped-listed "$tmp/skip" "alpha beta" "run alpha" "skipped beta"
+sub_ok subset-unused-entry-quiet "$tmp/skip" "alpha" "run alpha"
+grep -q "matches no skipped case" "$tmp/stderr" && bad "an entry of an unselected case was reported as unused"
+# a selected id that is no case, an empty selection and a missing file are refused
+printf 'alpha\ndelta\n' > "$tmp/sel"; report "$tmp/out" "run alpha"
+if "$CHK" check "$tmp/cases" "$tmp/empty" "$tmp/out" "$tmp/sel" 2> "$tmp/stderr"; then bad "an unknown selected id was accepted"; fi
+grep -q "selected case 'delta'" "$tmp/stderr" || bad "an unknown selected id is not named: $(cat "$tmp/stderr")"
+: > "$tmp/sel"
+if "$CHK" check "$tmp/cases" "$tmp/empty" "$tmp/out" "$tmp/sel" 2> /dev/null; then bad "an empty selection was accepted"; fi
+if "$CHK" check "$tmp/cases" "$tmp/empty" "$tmp/out" "$tmp/nosel" 2> /dev/null; then bad "a missing selection file was accepted"; fi
+
 # the format of the list
 lint_ok() { printf '%b' "$2" > "$tmp/l"; "$CHK" lint "$tmp/l" 2> "$tmp/stderr" || bad "$1: rejected: $(cat "$tmp/stderr")"; }
 lint_bad() { printf '%b' "$2" > "$tmp/l"; if "$CHK" lint "$tmp/l" 2> "$tmp/stderr"; then bad "$1: accepted"; elif ! grep -q -- "$3" "$tmp/stderr"; then bad "$1: message '$(cat "$tmp/stderr")'"; fi; }

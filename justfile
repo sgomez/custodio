@@ -116,6 +116,8 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
+    scripts/test-e2e-select.sh
+    scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
@@ -323,11 +325,20 @@ glibc-ceiling:
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
 # (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
 # target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
-e2e target="all": package
+e2e target="all": e2e-packages
+    bash e2e/run.sh {{target}}
+
+# The packages the end-to-end tests install: package N, package N+1, the old package of M1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
+e2e-packages: package
     scripts/package-next.sh
     scripts/package-old.sh
     scripts/package-oldpath.sh
-    bash e2e/run.sh {{target}}
+
+# Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the
+# given names or match one as a shell glob, e.g. `just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*'` (quote the glob). The accounting then requires each selected
+# case exactly once and no other. A name that matches no case of the target is refused before any container starts.
+e2e-cases target +names: e2e-packages
+    bash e2e/run.sh {{target}} --cases {{quote(names)}}
 
 # Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.
