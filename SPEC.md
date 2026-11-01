@@ -16,7 +16,7 @@ programs can rely on:
   keys without the person knowing.
 - **Keys have no owner.** Every uid lists every key and can ask to sign with any of them. polkit
   is the only barrier, and it asks the *caller's* user, so user B can sign with user A's key by
-  approving his own dialog.
+  approving their own dialog.
 - **Keys cannot be managed.** A client cannot delete a key, and cannot install the renewed
   certificate of a key it already holds. The only fix today is a new import under a new id, which
   leaves the old key behind.
@@ -61,8 +61,7 @@ The threat model of M0–M2 still holds. M3 changes it as follows.
   - **Deletion does not erase the disk.** Deleting a key removes it from the service, and its file
     from the state directory. Copies of its bytes may survive in filesystem blocks, snapshots or
     backups.
-  - **The dialog does not show which key or file is involved**, unless the open question on
-    dialog details settles otherwise. The person approves "an import" or "a deletion" by the
+  - **The dialog does not show which key or file is involved.** The person approves "an import" or "a deletion" by the
     calling program.
   - **The pid in an entry for a flatpak caller is the proxy's pid**, not the app's.
   - Everything M1 lists as not guaranteed for audit entries (`docs/audit.md`, "Not guaranteed").
@@ -115,8 +114,7 @@ opens one connection per call; native journal entries. M3 changes the following.
   reachable, both on the host and from inside a flatpak that has
   `--system-talk-name=com.rfirma.Custodio1`. It also says what a client sees when the service is
   absent, not activatable, or blocked by the sandbox. The activation file keeps `Exec=/bin/false`
-  (`docs/decisions.md`). Whether the API also exposes a version or capability property is an open
-  question.
+  (`docs/decisions.md`). M3 exposes no version or capability property.
 - **Limits.** Every argument has a documented bound, as `Sign` and `ImportP12` already have,
   including the certificate given to replace certificate. A call over a bound is refused before
   any key, file or polkit is touched.
@@ -129,7 +127,10 @@ opens one connection per call; native journal entries. M3 changes the following.
   something exists is never revealed across uids: an import under an id another uid uses
   succeeds, and acting on another uid's key fails exactly as for a missing key.
 - **Every operation checks the owner** against the caller's uid from the bus, for the same
-  connection polkit is asked about. List returns only the caller's keys. Root is a uid like any
+  connection polkit is asked about. Sign, delete and replace certificate look the key up among the
+  caller's keys before polkit: when it is not there, the call fails with "no such key" and shows no
+  dialog. The store keeps each owner's keys apart, so a lookup never touches another uid's keys and
+  the two cases cannot differ by construction. List returns only the caller's keys. Root is a uid like any
   other through the API (root's file access is out of scope).
 - **Credentials unavailable.** If the bus gives no uid, or the existing `ProcessFD` cross-check
   fails, the call is refused as "authorization unavailable". List included: it returns an error,
@@ -142,29 +143,26 @@ opens one connection per call; native journal entries. M3 changes the following.
   `AllowUserInteraction`, under an action that is not the signing action, so the dialog says what
   is being approved. The defaults are `auth_self` on every line, as for signing, and never a
   `_keep` variant. The action file declares the same owner annotation the signing action needs
-  (`docs/decisions.md`, "Fixes for a live systemd"). Whether the three share one action or have one
-  each is an open question.
+  (`docs/decisions.md`, "Fixes for a live systemd"). Each operation has its own action, so an
+  administrator can write rules such as "never allow delete" and each dialog has its own text.
 - polkit fails closed exactly as for signing (`docs/decisions.md`, "polkit fails closed"). No
   authorization is ever cached or reused across calls.
-- **Order for import.** Arguments are checked first. polkit is asked before the `.p12` is
+- **Order for import.** Arguments are checked first, then whether the caller already has the id. polkit is asked before the `.p12` is
   decrypted, so a caller without approval learns nothing about the password. After approval, a
   wrong password and an unsupported key are errors of their own.
 - List asks no polkit: it shows only the caller's own keys and certificates, which are public
   data.
 
-### 4. State and the purge of earlier keys
+### 4. State
 
-- The state format may change freely in M3. It must record the owner of each key and be able to
-  tell its own format, so that a later format change can be detected instead of misread.
-- **No migration.** After an upgrade from an M2 or earlier build, no key from the earlier format
-  can be listed, used or deleted by anyone, and its files are removed from the state directory.
-  They are not left on disk under another name. Who removes them (the service at start, or the
-  package scripts of the three formats) is an open question with a proposed default.
+- The state format may change freely in M3. It must record the owner of each key.
+- **No migration, and no code for earlier state.** Nothing is usable before M5 and earlier keys
+  exist only in test VMs and containers, so the software does nothing about them. Every test and
+  manual step of M3 starts from a clean machine.
 - Upgrades from an M3 build to a later M3 build keep keys, owners and certificates, as M2's
   upgrade tests require.
 - The store's existing rules still apply, extended to the new state: exact modes, owner checks,
-  no symlinks, refuse rather than repair, atomic writes that never overwrite silently
-  (`docs/decisions.md`, "Key store refuses instead of repairing").
+  no symlinks, refuse rather than repair, atomic writes that never overwrite silently.
 - **Replace certificate is atomic.** A concurrent reader sees the old certificate or the new one,
   never neither. **Delete** removes the key and its certificate together. A signature in progress
   either completes with the key or fails with "no such key". Two concurrent imports of the same id
@@ -183,7 +181,9 @@ opens one connection per call; native journal entries. M3 changes the following.
   certificate bytes, the data or the signature.
 - **Fail closed.** No change is reported to the caller as done unless its entry was submitted. For
   sign this is M1's rule. For import and replace certificate, a change whose entry cannot be
-  submitted is not kept. For delete, see the open question on ordering.
+  submitted is not kept. Delete first makes the key unusable (sign then fails with "no such key"),
+  submits the entry, and only then removes the files; if the entry cannot be submitted, the key is
+  restored and the call fails as "audit unavailable". A deleted key never lacks an entry.
 - **Flatpak app-id.** When the calling process is a flatpak, the entry names its app-id. The
   process meant here is the one the bus credentials name, which is `xdg-dbus-proxy` for a
   flatpak: flatpak runs the proxy in a sandbox that holds the app's `/.flatpak-info`, which is how
@@ -202,7 +202,10 @@ opens one connection per call; native journal entries. M3 changes the following.
     check that the service fails today. It runs as `custodio` with no capabilities,
     `PrivateUsers=yes`, `ProtectProc=invisible` and `ProcSubset=pid` (`data/custodio.service`,
     `docs/findings.md` M1.2). The exposure gate must not loosen. See the open question "How
-    `custodiod` can read `/.flatpak-info`"; a finding must settle it before this part is built.
+    `custodiod` can read the app-id"; a finding must settle it before this part is built. If it
+    settles on (c), the rules above apply to that source instead of `/.flatpak-info`, and the
+    hostile-input tests and acceptance 9 follow it. If it settles on (d), acceptances 9 and 15 are
+    amended with the deviation: the entry always says the app-id could not be determined.
 
 ### 6. Clients in this repository
 
@@ -218,10 +221,16 @@ opens one connection per call; native journal entries. M3 changes the following.
     (at least the subject and the end of validity) to tell keys apart. With no keys it says so and
     succeeds.
   - `delete` names one key. Before calling the service it asks for confirmation on the terminal,
-    saying that the key cannot be recovered. polkit then asks as well. Whether a non-interactive
-    flag is allowed is an open question; until it is settled, there is none.
+    saying that the key cannot be recovered. polkit then asks as well. There is no flag that skips
+    the confirmation.
   - Errors are shown from the documented error names, and the exit status is non-zero on failure.
     Usage errors keep their own status, as today.
+  - **polkit without a graphical agent.** `import` and `delete` now need polkit, which fails as
+    "authorization unavailable" over SSH or on a console with no agent. When stdin is a terminal and
+    no agent answers for the session, the CLI starts `pkttyagent` registered for its own process
+    only, as `systemctl` does, and stops it when the call returns. It never registers an agent for
+    another process or for the whole session (`docs/reports/polkit-custodian-linux.md`, the
+    per-process agent attack).
 
 ### 7. Client documentation
 
@@ -250,8 +259,8 @@ thresholds, including:
 - the package gates (parity, linters, glibc ceiling);
 - commitlint; `just` as the entry point.
 
-M2's upgrade tests change on one point only: from an M2 package to an M3 package they now check
-that the old keys are gone (section 4). An upgrade between two M3 builds must still keep keys.
+M2's upgrade tests change on one point only: they upgrade between two M3 builds, never from a
+pre-M3 package, and must still keep keys (section 4).
 
 M3 adds, all blocking:
 
@@ -266,14 +275,17 @@ M3 adds, all blocking:
   with no forbidden content. A failure to submit the entry withholds the result, as in section 5.
   A fake `/.flatpak-info` source covers the three app-id cases and hostile files: a symlink, a
   FIFO, an oversized file, an invalid id, and a reader that never returns.
-- **API contract check.** A test compares the service's live introspection data with the client
-  documentation. Every method, argument, error name and polkit action in one must be in the other.
+- **API contract check.** A test compares the client documentation with three sources: the
+  service's live introspection data for methods, arguments and properties; the service's error
+  type for error names, which introspection does not carry; and the shipped `.policy` file for
+  polkit actions. Every item in a source must be in the documentation, and every item the
+  documentation lists must be in its source.
 - **Dependency check.** A check fails if the CLI or the PKCS#11 module depends on the service's
   crate.
 - **Fuzzing.** New targets, or extended ones, for the argument parsing of every new method, for
   certificate input to replace certificate, and for the `/.flatpak-info` parser.
-- **Mutation testing** covers the ownership checks, the authorization path of every operation, the
-  purge, and the app-id validation.
+- **Mutation testing** covers the ownership checks, the authorization path of every operation and
+  the app-id validation.
 
 ## Scope
 
@@ -282,7 +294,7 @@ M3 adds, all blocking:
 - Per-uid ownership and per-owner key ids.
 - polkit on import, delete and replace certificate, with the polkit action file(s) shipped in
   every package.
-- A new state format that records owners, and the purge of earlier keys.
+- A new state format that records owners.
 - Journal entries for every authorized operation, with the flatpak app-id, documented in
   `docs/audit.md`.
 - The PKCS#11 module and `custodio import` moved to the new API; `custodio list` and
@@ -294,7 +306,11 @@ M3 adds, all blocking:
 
 - The rFirma side of the integration, and rFirma's flatpak (M5).
 - Migration of earlier keys, or compatibility with M2 clients.
-- A CLI command for replacing a certificate (API only), unless the open question adds one.
+- A CLI command for replacing a certificate (API only).
+- A non-interactive flag for `custodio delete`.
+- A version or capability property in the API; revisited with rFirma's integration in M5, since
+  the API can still change until then.
+- Details such as the key id in the polkit dialogs.
 - Authorization based on the app-id, and per-app policies.
 - Key export, backup, renaming, sharing a key between uids, or transferring ownership.
 - An administrator interface that acts on other users' keys.
@@ -308,9 +324,8 @@ M3 adds, all blocking:
 Automated (integration tests, `just e2e` on every supported target):
 
 1. Uid A imports a key. A's `list` shows it. Uid B's `list` does not. B's sign, delete and replace
-   certificate on that id fail with the same error name as for an id nobody has, B's sign does
-   not ask polkit for that key if it would not for a missing key, and journal behaviour matches
-   too.
+   certificate on that id fail with the same error name as for an id nobody has, none of them
+   shows a polkit dialog, and journal behaviour matches too.
 2. Uid A and uid B can each import a key with the same id. Each signs with their own, and each
    signature verifies against that uid's certificate.
 3. Import, delete and replace certificate each ask polkit exactly once per call. With polkit
@@ -337,17 +352,18 @@ Automated (integration tests, `just e2e` on every supported target):
    says there is none. With a hostile `/.flatpak-info` (symlink, FIFO, oversized, invalid id), the
    entry says the app-id could not be determined, no invalid text is copied, the operation's
    outcome is unaffected, and the call returns within the documented bound.
-10. A host with keys from an M2 package is upgraded to the M3 package. No old key is listed or
-    usable by any uid, and no old key file remains in the state directory. An upgrade from one M3
-    build to the next keeps keys, owners and certificates.
+10. An upgrade from one M3 build to the next keeps keys, owners and certificates.
 11. `custodio list` prints the caller's keys with id, type, subject and end of validity, and says
     there are none when there are none. `custodio delete <id>` asks for confirmation, then for
-    polkit, and deletes. Declining either deletes nothing and exits non-zero.
-12. The API contract check passes: the introspection data and the client documentation list the
-    same methods, arguments, error names and polkit actions. The dependency check shows neither the
+    polkit, and deletes. Declining either deletes nothing and exits non-zero. On a terminal with no
+    polkit agent, `custodio import` and `custodio delete` ask for the password through
+    `pkttyagent`.
+12. The API contract check passes: the client documentation lists exactly the methods and
+    arguments of the introspection data, the error names of the service's error type, and the
+    actions of the `.policy` file. The dependency check shows neither the
     CLI nor the module depending on the service crate.
-13. Every acceptance check of M0–M2 that `just e2e` automates still passes, except the upgrade
-    check changed by acceptance 10.
+13. Every acceptance check of M0–M2 that `just e2e` automates still passes, except that upgrades
+    start from an M3 build (acceptance 10).
 
 Manual (a person, following written steps the milestone ships in the repository, in a graphical
 session on a supported target VM):
@@ -363,48 +379,22 @@ session on a supported target VM):
 
 ## Open questions
 
-- **How `custodiod` can read `/.flatpak-info`.** Under the current unit, reading another uid's
+- **How `custodiod` can read the app-id.** Under the current unit, reading another uid's
   `/proc/<pid>/root` fails: it needs a `PTRACE_MODE_READ` check (`CAP_SYS_PTRACE` for another
   uid), which the empty bounding set, `PrivateUsers=yes` and `ProtectProc=invisible` all prevent.
   Options:
   (a) loosen the unit, which fails the exposure gate and exposes every process to the key holder;
   (b) a separate, minimal component with just enough privilege to read that one file for a
   pidfd it is handed, talking only to `custodiod`;
-  (c) another source of the app-id that needs no `/proc` access (for example the caller's
-  cgroup, the `app-flatpak-<id>-*.scope` convention, through something the unit already allows);
+  (c) another source of the app-id that needs no `/proc` access of another uid (for example the
+  caller's cgroup, the `app-flatpak-<id>-*.scope` convention, through something the unit already
+  allows);
   (d) a recorded deviation, with the field always "could not be determined" until a later
   milestone.
-  Settle by a finding that tries each candidate under the real unit on a supported target. The
-  person approving the spec chooses among the options that work. Proposed default: (b) if it can
-  be built without new capabilities in `custodiod`, otherwise (d). Never (a).
-- **One polkit action or three** for import, delete and replace certificate. Separate actions let
-  an administrator write rules such as "never allow delete" and give each dialog its own text.
-  Proposed default: one action per operation.
-- **Dialog details.** polkit can substitute details passed in `CheckAuthorization` into an
-  action's message, which would let the dialog name the key id. Whether polkit allows that for a
-  non-root mechanism, and whether showing a caller-chosen (though validated) id is safe, has not
-  been checked. Settle by reading polkit's source for the supported versions. Proposed default:
-  no details.
-- **Delete and a failed journal entry.** A deletion cannot be undone once done, so "fail closed"
-  needs an order. Options: submit the entry first and report a failed deletion as an error that
-  the entry already mentions; or make the key unusable, submit, then remove. Settle in the
-  delete feature's contract, before code. Proposed default: whichever never leaves a deleted key
-  without an entry.
-- **Who purges earlier keys.** Options: the service on start, when it finds a state it does not
-  recognise; or the package scripts of the three formats. Proposed default: the service, since it
-  owns the state directory and one implementation serves all formats. It removes only what it can
-  identify as earlier key state, and it refuses to start (as the store does today) when it finds
-  anything else it does not understand.
-- **Version or capability discovery.** Should the API expose a version or a list of supported
-  operations and key types, so rFirma can adapt to future milestones? Settle with the rFirma
-  maintainers before the API document is frozen. Proposed default: a read-only property, added only
-  if they ask for it.
-- **Non-interactive `custodio delete`.** A flag that skips the terminal confirmation helps
-  scripts, but makes a mistaken deletion by an agent one polkit click away. Proposed default: no
-  flag in M3.
-- **Replacing a certificate from the CLI.** The idea lists only `list` and `delete`. Should
-  `custodio` also get a command to replace a certificate, for testing and for administrators?
-  Proposed default: no, the API only.
+  Settle by a finding that tries each candidate under the real unit on a supported target.
+  Default: (c) if it works, otherwise (d). The app-id is not authenticated, and a cgroup name can
+  be forged as easily as `/.flatpak-info`, so (c) loses nothing; (b) adds a privileged component
+  for a field that is only a record, and is not built in M3. Never (a).
 - **Detection through the flatpak proxy.** Which bus-driver calls (`NameHasOwner`,
   `ListActivatableNames`, `StartServiceByName`) `xdg-dbus-proxy` passes for a `--system-talk-name`
   has not been checked. Settle by reading `xdg-dbus-proxy`'s filtering rules and by acceptance 15.
