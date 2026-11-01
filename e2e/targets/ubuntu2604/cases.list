@@ -1,0 +1,10 @@
+# Cases of this target only, added to e2e/cases.list by e2e/run.sh. Purge exists on the deb targets only (F49): apt-get purge.
+purge-service-stopped
+purge-no-packaged-files
+purge-not-activatable
+purge-state-unchanged
+purge-account-kept
+purge-notice-keys
+reinstall-after-purge-keys-listed
+reinstall-after-purge-signs-with-polkit
+reinstall-after-purge-no-import

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Erase keeps the state directory and the custodio account (F44; SPEC design section 2): the files are gone, the service is stopped,
+# and the keys cannot be exported or recreated, so no script deletes them. Nothing here reads, changes or lists anything under the
+# state directory; the notice only names it. $1 is 0 on erase and 1 on the %postun of the old package during an upgrade, which does
+# nothing: %post of the new package has reloaded everything. rpm-ostree runs no erase scriptlet, so none of this runs there.
+if [ "${1:-1}" -eq 0 ]; then
+    systemctl daemon-reload || true
+    systemctl reload dbus.service || true
+    # The bus policy and the activation file are gone now, so nothing starts the service again; stop one that came back
+    # between %preun and the removal of the files.
+    if systemctl is-active --quiet custodio.service 2>/dev/null; then
+        systemctl stop custodio.service || true
+    fi
+    {
+        echo "custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio)."
+        echo "custodio: the account custodio was kept too, because the keys belong to its uid."
+        echo "custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated."
+    } >&2
+fi
+exit 0

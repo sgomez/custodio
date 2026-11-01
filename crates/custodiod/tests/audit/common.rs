@@ -117,3 +117,33 @@ impl CallerCredentials for Recording {
         self.inner.credentials(sender).await
     }
 }
+
+/// A bus reply with the test process's real uid and pid, `ProcessFD` changed by `edit`, run
+/// through `caller_from`.
+pub struct Reply<F>(pub F);
+
+impl<F: Fn(&mut HashMap<String, OwnedVariant>) + Sync> CallerCredentials for Reply<F> {
+    fn credentials(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send {
+        let mut map: HashMap<String, OwnedVariant> = HashMap::from([
+            ("UnixUserID".to_owned(), OwnedVariant::from(uid())),
+            (
+                "ProcessID".to_owned(),
+                OwnedVariant::from(std::process::id()),
+            ),
+        ]);
+        (self.0)(&mut map);
+        ready(caller_from(&map))
+    }
+}
+
+/// A pidfd of `pid` as a `ProcessFD` value.
+pub fn pidfd(pid: u32) -> Result<OwnedVariant, Box<dyn std::error::Error>> {
+    let pid = rustix::process::Pid::from_raw(i32::try_from(pid)?).ok_or("pid 0")?;
+    let fd = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())?;
+    Ok(OwnedVariant::try_from(zbus::Variant::from(
+        zbus::Fd::from(fd),
+    ))?)
+}

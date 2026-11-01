@@ -12,7 +12,7 @@ case "$(basename -- "$path")" in
     deny "APPROVALS records what a person approved; only just milestone approve writes it." ;;
   SPEC.md | IDEA.md)
     [ -z "$role" ] || [ "$role" = planner ] \
-      || deny "SPEC.md is approved by a person. If it is wrong or incomplete, write BLOCKED.md." ;;
+      || deny "SPEC.md is approved by a person. If a requirement is proven impossible, record it in SPEC_DEVIATIONS.md; otherwise write BLOCKED.md." ;;
   features.json)
     [ -z "$role" ] || [ "$role" = initializer ] \
       || deny "features.json is approved by a person and only the loop marks features as passing. If a feature or its verify command cannot work, write BLOCKED.md." ;;

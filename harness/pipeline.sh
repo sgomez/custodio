@@ -15,7 +15,10 @@ cd "$(git rev-parse --show-toplevel)"
 LOG_DIR=.harness/logs
 mkdir -p "$LOG_DIR"
 ensure_node_tools
-tracked_changes && die "Uncommitted changes to tracked files; commit or stash them first."
+# After a stop, loop.sh decides what to do with the leftovers of the session it cut short.
+if [ ! -f .harness/state/interrupted ] && tracked_changes; then
+  die "Uncommitted changes to tracked files; commit or stash them first."
+fi
 
 gate() {
   approved "$1" && return 0
@@ -29,8 +32,8 @@ if [ ! -f SPEC.md ]; then
   [ -s IDEA.md ] || die "No IDEA.md. Start a milestone with: just milestone open"
   grep -q '^TODO:' IDEA.md && die "IDEA.md still has its TODO line; write the idea first."
   log "Planner: writing SPEC.md from IDEA.md"
-  HARNESS_ROLE=planner claude -p --dangerously-skip-permissions --agent planner \
-    "Write SPEC.md from IDEA.md." >"$LOG_DIR/$(date +%Y%m%d-%H%M%S)-planner.log" 2>&1 || true
+  claude_session planner "$LOG_DIR/$(date +%Y%m%d-%H%M%S)-planner.log" --agent planner \
+    "Write SPEC.md from IDEA.md." || true
   [ -s SPEC.md ] || die "The planner did not write SPEC.md; see $LOG_DIR."
   commit "docs: add spec drafted by the planner" SPEC.md
 fi
@@ -39,8 +42,8 @@ gate spec SPEC.md
 # 2. Initializer: SPEC.md → features.json
 if [ ! -f features.json ]; then
   log "Initializer: splitting SPEC.md into features.json"
-  HARNESS_ROLE=initializer claude -p --dangerously-skip-permissions --agent initializer \
-    "Split SPEC.md into features.json." >"$LOG_DIR/$(date +%Y%m%d-%H%M%S)-initializer.log" 2>&1 || true
+  claude_session initializer "$LOG_DIR/$(date +%Y%m%d-%H%M%S)-initializer.log" --agent initializer \
+    "Split SPEC.md into features.json." || true
   [ -f features.json ] || die "The initializer did not write features.json; see $LOG_DIR."
   harness/validate-features.sh
   jq -e 'all(.features[]; .passes == false)' features.json >/dev/null \

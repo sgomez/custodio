@@ -23,6 +23,43 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - The evidence would fail if the feature were wrong. "Tests pass" or "`just check` passes" alone
   is not evidence.
 - Each step fits in one session, and nothing outside the feature is planned.
+- Evidence that depends on the environment (a container engine, privileges, network, a device, a
+  tool not pinned in mise.toml) has under Scope a command run in the dev container and its result,
+  or says how the requirement is met if the container cannot.
+- The evidence is proportionate: each behaviour is proven once, at the cheapest level that would
+  catch it being wrong. Evidence that another feature's description or `verify` names belongs to
+  that feature.
+
+Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
+with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, or scope outside the
+feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
+list it; the builder reads it. A note asks for more evidence only to close a way a wrong feature
+could pass, never for a second proof of the same behaviour; note evidence that is redundant, so the
+builder can drop it.
+
+If the task includes your previous review, this is a re-review: check that each blocking point was
+addressed, and do not reopen what you accepted. Raise a new point only if it is blocking and the
+revision introduced it, or it would let a wrong feature pass.
+
+Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines: blocking points, then notes.
+
+## Mode: amendment
+
+The builder changed the approved contract while building. Read the diff you were pointed to, the
+whole contract, the feature's entry in `features.json`, the parts of `SPEC.md` it touches and the
+findings the amendment cites. Approve only if all of these hold:
+
+- The reason is a fact found while building (a tool's behaviour, a test, a research finding in
+  `docs/findings.md`), not convenience.
+- Every point of the feature and of `SPEC.md` still has evidence that would fail if the feature
+  were wrong, and every ticked step is still true.
+- No gate gets weaker: no dropped flag or check, no exception or glob wider than the finding
+  needs, no evidence moved to CI or to a person.
+- It does not contradict `SPEC.md`, unless it comes with a `pending` entry in
+  `SPEC_DEVIATIONS.md` and all of these hold: the cited finding proves nothing this project ships
+  can meet the requirement; the replacement is the narrowest one and is under Evidence; it touches
+  no security rule in `CLAUDE.md`. Otherwise reply `REVISE` and say the builder has to write
+  `BLOCKED.md`.
 
 Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to change.
 
@@ -37,7 +74,7 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    the contract lists, reusing those results where the evidence is the same command.
 4. Check:
    - Every step and every piece of evidence in the contract is delivered, and nothing outside it
-     was started.
+     was started. Do not ask for evidence the contract does not list.
    - The tests exercise the behaviour: they fail if the code is wrong, they are not skipped or
      `#[ignore]`d, and they do not just assert what the code returns.
    - No gate was weakened: deleted tests, lowered thresholds, unjustified `#[allow]`, no-op

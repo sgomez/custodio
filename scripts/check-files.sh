@@ -11,11 +11,14 @@ EXCLUDE_PATTERNS=(
   "*/Cargo.lock"
   "package-lock.json"
   "skills-lock.json"
+  "mise.lock"
   "LICENSE"
   ".agents/skills/*"
   ".claude/skills/*"
   "docs/*"
   "*.md"
+  "features.json"
+  "justfile"
 )
 
 excluded() {
@@ -40,7 +43,7 @@ over=()
 inline=()
 while IFS= read -r file; do
   if [ ! -f "$file" ] || [ -L "$file" ] || excluded "$file"; then continue; fi
-  if file --mime-encoding "$file" | grep -q binary; then continue; fi
+  if ! grep -qI . "$file"; then continue; fi
   tokens=$(($(wc -c <"$file") / 4))
   if [ "$tokens" -gt "$MAX_TOKENS" ]; then over+=("  $file (~$tokens tokens)"); fi
   if [[ "$file" == *.rs ]] && line=$(inline_tests "$file") && [ -n "$line" ]; then

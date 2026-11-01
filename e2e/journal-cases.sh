@@ -48,4 +48,4 @@ journal_case ec-approve signed ec1 ECDSA-SHA256 1500
 journal_case ec-deny denied ec1 ECDSA-SHA256 2000
 journal_case provider-approve signed rsa1 provider 3000
 [ "$(sort -k3,3 -u "$ledger" | wc -l)" -eq "$journal_n" ] || fail "two journal cases share a pid"
-echo "ok: $journal_n signatures for the journal checks"
+case_run "journal-signatures"

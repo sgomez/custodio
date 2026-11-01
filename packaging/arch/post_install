@@ -1,0 +1,6 @@
+#!/bin/sh
+# Nothing to do after a first installation (F58; SPEC design section 2). The account was created by pre_install. The hooks of systemd and
+# dbus, which pacman runs after this script, do the rest on the paths this package ships: 30-systemd-daemon-reload-system (daemon-reload),
+# dbus-reload (bus reload), 25-systemd-catalog (journal catalog). Repeating a call here would run it twice, and before the hook. The unit is
+# never enabled or started: D-Bus activation starts it. Nothing here touches the state directory. See docs/decisions.md.
+:

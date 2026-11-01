@@ -1,7 +1,9 @@
-# Manual acceptance steps (M01, acceptance 11 to 13)
+# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15)
 
-A person follows these steps in a graphical Debian 13 or Ubuntu 26.04 session. They cover SPEC.md
-acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the `journalctl` query). Nothing here is
+This page has two parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
+Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the
+`journalctl` query). Sections 10 to 15 are the M2 steps for `fedora44`, `bazzite`, `omarchy` and
+`ubuntu2404` (the M2 acceptance 12 to 15); start at section 10. Nothing here is
 automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
 `custodio import` flags) say so; everything else is marked **unverified**: adjust it to your NSS,
 LibreOffice and rFirma version and write down what you changed.
@@ -65,7 +67,7 @@ system's) is **unverified**; use what the rFirma documentation says and record i
 
 ## 2. Install the .deb
 
-`just package` writes `target/debian/custodio_0.1.0-1_amd64.deb` (the name is `custodio_<version>-1_<arch>.deb`).
+`just package` writes `target/packages/custodio_0.1.0-1_amd64.deb` (the name is `custodio_<version>-1_<arch>.deb`).
 Copy the file the maintainers gave you, or the one built from the milestone commit, and run (unverified here,
 there is no graphical session in the build environment):
 
@@ -241,3 +243,285 @@ Versions: OS ________ polkit ________ LibreOffice ________ rFirma build ________
 Report the filled form, the tables of sections 5 to 7 and the answers of section 8 to the
 milestone approver (issue or pull request on the repository). Do not paste key files or
 passwords.
+
+## 10. What every run records (M2)
+
+Each M2 run (sections 11 to 14) starts by recording, in the form of section 15, these five items.
+The commands are standard tools and **unverified** here: there is no such machine in the build
+environment.
+
+| Item | Command |
+|---|---|
+| OS release | `cat /etc/os-release` (`PRETTY_NAME`, `VERSION_ID`) |
+| kernel | `uname -r` |
+| bus daemon and version | `busctl status \| head -n 3`, then `dbus-broker --version` or `dbus-daemon --version` (whichever runs) |
+| polkit version | `pkaction --version` |
+| package file names | the exact file names given to the installer, for example `ls -l custodio*` in the directory used |
+
+Install commands are those of `docs/install.md`, which also explains each message. Packages come from
+the maintainers or from `just package` (`target/packages/`); do not rebuild them on the machine.
+Test material (CA, `rsa2048.p12`, `p256.p12`) is made as in section 1; import with
+`custodio import --id rsa2048 rsa2048.p12` (the password, `test-password`, is asked on the terminal).
+Write down the time of day of every signature and cancellation: the audit comparison uses it.
+
+## 11. fedora44, SELinux enforcing (acceptance 12)
+
+Record first (section 10):
+
+```sh
+cat /etc/os-release; uname -r; dbus-broker --version; pkaction --version; ls -l custodio*
+```
+
+Write the package file names. Fedora's own Firefox (`dnf install firefox` if missing), not a Flatpak
+or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
+
+1. SELinux first, before installing anything. `getenforce` must print `Enforcing`. If not, stop and
+   note it: the run does not count. The second command prints the start of the audit window (date and
+   time, as `ausearch` reads them); write it down.
+
+   ```sh
+   getenforce
+   LC_ALL=C date '+%x %T'
+   ```
+2. Install the `.rpm` (command from `docs/install.md`):
+
+   ```sh
+   sudo dnf install ./custodio-0.1.0-1.x86_64.rpm
+   ```
+3. Import both keys (section 3 of this page, `custodio import`).
+4. Firefox lists the certificate without manual registration. Open Firefox; do not run `modutil` and do
+   not add the module in Settings > Privacy & Security > Security Devices. Look in
+   Settings > Privacy & Security > Certificates > View Certificates > Your Certificates for
+   `Custodio test rsa2048` and `Custodio test p256` (**unverified** menu path). If they appear only after
+   manual registration, that is a failure of acceptance 12: write the steps you needed in the notes, and do
+   not count the run as passed.
+5. TLS client authentication: visit a site that asks for a client certificate (a local
+   `openssl s_server -Verify 1 -CAfile ca.crt -www` with a server certificate signed by the same CA is
+   enough; **unverified**), pick the certificate and check that the page loads.
+6. Each signature shows the polkit dialog: repeat step 5 twice for each key, approving; the dialog must
+   appear each time. Then repeat once and cancel the dialog: the connection must fail.
+7. SELinux denials over the whole run, from the start of step 1 (replace `MM/DD/YY HH:MM:SS` with
+   what it printed; checked in the F54 run). `--input-logs` makes `ausearch` read the log even when
+   its input is not a terminal (over `ssh`); without it, it reads nothing and prints `<no matches>`. The
+   first command must find the polkit authentications of step 6; if it finds none, the query is wrong.
+
+   ```sh
+   sudo LC_ALL=C ausearch -m USER_AUTH --input-logs --start MM/DD/YY HH:MM:SS | grep -c USER_AUTH
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -c AVC
+   ```
+
+   Expected: no line names the service (`custodio`), polkit or the module (`libcustodio_pkcs11`) during import, signing and denial. Any AVC at all: copy it into the notes, with the step it happened in.
+8. The audit comparison, the base query of `docs/audit.md` ("Queries") with the window of the run:
+
+   ```sh
+   journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401 \
+     --since "YYYY-MM-DD HH:MM" --until "YYYY-MM-DD HH:MM" -o verbose
+   ```
+
+   Expected: one entry per signature and per cancellation, none extra, none missing; approved ones have
+   outcome `signed`. The cancellations alone: the same query with `CUSTODIO_OUTCOME=denied` in place of
+   `MESSAGE_ID=...`. Use the table of section 7.
+
+### F61 fedora44: old-path .rpm upgrade, labels
+
+Proves that the service starts from `/usr/libexec/custodio/custodiod` in `unconfined_service_t`, and that key files written by the old
+package under `init_t` get the label `var_lib_t` back (F61). Needs the two packages of the milestone commit: the old-path fixture
+(`scripts/package-oldpath.sh` writes it to `target/packages-oldpath/`: the current .rpm with the daemon at `/usr/lib/custodio/custodiod`) and the
+newer package (`target/packages-next/`, which `just e2e` builds). Copy both to the machine (the old-path fixture has the name of package N, `custodio-0.1.0-1.x86_64.rpm`; the newer one is `custodio-0.1.1-1.x86_64.rpm`). Commands copied from `docs/install.md` and the e2e scripts
+are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** until this run.
+
+1. Remove any custodio package (`sudo dnf remove custodio`, and `sudo rm -rf /var/lib/private/custodio` on this test machine only), then install the old-path package and import a key:
+
+   ```sh
+   sudo dnf install ./custodio-0.1.0-1.x86_64.rpm
+   custodio import --id rsa2048 rsa2048.p12
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   ```
+
+   Expected: `ps -eZ` shows `system_u:system_r:init_t` for `custodiod` (the old path is `lib_t`), and the key file under
+   `/var/lib/private/custodio` has `init_var_lib_t`. Copy both outputs. If you see anything else, stop: the run does not show the problem F61 fixes.
+2. Upgrade to the newer package:
+
+   ```sh
+   sudo dnf upgrade ./custodio-0.1.1-1.x86_64.rpm
+   ls /usr/libexec/custodio/custodiod; ls /usr/lib/custodio/custodiod
+   systemctl status custodio --no-pager | grep -E 'Main PID|Active'
+   ps -eZ | grep custodiod
+   ```
+
+   Expected: the first `ls` finds the file, the second says `No such file or directory`; the service is active with a new main PID; `ps -eZ` shows
+   `system_u:system_r:unconfined_service_t`. `ls -Z /var/lib/private/custodio` already shows `var_lib_t`: systemd's rpm file trigger runs `systemd-tmpfiles --create` at the end of the transaction (F62).
+3. Restore the labels and check them. The tmpfiles line runs at every boot; to see its effect at once, and to check that nothing but the label changes:
+
+   ```sh
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   sudo systemd-tmpfiles --create /usr/lib/tmpfiles.d/custodio.conf
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   ls -Z /var/lib/private/custodio
+   matchpathcon /var/lib/private/custodio
+   ```
+
+   Expected: the two `stat` outputs are equal (mode, owner, size); `ls -Z` shows `var_lib_t` (what `matchpathcon` prints as the default); the key listing
+   still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). The `stat` and `ls -Z` lines need root (`/var/lib/private` is `0700 root`;
+   run them under `sudo sh -c '…'` so the glob expands as root). dnf's file trigger already restored the label, so the boot path is shown on bazzite (next section).
+4. Sign with the dialog and cancel it (acceptance 12, steps 5 and 6 of the section above): the dialog appears, approving signs, cancelling fails.
+5. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+
+## 12. bazzite, the .rpm layered (acceptance 13)
+
+Record first (section 10): `cat /etc/os-release; uname -r; dbus-broker --version; pkaction --version; rpm-ostree status`, and the
+package file names of the old and the newer package. Do everything on the host, in a terminal of the
+desktop session; do not use a toolbox or distrobox: a signature from inside a toolbox does not count.
+
+1. `getenforce` prints `Enforcing`; write down what `LC_ALL=C date '+%x %T'` prints, the start of the audit
+   window (section 11 step 1). Layer the package (`docs/install.md`, rpm-ostree) and reboot into the new deployment:
+
+   ```sh
+   getenforce
+   LC_ALL=C date '+%x %T'
+   sudo rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm
+   sudo systemctl reboot
+   ```
+2. After the reboot, `rpm-ostree status` shows `custodio` as a layered package in the booted deployment. Import both keys.
+3. A signature through the module from the host: use the client of your choice (Firefox as in section 11 step 5, or
+   `pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --sign` with the `rsa2048` key, **unverified**).
+   The polkit dialog must appear. Then cancel one: the signature must fail.
+4. Replace the layered package with a newer version (**unverified**: it needs a newer `.rpm`, for example
+   `custodio-0.1.1-1.x86_64.rpm`) and reboot:
+
+   ```sh
+   sudo rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm
+   sudo systemctl reboot
+   ```
+
+   After the reboot, the same keys (`custodio import` again is not allowed) sign: repeat step 3 with the polkit dialog.
+5. OS update: `sudo rpm-ostree upgrade`, then `sudo systemctl reboot`. After the reboot, the same keys
+   sign again, with the dialog, and a cancel fails. If the upgrade offers nothing, write that and use `rpm-ostree rebase` to another image
+   (**unverified**) or mark this step not run.
+6. No SELinux denial involves the service, after each reboot and at the end. The flags are those of section 11
+   step 7 (checked on Fedora 44, not on bazzite); `MM/DD/YY HH:MM:SS` is what step 1 printed, so the window covers
+   the reboots even across midnight. The first command must find authentications (the desktop login after each
+   reboot, the polkit dialogs); if it finds none, the query is wrong:
+
+   ```sh
+   sudo LC_ALL=C ausearch -m USER_AUTH --input-logs --start MM/DD/YY HH:MM:SS | grep -c USER_AUTH
+   sudo LC_ALL=C ausearch -m AVC,USER_AVC --input-logs --start MM/DD/YY HH:MM:SS | grep -Ei 'custodio|polkit|libcustodio_pkcs11'
+   ```
+
+   Expected: no line from the second command. Run both after each reboot and at the end, and record the output of each.
+
+### F61 bazzite: old-path .rpm layered with rpm-ostree, labels
+
+The same proof on the image-based system, where `%post` runs in a build root and no scriptlet touches `/var` at deploy time, so only the tmpfiles line
+(`/usr/lib/tmpfiles.d/custodio.conf`, run by the boot) can restore the label. Do everything on the host (no toolbox). Commands are **unverified** until this run
+(`rpm-ostree install` of a local file and the replace step are the ones section 12 already marks as such).
+
+1. Layer the old-path package and reboot; import a key; look at the domain and the label:
+
+   ```sh
+   sudo rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm
+   systemctl reboot
+   custodio import --id rsa2048 rsa2048.p12
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   ```
+
+   Expected: `init_t` and `init_var_lib_t`, as on fedora44 (copy both outputs).
+2. Replace it with the newer package, reboot, and check:
+
+   ```sh
+   rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm
+   systemctl reboot
+   ls /usr/libexec/custodio/custodiod
+   ps -eZ | grep custodiod
+   ls -Z /var/lib/private/custodio
+   stat -c '%a %u:%g %s %n' /var/lib/private/custodio /var/lib/private/custodio/*
+   ```
+
+   Expected: the file exists; `unconfined_service_t`; **after the reboot** `var_lib_t` for the key files (the boot ran `systemd-tmpfiles-setup`), with the same
+   mode, owner and size as before the upgrade (take the `stat` line before step 2 too and compare).
+3. The same keys still list and sign with the dialog, and a cancel fails (acceptance 12; sections 11 and 12 above): sign twice with the dialog open each time, cancel once.
+4. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+
+## 13. omarchy (acceptance 14)
+
+Record first (section 10): `cat /etc/os-release; uname -r; dbus-broker --version; pkaction --version; ls -l custodio*`, and the
+package file names. A polkit dialog is expected for every signature.
+
+1. Install (command from `docs/install.md`):
+
+   ```sh
+   sudo pacman -U custodio-0.1.0-1-x86_64.pkg.tar.zst
+   ```
+2. Check the polkit agent: Omarchy's Quickshell agent, not polkit-gnome. `pgrep -a quickshell` shows it
+   (`quickshell -n -p /usr/share/omarchy/shell` on Omarchy 4.0.6, checked in the F56 run) and `pgrep -a polkit-gnome` shows nothing.
+   Write down what runs.
+3. Import both keys. Sign with Firefox (section 11 step 5): the Quickshell dialog appears for each signature, a second signature asks again,
+   and a cancel makes it fail. Fill the table:
+
+   | # | Key | Step | Expected | Result |
+   |---|---|---|---|---|
+   | 1 | `rsa2048` | Sign, approve | dialog seen, signature made | |
+   | 2 | `rsa2048` | Sign again, approve | dialog again | |
+   | 3 | `rsa2048` | Sign, cancel | signature fails | |
+4. Firefox lists the certificate and does TLS client authentication (section 11 steps 4 and 5).
+5. Manual registration needed: yes / no. If yes, how (the exact steps, for example the module added in Settings >
+   Privacy & Security > Security Devices, or `modutil`)? ______________________
+   The milestone approver settles the open question from this answer; do not decide it in the notes.
+
+## 14. ubuntu2404, dbus-broker (acceptance 15)
+
+Record first (section 10), before and after the switch (the bus daemon changes): `cat /etc/os-release; uname -r;
+dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file names), then `dbus-broker --version` after the switch.
+
+1. Before the switch, install the `.deb`; it must be refused (`dpkg -i` runs the package's `preinst` check directly and shows its message, without resolving dependencies first):
+
+   ```sh
+   sudo dpkg -i custodio_0.1.0-1_amd64.deb
+   ```
+
+   Expected: non-zero exit and the message `does not provide ProcessFD`. The account and the state are not created:
+   `getent passwd custodio` prints nothing, and `/var/lib/custodio` does not exist. Write the output.
+2. Switch to `dbus-broker` and reboot, as in `docs/install.md` ("Ubuntu 24.04: switching to dbus-broker"):
+
+   ```sh
+   sudo apt-get install dbus-broker
+   sudo systemctl reboot
+   ```
+3. After the reboot, what to check, with the commands (checked in the F57 run). Write what broke:
+
+   | Check | Command | Expected | What broke |
+   |---|---|---|---|
+   | the desktop session | log in; `echo $XDG_SESSION_TYPE` | the desktop starts | |
+   | logind | `loginctl list-sessions` | your session is listed, `active` | |
+   | the polkit agent | run `pkexec true` in the session | the dialog appears; approved, exit 0 (GNOME's agent is in `gnome-shell`: `pgrep -a polkit` shows only `polkitd`) | |
+   | NetworkManager | `systemctl is-active NetworkManager; nmcli general status` | `active`, connected | |
+   | bus daemon | `busctl status \| head -n 3`; `systemctl status dbus-broker` | `dbus-broker` | |
+4. Install (`apt-get` here, so that any missing dependency is installed too):
+
+   ```sh
+   sudo apt-get install ./custodio_0.1.0-1_amd64.deb
+   ```
+
+   Import both keys (`custodio import`). Sign with the polkit dialog each time
+   (twice for each key) and cancel once for each: the signature fails.
+5. Whether switching to dbus-broker is acceptable on Ubuntu 24.04, from the table above: ______________________
+   The milestone approver settles the open question on refusing Ubuntu 24.04 altogether.
+
+## 15. M2 result form
+
+One copy per machine.
+
+Machine ________ OS release ________ kernel ________ bus daemon and version ________ polkit version ________
+package file names ________
+
+| Acceptance | Pass / fail / not run | Notes |
+|---|---|---|
+| 12 fedora44 (SELinux, Firefox, journal) | | |
+| 13 bazzite (layering, replace, OS update) | | |
+| 14 omarchy (Quickshell, Firefox) | | |
+| 15 ubuntu2404 (refusal, switch, signing) | | |
+
+Report the filled forms to the milestone approver as in section 9. Do not paste key files or passwords.

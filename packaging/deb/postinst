@@ -1,0 +1,21 @@
+#!/bin/sh
+# Make systemd and the bus see the new unit and policy, register the journal catalog and, after an upgrade of a running service,
+# restart it once (F43; SPEC design section 2). The account was created by preinst. The unit is never enabled or started here:
+# D-Bus activation starts it. Nothing here touches the state directory. The reloads tolerate failure (no live systemd in a chroot).
+set -e
+case "$1" in
+configure)
+    systemctl daemon-reload || true
+    deb-systemd-invoke reload dbus.service || true
+    journalctl --update-catalog || true
+    # preinst left the marker only if the service was running before this upgrade. Without it (an upgrade whose preinst did not
+    # run to the end) the service is left alone and D-Bus activation starts the new binary on the next call.
+    if [ -n "$2" ] && [ -e /run/custodio-restart-after-upgrade ]; then
+        rm -f /run/custodio-restart-after-upgrade
+        deb-systemd-invoke restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+    fi
+    ;;
+abort-upgrade | abort-remove | abort-deconfigure)
+    rm -f /run/custodio-restart-after-upgrade
+    ;;
+esac

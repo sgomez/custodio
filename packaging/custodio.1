@@ -1,0 +1,19 @@
+.TH CUSTODIO 1 "" "custodio" "User Commands"
+.SH NAME
+custodio \- import a PKCS#12 key into the custodio signing service
+.SH SYNOPSIS
+.B custodio import
+[\fB\-\-id\fR \fIkey id\fR]
+.I file.p12
+.SH DESCRIPTION
+.B custodio
+is the command-line importer of the custodio signing service.
+.B import
+reads a PKCS#12 file and stores its key where the service keeps keys.
+The file password is asked on the terminal.
+It is never taken from the arguments or from the environment.
+.SH OPTIONS
+.TP
+.BI \-\-id " key id"
+Name the stored key
+.IR "key id" .

@@ -10,7 +10,7 @@ spy_log=$WORK/spy.log
 
 # OpenSC's spy module; it is never replaced by $MODULE, a missing spy fails the run.
 spy=/usr/lib/x86_64-linux-gnu/pkcs11-spy.so
-[ -f "$spy" ] || spy=$(find /usr/lib -name pkcs11-spy.so 2>/dev/null | head -n 1)
+[ -f "$spy" ] || spy=$(find /usr/lib /usr/lib64 -name pkcs11-spy.so 2>/dev/null | head -n 1)
 if [ -z "$spy" ] || [ ! -f "$spy" ]; then fail "pkcs11-spy.so (OpenSC) not found"; fi
 
 # Over 1024 bytes, so pkcs11-tool goes straight to C_SignUpdate/C_SignFinal and a denial asks polkit once.
@@ -45,14 +45,14 @@ for m in SHA256-RSA-PKCS SHA384-RSA-PKCS SHA512-RSA-PKCS; do
     other=sha256
     [ "$h" = 256 ] && other=sha384
     if verify_openssl "$pub_rsa" "$other" "$sig"; then fail "SHA$h-RSA-PKCS signature verified with $other"; fi
-    echo "ok: SHA$h-RSA-PKCS"
+    case_run "composed-SHA$h-RSA-PKCS"
 done
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
 if input=$WORK/deny.bin p11sign_composed rsa1 SHA256-RSA-PKCS; then fail "a denied SHA256-RSA-PKCS signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied SHA256-RSA-PKCS signature produced output"
 [ "$(requests)" -eq $((before + 1)) ] || fail "SHA256-RSA-PKCS deny: expected exactly one request"
-echo "ok: SHA256-RSA-PKCS deny"
+case_run "composed-SHA256-RSA-PKCS-deny"
 
 for m in ECDSA-SHA256 ECDSA-SHA384 ECDSA-SHA512; do
     h=${m#ECDSA-SHA}
@@ -65,14 +65,14 @@ for m in ECDSA-SHA256 ECDSA-SHA384 ECDSA-SHA512; do
     other=sha256
     [ "$h" = 256 ] && other=sha384
     if verify_openssl "$pub_ec" "$other" "$sig"; then fail "ECDSA-SHA$h signature verified with $other"; fi
-    echo "ok: ECDSA-SHA$h"
+    case_run "composed-ECDSA-SHA$h"
 done
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
 if input=$WORK/deny.bin p11sign_composed ec1 ECDSA-SHA256 --signature-format openssl; then fail "a denied ECDSA-SHA256 signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied ECDSA-SHA256 signature produced output"
 [ "$(requests)" -eq $((before + 1)) ] || fail "ECDSA-SHA256 deny: expected exactly one request"
-echo "ok: ECDSA-SHA256 deny"
+case_run "composed-ECDSA-SHA256-deny"
 
 # --- Acceptance 2: OpenSSL with pkcs11-provider (C_SignUpdate / C_SignFinal) ---------------------
 export PKCS11_PROVIDER_MODULE=$spy
@@ -110,7 +110,7 @@ for k in rsa ec; do
     [ "$(requests)" -eq $((before + 1)) ] || fail "pkcs11-provider ${k}1: expected exactly one request"
     check_multipart_log "pkcs11-provider ${k}1" 1
     verify_openssl "$WORK/$k.pub" sha256 "$sig" || fail "OpenSSL did not verify the pkcs11-provider ${k}1 signature"
-    echo "ok: pkcs11-provider ${k}1 (C_SignUpdate/C_SignFinal)"
+    case_run "provider-${k}1"
 done
 
 before=$(requests)
@@ -118,14 +118,14 @@ provider_sign rsa1 "$WORK/big.bin" || { cat "$WORK/provider.log" >&2; fail "pkcs
 [ "$(requests)" -eq $((before + 1)) ] || fail "pkcs11-provider large file: expected exactly one request"
 check_multipart_log "pkcs11-provider large file" 2
 verify_openssl "$pub_rsa" sha256 "$sig" "$WORK/big.bin" || fail "OpenSSL did not verify the large-file signature"
-echo "ok: pkcs11-provider several C_SignUpdate"
+case_run "provider-several-updates"
 
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
 if provider_sign rsa1 "$WORK/data.bin"; then fail "a denied pkcs11-provider signature succeeded"; fi
 [ ! -s "$sig" ] || fail "a denied pkcs11-provider signature produced output"
 [ "$(requests)" -eq $((before + 1)) ] || fail "pkcs11-provider deny: expected exactly one request"
-echo "ok: pkcs11-provider deny"
+case_run "provider-deny"
 unset PKCS11_PROVIDER_MODULE
 
 # --- Acceptance 6: C_Login before signing still asks polkit --------------------------------------
@@ -168,19 +168,19 @@ login_sign rsa1 SHA256-RSA-PKCS || { cat "$WORK/p11.log" >&2; fail "login + SHA2
 [ "$(requests)" -eq $((before + 1)) ] || fail "login + SHA256-RSA-PKCS: expected exactly one request"
 verify_openssl "$pub_rsa" sha256 "$sig" || fail "OpenSSL did not verify the signature made after --login"
 check_login_log CKU_USER
-echo "ok: --login approve (RSA)"
+case_run "login-approve-rsa"
 
 before=$(requests)
 login_sign ec1 ECDSA-SHA256 --signature-format openssl || { cat "$WORK/p11.log" >&2; fail "login + ECDSA-SHA256 failed"; }
 [ "$(requests)" -eq $((before + 1)) ] || fail "login + ECDSA-SHA256: expected exactly one request"
 verify_openssl "$pub_ec" sha256 "$sig" || fail "OpenSSL did not verify the ECDSA signature made after --login"
-echo "ok: --login approve (ECDSA)"
+case_run "login-approve-ecdsa"
 
 before=$(requests)
 login_sign rsa1 SHA256-RSA-PKCS || fail "second --login signature failed"
 [ "$(requests)" -eq $((before + 1)) ] || fail "a second --login signature did not ask again"
 check_login_log CKU_USER
-echo "ok: --login, second signature asks again"
+case_run "login-asks-again"
 
 echo deny > "$E2E_DIR/mode"
 before=$(requests)
@@ -190,7 +190,7 @@ if login_sign rsa1 SHA256-RSA-PKCS; then fail "a denied signature after --login 
 # attempt is its own signature that asks polkit. Neither is authorized by the login.
 [ "$(requests)" -eq $((before + 2)) ] || fail "--login deny: expected exactly two requests, the login authorized nothing"
 check_login_log CKU_USER
-echo "ok: --login deny"
+case_run "login-deny"
 
 echo approve > "$E2E_DIR/mode"
 before=$(requests)
@@ -198,5 +198,5 @@ login_sign rsa1 SHA256-RSA-PKCS --login-type context-specific || { cat "$WORK/p1
 [ "$(requests)" -eq $((before + 1)) ] || fail "context-specific login: expected exactly one request"
 verify_openssl "$pub_rsa" sha256 "$sig" || fail "OpenSSL did not verify the signature made after a context-specific login"
 check_login_log CKU_CONTEXT_SPECIFIC
-echo "ok: --login --login-type context-specific approve"
+case_run "login-context-specific"
 unset PKCS11SPY PKCS11SPY_OUTPUT

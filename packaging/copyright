@@ -1,0 +1,11 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: custodio
+Upstream-Contact: rFirma <info@rfirma.com>
+Source: https://github.com/rfirma/custodio
+
+Files: *
+Copyright: 2026 rFirma
+License: EUPL-1.2
+
+License: EUPL-1.2
+ Licensed under the EUPL-1.2. The full text is in /usr/share/licenses/custodio/LICENSE.

@@ -73,8 +73,9 @@ Why the minimums: polkit 124 added pidfd support (`pidfd` parameter in `CheckAut
 polkit NEWS, verified). dbus 1.15.8 added `ProcessFD` to `GetConnectionCredentials` (dbus NEWS,
 verified); stable releases are 1.16.0 and later. dbus-broker 34 added it (NEWS, verified). polkit's
 own code uses it: `polkitsystembusname.c` calls `GetConnectionCredentials` and reads the
-`ProcessFD` key into a pidfd (polkit `main`, read 2026-10-27, verified). Which polkit release
-first did this is not pinned down; 124 is taken from its NEWS. So polkit 124+ on a bus that
+`ProcessFD` key into a pidfd (polkit `main`, read 2026-10-27, verified). polkit 124 does
+this too: its source was read at tag `124` and in the Ubuntu 24.04 package (see "polkit 124 and
+ProcessFD" below). Releases before 124 were not read. So polkit 124+ on a bus that
 exposes `ProcessFD` is enough; on a bus without it polkit falls back to the PID, which is
 what makes the older rows unsafe against PID reuse.
 
@@ -93,16 +94,79 @@ what makes the older rows unsafe against PID reuse.
 | openSUSE Leap 15.6 | 121 | 1.12.2 / 28 | No |
 | openSUSE Leap 16.0 | 123 | 1.14.10 / 36 | No (polkit) |
 | openSUSE Tumbleweed | 128 | 1.14.10 / 37 | Only with dbus-broker |
-| Arch | 128 | 1.16.2 / 37 | Yes |
+| Arch | 128 | 1.16.2 / 37 | Yes with dbus-broker (the default, observed in the e2e image) |
 
-"Default bus" is inferred; package versions were checked, not each distribution's default.
-Open risk: the end-to-end run covers only Debian 13; no other row was run.
+"Default bus" is inferred for rows not run; package versions were checked, not each distribution's default. Observed in the e2e images: Fedora 44, Alma 10 and Arch run dbus-broker (see "End-to-end targets Fedora 44 and Alma 10" and "End-to-end target Arch").
+Open risk: the end-to-end runs cover Debian 13, Ubuntu 26.04, Fedora 44, Alma 10 and Arch; no other row was run.
 RHEL 10 was checked through CentOS Stream 10 and the AlmaLinux 10 repository.
 
 Consequence: supported targets are Debian 13, Ubuntu 25.10 and later, Fedora 41 and later,
 RHEL/Alma 10 and Arch. Ubuntu 24.04 works only with `dbus-broker`. Debian 12, Ubuntu 22.04,
 RHEL 9 and Leap are out. The only package built is the Debian 13 `.deb`; the end-to-end suite
 runs on trixie (polkit 126, dbus-daemon 1.16.2).
+
+## 3a. polkit 124 and ProcessFD (F41, 2026-10-30)
+
+Question (SPEC.md open question): does polkit 124 take the pidfd of a system-bus-name subject from
+the `ProcessFD` key of `GetConnectionCredentials`, or fall back to the PID? Read by a subagent.
+
+Sources:
+- Upstream tag `124`, commit `82f0924dc0eb23b9df68e88dbaf9e07c81940a5a` ("Release 124"):
+  `git clone https://gitlab.freedesktop.org/polkit/polkit.git && git -C polkit checkout 124`.
+- Ubuntu noble source package `policykit-1` (binary `polkitd`), version `124-2ubuntu1.24.04.4`
+  (Updates and Security, published 2026-09-15). Found with
+  `curl -sL "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=policykit-1&distro_series=https://api.launchpad.net/1.0/ubuntu/noble&exact_match=true&status=Published"`.
+  Files under `https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/policykit-1/124-2ubuntu1.24.04.4/`:
+  `policykit-1_124.orig.tar.gz` (sha256 `72457d96a0538fd03a3ca96a6bf9b7faf82184d4d67c793eb759168e4fd49e20`),
+  `policykit-1_124-2ubuntu1.24.04.4.debian.tar.xz` (sha256 `9383eaad67e9a33bf0955d8acbd553f041c3b1960c4eed1a9cfabf36024e1716`).
+- Ubuntu patch list (`debian/patches/series`): `02_gettext.patch`, `08_chdir_root.patch`,
+  `Turn-local-modifications-of-mocklibc-into-patches-and-app.patch`, `debian/01_pam_polkit.patch`,
+  `debian/50-default.rules-Replace-wheel-group-with-sudo-group.patch`,
+  `debian/Don-t-use-PrivateNetwork-yes-for-the-systemd-unit.patch`, `git-action-directories.patch`,
+  `CVE-2025-7519.patch`, `CVE-2026-4897.patch`, `CVE-2026-85498.patch`.
+  Of the files cited below only `polkitbackendinteractiveauthority.c` is touched, by
+  `git-action-directories.patch` (one hunk near line 291, action directories). No patch touches the
+  other cited files and none mentions pidfd or ProcessFD. In `policykit-1_124.orig.tar.gz` (the
+  unpatched upstream release tarball) the cited files are byte-identical to tag `124` (`cmp`).
+
+Chain (line numbers at tag `124`):
+1. `GetConnectionCredentials` is called: `src/polkit/polkitsystembusname.c`,
+   `polkit_system_bus_name_get_creds_sync`, lines 486-530 (call at 516-527, through
+   `g_dbus_connection_call_with_unix_fd_list_sync`, so the reply's fd list is received). Verified.
+   Only `UnknownMethod` falls back to the PID-only `polkit_system_bus_name_get_creds_fallback` (line 394).
+2. The `ProcessFD` key is extracted: same function, lines 565-569 (`g_strcmp0 (key, "ProcessFD")`,
+   `g_unix_fd_list_get`), returned through `*out_pidfd` at 580-583. Verified.
+3. The pidfd reaches the `PolkitUnixProcess` subject: `polkit_system_bus_name_get_process_sync`,
+   lines 636-640 (`pidfd >= 0` → `polkit_unix_process_new_pidfd`);
+   `src/polkit/polkitunixprocess.c` `polkit_unix_process_new_pidfd` 815-825, `polkit_unix_process_constructed`
+   337-377 (a pidfd it did not open itself is marked `pidfd_is_safe`, 345-346). Verified.
+4. The backend's identity check uses the pidfd rather than the pid: `polkit_unix_process_get_pid`
+   (`polkitunixprocess.c` 604-617) returns, whenever a pidfd is set, the pid parsed from
+   `/proc/self/fdinfo/<pidfd>` (`get_pid_from_pidfd`, 282-334), or -1 if the process is gone; the stored
+   pid is not consulted. `polkit_unix_process_get_racy_uid__` (1145-1259) starts from that pid (1169) and
+   compares the start time (1253-1257). The backend uses it in `polkitbackendsessionmonitor-systemd.c`
+   `polkit_backend_session_monitor_get_user_for_subject` (266-301); `subject_equal_for_authz` in
+   `polkitbackendinteractiveauthority.c` (about 3095-3135) compares by pid taken from the pidfd; the
+   duktape authority (`polkitbackendduktapeauthority.c` 403-404, 497-510) fails with "Process changed
+   pid" if it differs. Verified. Limits: for a bus-name subject, `get_user_for_subject` returns the
+   uid from the bus reply with `matches = TRUE` (about line 306) and does not run the racy-uid check;
+   the full call path of `check_authorization_sync` was not traced line by line (only the uses above).
+   Neither limit changes the claim: every pid the backend derives for the process comes from the pidfd.
+5. Key absent: `get_process_sync` takes `polkit_unix_process_new_for_owner (pid, 0, uid)` (639-640)
+   with `ProcessID` and `UnixUserID`. In `constructed` (348-359) polkit then opens a pidfd itself with
+   `pidfd_open (pid)`; that pidfd is `pidfd_is_safe = FALSE` (racy), so the systemd-unit lookup is
+   skipped (`polkitbackendduktapeauthority.c:491`) and the subject is not serialised with a pidfd
+   (`polkitsubject.c:322`). It is a visible, non-pinned PID path, not a failure. Verified.
+   A failing `g_unix_fd_list_get` (line 568) also degrades to this path (error set, `pidfd = -1`).
+
+NEWS for 124 ("PIDFDs are used if available to track processes") agrees but is not the evidence.
+
+Runtime condition: pinning needs a bus that returns `ProcessFD` (dbus-daemon 1.15.7+ per the source
+comment at 509-514, dbus-broker 34+). Ubuntu 24.04 ships dbus-daemon 1.14.10, which most likely does not
+(inferred), so there polkit 124 takes the link 5 path unless `dbus-broker` is installed. The table row
+in section 3 stays "Only with dbus-broker installed".
+
+Verdict: A
 
 ## 4. Manual acceptance run (M01)
 
@@ -315,7 +379,7 @@ archives, 2026-10-28):
 | Ubuntu 26.04 | dbus-daemon | 1.16.2 | 7.0 | present | present | with AppArmor (inferred) | present | absent | verified |
 | Fedora 41+ | dbus-broker | 36 / 37 | 6.11 at GA, later 6.17 | present | present | with SELinux | present | absent | versions verified, default inferred |
 | RHEL/Alma 10 | dbus-broker | 36 | 6.12 | present | present | with SELinux | present | absent | inferred (CentOS Stream 10 packages) |
-| Arch | dbus-daemon | 1.16.2 | rolling (7.x) | present | present | probably absent (no default LSM, inferred) | present | absent | versions verified, rest inferred |
+| Arch | dbus-broker (observed; corrected from dbus-daemon) | 37 (dbus 1.16.2 is installed but not running) | rolling (7.x) | present | present | probably absent (no default LSM, inferred) | present | absent | bus daemon observed in the e2e image, rest inferred |
 
 - Key code: dbus-daemon emits `LinuxSecurityLabel` from `getsockopt(SO_PEERSEC)`
   (`dbus-sysdeps-unix.c` ~2074; `bus/driver.c:2009-2016`), `UnixGroupIDs` from `SO_PEERGROUPS`
@@ -434,3 +498,710 @@ Recommendation: aggregate.
 - Inferred follow-up: request `ProcessFD`, cross-check it against `ProcessID`, add the security label (M1.2).
 - Inferred follow-up: implement the aggregate for refused calls with its own timer (M1.3), then rerun the measurement in
   the e2e guest.
+
+## F36: nfpm 2.48.0 package names, pre-release rendering and dependency names
+
+Measured with nfpm 2.48.0 (`nfpm package -f c.yaml -p deb|rpm|archlinux`), `release: "1"`, `arch: amd64`:
+
+- File names: `custodio_<ver>-1_amd64.deb`, `custodio-<ver>-1.x86_64.rpm`, `custodio-<ver>-1-x86_64.pkg.tar.zst`.
+- `version: 0.2.0` + `prerelease: rc.1`: deb `0.2.0~rc.1-1`, rpm version `0.2.0~rc.1` release `1`. Both sort
+  below `0.2.0-1`. Arch drops the pre-release from `pkgver` (`pkgver = 0.2.0-1` in `.PKGINFO`, file name
+  `custodio-0.2.0rc.1-1-...`), so the pre-release would equal the release. The `package` recipe therefore passes
+  the Arch package `version: 0.2.0_rc.1` and an empty `prerelease` (`pkgver = 0.2.0_rc.1-1`, no `-` in pkgver).
+  `nfpm.yaml` takes `version` and `prerelease` from `NFPM_VERSION` and `NFPM_PRERELEASE`.
+- The Arch `.INSTALL` wraps the two script files in `function post_install() {…}` and `function post_upgrade() {…}`;
+  it uses `function`, so it is Bash, not POSIX sh. `postupgrade` is set under `overrides.archlinux.archlinux.scripts`.
+- `bsdtar -tvf` shows numeric owners `0 0` for files in the Arch package and `root root` for directories.
+- The release binaries `NEEDED`: `libgcc_s.so.1`, `libc.so.6`, `ld-linux-x86-64.so.2` (all three ELF files).
+
+Dependency names (read from distro metadata, 2026-10-30):
+
+- deb `dbus-system-bus`: virtual package provided by both `dbus` and `dbus-broker` on trixie (`apt-cache show`);
+  `dbus-daemon` provides nothing. Kept. `polkitd` is 126 on trixie, 124 on Ubuntu 24.04, 127 on 26.04.
+- rpm `dbus-daemon` is wrong: `dbus-broker` does not provide it (Fedora and Alma 10 metadata), so a `Requires:
+  dbus-daemon` would install the reference daemon next to dbus-broker. Replaced by `dbus`, the meta package that
+  `polkit` itself requires and that depends on `dbus-broker` when systemd is present. polkit is 125 on Alma 10
+  and 126 or newer on Fedora.
+- Arch `dbus` is installed with either implementation (`dbus-broker-units` depends on both). Kept. `polkit` is 128.
+
+## F37: glibc ceiling and package parity (2026-10-30)
+
+- glibc of the targets: Debian 13 2.41, Ubuntu 26.04 2.43, Ubuntu 24.04 2.39, Fedora 44 2.43, Alma 10 2.39, Arch 2.44 (rolling;
+  build of 2026-09-27). Sources are in `packaging/glibc-ceiling.txt`. The ceiling is 2.39, the oldest (Ubuntu 24.04 and Alma 10).
+  The Alma figure comes from a third-party mirror index; no official Alma page was reachable.
+- The three shipped ELF files need at most `GLIBC_2.34` when built in the dev container (glibc 2.41), so the build needs no
+  change (no old sysroot). The gate keeps it true: a toolchain or dependency bump that raises it fails `just glibc-ceiling`.
+- Real listings: rpm lists no directories (`rpm --dump`), deb and Arch list the implicit parents as `0755 root root`; the
+  directory rule in `scripts/check_parity.py` follows from that. The three real packages have no difference.
+- A fixture ELF must be stripped (`gcc -s`) before byte-patching `GLIBC_2.34`: otherwise the name also sits in `.strtab`.
+
+## F38: package linters, research (2026-10-30)
+
+- lintian: Debian 13 at `snapshot.debian.org/archive/debian/20261020T000000Z/` has lintian 2.122.0 and rpmlint 2.7.0-3. lintian has no
+  separate profile or data version: `debian/main` is a profile file inside the package, so `lintian_profile` is the package version.
+  `lintian --print-version` prints it. Default `--fail-on` is `error`, so findings are parsed from output, not from the status. Use
+  `--tag-display-limit 0`. Lintian needs many Perl modules; it did not run from an extracted .deb without root.
+- rpmlint: Fedora 44 has 2.8.0-2.fc44 (koji URL and sha256 in `pins.txt`); trixie has 2.7.0, so outcome (b): rpmlint always runs in the
+  Fedora container and the dev image gets no rpmlint. Config loading (2.7 and 2.8): built-in `configdefaults.toml`, then every
+  `*.toml` in `$XDG_CONFIG_HOME` and `$XDG_CONFIG_DIRS` (default `/etc/xdg`) `/rpmlint/`, then each `-c` path; `-c` adds and does not
+  replace. `CONFIG_DISABLE_AUTOLOADING=1` skips the autoload. The Fedora image loads `fedora.toml` (77 filters, 5 extra checks),
+  `scoring.toml`, `users-groups.toml`, `warn-on-functions.toml`; the gate image must remove them. The session header lists the loaded
+  files (4-space indented, after `configuration:`). Status 0 with warnings; 64 errors. Summary: `N packages and M specfiles checked; E errors, W warnings, F filtered, ...`.
+- namcap 3.6.0-3 (`any`) is in the Arch Linux Archive under `repos/2026/10/20/extra/os/x86_64/`. Line format `pkgname W: message`,
+  `Error: ...` lines on stdout, status 0 even with findings. Branch 2 (container only): trixie has no `python3-pyalpm`, and namcap needs
+  a real pacman database to resolve dependencies, so a Debian build would report different findings than on Arch.
+- Base digests (2026-10-30): see `pins.txt`.
+
+## F38: container runtime in the dev container (2026-10-30)
+
+The session runs as uid 1000 and `dev` has passwordless `sudo` (NOPASSWD); an earlier note here saying there was no sudo was wrong.
+There is no podman or docker installed yet. Decision from a person (answer to `BLOCKED.md`): the dev container gets a nested rootless
+podman, installed with `sudo` (rootless podman needs subuid/subgid entries for `dev`, and `/dev/fuse` or the vfs storage driver). The
+host socket is never mounted. The linters then run in containers as the contract describes, so step 2 (raw findings on the real
+packages, the `/usr/lib/custodio/custodiod` outcome, `reports/package-lint-container.txt`) is produced in the dev container.
+
+## F38: raw linter findings on the real packages, before any fix (2026-10-30)
+
+Run in the dev container with the images from `packaging/lint/*.Containerfile` (versions from `pins.txt`: lintian 2.122.0, rpmlint 2.8.0,
+namcap 3.6.0-3) on `target/packages` from `just package` (0.1.0-1), `--network none`, package directory read-only. Nothing is fixed or
+listed yet. Flags: lintian `--no-cfg --profile debian/main --display-info --display-experimental --pedantic --show-overrides
+--tag-display-limit 0`; rpmlint with its defaults (the image has no `/etc/xdg/rpmlint/*.toml`: the "configuration:" list shows only
+`configdefaults.toml`); namcap `-i`.
+
+### lintian
+```
+E: custodio: no-changelog usr/share/doc/custodio/changelog.Debian.gz (non-native package)
+E: custodio: no-copyright-file
+E: custodio: unstripped-binary-or-object [usr/bin/custodio]   (also usr/lib/custodio/custodiod, usr/lib/custodio/libcustodio_pkcs11.so)
+W: custodio: maintainer-script-calls-systemctl [postinst:7]
+W: custodio: no-manual-page [usr/bin/custodio]
+W: custodio: synopsis-too-long
+I: custodio: extended-description-is-probably-too-short
+I: custodio: hardening-no-fortify-functions [usr/bin/custodio]   (also custodiod, libcustodio_pkcs11.so)
+X: custodio: executable-in-usr-lib [usr/lib/custodio/custodiod]
+X: custodio: spelling-error-in-binary onthe on the [usr/bin/custodio]   (also custodiod, libcustodio_pkcs11.so)
+```
+### rpmlint
+```
+W: unstripped-binary-or-object /usr/bin/custodio   (also custodiod, libcustodio_pkcs11.so)
+E: summary-too-long ...            E: description-line-too-long ...
+E: spelling-error ('polkit', ...)  (Summary and %description)
+E: no-signature                    E: no-group-tag                 E: no-changelogname-tag
+E: explicit-lib-dependency libgcc  W: no-manual-page-for-binary custodio
+W: no-documentation                W: invalid-license EUPL-1.2
+```
+No rpmlint finding has `/usr/lib/custodio/custodiod` as its subject except `unstripped-binary-or-object` (a strip question, not a path one).
+### namcap
+```
+W: ELF file ('usr/bin/custodio') is unstripped.   (also custodiod, libcustodio_pkcs11.so)
+W: .INSTALL file runs a command (systemd-sysusers) provided by hooks.
+E: File (<each path, also .PKGINFO .MTREE .INSTALL>) is owned by 0:0     <- tar has no user/group names (nfpm writes numeric only)
+E: Uncommon license identifiers such as 'EUPL-1.2' require license files below /usr/share/licenses/custodio/
+W: Unused shared library '/usr/lib64/ld-linux-x86-64.so.2' by file (usr/bin/custodio, usr/lib/custodio/custodiod)
+W: Dependency libgcc detected and implicitly satisfied ...   W: Dependency included, but may not be needed ('gcc-libs' 'polkit' 'systemd' 'dbus' 'p11-kit')
+I: Soname 'ld-linux-x86-64.so=2-64' / 'libc.so=6-64' is not specified as provides by glibc yet
+I: Link-level dependence (glibc / libgcc) ...   I: Soname dependency 'libgcc_s.so=1-64' provided by libgcc detected and not included
+I: Soname depends / Provides / Depends as namcap sees them ...   I: Dependency glibc detected and satisfied
+```
+Open question (path): namcap draws no finding about `usr/lib/custodio/custodiod` other than the unstripped and ownership ones that apply to
+every file. rpmlint none. **lintian's experimental tag `executable-in-usr-lib [usr/lib/custodio/custodiod]` does name the path**: it
+suggests `/usr/libexec`, which Arch does not have (decisions.md, SPEC "Arch and `/usr/libexec`"). See BLOCKED.md.
+
+### Nested podman in the dev container (what worked)
+`apt-get install podman uidmap`; the dev container maps a single uid (`/proc/self/uid_map`), so `newuidmap` fails with the subuid ranges: empty
+`/etc/subuid` and `/etc/subgid`, `~/.config/containers/storage.conf` with `driver = "vfs"` and `ignore_chown_errors`, and
+`~/.config/containers/containers.conf` with `default_sysctls = []`, `netns = "host"`, `pidns = "host"`, `utsns = "host"` (the mounts of
+`/proc` and `sethostname` are refused otherwise). `--network none` and a read-only mount then work; `--user 1000:1000` does not (only uid 0
+exists in the namespace, and that is the unprivileged `dev` outside), so the gate must use `--user 0:0` under rootless podman. Image builds need
+`APT::Sandbox::User=root` (apt), a `dpkg-statoverride` for `/var/cache/man` (man-db) and `pacman --disable-sandbox`; the bases are pulled as
+`docker.io/library/<name>@digest` (the digests in `pins.txt` are Docker Hub's; registry.fedoraproject.org does not know the Fedora one). The
+Debian base has no CA bundle, so the snapshot source is `http://` (apt verifies the signed Release file).
+
+## F38: findings fixed in the packaging, findings listed, and what the gate guarantees (2026-10-30, session 2)
+
+Raw findings are in the section above ("before any fix"). What was done with each; the committed lists in `packaging/lint/*.txt` hold only
+the "listed" ones, each with its reason.
+
+Fixed in the packaging: unstripped binaries (`[profile.release] strip = "symbols"` plus `strip --remove-section=.comment` in `just package`;
+rustc leaves `.comment`); no copyright file (`packaging/copyright`, DEP-5, in all three packages); no changelog (`packaging/changelog.Debian`,
+written with the package version by `just package` and gzipped; also fixes rpmlint's incoherent-version); no manual page (`packaging/custodio.1`,
+gzipped by `just package`); synopsis too long, summary too long and description line too long (the first description line is now a short
+summary); no `Group` tag (`rpm: group:`); license text missing for Arch (`/usr/share/licenses/custodio/LICENSE` in all three).
+Listed (reasons in the lists): lintian `executable-in-usr-lib` (decided by a person), `hardening-no-fortify-functions` x3 and
+`spelling-error-in-binary` x3 (Rust; the string "onthe" is in a dependency), `maintainer-script-calls-systemctl`, `extra-license-file` and
+`package-contains-documentation-outside-usr-share-doc` (LICENSE under /usr/share/licenses), `initial-upload-closes-no-bugs`; rpmlint
+`spelling-error` (polkit), `no-signature`, `explicit-lib-dependency`, `not-listed-as-documentation` x3 / `no-documentation` (nfpm drops
+`type: doc` from deb and Arch, which share one file list: tried, the parity gate failed), `manpage-not-compressed bz2`, `invalid-license`,
+`no-changelogname-tag`; namcap: owner `0:0` (nfpm writes numeric ids only), `external-hooks`, and the informational dependency lines.
+
+Path `/usr/lib/custodio/custodiod` (the open question from F36): the run with the path as built (`-m`, in `reports/package-lint-container.txt`)
+draws ten (linter, tag, subject) findings that name it, all decided by the person's answer (option 1: accept the path and list the findings
+as literal pairs): lintian `executable-in-usr-lib`, `hardening-no-fortify-functions` and `spelling-error-in-binary` (`onthe`, from a dependency); namcap
+`incorrect-owner` (0:0), `unused-sodepend`, and the bracketed dependency findings `libdepends-missing-provides` (two),
+`libdepends-detected-not-included`, `dependency-implicitly-satisfied` and `dependency-detected-satisfied`. rpmlint draws no finding about the path. Each is a literal entry in the committed lists
+(see the contract amendment), none is a wildcard over the path.
+
+lintian profile: `debian/main` in lintian 2.122.0 has `Enable-Tags-From-Check: *` and no `Disable-Tags`; with `--no-cfg` nothing else applies.
+The gate prints `profile 2.122.0` (the package version, as there is no separate data version).
+
+rpmlint and the distro config: the stock `fedora.toml` (77 filters) hides `no-signature`, `spelling-error` and `manpage-not-compressed` on the same
+.rpm; the gate's rpmlint reports them. `reports/package-lint-container.txt` holds the gate run (all three "ran ... container" lines; the rpmlint
+line lists only `configdefaults.toml` and the committed empty config) followed by the stock-config run showing `3 filtered`.
+
+Outcomes for the dev image: rpmlint outcome (b) (container only, none installed), namcap branch 2 (container only), lintian installed at
+the pin from the snapshot (takes effect when the dev image is rebuilt; until then the host has no lintian and the gate uses the container).
+Under the nested rootless podman of the dev container the run uses `--user 0:0` (the unprivileged caller; no other uid exists there).
+
+## F42 — Does pacman stop an installation when `pre_install` fails? (2026-10-30)
+
+No. Tested with the real `pacman -U --noconfirm` (pacman from the pinned Arch image of `packaging/lint/namcap.Containerfile`, rootless
+podman, `--user 0:0`) on a hand-made package whose `.INSTALL` defines `pre_install() { ...; return 1; }`: pacman prints
+`error: command failed to execute correctly`, goes on, extracts the files, exits 0, and `pacman -Q` lists the package. `pre_upgrade` is
+run by the same libalpm call and is not expected to differ (not run separately).
+
+Mechanisms tried for an abort from inside the package:
+- A script `kill -INT "$PPID"` (the parent of the scriptlet is `pacman`): pacman prints `Interrupt signal received`, but the transaction still
+  completes (exit 0, files extracted). Not an abort.
+- A shipped alpm `PreTransaction` hook with `AbortOnFail`: libalpm reads hooks from the hook directories before the transaction starts, so
+  the hook of the package being installed is not there yet. It can only protect a later upgrade or reinstall, never the first installation
+  (reasoned from the libalpm hook order, not run).
+
+deb and rpm (run in the build session that followed, with the real tools and the fixture packages of `scripts/lib/package-fixtures.sh`):
+a failing pre-install script does stop the installation. `dpkg --root R -i` runs `preinst install` before unpacking; exit status 1 gives
+`dpkg: error processing archive ... new custodio package pre-installation script subprocess returned error exit status 1`, exit 1, no file
+in R and `dpkg -L custodio` says the package is not installed. `rpm --root R -i` runs `%pre` before the payload is written; exit status 1
+gives `error: %prein(custodio-0.1.0-1.x86_64) scriptlet failed, exit status 1` and `install failed`, exit 1, no file in R and `rpm -q`
+says not installed. An upgrade (`dpkg -i` of a newer .deb: `preinst upgrade`; `rpm -U`: `%pre` with 2) is refused the same way and leaves
+the installed version. `scripts/test-install-real.sh` repeats all of this on every `just check`. Setup that works unprivileged: the tools
+run as root of a user namespace (`unshare --map-root-user --mount`) and chroot into a small root that holds dash, grep, awk and busctl with
+their libraries (`bf_mkroot`); the stub buses are bind-mounted at `/run/bus` there. Without the namespace `dpkg --root` fails on its
+chroot and `rpm --root` on its scriptlet chroot. Arch: as above (pacman goes on); the PreTransaction hook of the installed package aborts a
+reinstall and an upgrade (`pacman -U` exits 1, files and version unchanged) and sees `DBUS_SYSTEM_BUS_ADDRESS` of the pacman process.
+
+
+## F44: rpm scriptlets, research (2026-10-30)
+
+Checked on rpm 4.20.1 and nfpm 2.48.0 in the dev container (logging packages under `unshare -r rpm --root`), plus source reading of systemd's
+`src/rpm/macros.systemd.in`, `triggers.systemd.in`, `src/update-helper/update-helper.c`, rpm's `lib/order.c` and `lib/psm.c`, and rpm-ostree's
+`src/libpriv/rpmostree-scripts.cxx`, `rpmostree-core.cxx`, `rust/src/core.rs` and `docs/treefile.md` (main, Oct 2026). **Verified** unless marked.
+
+- **Order and `$1` across `rpm -U` (verified, measured).** New `%pre` (2), new files, new `%post` (2), old `%preun` (1), old files removed,
+  old `%postun` (1), new `%posttrans` (2). Install: `%pre` 1, `%post` 1. Erase: `%preun` 0, `%postun` 0. During the new `%post` and the old
+  `%postun` the rpmdb holds both headers, so a version query at the restart cannot tell the new package from the old; the call log order is the
+  evidence instead.
+- **The Fedora macros (verified in the systemd source).** `%systemd_post` runs `systemd-update-helper install-system-units` on `$1 -eq 1` (it
+  enables and presets); `%systemd_preun` runs `remove-system-units` on `$1 -eq 0`; `%systemd_postun` is empty; `%systemd_postun_with_restart`
+  only marks the unit (`mark-restart-system-units`) on `$1 -ge 1`, and a file trigger of systemd restarts the marked units at the end of the
+  transaction (a try-restart: stopped units stay stopped). `%sysusers_create_compat` is gone; its successor is `%sysusers_create_package`.
+  Their decisions are copied, their text is not (nfpm writes the script as it is, so a macro would stay unexpanded). Differences: no enable
+  or preset (SPEC: D-Bus activation starts the unit), the restart happens in the new `%post` from a marker (docs/decisions.md).
+- **Account before `%pre` (verified).** rpm 4.19+ turns `user(NAME) = BASE64(sysusers line)` provides into a `systemd-sysusers -` call that runs
+  before `%pre`; nfpm can write the provide. Not used: it would create the account before the F42 check, and SPEC says the check runs before
+  anything changes. On classic rpm the packaged sysusers file is not on disk yet in `%pre`, so the scriptlet pipes the line on stdin (as the deb).
+- **nfpm and `Requires(pre)` (verified).** `rpm.requires` has only `post`; `pre:` is "field not found"; a `(pre)` suffix in a name is literal.
+  Plain `Requires: systemd` (already there) orders systemd before the package's `%pre` (`order.c`, `addSingleRelation`: every non-weak Requires
+  is an edge; the pre flag matters only for breaking loops, and nothing requires custodio). The contract was amended for this.
+- **rpm-ostree (verified in source).** It runs `%pre`, `%post`, `%posttrans` and file triggers of packages being added, in bubblewrap on a
+  temporary root: no network, no D-Bus, no systemd (`SYSTEMD_OFFLINE=1`), `/run` a fresh tmpfs, `/var` read-only apart from `/var/tmp` and
+  `/var/lib/rpm-state`, `/usr` and `/etc` writable. It never runs `%preun`, `%postun` or the triggers of removal ("not running *un scripts for
+  removals yet"; only install, update and downgrade are handled). **So `rpm-ostree uninstall` runs no scriptlet of the removed package: the stop
+  (it ends with the reboot into the deployment without the package) and the notice SPEC asks for cannot come from the package's scriptlets.**
+  No other mechanism that runs at uninstall time exists in the package: see the F44 entry in `SPEC_DEVIATIONS.md`. Users: rpm-ostree runs sysusers once on the whole tree
+  before the `%pre` scripts if the image's rpm sets `%__systemd_sysusers`, and turns `useradd` calls of `%pre` into sysusers fragments; a
+  shipped `/usr/lib/sysusers.d/custodio.conf` is enough there (inferred; not run: F45 and later).
+- **Local finding in the deb (F43), not changed here.** `: > /run/custodio-restart-after-upgrade || true` in `preinst` ends a dash `sh` when the
+  redirection fails (a redirection error on a special builtin is fatal, whatever follows `||`); on a read-only `/run` the upgrade would fail.
+  The rpm `%pre` writes the marker in a subshell for this reason.
+
+## F58: Arch hooks and install script, research (2026-10-30)
+
+Read in the pinned Arch image of `packaging/lint/namcap.Containerfile` (`podman run --rm --user 0:0 localhost/custodio-f42-arch:<tag> sh -c '...'`):
+systemd 262.1-1, dbus 1.16.2-2, dbus-broker 37-3, pacman 7.1.0. Command for the hooks: `cd /usr/share/libalpm/hooks; grep -v '^#' NAME.hook`; for
+their command: `cat /usr/share/libalpm/scripts/systemd-hook`; owner: `pacman -Qo FILE`. **Verified** unless marked.
+
+| hook (package) | When | Trigger (Type Path) | Exec (`systemd-hook OP`) |
+|---|---|---|---|
+| `20-systemd-sysusers` (systemd) | PostTransaction | Install, Upgrade: `usr/lib/sysusers.d/*.conf` | `systemd-sysusers` (no live-systemd check) |
+| `25-systemd-catalog` (systemd) | PostTransaction | Install, Upgrade, Remove: `usr/lib/systemd/catalog/*` | `journalctl --update-catalog` (no check) |
+| `30-systemd-daemon-reload-system` (systemd) | PostTransaction | Install, Upgrade, Remove: `usr/lib/systemd/system/*` | `systemctl --system daemon-reload` after `systemd_live` |
+| `35-systemd-enqueue-marked` (systemd) | PostTransaction | Upgrade: `usr/lib/systemd/system/*` | `systemctl enqueue-marked` after `systemd_live` |
+| `dbus-reload` (dbus) | PostTransaction | Install, Upgrade, Remove: `etc/dbus-1/system.d/*.conf`, `usr/share/dbus-1/system.d/*.conf`, `usr/share/dbus-1/system-services/*.service` | `systemd-hook reload dbus.service` = `systemctl try-reload-or-restart dbus.service` (no live check) |
+
+- `systemd_live` is `systemd-detect-virt --chroot` (skip) and `systemd-notify --booted` (skip when not booted); the skip messages say
+  "Skipped: Running in chroot." / "Skipped: Current root is not booted.". `systemd-hook` also has `restart UNIT` = `systemctl try-restart UNIT`
+  and `reload UNIT`, both "for use by other packages", without the live check.
+- **Every call the package needs on install, upgrade and removal for its unit, sysusers file, catalog and bus policy is already a hook:** daemon-reload
+  (30, unit path), the bus reload (`dbus-reload`, policy path, also on removal), the catalog (25), `sysusers` (20). The scripts do not repeat any of them.
+  The `dbus-broker` and `dbus-broker-units` packages ship no hook (`pacman -Ql dbus-broker dbus-broker-units | grep -i 'hook\|libalpm'` is empty); `dbus.service`
+  is what `dbus-reload` reloads on both implementations.
+- **Order.** libalpm runs the install script of a package (`pre_*` before unpacking, `post_*` after) before the PostTransaction hooks, and hooks of one phase
+  by file name. File names sort 20, 21, 25, 30, 35, `dbus-reload`: so the bus reload comes after the daemon reload, and `35-systemd-enqueue-marked` runs
+  BEFORE `dbus-reload.hook` (a restart through the marker would precede the bus reload). The order is proven by the sequence numbers of the real run
+  (`scripts/test-arch-lifecycle-real.sh`).
+- **`enqueue-marked` needs a marker** set with `systemctl set-property UNIT Markers=needs-restart` (comment in `systemd-hook`), by a script that runs
+  while the service is running; `post_upgrade` runs before every PostTransaction hook, so the marker is the only way for a script to ask for a restart that
+  comes after the daemon reload, but the marker hook runs before the bus reload. Not used (docs/decisions.md): a hook of this package named after
+  `dbus-reload` runs `systemd-hook restart custodio.service` (`try-restart`: only if active, so no state and no marker).
+- **Why the account must exist before the policy is unpacked, though sysusers has a hook.** The sysusers hook runs PostTransaction, after unpacking and after
+  `post_*`. `dbus-daemon` links `inotify_add_watch` (`grep -a -o 'inotify_[a-z_]*' /usr/bin/dbus-daemon`) and watches its configuration directories, so it
+  may load a policy that names the user `custodio` as soon as the file is unpacked, not only at the `dbus-reload` hook (`dbus-broker` has no inotify
+  strings; it reloads on request). A policy naming a missing user is a bad configuration. `pre_install`/`pre_upgrade` create the account.
+- Hooks are read at the start of the transaction for PreTransaction (F42) and again for PostTransaction, so a PostTransaction hook that a package ships
+  runs in the transaction that installs it. (Proven by the real run, same file.)
+
+## F45: a systemd container cannot boot in the dev container (2026-10-31)
+
+The required real run of `just e2e debian13` cannot be made here. Commands and errors:
+- `just e2e debian13` (nested rootless podman 5.4.2, single-uid user namespace, `/proc/self/uid_map` maps uid 0 to host 1000 only): the image build
+  failed first at `apt-get` (`setgroups 65534 failed`; fixed in the Containerfile with `-o APT::Sandbox::User=root`, as the F38 images do), then at
+  `dpkg` configuring the packages (`chown to root:adm of file /var/log/apt/term.log failed (22: Invalid argument)`, exit 1): only uid 0 exists
+  in the namespace, so the systemd, dbus and polkit packages cannot be unpacked with their owners.
+- Even with an image, systemd needs to be PID 1 of its own PID namespace: `podman run --rm --privileged --pid=private --cgroupns=host --tmpfs /run
+  docker.io/library/debian:trixie true` fails with `crun: mount `proc` to `proc`: Operation not permitted: OCI permission denied`; without `--pid=private`
+  the container shares the host PID namespace (`echo $$` printed 248867 in it; F38's `containers.conf` sets `pidns = "host"` for this reason).
+What would be needed: subuid/subgid ranges for `dev` and a user namespace that can mount `/proc` (or a rootful engine), i.e. a change to the dev
+container. The stub-engine test (`scripts/test-e2e-host.sh`) proves the host logic only and is not a substitute.
+
+### F45: what the dev container needs instead of `--privileged` (2026-10-31)
+Rootless podman on the host, `--userns=keep-id`, probed one option at a time (nested `podman run` as `dev`):
+- With subuid ranges, `newuidmap` fails (`write to uid_map failed: Operation not permitted`) until `--cap-add=SYS_ADMIN`; apparmor, seccomp
+  and unmask options alone do not fix it.
+- `--pid=private` fails (`crun: mount proc to proc: Operation not permitted`) until `--security-opt=unmask=/proc/*`.
+- systemd exits at once (status 255): `/sys/fs/cgroup` is read-only; `--systemd=always` mounts it read-write and systemd reaches `degraded`.
+- The guest's `chown` to uids from 1000 fails (`Invalid argument`) with `dev:1:999` alone: keep-id leaves 1-999 and 1001-65536 free, so
+  `/etc/subuid` and `/etc/subgid` list both. `pidns = "host"` (F38) keeps systemd from being PID 1, so it is gone; `just package-lint` still passes.
+With these, `just e2e debian13` passes (28 cases, dbus-daemon 1.16.2, polkit 126). Every capability stays in the rootless user namespace, and
+seccomp and the default device list stay on, which `--privileged` would drop.
+
+### Journald default storage on debian13 and ubuntu2604
+
+Checked 2026-10-31 in the booted e2e images (`custodio-e2e-debian13` from `debian:trixie`, systemd 257.13; `custodio-e2e-ubuntu2604` from
+`ubuntu:26.04`, systemd 259.9), after `systemctl is-system-running`, before the Custodio package is installed (`podman run -d --privileged
+--cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp <image>`, then `podman exec`):
+
+```
+systemd-analyze cat-config systemd/journald.conf | grep -i Storage   # the commented default is the effective value
+ls -ld /var/log/journal ; journalctl --header | grep 'File path'
+ls -ld /var/log/journal            # in the image, before boot: podman run --rm <image> ls -ld /var/log/journal
+```
+
+| target | `Storage=` default | `/var/log/journal` | active journal file |
+| --- | --- | --- | --- |
+| debian13 | `#Storage=auto` | exists (`drwxr-sr-x root systemd-journal`) | `/var/log/journal/<machine-id>/system.journal` |
+| ubuntu2604 | `#Storage=persistent` | exists (same mode and group) | `/var/log/journal/<machine-id>/system.journal` |
+
+- debian13: `auto` stores on disk only if `/var/log/journal` exists, and it does. The directory is already in the image, before boot; the
+  `systemd` package's postinst creates it ("Enable persistent journal, in auto-mode, by default on new installs", `mkdir -p`).
+- ubuntu2604: systemd 259 defaults to `persistent`, so journald creates the directory itself; the image has it too (the same postinst).
+- On both, the run's entries (including those of `custodio.service`) are in `/var/log/journal`, not only in `/run/log/journal`. The catalog check
+  and the audit-entry checks pass on `ubuntu2604` (real run) and on `debian13`.
+- Limits: these are the minimal images. An installed system can differ: a system installed without the `systemd` postinst running on a new
+  install (an image built from a copied root, a container image without that directory), a `Storage=volatile` drop-in, or a read-only
+  `/var`. Nothing here was checked on those.
+- What it means for the open question "Volatile journal warning" (SPEC): on these two targets the default is not volatile, so the install
+  scripts need no warning for it, and the package changes no journald configuration (SPEC section 6). The other targets record their own default.
+
+### End-to-end targets Fedora 44 and Alma 10
+
+Checked 2026-10-31 in the minimal base images (`docker.io/library/fedora:44`, Fedora 44, systemd 259.10; `docker.io/library/almalinux:10`,
+AlmaLinux 10.2, systemd 257) built by `e2e/targets/fedora44` and `e2e/targets/alma10`, booted as in `e2e/run.sh`. Results come from those
+images, not from an installed system. `docker.io/almalinux/10` does not exist; the image is `almalinux:10`. EPEL is not used anywhere
+(`grep -ri epel e2e/targets` is empty; no `BLOCKED.md` asked for it, none was needed).
+
+**Tool sources** (`dnf repoquery --installed --qf '%{name}-%{version}-%{release} from %{from_repo}'` on Fedora; `dnf list installed` on Alma):
+
+| tool | fedora44 | alma10 |
+| --- | --- | --- |
+| pkcs11-provider | 1.1-3.fc44, repo `fedora` | 1.0-3.el10_0, `@baseos` |
+| OpenSC | 0.27.1-2.fc44, `updates` | 0.26.1-1.el10, `@baseos` |
+| NSS tools (`nss-tools`) | 3.131.0, `updates` | 3.124.0-5.el10_0, `@appstream` |
+| Python D-Bus bindings (`python3-dbus`) | 1.4.0-9.fc44, `fedora` (available) | **absent** |
+| GLib D-Bus for Python (`python3-gobject-base`) | 3.56.3, `updates` | 3.46.0-7.el10, `@baseos` |
+| polkit | 127-2.fc44.2, `fedora` | 125-4.el10_2.1, `@baseos` |
+
+No skip list entry is needed: both `skip.list` files are empty. Alma's gap was the Python D-Bus bindings:
+`dnf list --available python3-dbus` prints `Error: No matching Packages to list`, and `dnf list --available "python3-dbus*"` shows only
+`python3-dbus-client-gen`, `python3-dbus-python-client-gen` and `python3-dbus-signature-pyparsing`. The way taken is (1) of the contract: the test
+agent `e2e/agent.py` now talks to polkit with GLib's D-Bus (Gio, from `python3-gi` / `python3-gobject-base`, present on every target) and no
+target installs `python3-dbus` any more. All approval and denial cases therefore run on Alma. `pkcs11-provider` 1.0 of RHEL 10 passes the
+provider cases (`provider-rsa1`, `provider-ec1`, `provider-several-updates`, `provider-deny`).
+
+**Records** (`target/e2e/<t>.record` from the real runs):
+
+| target | `bus-daemon` | version | `bus-reported-process` | polkit |
+| --- | --- | --- | --- | --- |
+| fedora44 | `dbus-broker` | dbus-broker 37 | `dbus-broker-launch` | 127 |
+| alma10 | `dbus-broker` | dbus-broker 36 | `dbus-broker-launch` | 125 |
+
+- Section 3 said "dbus-broker is the default (inferred)" for Fedora and RHEL/Alma 10. Observed: it is the default of both images. Fedora's image has no
+  bus daemon, the `dbus` meta package pulls in `dbus-broker`; Alma's image already has `dbus-broker` 36 and `dbus` 1.14.10 (dbus-daemon is NOT installed:
+  `rpm -q dbus-daemon` says so). The table in section 3 is right for these two rows; the "inferred" is now observed for the e2e images.
+- The bus does not report the broker as its own process. `GetConnectionUnixProcessID` of `org.freedesktop.DBus` returns the pid of
+  `dbus-broker-launch` (pid 47 in `ps`), whose child `dbus-broker` (pid 48, `--controller 9`) is the daemon; `systemctl show -p MainPID dbus-broker` is also
+  the launcher. `probe.sh` of both targets takes the launcher's `dbus-broker` child and records it as `bus-daemon`, and records what the bus named in
+  `bus-reported-process`.
+
+**Differences from the Debian family** that the suite needed (none weakens a check):
+- Fedora's and Alma's NSS load every p11-kit module through `p11-kit-proxy` (`/etc/crypto-policies/back-ends/nss.config`), so the Custodio module
+  (`/usr/share/p11-kit/modules/custodio.module`) is already in an empty NSS database (`modutil -list` shows its token). `modutil -add` then fails with
+  "Unknown PKCS #11 error": the second load in the same process gets `CKR_CRYPTOKI_ALREADY_INITIALIZED` (0x191) from `C_Initialize` (seen with gdb).
+  `e2e/user.sh` adds the module by hand only when `modutil -list` does not show it, and checks the listing either way.
+- Spy library: `pkcs11-spy.so` is in `/usr/lib64` there; `e2e/composed.sh` searches `/usr/lib` and `/usr/lib64`.
+- Alma's container image masks `systemd-logind` (`/etc/systemd/system/systemd-logind.service -> /dev/null`, not from a package); without it `pam_systemd`
+  fails ("unit is invalid") and there is no session. `alma10`'s Containerfile removes that link, as a booted AlmaLinux has no such mask.
+
+**Journald default** (booted images, before the Custodio package is installed; commands as in the section above: `systemd-analyze cat-config
+systemd/journald.conf | grep -i Storage`, `ls -d /var/log/journal`, `journalctl --header | grep 'File path'`, `podman run --rm <image> ls -d /var/log/journal`
+for the state before boot):
+
+| target | `Storage=` default | `/var/log/journal` before boot | after boot | active journal file |
+| --- | --- | --- | --- | --- |
+| fedora44 | `#Storage=persistent` | exists (in the image) | exists | `/var/log/journal/<machine-id>/system.journal` |
+| alma10 | `#Storage=auto` | absent | exists | `/var/log/journal/<machine-id>/system.journal` |
+
+- fedora44: `persistent`, not volatile. alma10: `auto`; the directory is absent in the image but exists after boot with the journal in it, so the journal is
+  on disk. Who creates it on Alma was not traced (the `z` lines of `tmpfiles.d/systemd.conf` only set modes).
+- `journal-catalog` and the audit-entry cases pass on both (real runs). Nothing in the package changes journald. As for the Debian family, an installed
+  system can differ (a `Storage=volatile` drop-in, a read-only `/var`); only the two images were checked.
+
+### End-to-end target Arch
+
+Checked 2026-10-31 in the minimal base image `docker.io/library/archlinux:latest` (systemd 262.1) built by `e2e/targets/arch`, booted as in
+`e2e/run.sh`. Results come from that image, not from an installed system.
+
+**Tool sources** (`pacman -Q` / `pacman -Qo` in the booted container): `pkcs11-tool` from opensc 0.27.1-2; `pkcs11-provider` 1.3.0-1;
+`certutil` and `modutil` from nss 3.132-1; `openssl` 3.6.5-1; `pgrep` from procps-ng 4.0.7-1; p11-kit 0.26.5-1; polkit 128-1;
+python-gobject 3.58.1-1 (the agent uses Gio, so `python-dbus` is not installed). All were installed by `pacman -Syu --noconfirm --needed`
+in the Containerfile; none is missing.
+
+**Skip list: empty.** Every tool has a candidate in core/extra, so no case is skipped; the real run reports 29 cases run, 0 skipped.
+
+**Bus daemon and record** (`target/e2e/arch.record`): `bus-daemon=dbus-broker`, `bus-daemon-version=dbus-broker 37`,
+`bus-reported-process=dbus-broker-launch`, `polkit-version=128`. `pacman -Q` in the image: `dbus 1.16.2-2`, `dbus-broker 37-3`,
+`dbus-broker-units 37-3`, `dbus-units 37-3`; `/usr/lib/systemd/system/dbus.service -> dbus-broker.service`. The base image already has
+`dbus-broker`; the Containerfile names no bus package. Section 3 said Arch ran `dbus-daemon` 1.16.2: wrong. Corrected in the table of
+section 3 (row "Arch", and "Default bus") and in the "M1.2 Caller detail" table. As on Fedora, the bus names `dbus-broker-launch` as its own process.
+
+**Journald default** (minimal base image): `systemd-analyze cat-config systemd/journald.conf` prints only `[Journal]` (no `Storage=`
+set anywhere), so the compiled-in default `auto` applies. `/var/log/journal` exists after boot (`drwxr-sr-x+ root systemd-journal`) and
+holds `<machine-id>/system.journal` (`journalctl --header`), `journalctl --disk-usage` says 8M; `/run/log/journal` is empty. So logs are persistent
+here. The package changes nothing in journald; `journal-catalog` and the audit-entry cases pass on this default.
+
+**Differences from the other targets, all in the image:**
+- Pacman's download sandbox / Landlock did not fail in the dev container's rootless nested podman; no `DisableSandbox` is set anywhere
+  (`grep -rn -i sandbox e2e/targets/arch` is empty). `grep -n 'pacman -Sy' e2e/targets/arch/*` shows only `-Syu`.
+- Arch's `/etc/pam.d/su-l` has no `pam_systemd`, so `su -l alice` opened no logind session (`e2e: FAIL: no logind session`). The Containerfile appends
+  `-session optional pam_systemd.so` to `su-l` (what `system-login` has). Test-image configuration only, not in the package or in `install.sh`.
+- `install.sh` runs `pacman -U --noconfirm --needed "$1"` on the mounted file; the sync databases come from the image's full upgrade and were enough (no second refresh).
+
+## F48: the Debian and Ubuntu images block the restart on an upgrade (2026-10-31)
+With the stock `debian:trixie` image the upgrade case failed: `dpkg -i` of N+1 printed `/usr/sbin/policy-rc.d returned 101, not running 'restart custodio.service'`
+and the service kept running the deleted old binary (pid unchanged, `/proc/<pid>/exe` ended in `(deleted)`). The container images ship that file for Docker
+builds; a real machine has none. The Containerfiles of `debian13` and `ubuntu2604` now `rm -f /usr/sbin/policy-rc.d` (image only; the package and `install.sh`
+are untouched). With it gone the maintainer scripts restart the service by themselves on all five targets (new `MainPID`, `/proc/<pid>/exe` is the installed
+inode). The check of the new binary is by device:inode, because N+1 has the same content as N. `cmp` is not on the rpm and Arch images (no diffutils), so the
+case compares with `sha256sum`.
+
+## F60: upgrading from the last cargo-deb .deb (2026-10-31)
+- `v0.3.0` is an annotated tag: `git rev-parse v0.3.0` gives the tag object (`0f48354`), the commit is `d870ab2…`. `git archive` takes either, but the pin
+  in `scripts/package-old.sh` is the commit id, which `git cat-file -t` reports as `commit`.
+- The cargo-deb package and package N are both `0.1.0-1`, which dpkg treats as a reinstall. The case therefore upgrades to N+1 (`0.1.1-1`, F48) and the guest
+  proves it greater with `dpkg --compare-versions` before installing.
+- The daemon moved: the cargo-deb package has it at `/usr/libexec/custodiod`, the nfpm one at `/usr/lib/custodio/custodiod`. The upgrade case reads the path from
+  `ExecStart` of the unit before and after. The old process ends with a deleted exe; the new `MainPID` runs the new path.
+- Reproducible: two builds from different empty directories give the same sha256 with `--remap-path-prefix` set for the build directory and `CARGO_HOME` and
+  `SOURCE_DATE_EPOCH` set to the pinned commit's time (not tried without the remap).
+
+## F49: the rpm owned no directory, so `dnf remove` left three behind (2026-10-31)
+The removal case lists the files and the directories of the package file and, after the removal, asks the target's tool whether another package owns each
+directory. On fedora44 and alma10 `/usr/lib/custodio`, `/usr/share/doc/custodio` and `/usr/share/licenses/custodio` stayed (empty, owned by no package):
+`rpm -qp --qf '[%{FILEMODES:perms} %{FILENAMES}\n]'` listed 14 files and no directory. dpkg and pacman own the parents of the files they list, and left nothing.
+Fix in the package: three `type: dir` entries with `packager: rpm` in `packaging/nfpm.yaml`, expected by `scripts/package_expected.py` (`RPM_ONLY_DIRS`) and
+checked by the package gate. The case derives the ancestor directories of every listed file for all formats, so it would also catch the next such leftover.
+- Scriptlet output reaches the terminal of the removal tool on all five targets (the guest captures stdout and stderr together): apt prints the postrm text after
+  `Removing custodio`; dnf (alma10) prints it after `Running scriptlet`; dnf5 (fedora44) prints it under `>>> Scriptlet output:`; pacman prints it after `removing custodio...`.
+- On debian13 and ubuntu2604 `apt-get remove` leaves the package in dpkg state `config-files` (`rc`) with no conffiles (`dpkg-query -W -f='${Conffiles}'` is empty) and no file
+  on disk; `apt-get purge` moves it to `not-installed`.
+
+## F53: the end-to-end matrix on a host with a container engine (2026-10-31)
+
+Host: Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic, podman 5.7.0, tree at `3f61252`. Packages 0.1.0-1 (N), 0.1.1-1 (N+1) and the cargo-deb 0.1.0-1 (old).
+
+`just e2e all`: exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604". Every skip list is empty; 0 cases skipped.
+
+| Target | Cases run | Upgrade | Removal/purge/reinstall | Bus daemon | Polkit |
+|---|---|---|---|---|---|
+| debian13 | 59 | 12 (N+1 and from cargo-deb) | 18 | dbus-daemon 1.16.2 | 126 |
+| ubuntu2604 | 53 | 6 | 18 | dbus-daemon 1.16.2 | 127 |
+| fedora44 | 44 | 6 | 9 | dbus-broker 37 | 127 |
+| alma10 | 44 | 6 | 9 | dbus-broker 36 | 125 |
+| arch | 44 | 6 | 9 | dbus-broker 37 | 128 |
+| ubuntu2404 (refusal) | 5 | - | - | dbus-daemon 1.14.10 | 124 |
+
+`journal-catalog` ran on the five install targets. On dbus-broker targets the bus reports `dbus-broker-launch` as its process.
+
+`CHECK_FORCE=1 just check-slow` (check, nightly, mutants, coverage with CRAP, package gates): exit 0. Service exposure 0.6 (threshold 1.0);
+mutants 153 caught / 43 unviable and 39 caught / 15 unviable, none missed; worst CRAP 30.0 at threshold 30; parity 3 differences, 3 exceptions;
+glibc highest 2.34 (ceiling 2.39); package-lint 62 findings, 62 excepted, 0 stale. Thresholds equal to `v0.3.0` (M1).
+
+The first run failed on alma10 and fedora44 before building: podman sent expired Docker Hub credentials from `~/.docker/config.json`
+("unable to retrieve auth token"). Pulling `docker.io/library/{almalinux:10,fedora:44}` with an empty `--authfile` fixed it; nothing in the repository.
+
+## F54: acceptance 12 by hand on fedora44, SELinux enforcing (2026-10-31)
+
+Machine: labvm `fedora44` (libvirt), Fedora Linux 44 (Workstation Edition), kernel 6.19.10-300.fc44.x86_64, dbus-broker 37, polkit 127,
+Firefox 150.0-1.fc44 (Fedora package), nss-tools 3.131.0. Package `custodio-0.1.0-1.x86_64.rpm` from F53's `just package`
+(sha256 `37aebe41aaaed97007d0aa44cdf51ec7939fd432044e206fb1cfb777dd43a939`). Followed `docs/manual-acceptance.md` §11.
+
+| Step | Result |
+|---|---|
+| 1 `getenforce` | `Enforcing` at 23:30:31, start of the audit window |
+| 2 `sudo dnf install ./custodio-0.1.0-1.x86_64.rpm` | exit 0; creates user and group `custodio` |
+| 3 `custodio import` of `rsa2048` and `p256` | both imported (23:31:18 to 23:31:19) |
+| 4 Firefox lists the certificates | yes, through p11-kit-proxy; the profile's `pkcs11.txt` holds only the NSS internal module, nothing registered by hand |
+| 5 TLS client authentication | `openssl s_server -Verify 1 -www -no_ticket -no_cache`, server certificate from the test CA; the page loads with each key |
+| 6 polkit dialog per signature | 4 approved with p256, 2 with rsa2048, each preceded by a polkit agent PAM authentication; 1 cancelled with rsa2048, the connection fails |
+| 7 SELinux denials | none from 23:30:31 to the end (`ausearch` below) |
+| 8 journal | 7 entries for 7 actions: 6 `signed` (p256 `ecdsa`, rsa2048 `rsa_pkcs_pss_sha256`), 1 `denied` at 00:27:44; uid 1000, pid of the Firefox process; none extra, none missing |
+
+Acceptance 12: pass.
+
+- `custodiod` runs as `system_u:system_r:init_t`, not `unconfined_service_t` as SPEC expects: see F55. No denial is expected from a
+  domain that permissive, so the step-7 result says little about how a confined service would fare.
+- `ausearch` reads standard input when it is not a terminal (over `ssh host 'sudo ausearch ...'`) and prints `<no matches>`
+  for every query; `--input-logs` makes it read the log. Check with a query that must match, such as `-m USER_AUTH`
+  (49 hits in the window). The run crossed midnight: `--start` needs a date, which `LC_ALL=C` takes as `10/31/26`; `10/31/2026` is
+  rejected. The only AVCs in the log are `systemd-resolved` writes to `io.systemd.Machine` at boot, before the window.
+- The lab image registers SoftHSM tokens with p11-kit for another project; Firefox asked for their PIN. The run moved
+  `softhsm2.module` out of `/usr/share/p11-kit/modules/`. The test CA was trusted `C,,` in the Firefox profile for the
+  server certificate only.
+- Firefox's "Remember this decision: For this session" also remembers "Don't send a certificate", and an unanswered selector
+  counts as that once the server is restarted: every later attempt fails with `SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT`
+  without calling the module. Restart Firefox to clear it. The GNOME dock icon on this image starts the Flatpak Firefox
+  (159.0), which sees neither the module nor the CA; the run used `/usr/bin/firefox`.
+
+## F55: acceptance 13 by hand on bazzite, the .rpm layered (2026-11-01)
+
+Machine: labvm `bazzite` (libvirt), Bazzite GNOME 44 (`ghcr.io/ublue-os/bazzite-gnome:stable`), SELinux enforcing, dbus-broker 37, polkit 127.
+Image 44.20261006.1 (kernel 7.2.8-ogc5.1.fc44) at the start, 44.20261026 (kernel 7.2.11-ogc4.1.fc44) after step 5. Packages from F53's
+`just package`: `custodio-0.1.0-1.x86_64.rpm` (sha256 `37aebe41aaaed97007d0aa44cdf51ec7939fd432044e206fb1cfb777dd43a939`, as in F54) and
+`custodio-0.1.1-1.x86_64.rpm` (sha256 `31e7973ce5996e308f72a6d938a59398dec2d42bab10394d8a7f1ace5a0d9d36`, `target/packages-next`).
+Followed `docs/manual-acceptance.md` §12, on the host, no toolbox.
+
+| Step | Result |
+|---|---|
+| 1 `getenforce`, `rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm`, reboot | `Enforcing`, window from `11/01/26 07:31:37`; exit 0, no bus-check notice (as `docs/install.md` says) |
+| 2 layered, import | `LocalPackages: custodio-0.1.0-1.x86_64` in the booted deployment; user `custodio` created; `rsa2048` and `p256` imported at 07:34:23 |
+| 3 signature from the host | dialog each time; approved `rsa2048` (`SHA256-RSA-PKCS`) and `p256` (`ECDSA-SHA256`), both `Verified OK` by OpenSSL; cancelled `rsa2048` fails (`C_SignFinal` `CKR_FUNCTION_FAILED`) |
+| 4 `rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm`, reboot | `Upgraded: custodio 0.1.0-1 -> 0.1.1-1`; both tokens listed; same three signatures with the same results, no new import |
+| 5 `rpm-ostree upgrade`, reboot | real update, 44.20261006.1 to 44.20261026 (323 upgraded, 5 removed, 43 added), `custodio-0.1.1-1` still layered; same three signatures with the same results |
+| 6 SELinux, after each reboot and at the end | no AVC names custodio, polkit or the module; `USER_AUTH` 22, 35, 50 hits; AVCs 9, 18, 24, all from `tuned_t` and `unconfined_service_t` (`chcon`, `mac_admin`) and `bootupd_t` (`lsblk` on `/proc/swaps`) at boot |
+
+Journal (base query of `docs/audit.md`): 9 entries for 9 actions, 6 `signed`, 3 `denied`, in order; none extra, none missing.
+
+Acceptance 13: pass.
+
+- Bazzite's Firefox is a Flatpak (out of scope, SPEC "Out of scope"); it was not tried here, F54 saw Fedora's Flatpak Firefox miss
+  the module. The client was `pkcs11-tool` on the host (OpenSC, in the image), started in
+  the desktop session with `labvm-gui`; over plain ssh there is no polkit agent. Input of 2000 bytes, so `pkcs11-tool` uses
+  `C_SignUpdate`/`C_SignFinal` and a cancel asks once.
+- The dialogs were answered from the hypervisor with `virsh send-key` (the lab account's password, or Escape to cancel), after a
+  screenshot showed the dialog open each time. No person clicked them.
+- `custodio import` needs a terminal; the image has neither `script` nor `expect`, so it ran under a Python `pty`.
+- `custodiod` runs as `system_u:system_r:init_t`, as on fedora44, not in the "generic unconfined service domain" SPEC expects
+  (`unconfined_service_t`). Cause, checked on the VM: `/usr/lib/custodio/custodiod` is labelled `lib_t`, and systemd moves a service
+  into `unconfined_service_t` only from an executable such as `bin_t` (`systemd-run /usr/bin/id -Z` prints `unconfined_service_t`);
+  from `lib_t` it stays in `init_t`, systemd's own domain. `matchpathcon` gives `bin_t` for `/usr/libexec/custodio/custodiod`.
+  Neither domain confines the service, but in `init_t` SELinux sees it as systemd (rules that let confined domains talk to
+  systemd apply to it), and "no denial" says little. Not fixed in F55: moving the binary changes the package on every target.
+- On disk the state directory and key files belong to uid 65534 (`nfsnobody` on this image), not to `custodio` (956), although
+  `custodiod` runs as 956. systemd 259 mounts `/var/lib/private/custodio` into the service idmapped (`idmapped` in the service's
+  mountinfo), so inside it the files show as 956. Other processes running as 65534 cannot reach them: `/var/lib/private` is
+  `0700 root`. Expected systemd behaviour for `DynamicUser=yes`, not a Custodio defect; the e2e snapshot compares uids before and
+  after, so it is unaffected.
+
+## F56: acceptance 14 by hand on omarchy, Firefox and the Quickshell agent (2026-11-01)
+
+Machine: labvm `omarchy` (libvirt), Omarchy 4.0.6 (`ID_LIKE=arch`), kernel 7.2.8-9-omarchy, dbus-broker 37, polkit 128, Firefox 158.0.1-1
+(Arch package), nss 3.131.1-1, p11-kit 0.26.5-1, quickshell 0.3.2.r7.g2b4501a-1. Package `custodio-0.1.0-1-x86_64.pkg.tar.zst` from
+`just package` after `402a311` (sha256 `17def41f2c21a4b72f36356fc5640ac1839fa54245dc8e04fe055fa712cc9763`). Followed `docs/manual-acceptance.md` §13.
+
+| Step | Result |
+|---|---|
+| 1 `sudo pacman -U custodio-0.1.0-1-x86_64.pkg.tar.zst` | exit 0; user and group `custodio` (959) created; post-transaction hooks include "Reloading system bus configuration" |
+| 2 polkit agent | `quickshell -n -p /usr/share/omarchy/shell` (pid 838, journal tag `omarchy-shell`, "omarchy polkit agent registered" at login); `pgrep -a polkit-gnome` empty |
+| 3 import | `rsa2048` and `p256` imported; `pkcs11-tool -L` lists both slots |
+| 3 table, row 1: `rsa2048` sign, approve | Quickshell dialog "Authentication is required to sign with a key held by Custodio"; page loads |
+| 3 table, row 2: `rsa2048` sign again, approve | dialog again; page loads |
+| 3 table, row 3: `rsa2048` sign, cancel (Escape) | `SSL_ERROR_HANDSHAKE_FAILED` |
+| also `p256`, twice | dialog each time, both pages load |
+| 4 Firefox lists the certificate, TLS client authentication | **only after manual registration** (below); then the selector lists `Custodio test rsa2048` and `Custodio test p256` ("Stored on: rsa2048", "p256"), and TLS client authentication works with each |
+| 5 manual registration needed | **yes** |
+
+Journal (base query of `docs/audit.md`, from 09:00): 5 entries for 5 actions: 2 `signed` p256 `ecdsa`, 2 `signed` rsa2048 `rsa_pkcs_pss_sha256`,
+1 `denied` rsa2048 at 09:04:11; uid 1000, pid of the Firefox process; none extra, none missing.
+
+Acceptance 14: the package and polkit parts pass; Firefox needs manual registration, so the outcome is for the milestone approver (SPEC open
+question "Firefox on Arch and Omarchy").
+
+- **Why Arch's Firefox does not see the module.** Without registration the profile's `pkcs11.txt` holds only the NSS internal module, the
+  running Firefox maps `/usr/lib/pkcs11/p11-kit-trust.so` (Arch links `libnssckbi.so` to it, for the built-in roots) and no
+  `p11-kit-proxy.so`, and the server's request ends in `SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT` with no certificate offered. Arch's nss
+  ships no `/etc/pki/nssdb` and no p11-kit proxy configuration, unlike Fedora's (F54). Custodio's `custodio.module` is in
+  `/usr/share/p11-kit/modules/`, so p11-kit clients other than NSS see it.
+- **Why Fedora's does.** Fedora 44's `libnss3.so` holds the path `/etc/crypto-policies/back-ends/nss.config` (NSS built to read a system
+  policy file); that file, from `crypto-policies-20251128-3`, starts with `library=p11-kit-proxy.so`, so every NSS database loads the proxy.
+  The `libnss3.so` of Arch and Debian 13 hold no such path and neither system has the file (checked in the e2e images with `grep -a`).
+- **Registration used**, with Firefox closed:
+  `modutil -dbdir sql:$HOME/.config/mozilla/firefox/<profile> -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so`
+  (`modutil` from Arch's nss; it asks to confirm). `modutil -list` then shows module "Custodio" with tokens `p256` and `rsa2048`. Settings >
+  Privacy & Security > Security Devices > Load with the same path should be equivalent (not tried). Per profile, so every new profile
+  needs it. Registering `/usr/lib/p11-kit-proxy.so` instead would also expose OpenSC and GNOME Keyring (not tried).
+- Omarchy 4's profile lives in `~/.config/mozilla/firefox`, not `~/.mozilla/firefox`.
+- SPEC calls the agent "part of `omarchy-shell`"; on 4.0.6 there is no `omarchy-shell` package: the QML is in the `omarchy` package
+  (`/usr/share/omarchy/shell`) and runs under `quickshell`, which logs as `omarchy-shell`.
+- As in F54, the lab image registers SoftHSM with p11-kit; the run moved `softhsm2.module` out of `/usr/share/p11-kit/modules/` (it made
+  no difference to Firefox here, which loads no proxy). The test CA was trusted `C,,` in the profile for the server certificate.
+- Client: `openssl s_server -Verify 1 -www -no_ticket -no_cache` on `localhost:4433`, server certificate from the test CA. Firefox's
+  session restore reopened the page in a second tab, which made the second `p256` signature. Firefox restarted between keys to drop the
+  remembered choice; within one session each reload made a new handshake and a new dialog.
+- The dialogs were answered from the hypervisor (`wtype` in the session for the lab account's password, `virsh send-key` for Enter and
+  Escape), after a screenshot showed each dialog. No person clicked them.
+
+## F61
+
+- **tmpfiles `Z` with three dashes restores a label and nothing else.** `man tmpfiles.d` (systemd 257, Debian 13): type `Z` "Recursively set the
+  access mode, user and group ownership, and restore the SELinux security context of a file or directory if it exists ... Does not follow
+  symlinks"; a `-` in the mode, user or group field leaves it as it is. Run here (`systemd-tmpfiles --create --root=ROOT data/tmpfiles.d/custodio.conf`
+  on a fixture tree with a 0700 directory, a 0640 file, an old mtime): mode, owner, content, size and mtime unchanged, exit 0, nothing printed;
+  with the directory removed, nothing is created (exit 0). `scripts/test-relabel.sh` repeats it, with a control line that has a mode and does change it.
+- **Mechanism chosen: a tmpfiles.d line, no scriptlet.** `data/tmpfiles.d/custodio.conf` (`Z /var/lib/private/custodio - - -`) in all three packages.
+  `systemd-tmpfiles-setup.service` runs it at every boot, so key files written under `init_t` (`init_var_lib_t`) get the default label back after the
+  first boot on the new package, and on an image-based system too: rpm-ostree runs `%post` in a build root with no `/var`, but the booted deployment
+  runs the boot service. A `restorecon` in `%post`/`postinst`/the Arch hook was rejected: it runs at the wrong time on rpm-ostree (nothing to label
+  in the build root), needs a call-log change in every lifecycle test of the three formats, and could run outside the state directory if
+  it were ever widened; the tmpfiles line is one path by construction and cannot create, remove, chown or chmod. With no SELinux, no
+  `systemd-tmpfiles` or a chroot, nothing runs. Not proven here: the label itself (no SELinux in the dev container); see "F61" in `docs/manual-acceptance.md`.
+- **Limit.** On rpm-ostree the label comes back at the next boot, not at the moment of the upgrade. Until then the restarted service
+  (`unconfined_service_t`) reads files labelled `init_var_lib_t`; an unconfined domain is not denied. With dnf it comes back during the
+  upgrade: see F62.
+- **The old-path fixture** is this tree's `packaging/nfpm.yaml` with the deb and rpm daemon at `/usr/lib/custodio/custodiod` and the unit
+  from the source unmodified (`nfpm_edit.py oldpath`), not a pinned old commit: the F48 case upgrades N to N+1 from one tree, and both have the new path.
+- **Arch has no old path** (it keeps `/usr/lib/custodio/custodiod`): the `upgrade-oldpath-*` cases are skipped there (`e2e/targets/arch/no-oldpath`,
+  skip list); the package level checks and the F48 case cover it.
+
+## Acceptance 6 (fingerprint) with libfprint's virtual device, ubuntu2604 (2026-11-01)
+
+No reader is needed: libfprint ships a `virtual_device` driver for its own tests, enabled by `FP_VIRTUAL_DEVICE=<socket>`. Ubuntu's
+`libfprint-2-2` is built with it (the library holds `FP_VIRTUAL_DEVICE` and `virtual-device-listener.c`). `fprintd`, `pam_fprintd` and
+the polkit agent are the real ones; only the sensor is simulated.
+
+Machine: labvm `ubuntu2604`, Ubuntu 26.04.1 LTS GNOME, polkit 127, fprintd 1.94.5-4, libfprint-2-2 1:1.95.1+tod1-0ubuntu2, libpam-fprintd 1.94.5-4.
+Package `custodio_0.1.0-1_amd64.deb` from `just package` at `15dec13` (sha256 `096cf9421265b761e9e46d41b2874b3be304b540b0453bfeaa1dc967afb50d10`).
+
+Setup, in the VM only:
+
+1. Drop-in `/etc/systemd/system/fprintd.service.d/virt.conf`: `Environment=FP_VIRTUAL_DEVICE=/run/fpvirt/sock`, `RuntimeDirectory=fpvirt`,
+   and `ExecStart=/usr/libexec/fprintd --no-timeout`. The unit has `ProtectSystem=strict`, so a socket straight under `/run` is never
+   created; without `--no-timeout` fprintd exits when idle and takes the socket with it. The socket exists only while the device is open.
+2. `pam-auth-update --enable fprintd`: `pam_fprintd.so max-tries=1 timeout=10` enters `common-auth`, which `/usr/lib/pam.d/polkit-1` includes.
+3. Enroll as root over ssh (`sudo fprintd-enroll -f right-index-finger user`); as the user, polkit asks for the password to enroll.
+4. A touch is the text `SCAN <id>` written to the socket and the write side closed. Enrollment takes 5 scans; a later `SCAN` with the
+   enrolled id matches, any other id does not.
+
+| Step | Result |
+|---|---|
+| `pkcs11-tool --sign --mechanism ECDSA-SHA256` with key `p256`, started with `labvm-gui` | polkit dialog "sign with a key held by Custodio" asks to swipe the right index finger, no password field |
+| enrolled id | signature made, `Verified OK` by OpenSSL |
+| a second signature right after | the dialog asks for the finger again; signature made, `Verified OK` |
+| unenrolled id | "Failed to match fingerprint", the dialog falls back to the password (`max-tries=1`); Escape: `C_SignFinal` `CKR_FUNCTION_FAILED` |
+
+Journal (`-t custodiod`): 2 `signature made`, 1 `signature denied`, uid 1000, key `p256`; none extra, none missing.
+
+Acceptance 6 passes with a simulated sensor. Not covered: a real reader's driver, and the image matching that `virtual_image` would
+exercise. The same setup works for `pkexec`.
+
+## F57: acceptance 15 by hand on ubuntu2404, the switch to dbus-broker (2026-11-01)
+
+Machine: labvm `ubuntu2404` (libvirt), Ubuntu 24.04.5 LTS, kernel 7.0.0-38-generic, GNOME Shell 46.0 on Wayland, polkit 124
+(`polkitd 124-2ubuntu1.24.04.4`), systemd 255.4-1ubuntu8.17, opensc 0.25.0~rc1-1ubuntu0.2. Bus before: dbus-daemon 1.14.10; after:
+dbus-broker 35 (`35-2ubuntu0.1`, noble-updates/universe). Package `custodio_0.1.0-1_amd64.deb` from `just package` after `402a311`
+(sha256 `096cf9421265b761e9e46d41b2874b3be304b540b0453bfeaa1dc967afb50d10`). Followed `docs/manual-acceptance.md` §14.
+
+| Step | Result |
+|---|---|
+| 1 `sudo dpkg -i custodio_0.1.0-1_amd64.deb` on dbus-daemon | exit 1; `custodio: the system bus does not provide ProcessFD, which custodiod needs to identify its callers.` and the `install dbus-broker and reboot` hint; `getent passwd custodio` empty; no `/var/lib/custodio`, no `/var/lib/private/custodio`; `dpkg -s`: `install ok not-installed` |
+| 2 `sudo apt-get install dbus-broker`, reboot | links `/etc/systemd/system/dbus.service` and `/etc/systemd/user/dbus.service` to dbus-broker's units; the `dbus` package stays installed |
+| 3 desktop session | autologin, GNOME on Wayland, desktop shown (screenshot); session 1 `seat0` `active` |
+| 3 logind | `loginctl list-sessions` lists the session, `active` |
+| 3 polkit agent | `pkexec true` from the session: GNOME's dialog, approved, exit 0 |
+| 3 NetworkManager | `active`; `nmcli general status`: connected, full connectivity |
+| 3 bus daemon | `dbus-broker-launch --scope system --audit`; user buses also dbus-broker; `GetConnectionCredentials` holds `"ProcessFD" h` (count 1) |
+| 4 `sudo apt-get install ./custodio_0.1.0-1_amd64.deb` | exit 0; user and group `custodio` (983); ExecStart `/usr/libexec/custodio/custodiod` |
+| 4 import | `rsa2048` and `p256` imported; `pkcs11-tool -L` lists both slots |
+| 4 `rsa2048` sign, approve, twice | dialog "Authentication is required to sign with a key held by Custodio" each time; `SHA256-RSA-PKCS`, both `Verified OK` |
+| 4 `rsa2048` sign, cancel | `C_SignFinal` `CKR_FUNCTION_FAILED`, exit 1, no output file |
+| 4 `p256` sign, approve, twice | dialog each time; `ECDSA-SHA256`, both `Verified OK` |
+| 4 `p256` sign, cancel | `C_SignFinal` `CKR_FUNCTION_FAILED`, exit 1, no output file |
+| 5 what broke | nothing found |
+
+Journal (base query of `docs/audit.md`): 6 entries for 6 actions, 4 `signature made`, 2 `signature denied`, uid 1000, in order; none extra,
+none missing.
+
+Acceptance 15: pass. Answer for the open question (the milestone approver decides): on this machine the switch broke nothing that the
+checks look at, so the run gives no reason to refuse Ubuntu 24.04 with dbus-broker.
+
+- What "broke nothing" rests on: after the reboot `systemctl --failed` lists no unit and dbus-broker logs no warning. The few session
+  warnings (an AppArmor denial of `org.freedesktop.host.portal.Registry.Register` from a snap, jackdbus and UPower lookups, gdm's
+  `GDM_IS_REMOTE_DISPLAY` assertions) also occur in the boots on dbus-daemon of the same image. Not checked: Bluetooth, printing,
+  suspend, a non-autologin login at gdm, snaps beyond the desktop integration one, and a later `apt upgrade`.
+- polkit 124 takes the caller's pidfd from `ProcessFD` (section 3a, read in the same `124-2ubuntu1.24.04.4` package as this VM); with
+  dbus-broker the bus now returns it, so the subject is pinned. This run does not observe the pinning, only the dialog and the cancel.
+- `custodiod` is bus-activated: `systemctl is-active custodio` is `inactive` right after the install, until the first call.
+- Client: `pkcs11-tool` with `/usr/lib/custodio/libcustodio_pkcs11.so`, started in the session with `labvm-gui`, input of 2000 bytes.
+  `custodio import` reads the password from the terminal; piping it under `script` fails (`no input`), a Python `pty` works.
+- The dialogs were answered from the hypervisor (`virsh send-key` for the lab account's password or Escape), after a screenshot
+  showed each dialog. No person clicked them.
+
+## F62: the SELinux domain by hand on fedora44 and bazzite after the move (2026-11-01)
+
+Tree at `528e6d9`. Packages from `just e2e all` on that tree: the old-path fixture `custodio-0.1.0-1.x86_64.rpm` (`target/packages-oldpath`,
+daemon at `/usr/lib/custodio/custodiod`, sha256 `3fa4cbc4d1fe3ae3b3bad43aac56264804d00325b2fc103cf01811b90829b678`) and
+`custodio-0.1.1-1.x86_64.rpm` (`target/packages-next`, sha256 `f4733b31acea943871d24ff3fd617ce9f5048eb21627b430c4a4317783ecb437`).
+Followed `docs/manual-acceptance.md` "F61 fedora44" and "F61 bazzite". Client: `pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so`
+in the desktop session (`labvm-gui`), 2000 bytes of input, `SHA256-RSA-PKCS` and `ECDSA-SHA256`; signatures checked with `openssl dgst -verify`.
+
+**Host.** Ubuntu 26.04.1, podman 5.7.0: `just e2e all` exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604"; the only
+skipped cases are the six `upgrade-oldpath-*` of arch (no old path there). `cargo` comes from `~/.cargo/bin` and `nfpm` from mise:
+`PATH=$HOME/.cargo/bin:$PATH mise exec -- just e2e all`.
+
+**fedora44** (labvm, Fedora Linux 44 Workstation, kernel 6.19.10-300.fc44.x86_64, dbus-broker 37, polkit 127, `Enforcing`; window from `11/01/26 10:11:01`):
+
+| Step | Result |
+|---|---|
+| 1 `dnf install` old path, import `rsa2048` and `p256` | `custodiod` in `system_u:system_r:init_t:s0`; the four key files `init_var_lib_t`, the directory `var_lib_t` |
+| 2 `dnf upgrade ./custodio-0.1.1-1.x86_64.rpm` | `/usr/libexec/custodio/custodiod` (`bin_t`) present, `/usr/lib/custodio/custodiod` gone; active, main PID 3603 (new); `unconfined_service_t`; key files already `var_lib_t` |
+| 3 `stat` before and after, `systemd-tmpfiles --create`, `matchpathcon` | mode `600`, owner `65534:65534`, sizes 138, 411, 1217, 617: unchanged; `var_lib_t`, as `matchpathcon` gives |
+| 4 signatures, no new import | dialog each time (screenshots); approved `rsa2048` and `p256` `Verified OK`; cancelled `rsa2048` fails (`C_SignFinal` `CKR_FUNCTION_FAILED`) |
+| reboot | `unconfined_service_t`, `var_lib_t`; approved `rsa2048` `Verified OK`, cancelled `p256` fails |
+| SELinux | no AVC, USER_AVC or SELINUX_ERR names custodio, polkit or the module; 1 AVC in the window, `systemd_resolved_t` on `systemd_machined_var_run_t` at boot; `USER_AUTH` 29 |
+| journal (`docs/audit.md` base query) | 6 entries for 6 actions: 4 `signed`, 2 `denied`, uid 1000, in order |
+
+**bazzite** (labvm, Bazzite GNOME 44.20261006.1, kernel 7.2.8-ogc5.1.fc44.x86_64, dbus-broker 37, polkit 127, `Enforcing`; window from `11/01/26 10:15:53`; on the host, no toolbox):
+
+| Step | Result |
+|---|---|
+| 1 `rpm-ostree install` old path, reboot, import | `LocalPackages: custodio-0.1.0-1.x86_64`; daemon `lib_t`, `custodiod` in `init_t`; key files `init_var_lib_t`; one approved `rsa2048` signature `Verified OK` |
+| 2 `rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm`, reboot | `Upgraded: custodio 0.1.0-1 -> 0.1.1-1`; before the reboot the key files are still `init_var_lib_t`; after it `/usr/libexec/custodio/custodiod` (`bin_t`), old path gone, `unconfined_service_t`, key files `var_lib_t`; `stat` identical to the one before step 2 |
+| 3 signatures, no new import | dialog each time (screenshots); approved `rsa2048` and `p256` `Verified OK`; cancelled `rsa2048` fails (`CKR_FUNCTION_FAILED`) |
+| SELinux | no AVC names custodio, polkit or the module; 30 in the window, all at boot: `chcon` `mac_admin` (from `unconfined_service_t` and `tuned_t`), `lsblk` `getattr` on `proc_t` (`bootupd_t`), as in F55; `USER_AUTH` 23 |
+| journal | 4 entries for 4 actions: 3 `signed`, 1 `denied`, in order |
+
+F62: pass on both machines.
+
+- **With dnf the label comes back during the upgrade, not at the next boot.** systemd's `transfiletriggerin` on `/usr/lib/tmpfiles.d/`
+  (`rpm -q --filetriggers systemd`) runs `systemd-tmpfiles --create` at the end of every transaction that installs a file there, so the
+  key files were `var_lib_t` right after `dnf upgrade`. The boot path was seen on bazzite, where no trigger runs at deploy time.
+- The directory itself is `var_lib_t` before the move too: only files the old service created are `init_var_lib_t`.
+- As in F55, the dialogs were answered from the hypervisor (`virsh send-key`: the lab account's password, or Escape) after a screenshot
+  showed each one. No person clicked them. `pkcs11-tool` writes ECDSA as raw `r||s`; `--signature-format openssl` gives the DER that `openssl dgst -verify` reads.

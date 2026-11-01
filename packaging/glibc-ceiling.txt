@@ -1,0 +1,14 @@
+# The glibc ceiling of the packages: no ELF file in them may need a GLIBC_x.y symbol version above `ceiling`.
+# It is the oldest glibc among the targets the packages install on (Ubuntu 24.04 and Alma 10, both 2.39).
+# scripts/test-glibc-ceiling.sh checks that `ceiling` equals the minimum of the `target` lines below and that
+# Arch (a rolling release) is not the minimum. Researched 2026-10-30.
+#
+# ceiling = VERSION
+# target = NAME | GLIBC VERSION | SOURCE
+ceiling = 2.39
+target = Debian 13 | 2.41 | https://packages.debian.org/trixie/libc6 (libc6 2.41-12+deb13u4)
+target = Ubuntu 26.04 | 2.43 | https://launchpad.net/ubuntu/+source/glibc (2.43-2ubuntu2 at release)
+target = Ubuntu 24.04 | 2.39 | https://launchpad.net/ubuntu/+source/glibc (2.39-0ubuntu8 at release)
+target = Fedora 44 | 2.43 | https://packages.fedoraproject.org/pkgs/glibc/glibc/fedora-44.html (2.43-2.fc44)
+target = Alma 10 | 2.39 | https://pkgdex.org/almalinux/10/aarch64/baseos/page/2/ (2.39-121.el10_2.alma.1; no official page found)
+target = Arch | 2.44 | https://archlinux.org/packages/core/x86_64/glibc/ (2.44+r50, built 2026-09-27; rolling release, checked 2026-10-30)

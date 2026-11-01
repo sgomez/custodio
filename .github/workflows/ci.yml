@@ -18,7 +18,7 @@ env:
 jobs:
   commits:
     name: conventional commits
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -45,7 +45,7 @@ jobs:
       # Debuginfo only slows compiling and linking here.
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -68,12 +68,17 @@ jobs:
           curl -sSfLo /tmp/actionlint.tgz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  /tmp/actionlint.tgz" | sha256sum -c -
           tar -xzf /tmp/actionlint.tgz -C "$HOME/.cargo/bin" actionlint
-      # The rest of `just check`; `just test` is its own job.
-      - run: just lint system-gates
+      # The rest of `just check` (it needs the nfpm tools above); `just test` is its own job.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libarchive-tools zstd python3-yaml
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - run: just lint system-gates package-gate-test shell-scripts-test
 
   test:
     name: just test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       # Debuginfo only slows compiling and linking here.
@@ -105,7 +110,7 @@ jobs:
       # Debuginfo only slows compiling and linking here.
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -129,7 +134,7 @@ jobs:
     name: just nightly
     # Slow: main only; a PR runs the fast jobs.
     if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -160,7 +165,7 @@ jobs:
   # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week.
   mutants:
     name: just mutants (diff)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       # Debuginfo only slows compiling and linking here.
@@ -202,12 +207,54 @@ jobs:
             target/mutants/mutants.out/*.txt
             target/mutants-pkcs11/mutants.out/*.txt
 
+  # The three packages from one nfpm file list, and the gate on their contents.
+  package:
+    name: just package
+    # The binaries link against the runner's glibc: 24.04's 2.39 is the ceiling (packaging/glibc-ceiling.txt).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
+          add-rust-environment-hash-key: false
+          shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just@1.59.0
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libarchive-tools zstd python3-yaml
+      # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - run: just package
+      - name: just package-parity
+        run: just package-parity
+      - name: just glibc-ceiling
+        run: just glibc-ceiling
+      # ubuntu's apt cannot install Debian 13's lintian or Fedora's rpmlint: all three linters run in their distribution's container.
+      - name: just package-lint
+        run: just package-lint
+        env:
+          PACKAGE_LINT_FORCE_CONTAINER: "1"
+
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:
     name: ci
     if: always()
-    needs: [commits, lint, test, coverage, nightly, mutants]
-    runs-on: ubuntu-24.04
+    needs: [commits, lint, test, package, coverage, nightly, mutants]
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
     steps:

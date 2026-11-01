@@ -1,0 +1,20 @@
+# Test machine for `just e2e`: AlmaLinux 10 (the RHEL 10 stand-in) with systemd as PID 1, real polkit and logind, the tools that
+# consume PKCS#11 modules, and Python (GLib D-Bus) for the test authentication agent. The `dbus` meta package pulls in the
+# distribution's default bus daemon (dbus-broker); none is named here. The Custodio package is NOT in the
+# image: the test installs it with dnf, like a user would.
+FROM docker.io/library/almalinux:10
+
+RUN dnf install -y --setopt=install_weak_deps=False \
+      systemd systemd-pam dbus polkit p11-kit opensc pkcs11-provider \
+      nss-tools openssl util-linux python3 python3-gobject-base procps-ng \
+    && dnf clean all
+
+# The AlmaLinux container image masks systemd-logind (a booted AlmaLinux does not), and the test needs logind sessions.
+RUN rm -f /etc/systemd/system/systemd-logind.service
+
+# The agent authenticates through PAM like a real one; accept any password for the polkit service
+# so that "approve" needs no secret. The decision (approve or deny) is made by the agent.
+RUN printf 'auth required pam_permit.so\naccount required pam_permit.so\n' > /etc/pam.d/polkit-1
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/usr/lib/systemd/systemd"]

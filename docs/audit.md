@@ -35,7 +35,7 @@ The text of `MESSAGE` is for people; parse the fields instead.
 |---|---|---|
 | `signed` | 6 | Authorized and signed |
 | `denied` | 5 | polkit denied the request |
-| `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was signed |
+| `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown (including a bus reply without a `ProcessFD` that names the `ProcessID`); nothing was signed |
 | `signing_failed` | 3 | Authorized, but signing failed |
 
 ## Mechanisms

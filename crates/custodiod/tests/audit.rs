@@ -22,7 +22,7 @@ use zbus::{Connection, block_on};
 use bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use common::{
     ACCESS_DENIED, CKM_ECDSA, CKM_RSA_PKCS, EC_P12, MissingPid, NoCredentials, RSA_P12, Recording,
-    assert_entry, digest, digest_info, fixture, import, uid,
+    Reply, assert_entry, digest, digest_info, fixture, import, pidfd, uid,
 };
 
 const ECDSA: AuditMechanism = AuditMechanism::Ecdsa;
@@ -322,6 +322,193 @@ fn credentials_unavailable_refuses_and_records() -> TestResult {
             Some(Outcome::AuthorizationUnavailable)
         );
         assert_eq!(entries.first().and_then(Entry::caller), None);
+        Ok(())
+    })
+}
+
+/// With the key imported, a reply whose `ProcessFD` is unusable is refused before polkit and
+/// leaves one `AuthorizationUnavailable` entry without a caller.
+fn refused_for_process_fd(
+    edit: impl Fn(&mut std::collections::HashMap<String, zbus::OwnedVariant>) + Sync + Send + 'static,
+) -> TestResult {
+    block_on(async {
+        let sink = Arc::new(MemorySink::default());
+        let f =
+            Fixture::start(Answer::Yes, move |_: &Connection| Reply(edit), sink.clone()).await?;
+        import(&f, "ec", EC_P12).await?;
+        let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
+        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(f.asked(), Vec::<String>::new());
+        let [e] = sink
+            .entries()
+            .try_into()
+            .map_err(|_| "expected one entry")?;
+        assert_eq!(e.outcome(), Outcome::AuthorizationUnavailable);
+        assert_eq!(e.caller(), None);
+        assert_eq!(e.key_id().as_str(), "ec");
+        assert_eq!(e.mechanism(), Some(ECDSA));
+        Ok(())
+    })
+}
+
+#[test]
+fn missing_process_fd_reaches_the_journal_as_authorization_unavailable() -> TestResult {
+    block_on(async {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("j.sock");
+        let socket = std::os::unix::net::UnixDatagram::bind(&path)?;
+        socket.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+        let f = Fixture::start(
+            Answer::Yes,
+            |_: &Connection| Reply(|_: &mut _| {}),
+            Arc::new(JournalSink::new(&path)),
+        )
+        .await?;
+        import(&f, "ec", EC_P12).await?;
+        failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
+        let mut buf = vec![0u8; 65536];
+        let n = socket.recv(&mut buf)?;
+        let text = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
+        assert!(
+            text.lines()
+                .any(|l| l == "CUSTODIO_OUTCOME=authorization_unavailable"),
+            "{text}"
+        );
+        socket.set_nonblocking(true)?;
+        assert!(socket.recv(&mut buf).is_err(), "a second datagram");
+        Ok(())
+    })
+}
+
+#[test]
+fn sign_refused_without_process_fd() -> TestResult {
+    refused_for_process_fd(|_| {})
+}
+
+#[test]
+fn sign_refused_with_process_fd_of_wrong_type() -> TestResult {
+    refused_for_process_fd(|m| {
+        m.insert("ProcessFD".to_owned(), zbus::OwnedVariant::from(3u32));
+    })
+}
+
+#[test]
+fn sign_refused_with_pidfd_of_another_process() -> TestResult {
+    let parent = std::os::unix::process::parent_id();
+    assert_ne!(parent, std::process::id());
+    // Opened up front so a failure fails the test instead of dropping `ProcessFD`.
+    let fd = pidfd(parent)?;
+    refused_for_process_fd(move |m| {
+        insert_pidfd(m, &fd);
+    })
+}
+
+/// What a refused Sign leaves behind: the D-Bus error name and message, what polkit was asked,
+/// and the audit entries.
+type Refusal = (String, String, Vec<String>, Vec<Entry>);
+
+fn refusal_with(
+    edit: impl Fn(&mut std::collections::HashMap<String, zbus::OwnedVariant>) + Sync + Send + 'static,
+) -> Result<Refusal, Box<dyn std::error::Error>> {
+    block_on(async {
+        let sink = Arc::new(MemorySink::default());
+        let f =
+            Fixture::start(Answer::Yes, move |_: &Connection| Reply(edit), sink.clone()).await?;
+        import(&f, "ec", EC_P12).await?;
+        let err = failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
+        let message = match &err {
+            zbus::Error::MethodError(_, m, _) => m.clone().unwrap_or_default(),
+            other => format!("{other}"),
+        };
+        Ok((error_name(&err), message, f.asked(), sink.entries()))
+    })
+}
+
+/// A pidfd of a child that has exited and been reaped.
+fn reaped_pidfd() -> Result<zbus::OwnedVariant, Box<dyn std::error::Error>> {
+    let mut child = std::process::Command::new("true").spawn()?;
+    let fd = pidfd(child.id())?;
+    child.wait()?;
+    Ok(fd)
+}
+
+/// A failed clone must fail the test, or the mismatch case silently becomes the missing case.
+#[allow(clippy::expect_used)] // test helper; a panic is the intended failure
+fn insert_pidfd(
+    m: &mut std::collections::HashMap<String, zbus::OwnedVariant>,
+    fd: &zbus::OwnedVariant,
+) {
+    m.insert("ProcessFD".to_owned(), fd.try_clone().expect("clone pidfd"));
+}
+
+fn assert_refused_like_missing(
+    mismatch: impl Fn(&mut std::collections::HashMap<String, zbus::OwnedVariant>)
+    + Sync
+    + Send
+    + 'static,
+) -> TestResult {
+    let missing = refusal_with(|_| {})?;
+    let got = refusal_with(mismatch)?;
+    assert_eq!(got.0, ACCESS_DENIED);
+    assert_eq!(got.0, missing.0, "error name");
+    assert_eq!(got.1, missing.1, "error message");
+    assert_eq!(got.2, Vec::<String>::new(), "polkit was asked");
+    assert_eq!(missing.2, Vec::<String>::new());
+    assert_eq!(got.3.len(), 1);
+    assert_eq!(got.3, missing.3, "audit entries");
+    Ok(())
+}
+
+#[test]
+fn mismatch_is_refused_identically_to_missing_process_fd() -> TestResult {
+    let parent = std::os::unix::process::parent_id();
+    assert_ne!(parent, std::process::id());
+    let fd = pidfd(parent)?;
+    assert_refused_like_missing(move |m| {
+        insert_pidfd(m, &fd);
+    })
+}
+
+#[test]
+fn reaped_pidfd_is_refused_identically_to_missing_process_fd() -> TestResult {
+    let fd = reaped_pidfd()?;
+    assert_refused_like_missing(move |m| {
+        insert_pidfd(m, &fd);
+    })
+}
+
+#[test]
+fn mismatching_pidfd_reaches_the_journal_as_authorization_unavailable() -> TestResult {
+    let parent = std::os::unix::process::parent_id();
+    assert_ne!(parent, std::process::id());
+    let fd = pidfd(parent)?;
+    block_on(async {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("j.sock");
+        let socket = std::os::unix::net::UnixDatagram::bind(&path)?;
+        socket.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+        let f = Fixture::start(
+            Answer::Yes,
+            move |_: &Connection| {
+                Reply(move |m: &mut std::collections::HashMap<_, _>| {
+                    insert_pidfd(m, &fd);
+                })
+            },
+            Arc::new(JournalSink::new(&path)),
+        )
+        .await?;
+        import(&f, "ec", EC_P12).await?;
+        failed(sign(&f.client, "ec", CKM_ECDSA, &digest()).await)?;
+        let mut buf = vec![0u8; 65536];
+        let n = socket.recv(&mut buf)?;
+        let text = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
+        assert!(
+            text.lines()
+                .any(|l| l == "CUSTODIO_OUTCOME=authorization_unavailable"),
+            "{text}"
+        );
+        socket.set_nonblocking(true)?;
+        assert!(socket.recv(&mut buf).is_err(), "a second datagram");
         Ok(())
     })
 }

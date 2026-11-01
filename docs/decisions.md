@@ -181,3 +181,84 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: the pure-Rust RSA/ECDSA tests took over 14 minutes under Miri and made `just check-slow` too slow;
   Miri only checks `unsafe` code. Miri no longer covers those safe tests; ASan still runs all of them.
 - Rejected: running every test under Miri; skipping Miri. Widen the filter if a module gains `unsafe`.
+
+## 2026-10-30 — Package version scheme and the place of the service binary
+- Decision: the version comes from the workspace; `X.Y.Z-pre` becomes `X.Y.Z~pre-1` (.deb), release `1` with `~pre` (.rpm)
+  and `X.Y.Z_pre` with pkgrel 1 (Arch, which forbids `-` in pkgver and where nfpm drops the prerelease). `just package
+  version=...` overrides it so a test can build an N+1 package. The D-Bus activation file keeps `Exec=/bin/false`, so only the
+  unit starts the service and there is one unit source and one activation file. Since F61 the service binary is at
+  `/usr/libexec/custodio/custodiod` in the .deb and the .rpm and at `/usr/lib/custodio/custodiod` in the Arch package
+  (`packaging/parity-exceptions.txt` lists the difference); the unit's `ExecStart` follows each path, derived per format from
+  `data/custodio.service` by `scripts/derive-units.sh` (SPEC's open question "Arch and `/usr/libexec`" was settled by the approved
+  feature list as option (b): one source, per-format path).
+- Why: on Fedora `/usr/lib/custodio` is labelled `lib_t`, so systemd leaves the service in `init_t`, systemd's own domain, and the
+  key files it writes get `init_var_lib_t` (seen in F54 and F55). From `/usr/libexec` (`bin_t`) it runs in `unconfined_service_t`,
+  as SPEC expects. Arch has no `/usr/libexec`, and its guidelines ask for `/usr/lib/<pkg>/`. The activation file stays on
+  `/bin/false`: a real `Exec=` there would start the service outside the unit's hardening.
+- Rejected: `/usr/lib/custodio` for all three (the first choice of M2; wrong SELinux domain on Fedora); `/usr/libexec` in the Arch
+  package too (against Arch's rules); two unit files (they would drift apart); an `Exec=` in the activation file; an SELinux policy
+  module to fix the domain (out of scope in SPEC).
+
+## 2026-10-30 — The install-time ProcessFD check refuses when it has no tool to ask with
+- Decision: the check (`packaging/bus-check.sh`) asks with `busctl`, else `dbus-send`. A bus socket that exists with neither tool
+  installed is refused, with a message to install one; only an absent socket (or nothing listening) is "no bus" and installs with a notice.
+  The deb's `Pre-Depends: systemd` (next entry) puts `busctl` on the system when `preinst` runs, but this check does not rely on it and
+  is not changed for it: it still tries `busctl`, then `dbus-send`, and refuses when it has neither.
+- Why: a deb `preinst` can rely on Essential packages only unless it pre-depends, so neither tool was guaranteed when this was decided; installing
+  silently would hide a bus without ProcessFD, which the check exists to catch. The rpm and Arch scripts have no pre-dependency at all.
+- Rejected: treating a missing tool as "no bus" (silent install); querying the bus with a tool of our own (nothing may be added to the
+  package for a script that runs before it). `Pre-Depends` on systemd for this check alone was rejected here because of the dependency gate
+  and the minimal-install goal; that reason no longer holds, since F43 pre-depends on systemd for another reason and `systemd` was already a
+  dependency, so `Pre-Depends` changes when it is installed and not what gets installed. Pre-depending on dbus is still rejected: nothing needs it.
+
+## 2026-10-30 — The deb pre-depends on systemd and creates the account in preinst
+- Decision: `systemd` is in the deb's `Pre-Depends` (and no longer in `Depends`; rpm and Arch lists are unchanged). `preinst` creates the
+  `custodio` account with `systemd-sysusers -`, from the sysusers text embedded in the script (`scripts/check-sysusers-sync.sh` keeps it equal
+  to `data/sysusers.d/custodio.conf`), on `install` and on `upgrade`. If the tool is missing or fails, `preinst` fails and nothing is unpacked.
+- Why: dpkg unpacks the bus policy before `postinst`, and `dbus-daemon` may load it at once, so the account must exist before; and dpkg
+  guarantees `Depends` only for `postinst`, so in one transaction (debootstrap, image builds) `systemd` may not be unpacked when `preinst`
+  runs. Debian policy 7.2 discourages `Pre-Depends`; this is the case it allows. Do not drop it as lint hygiene.
+- Rejected: a `useradd`/`adduser` fallback in `preinst` (a second account definition to keep in sync with the sysusers file, and different
+  uid choice); creating the account in `postinst` (the policy would name a missing user); skipping account creation when the tool is missing.
+  A later session may move `systemd` back to `Depends` only if `preinst` stops needing `systemd-sysusers`.
+
+## 2026-10-30 — Deb scripts: restart marker in /run, notice on stderr, purge as remove
+- Decision: `preinst upgrade` notes that `systemctl is-active` said active by creating `/run/custodio-restart-after-upgrade`; `postinst
+  configure OLD` restarts once (`deb-systemd-invoke restart`) only if it exists, and removes it. Without it (an upgrade from the cargo-deb package
+  needs none: the new `preinst` runs first) the service is left alone. The removal notice goes to stderr, on `remove` and on `purge`
+  (printed twice when an installed package is purged). `postrm remove|purge` stops the service again if it is active after the reloads.
+- Why: the marker is the only state that survives from `preinst` to `postinst`, and it must not be under the state directory; stdout of
+  maintainer scripts can carry debconf's protocol; the second stop covers a D-Bus activation between `prerm` and the removal of the files.
+- Rejected: `try-restart` in `postinst` (restarts a service that was started after `preinst`, and cannot tell a stale state); the marker under
+  `/var/lib` (state directory); one notice per transaction (needs another marker).
+
+## 2026-10-30 — Rpm scriptlets: account in %pre from stdin, restart by marker, no systemd macros
+- Decision: `%pre` runs the F42 check, then `systemd-sysusers -` with the sysusers line embedded in the scriptlet (kept equal to the sysusers
+  file by `scripts/check-sysusers-sync.sh`), then on an upgrade notes `is-active` in `/run/custodio-restart-after-upgrade`; the new `%post`
+  reloads, updates the catalog and restarts once if the marker exists. The rpm has no `user()` provide, no `%posttrans`, no `Requires(pre)`
+  (nfpm cannot write it; the plain `Requires: systemd` orders it), and no `%systemd_*` or `%sysusers_*` macro (nfpm leaves them unexpanded).
+  `%preun 0` stops the service; `%postun 0` reloads, stops it again if active, and prints the notice on stderr (as the deb).
+- Why: the old package's `%preun`/`%postun` run after the new `%post`, and the old package may have none (the first nfpm rpm replaces the M1 rpm),
+  so only the new package's own scriptlets can decide; `%systemd_postun_with_restart` marks for a try-restart by a file trigger at the end of
+  the transaction and does nothing in a chroot or an image build, and the same `try-restart` was rejected for the deb (F43). A `user()`
+  provide would make rpm create the account before the F42 check.
+- Rejected: `%posttrans` for the restart (its `$1` cannot tell install from upgrade, and it would restart after the old files are removed); the
+  helper `systemd-update-helper` (absent in a chroot, enables and presets on install); a `useradd` fallback (see the deb entry).
+- Not decided here: the notice for `rpm-ostree uninstall` (no scriptlet of the removed package runs there): decided as a deviation, see the F44 entry in `SPEC_DEVIATIONS.md`.
+
+## 2026-10-30 — Arch: hooks do the reloads and the catalog, the account is made in pre_*, a hook restarts
+- Decision: the scripts call no `daemon-reload` (`30-systemd-daemon-reload-system` does), no bus reload (`dbus-reload`) and no `journalctl --update-catalog`
+  (`25-systemd-catalog`). `pre_install` and `pre_upgrade` create the account with `systemd-sysusers -`, after the F42 check. The restart on upgrade is the
+  PostTransaction hook `zz-custodio-restart.hook` (`systemd-hook restart` = `try-restart`); `pre_remove` stops the service on removal.
+- Why: a script runs before all PostTransaction hooks, so a reload in it would be a second call and a restart in it would precede the daemon reload; the
+  sysusers hook also runs after the bus policy is unpacked. `try-restart` needs no marker, so nothing is written (docs/findings.md, "F58").
+- Rejected: `enqueue-marked` with `Markers=needs-restart` (runs before `dbus-reload`, needs a script to set the property); reloads repeated in `post_*`;
+  a marker file as in the deb; a `useradd` fallback.
+- Not covered: `pacman --noscriptlet` and `pacman -U` into a `--root` without hooks run no scripts or hooks, as for any package. A real running systemd is F45.
+
+## 2026-11-01 — Firefox without the p11-kit proxy: registration by hand in M2
+- Decision: where the system NSS does not load `p11-kit-proxy.so` (Arch, Debian), `docs/install.md` documents registering the
+  module per profile with `modutil`; the packages register nothing in Firefox. Settled by the milestone approver after F56.
+- Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings.md`, F56); elsewhere nothing system-wide is read.
+- Rejected: an enterprise policy (`/etc/firefox/policies/policies.json` is one file, it would override the administrator's); for
+  M2, a `custodio` command that edits the user's profiles (left in `docs/milestones.md`, "Firefox without p11-kit").

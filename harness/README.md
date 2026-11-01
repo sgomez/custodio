@@ -41,7 +41,9 @@ only a person can check.
    real. `just milestone approve features`.
 6. `just harness run`. The agents build feature after feature.
 7. Check by hand the features marked `manual`, then `just milestone pass <id>` for each.
-8. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
+8. Review `SPEC_DEVIATIONS.md`: for each entry, update `SPEC.md` and set `Status: accepted`, or set
+   `rejected` and say what to build instead. `just milestone close` refuses while any is not accepted.
+9. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
 
 ## When it stops
 
@@ -49,11 +51,11 @@ only a person can check.
 |---|---|
 | `Stopped for review` | Steps 3 or 5 above |
 | `BLOCKED.md found` | Read `BLOCKED.md`, then `just harness unblock "<answer>"`. If the answer changes `SPEC.md` or `features.json`, edit and approve them yourself, then `just harness unblock` |
-| `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`, `just harness run` |
+| `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`. Then `rm .harness/state/<id>.attempts` and `just harness run` |
 | `contract not approved` | `just harness fix <id>`: an agent fixes the contract with you, then the evaluator reviews it again |
 | `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just milestone approve features`, `just harness run` |
 | `Reached MAX_SESSIONS` | Budget for this run spent: `just harness run` when you want to spend more |
-| `Uncommitted changes` | Commit or `git stash`, then `just harness run` |
+| `Uncommitted changes` | Commit or `git stash`, then `just harness run`. Not after `stop`: `resume` hands a cut builder session's work to the next builder |
 
 ## Good to know
 
@@ -71,6 +73,7 @@ IDEA.md ──planner──▶ SPEC.md ──[you approve]──▶ initializer 
   for each feature whose dependencies pass:
     builder writes contracts/<id>.md ──evaluator: APPROVED / REVISE──┐ (up to 3 rounds)
     builder sessions tick the contract's steps, one fresh context each ◀┘
+      (an amendment to the contract goes back to the evaluator first)
     verify command (no LLM) ──▶ evaluator: PASS / NEEDS_WORK ──▶ loop marks it passing
 ```
 
@@ -83,6 +86,7 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `MAX_CONTRACT_ROUNDS` | 3 | contract drafts per feature |
 | `MAX_FEATURE_SESSIONS` | 8 | builder sessions per feature |
 | `MAX_ATTEMPTS` | 3 | rejected implementations per feature |
+| `MAX_AMENDMENTS` | 3 | contract amendments per feature |
 
 | File | Written by |
 |---|---|
@@ -90,11 +94,13 @@ planning steps and `harness/loop.sh` the build; `AUTO_APPROVE=1 just harness run
 | `SPEC.md` | the planner, then you |
 | `features.json` | the initializer, then you; `passes` by the loop |
 | `APPROVALS` | `just milestone approve` |
-| `contracts/<id>.md` | a builder, approved by the evaluator; builders only tick its steps; the unblocker applies your answer to it |
+| `contracts/<id>.md` | a builder, approved by the evaluator; builders tick its steps or amend it, and the evaluator approves each amendment; the unblocker applies your answer to it |
 | `PROGRESS.md`, `docs/decisions.md` | builders |
 | `NEXT_FINDINGS.md` | the loop, from the verify output or the evaluator |
+| `SPEC_DEVIATIONS.md` | builders, for a requirement proven impossible; you accept or reject each entry |
 | `BLOCKED.md` | any session that needs a person |
 
 Commit messages follow Conventional Commits (commitlint checks them in the hook, the loop and CI),
 and `just release` builds the changelog from them. Hooks in `.claude/hooks/` stop each agent role
-from writing another role's files. Logs are in `.harness/logs/`.
+from writing another role's files. Logs are in `.harness/logs/`. Under herdr, `just harness run` gets a child terminal per feature
+that follows all its claude sessions, and under it one per session (`harness/hc-sessions.sh`).

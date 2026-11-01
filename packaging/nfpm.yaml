@@ -1,0 +1,168 @@
+# The one file list of the .deb, the .rpm and the Arch package (`just package`; run from the repository root).
+# Every installed file is listed once, under /usr. Per-format overrides hold only metadata, dependency names and
+# the lifecycle script files. The version comes from the environment (see the `package` recipe).
+name: custodio
+arch: amd64
+platform: linux
+version: ${NFPM_VERSION}
+prerelease: ${NFPM_PRERELEASE}
+release: "1"
+section: utils
+priority: optional
+maintainer: rFirma <info@rfirma.com>
+vendor: rFirma
+homepage: https://github.com/rfirma/custodio
+license: EUPL-1.2
+description: |
+  Signing service for PKCS#12 keys
+  The service keeps PKCS#12 keys and asks polkit before every signature.
+  It comes with a command-line importer and a PKCS#11 module for p11-kit,
+  so that PKCS#11 applications can sign without ever holding the key.
+rpm:
+  group: System Environment/Daemons
+# systemd is a Pre-Depends, not a Depends: preinst runs systemd-sysusers, and dpkg guarantees Depends only for postinst (docs/decisions.md).
+deb:
+  predepends:
+    - systemd
+
+contents:
+  # The service binary where each distribution wants it (F61, docs/decisions.md): /usr/libexec in the .deb and the .rpm, /usr/lib in the Arch
+  # package (Arch has no /usr/libexec). The unit of each format comes from the one source data/custodio.service (scripts/derive-units.sh).
+  - src: target/release/custodiod
+    dst: /usr/libexec/custodio/custodiod
+    packager: deb
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/custodiod
+    dst: /usr/libexec/custodio/custodiod
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/custodiod
+    dst: /usr/lib/custodio/custodiod
+    packager: archlinux
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/custodio-cli
+    dst: /usr/bin/custodio
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: target/release/libcustodio_pkcs11.so
+    dst: /usr/lib/custodio/libcustodio_pkcs11.so
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/units/deb/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    packager: deb
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/units/rpm/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    packager: rpm
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/units/archlinux/custodio.service
+    dst: /usr/lib/systemd/system/custodio.service
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/sysusers.d/custodio.conf
+    dst: /usr/lib/sysusers.d/custodio.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/tmpfiles.d/custodio.conf
+    dst: /usr/lib/tmpfiles.d/custodio.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.Custodio1.conf
+    dst: /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.Custodio1.service
+    dst: /usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/com.rfirma.custodio.policy
+    dst: /usr/share/polkit-1/actions/com.rfirma.custodio.policy
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio.module
+    dst: /usr/share/p11-kit/modules/custodio.module
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio.catalog
+    dst: /usr/lib/systemd/catalog/custodio.catalog
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: LICENSE
+    dst: /usr/share/licenses/custodio/LICENSE
+    file_info: {mode: 0644, owner: root, group: root}
+  # rpm owns no directory it is not told about, so `dnf remove` would leave these three behind (found by the removal case of the e2e suite,
+  # F49). dpkg and pacman own the parents of the files they list; for them these entries would add nothing.
+  - dst: /usr/lib/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/libexec/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/share/doc/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/share/licenses/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: packaging/arch/custodio-bus-check.hook
+    dst: /usr/share/libalpm/hooks/custodio-bus-check.hook
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/arch/custodio-bus-check
+    dst: /usr/share/libalpm/scripts/custodio-bus-check
+    packager: archlinux
+    file_info: {mode: 0755, owner: root, group: root}
+  - src: packaging/arch/zz-custodio-restart.hook
+    dst: /usr/share/libalpm/hooks/zz-custodio-restart.hook
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/copyright
+    dst: /usr/share/doc/custodio/copyright
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/doc/changelog.Debian.gz
+    dst: /usr/share/doc/custodio/changelog.Debian.gz
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: target/man/custodio.1.gz
+    dst: /usr/share/man/man1/custodio.1.gz
+    file_info: {mode: 0644, owner: root, group: root}
+
+# nfpm does not compute shared-library dependencies: libc and libgcc_s are what `readelf -d` shows on the binaries.
+overrides:
+  deb:
+    depends:
+      - libc6
+      - libgcc-s1
+      - polkitd (>= 124)
+      - dbus-system-bus
+      - p11-kit
+    scripts:
+      preinstall: packaging/deb/preinst
+      postinstall: packaging/deb/postinst
+      preremove: packaging/deb/prerm
+      postremove: packaging/deb/postrm
+  rpm:
+    depends:
+      - glibc
+      - libgcc
+      - polkit >= 124
+      - systemd
+      - dbus
+      - p11-kit
+    scripts:
+      preinstall: packaging/rpm/pre
+      postinstall: packaging/rpm/post
+      preremove: packaging/rpm/preun
+      postremove: packaging/rpm/postun
+  archlinux:
+    depends:
+      - glibc
+      - gcc-libs
+      - polkit>=124
+      - systemd
+      - dbus
+      - p11-kit
+    scripts:
+      preinstall: packaging/arch/pre_install
+      postinstall: packaging/arch/post_install
+      preremove: packaging/arch/pre_remove
+      postremove: packaging/arch/post_remove
+    archlinux:
+      scripts:
+        preupgrade: packaging/arch/pre_upgrade
+        postupgrade: packaging/arch/post_upgrade

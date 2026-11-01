@@ -1,0 +1,1 @@
+# Deliberately empty: the user layer of rpmlint, so that no filter applies besides packaging/lint/rpmlint.txt.

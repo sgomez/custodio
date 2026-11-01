@@ -1,14 +1,40 @@
 #!/usr/bin/env bash
-# Runs as root inside the systemd container: installs the package, starts the real service, imports
-# a key, and runs user.sh in a logind session of an ordinary user (the polkit agent needs one).
+# Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
+# (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
+# (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
+# Usage: guest.sh TARGET [old|oldpath]. With "old" (F60, on a fresh container) it installs the OLD package (/pkg-old, the last cargo-deb .deb),
+# imports the keys and runs only the upgrade case from it to package N+1 (/pkg-next); it reports the upgrade-cargo-deb-* cases only.
+# With "oldpath" (F61, on a fresh container) the same from the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
+# it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path) skips them in the main run.
 set -euo pipefail
+mode=${2:-main}
+case $mode in main | old | oldpath) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+
+# A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
+if [ -f /e2e-target/refusal-only ]; then
+    [ "$mode" = main ] || fail "a refusal-only target has no old-package or old-path run"
+    pkg=$(find /pkg -type f | head -n 1)
+    [ -n "$pkg" ] || fail "no package is mounted in /pkg"
+    bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
+    bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
+    probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
+    while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
+    echo "e2e: all checks passed (refusal)"
+    exit 0
+fi
 
 # The checks of the journal checker come first; a broken checker would make the later checks worthless.
 bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
-dpkg -i /pkg/custodio.deb >/dev/null
+case $mode in old) from_dir=/pkg-old ;; oldpath) from_dir=/pkg-oldpath ;; *) from_dir=/pkg ;; esac
+pkg=$(find "$from_dir" -type f | head -n 1)
+[ -n "$pkg" ] || fail "no package is mounted in $from_dir"
+pkg_next=$(find /pkg-next -type f | head -n 1)
+[ -n "$pkg_next" ] || fail "no package N+1 is mounted in /pkg-next"
+bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
+echo "e2e: installed $(basename "$pkg") from the mounted file"
 systemctl daemon-reload
 systemctl reload dbus # restart would drop logind and polkit off the bus
 systemctl start polkit
@@ -46,6 +72,19 @@ for k in rsa1 ec1; do
 done
 rm -f "$work"/*.key "$work"/*.p12
 
+if [ "$mode" = oldpath ]; then
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
+    systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old-path package"
+    echo "e2e: all checks passed (upgrade from the old-path package)"
+    exit 0
+fi
+if [ "$mode" = old ]; then
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-cargo-deb || fail "upgrade.sh failed (from the old package)"
+    systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old package"
+    echo "e2e: all checks passed (upgrade from the old package)"
+    exit 0
+fi
+
 # User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session.
 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
 
@@ -62,7 +101,23 @@ restore_polkit || fail "polkit could not be restored"
 systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
 WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
 
+# The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
+WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
+
+# A target without an old path (Arch) skips the cases of the upgrade from it, with the reason its marker holds.
+if [ -f /e2e-target/no-oldpath ]; then
+    # shellcheck source=e2e/report.sh
+    source /e2e/report.sh
+    reason=$(head -n 1 /e2e-target/no-oldpath)
+    for c in version-greater service-new-binary state-unchanged keys-listed signs-with-polkit no-manual-step; do case_skip "upgrade-oldpath-$c" "$reason"; done
+fi
+
+# The removal, purge and reinstall cases come after the upgrade: they remove N+1 and install it again, from the state the upgrade left.
+WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
+
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"
 if journalctl -u custodio --no-pager | grep -q "e2e-password"; then fail "the password reached the journal"; fi
+probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
+while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
 echo "e2e: all checks passed"

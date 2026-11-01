@@ -1,0 +1,6 @@
+# Cases of this target only. A refusal-only target (see the marker file) runs these and none of e2e/cases.list.
+refusal-bus-lacks-processfd
+refusal-install-fails-naming-processfd
+refusal-no-custodio-file
+refusal-dpkg-not-configured
+refusal-nothing-listens

@@ -14,20 +14,6 @@ log "Following $container"
 # Short polls, not one long exec: a long exec outlives Ctrl-C inside the container.
 in_container() { "$engine" exec "$container" bash -c "$1" 2>/dev/null; }
 
-format='
-  fromjson? |
-  if .type == "assistant" then
-    .message.content[]? |
-    if .type == "text" then .text
-    elif .type == "tool_use" then
-      "→ \(.name) " + ((.input.command // .input.file_path // .input.pattern // .input.description
-        // .input | tostring) | gsub("\\s+"; " ") | .[0:160])
-    else empty end
-  elif .type == "user" then
-    .message.content[]? | select(.type? == "tool_result" and .is_error == true)
-    | "  ✗ " + ((.content | tostring) | gsub("\\s+"; " ") | .[0:160])
-  else empty end'
-
 file='' shown=0
 while "$engine" inspect "$container" >/dev/null 2>&1; do
   # shellcheck disable=SC2016 # expanded inside the container
@@ -38,7 +24,7 @@ while "$engine" inspect "$container" >/dev/null 2>&1; do
     printf '\n── new session %s ──\n' "$(date +%H:%M:%S)"
   fi
   if (( lines > shown )); then
-    in_container "sed -n '$((shown + 1)),${lines}p' '$file'" | jq -rR "$format"
+    in_container "sed -n '$((shown + 1)),${lines}p' '$file'" | jq -rR "$transcript_format"
     shown=$lines
   fi
   sleep 2
