@@ -30,3 +30,10 @@ with an empty context.
   (its precondition greps SPEC.md for "Ubuntu 24.04", which the M3 spec no longer contains) and shellcheck SC2317 infos in `scripts/test-relabel.sh` with the
   dev container's shellcheck. All F63 tests and `just test-changed F63` otherwise pass.
 - Next session should: read BLOCKED.md answer, then run `just check` and the verify once.
+
+### 2026-11-01 — F63 — attempt 2
+- Done: BLOCKED.md was answered and the precondition/shellcheck issues are fixed upstream (afcb66f, e928564). No code change needed. Ran the verify parts:
+  `just test-changed F63` green; `just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*'` exits 0 ("4 cases accounted for", 4 E2E-CASE lines);
+  `just e2e-cases debian13 no-such-case` exits 1 and names `no-such-case`.
+- Not done: nothing.
+- Next session should: nothing for F63.
