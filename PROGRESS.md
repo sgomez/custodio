@@ -264,3 +264,8 @@ with an empty context.
 - `justfile` `mutants` also lists `dbus/replace.rs`.
 - Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F78`: 16 caught, 7 unviable, none missed.
 - Next session should: nothing for F78. F79 writes the replace journal entry.
+
+### 2026-11-01 — F78 — attempt 2
+- Fixed NEXT_FINDINGS: `tests/replace.rs` exceeded the 5000-token file-size gate; the mismatch, sign-after-replace, two-uid and store-failure tests moved unchanged to `tests/replace/outcomes.rs` (`use super::*`).
+- Evidence: `just quick` exit 0, `just api-contract` green. Product code unchanged, so the F78 mutants result stands.
+- Next session should: nothing for F78.
