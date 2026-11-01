@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod app_id;
+pub mod app_id_source;
 pub mod audit;
 pub mod credentials;
 pub mod dbus;
