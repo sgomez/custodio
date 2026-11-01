@@ -302,3 +302,10 @@ fn debug_prints_only_typed_fields() -> TestResult {
     assert!(d.contains("Stored") && d.contains("k9") && d.contains("Rsa2048"));
     Ok(())
 }
+
+#[test]
+fn the_caller_is_returned_as_given() -> TestResult {
+    let e = OperationEntry::delete(DeleteOutcome::Deleted, Some(C), key()?);
+    assert_eq!(e.caller(), Some(C));
+    Ok(())
+}

@@ -196,3 +196,8 @@ with an empty context.
 - Adapted, not weakened: field counts/wire literals in `audit/tests.rs`, `GateSink` in `tests/audit/timing.rs`, one extra expected line in `tests/audit.rs`.
 - Evidence: `just quick` exit 0, `scripts/test-e2e-catalog.sh`, `bash e2e/journal-selftest.sh` (187 ok), `just mutants-diff F74`: 18 caught, 1 unviable. Guest journal cases and package gates run at F90/F100.
 - Next session should: nothing for F74. F75 writes the import entries.
+
+### 2026-11-01 — F74 — attempt 2
+- Fixed NEXT_FINDINGS: the one missed mutant (`OperationEntry::caller -> None`) is killed by `the_caller_is_returned_as_given` in `audit/operation_tests.rs`.
+- Evidence: `just quick` exit 0; `just mutants-diff F74`: 56 caught, 13 unviable, none missed.
+- Next session should: nothing for F74.
