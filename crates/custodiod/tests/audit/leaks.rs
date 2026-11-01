@@ -278,6 +278,7 @@ fn journal_sink_datagram_per_call() -> TestResult {
             format!("CUSTODIO_UID={}", uid()),
             format!("CUSTODIO_PID={}", std::process::id()),
             "CUSTODIO_KEY_ID=ec".to_owned(),
+            "CUSTODIO_OPERATION=sign".to_owned(),
             "CUSTODIO_OUTCOME=signed".to_owned(),
             format!("MESSAGE_ID={}", custodiod::audit::MESSAGE_ID),
         ] {
