@@ -51,7 +51,7 @@
       "description": "Settles the open question 'Detection through the flatpak proxy'. A section `## F68` in `docs/findings.md` reports, from `xdg-dbus-proxy`'s filtering source (version and file named), which bus-driver calls pass for a `--system-talk-name=com.rfirma.Custodio1` peer: NameHasOwner, ListActivatableNames, StartServiceByName, GetNameOwner, and a method call to an unowned activatable name. For each of 'service installed and running', 'installed but not activatable (Exec=/bin/false, not started)', 'not installed' and 'name not allowed by the sandbox', it states the error name or result a client sees, on the host and through the proxy, and the detection steps the client documentation will give. It ends with a line `Detection:` summarising the recommended steps.",
       "depends_on": [],
       "verify": "sec=$(awk '/^## F68/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in NameHasOwner ListActivatableNames StartServiceByName GetNameOwner 'system-talk-name' 'Exec=/bin/false' 'Detection:'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F69",
