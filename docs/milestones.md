@@ -42,15 +42,18 @@ Build and test the packages; publishing them waits for M5.
 - Firefox on Fedora and Arch: confirm that the system NSS sees the module through p11-kit without
   manual registration.
 
-## M3 — rFirma integration
+## M3 — Client API
 
-- rFirma detects Custodio on the system bus and offers to import a `.p12` into it instead of the
-  rFirma store.
-- After import, rFirma tells the person to delete the original `.p12` and offers to do it.
-- Flatpak: the module ships inside rFirma's flatpak and reaches the service with
-  `--system-talk-name=com.rfirma.Custodio1`. Without Custodio installed, rFirma keeps working as
-  today.
-- User documentation: what Custodio protects against and what it does not.
+What any client needs from the service, rFirma included. The rFirma side waits for M5.
+
+- Import asks polkit, as signing does. Today any process of any uid can import.
+- Each key belongs to the uid that imported it; listing and signing only see the caller's keys.
+- Delete a key, and replace the certificate of a renewed one keeping the key.
+- The journal entry names the flatpak app-id when the caller is a flatpak (read from the
+  `xdg-dbus-proxy` process's `/.flatpak-info`); a record, not an authorization.
+- `custodio list` and `custodio delete`, so the CLI uses the API as a client would.
+- The D-Bus API documented for clients: detecting the service, import, list, delete, sign and their
+  errors.
 
 ## M4 — TPM
 
@@ -62,13 +65,23 @@ Build and test the packages; publishing them waits for M5.
 - Migration of existing file keys into the TPM.
 - Imported keys cannot leave the TPM: empty `authPolicy`, so `TPM2_Duplicate` fails. Grades and
   checks in `docs/reports/polkit-custodian-linux.md` section 8.
+- No PCR policy on the imported keys: PCR 7 also measures `dbx`, which `fwupd` updates, and a key
+  that stops loading cannot be imported again without the `.p12`. No PIN either: polkit is already
+  the barrier, and against a stolen machine full-disk encryption does the same at no cost.
 
 ## M5 — Public release
 
-- Written threat model and security policy (`SECURITY.md`, how to report a vulnerability).
+- Written threat model and security policy (`SECURITY.md`, how to report a vulnerability). The
+  threat model says that without full-disk encryption whoever takes the machine can use the keys,
+  though not copy them.
+- Warn when the state directory is not on an encrypted device (dm-crypt in its `lsblk` chain).
 - External review of the authorization path and the FFI layer.
-- Repository made public, user README, release notes.
+- Repository made public, user README (what Custodio protects against and what it does not),
+  release notes.
 - Packages published in repositories next to rFirma's channel on `rfirma.com`.
+- rFirma integration, built in rFirma's repository against the M3 API: it detects Custodio, imports
+  a `.p12` into it and offers to delete the original, and its flatpak ships the module with
+  `--system-talk-name=com.rfirma.Custodio1`. Without Custodio, rFirma works as today.
 
 ## Unassigned
 
@@ -91,10 +104,12 @@ Build and test the packages; publishing them waits for M5.
 - **More key types:** RSA 3072/4096, P-384.
 - **Fingerprint acceptance:** M0's SPEC acceptance 6 on a machine with a reader.
 - **RSA-PSS:** `CKM_RSA_PKCS_PSS` and the composed variants, once a target client needs it.
-- **Key lifecycle:** listing and deleting keys, replacing a renewed certificate, and what happens to
-  the keys when the disk dies (no export by design).
+- **Key loss:** what happens to the keys when the disk dies (no export by design). Listing, deleting
+  and replacing are in M3.
 - **Keys born in the TPM:** `C_GenerateKeyPair` and a CSR, so the key never exists outside the TPM
   (`fixedTPM`, `fixedParent`), as in Windows Hello. The FNMT Configurador cannot generate the key
   in a generic PKCS#11 token; the remaining routes are in `docs/reports/fnmt-configurador.md`.
+- **PCR policy with signed policies** (`PolicyAuthorize`, `systemd-pcrlock`): keys that survive
+  updates but refuse a foreign boot. Only once lost keys can be recovered (M4 has no PCR policy).
 - **Presence without polkit:** the service talking to `fprintd` or a FIDO key directly, so the
   barrier does not depend on the system PAM stack.
