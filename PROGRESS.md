@@ -134,4 +134,5 @@ with an empty context.
 - Test adaptations (not weakened): audit helper `import_with` now imports straight into the store under the test uid (the credentials fakes would fail `ImportP12`);
   `tests/errors.rs` breaks the store by loosening the owner area's mode instead of removing the root (a missing area is now just empty); cli/cryptoki/import tests pass the process uid.
 - For F72: `list_keys`, `list_certificates`, `import_p12` now call `CallerCredentials`, but their "authorization unavailable" path is not proven here (only `owner_needs_a_sender` for ListKeys).
-- Next session should: nothing for F70 once `just mutants-diff F70` is clean (see below if it lists survivors).
+- Mutants: first run 2 missed in `existing_area`/`ensure_area`; `ensure_area` now leaves create errors to `check_dir`, new test for a root that became a file; `just mutants-diff F70 --re store.rs` 25 caught, 10 unviable, none missed (full run before the fix: 54 caught, 16 unviable, 2 missed).
+- Next session should: nothing for F70.
