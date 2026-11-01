@@ -2,9 +2,7 @@
 # Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
 # (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
-# Usage: guest.sh TARGET [old|oldpath]. With "old" (F60, on a fresh container) it installs the OLD package (/pkg-old, the last cargo-deb .deb),
-# imports the keys and runs only the upgrade case from it to package N+1 (/pkg-next); it reports the upgrade-cargo-deb-* cases only.
-# With "oldpath" (F61, on a fresh container) the same from the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
+# Usage: guest.sh TARGET [oldpath]. With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
 # it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path) skips them in the main run.
 # With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
 # needs is not run (select.sh); the setup (install, service, user, import) always is.
@@ -40,7 +38,7 @@ fi
 # The checks of the journal checker come first; a broken checker would make the later checks worthless.
 bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
-case $mode in old) from_dir=/pkg-old ;; oldpath) from_dir=/pkg-oldpath ;; *) from_dir=/pkg ;; esac
+case $mode in oldpath) from_dir=/pkg-oldpath ;; *) from_dir=/pkg ;; esac
 pkg=$(find "$from_dir" -type f | head -n 1)
 [ -n "$pkg" ] || fail "no package is mounted in $from_dir"
 pkg_next=$(find /pkg-next -type f | head -n 1)
@@ -88,12 +86,6 @@ if [ "$mode" = oldpath ]; then
     WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
     systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old-path package"
     echo "e2e: all checks passed (upgrade from the old-path package)"
-    exit 0
-fi
-if [ "$mode" = old ]; then
-    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-cargo-deb || fail "upgrade.sh failed (from the old package)"
-    systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old package"
-    echo "e2e: all checks passed (upgrade from the old package)"
     exit 0
 fi
 

@@ -2,21 +2,20 @@
 # Host side of `just e2e [TARGET]` (default: all). For each target directory under e2e/targets/ (or E2E_TARGETS): builds its
 # Containerfile, boots it as a privileged systemd container with the package mounted read-only, runs the shared guest.sh, then
 # checks the case accounting (check-cases.sh) and saves the record of the run (bus daemon, polkit version) under target/e2e/.
-# The packages (N, N+1 for the upgrade case, and for a target with an old.pattern the old package of M1) are built by the `e2e`
-# A target with a refusal-only marker (F50, ubuntu2404) runs only its own cases (e2e/refusal.sh): it needs no package N+1 and no old package.
-# recipe, not here. A target with an old.pattern (debian13) gets a second guest run on a fresh container, from the old package. A failed target does not stop the others.
+# The packages (N, N+1 for the upgrade case and the old-path fixture) are built by the `e2e` recipe, not here.
+# A target with a refusal-only marker (F50, ubuntu2404) runs only its own cases (e2e/refusal.sh): it needs no package N+1 and no old-path package.
+# A failed target does not stop the others.
 # Needs podman or docker able to run a privileged container (systemd needs cgroups and /run).
 # Usage: run.sh [TARGET]            all the cases of the target (or of every target)
 #        run.sh TARGET --cases NAME...   F63 (`just e2e-cases`): one target and only the cases whose ids equal a NAME or match it as a shell glob
 #                                   (the words after --cases may also come as one word, split on spaces). Every NAME must match a case the target owes (e2e/cases.list
 #                                   plus its own cases.list; a refusal-only target: its own only), else nothing is started. The guest gets the selection in
-#                                   E2E_SELECT, check-cases.sh requires exactly those cases, and a guest run whose cases are not selected (old, oldpath) is not made.
+#                                   E2E_SELECT, check-cases.sh requires exactly those cases, and a guest run whose cases are not selected (oldpath) is not made.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 targets_dir=${E2E_TARGETS:-e2e/targets}
 packages=${E2E_PACKAGES:-target/packages}
 packages_next=${E2E_PACKAGES_NEXT:-target/packages-next} # package N+1 of the upgrade case (scripts/package-next.sh), never in $packages
-packages_old=${E2E_PACKAGES_OLD:-target/packages-old} # the old package of M1 (scripts/package-old.sh); only for targets with an old.pattern
 packages_oldpath=${E2E_PACKAGES_OLDPATH:-target/packages-oldpath} # the old-path fixture of F61 (scripts/package-oldpath.sh); not for a target with a no-oldpath marker
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
@@ -98,7 +97,7 @@ boot_container() {
 }
 
 run_target() {
-    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_old='' found_oldpath='' state log rc=0 line key value cases
+    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
@@ -107,8 +106,7 @@ run_target() {
     found=$(find "$packages" -name "$pattern" | sort | tail -n 1)
     [ -n "$found" ] || { echo "e2e[$t]: no package '$pattern' in $packages (the e2e recipe builds it first)" >&2; return 1; }
     if [ -f "$dir/refusal-only" ]; then
-        # F50: the package never installs here, so there is no N+1 and no old package; only the marker lifts the demand
-        [ ! -f "$dir/old.pattern" ] || { echo "e2e[$t]: a refusal-only target cannot have an old.pattern" >&2; return 1; }
+        # F50: the package never installs here, so there is no N+1 and no old-path package; only the marker lifts the demand
         [ -f "$dir/cases.list" ] || { echo "e2e[$t]: a refusal-only target needs its own cases.list" >&2; return 1; }
     else
     found_next=$(find "$packages_next" -name "$pattern" 2> /dev/null | sort | tail -n 1)
@@ -125,18 +123,9 @@ run_target() {
         ! cmp -s "$found" "$found_oldpath" || { echo "e2e[$t]: the old-path package has the same content as N" >&2; return 1; }
     fi
     fi
-    if [ -f "$dir/old.pattern" ]; then
-        found_old=$(find "$packages_old" -name "$(head -n 1 "$dir/old.pattern")" 2> /dev/null | sort | tail -n 1)
-        [ -n "$found_old" ] || { echo "e2e[$t]: no old package '$(head -n 1 "$dir/old.pattern")' in $packages_old (the e2e recipe builds it with scripts/package-old.sh)" >&2; return 1; }
-        for f in "$found" "$found_next"; do
-            [ "$(realpath "$found_old")" != "$(realpath "$f")" ] || { echo "e2e[$t]: the old package is the same file as N or N+1" >&2; return 1; }
-        done
-    fi
-    # F63: which of the extra guest runs a subset needs (all of them without one)
-    run_old=1 run_oldpath=1
+    # F63: whether a subset needs the extra guest run (it always does without one)
+    run_oldpath=1
     if [ -n "$subset" ]; then
-        # the old-package cases are the upgrade-* ones of the target's own list
-        { [ -f "$dir/cases.list" ] && grep -q -xF -f <(grep '^upgrade-' "$dir/cases.list") <<< "$selection"; } || run_old=''
         grep -q '^upgrade-oldpath-' <<< "$selection" || run_oldpath=''
     fi
     # the cases of every target, and the ones of this target only
@@ -147,7 +136,6 @@ run_target() {
     "$engine" build -q -t "custodio-e2e-$t" -f "$dir/Containerfile" "$dir" > /dev/null || return 1
     local mounts=("$PWD/$found:/pkg/$(basename "$found")")
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
-    [ -z "$found_old" ] || mounts+=("$PWD/$found_old:/pkg-old/$(basename "$found_old")")
     [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
     boot_container "$name" "$t" "${mounts[@]}" || return 1
     log="$out_dir/$t.log"
@@ -159,13 +147,6 @@ run_target() {
     fi
     "$engine" exec "${envsel[@]}" "$name" bash /e2e/guest.sh "$t" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
     [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc" >&2; return 1; }
-    if [ -n "$found_old" ] && [ -n "$run_old" ]; then
-        # the upgrade from the old package runs on a fresh container: the run above left N+1 installed
-        "$engine" rm -f "$name" > /dev/null 2>&1 || true
-        boot_container "$name" "$t" "${mounts[@]}" || return 1
-        "$engine" exec "${envsel[@]}" "$name" bash /e2e/guest.sh "$t" old 2>&1 | tee -a "$log" || rc=${PIPESTATUS[0]}
-        [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the old package)" >&2; return 1; }
-    fi
     if [ -n "$found_oldpath" ] && [ -n "$run_oldpath" ]; then
         # F61: the same, from the package with the old daemon path, on a fresh container
         "$engine" rm -f "$name" > /dev/null 2>&1 || true

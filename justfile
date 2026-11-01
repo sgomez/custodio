@@ -157,7 +157,6 @@ test-scripts:
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-refusal.sh
-    scripts/test-e2e-old.sh
     scripts/test-e2e-oldpath.sh
     scripts/test-relabel.sh
 
@@ -341,14 +340,13 @@ glibc-ceiling:
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
 # (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
-# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
+# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
 e2e target="all": e2e-packages
     bash e2e/run.sh {{target}}
 
-# The packages the end-to-end tests install: package N, package N+1, the old package of M1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
+# The packages the end-to-end tests install: package N, package N+1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
 e2e-packages: package
     scripts/package-next.sh
-    scripts/package-old.sh
     scripts/package-oldpath.sh
 
 # Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the

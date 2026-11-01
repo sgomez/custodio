@@ -7,7 +7,7 @@ STATE_LINK=${STATE_LINK:-/var/lib/custodio}
 source "$(dirname "${BASH_SOURCE[0]}")/daemon-path.sh"
 
 # unit_binary UNIT_FILE: the executable the unit starts, from its last ExecStart line: the prefixes (- @ ! + :) and the arguments are
-# stripped. The old package (cargo-deb, M1) has its daemon at /usr/libexec/custodiod and the new one at its format's path (daemon_path), so the
+# stripped. The old-path package has its daemon at /usr/lib/custodio and the new one at its format's path (daemon_path), so the
 # path is read from the unit before and after the upgrade instead of being a constant.
 unit_binary() {
     local line path

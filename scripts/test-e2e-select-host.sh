@@ -13,7 +13,8 @@ TEST_NAME=test-e2e-select-host
 # the recipes: both depend on one shared package-build recipe and have no build lines of their own
 recipe_lines() { just --justfile "$ROOT/justfile" --show "$1" | grep -v '^[[:space:]]*#'; }
 shared=$(recipe_lines e2e-packages)
-for want in 'e2e-packages: package' 'scripts/package-next.sh' 'scripts/package-old.sh' 'scripts/package-oldpath.sh'; do grep -qF "$want" <<< "$shared" || bad "the shared build recipe lacks '$want'"; done
+for want in 'e2e-packages: package' 'scripts/package-next.sh' 'scripts/package-oldpath.sh'; do grep -qF "$want" <<< "$shared" || bad "the shared build recipe lacks '$want'"; done
+grep -qF 'package-'old.sh <<< "$shared" && bad "the shared build recipe still builds the old package"
 for r in e2e e2e-cases; do
     head=$(recipe_lines "$r" | head -n 1)
     grep -Eq ": e2e-packages$" <<< "$head" || bad "the $r recipe does not depend only on the shared build: '$head'"
@@ -54,19 +55,17 @@ expect_ok overlap debian13 --cases nss-approve 'nss-*' 'nss-approve' || true
 grep -q 'E2E_SELECT=nss-approve nss-deny nss-asks-again custodio' "$tmp/log" || bad "overlap: $(sel_guest)"
 expect_ok question-mark debian13 --cases 'nss-deny' 'nss-?pprove' || true
 grep -q 'E2E_SELECT=nss-approve nss-deny custodio' "$tmp/log" || bad "question-mark: $(sel_guest)"
-# a target-own case: debian13 starts the old-package container, ubuntu2604 refuses it as matching nothing
-expect_ok own-case debian13 --cases 'upgrade-cargo-deb-*' || true
-[ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "own-case: the old-package container did not start (or another did): $(grep -c '^run ' "$tmp/log")"
-[ "$(grep -c 'guest.sh debian13 old$' "$tmp/log")" -eq 1 ] || bad "own-case: no old-mode run"
+# a target-own case: debian13 accepts its own purge cycle in the main container only; ubuntu2604 refuses an id that only another target owns
+expect_ok own-case debian13 --cases 'purge-*' || true
+[ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "own-case: expected the main container only: $(grep -c '^run ' "$tmp/log")"
 grep -q 'guest.sh debian13 oldpath' "$tmp/log" && bad "own-case: the old-path run started"
 grep -q '6 cases accounted for' "$tmp/out" || bad "own-case: $(tail -n 3 "$tmp/out")"
-grep -q 'E2E_SELECT=upgrade-cargo-deb-version-greater .*custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13 old$' "$tmp/log" || bad "own-case: the old run lacks the selection"
+grep -q 'E2E_SELECT=purge-service-stopped .*custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "own-case: the main run lacks the selection"
 expect_ok own-case-oldpath debian13 --cases 'upgrade-oldpath-no-manual-step' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "oldpath case: expected the main and the old-path container"
 grep -q 'guest.sh debian13 oldpath$' "$tmp/log" || bad "oldpath case: no old-path run"
-grep -q 'guest.sh debian13 old$' "$tmp/log" && bad "oldpath case: the old-package run started"
-expect_fail own-case-other-target ubuntu2604 --cases 'upgrade-cargo-deb-*' || true
-grep -q "upgrade-cargo-deb-\*" "$tmp/out" || bad "own-case-other-target: the glob is not named: $(tail -n 3 "$tmp/out")"
+expect_fail own-case-other-target ubuntu2604 --cases 'refusal-*' || true
+grep -q "refusal-\*" "$tmp/out" || bad "own-case-other-target: the glob is not named: $(tail -n 3 "$tmp/out")"
 # an Arch target has no old-path run: its cases are skipped in the main run and accounted there
 expect_ok arch-oldpath arch --cases 'upgrade-oldpath-*' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "arch-oldpath: more than one container"
@@ -113,17 +112,14 @@ refused other-target-case 'purge-account-kept' alma10 --cases purge-account-kept
 refused bad-characters 'a;b' debian13 --cases 'a;b'
 refused extra-argument 'unexpected argument' debian13 nss-approve
 
-# no subset: the whole list of engine calls of a run of debian13 (old package and old path included) is this one, written out
+# no subset: the whole list of engine calls of a run of debian13 (old path included) is this one, written out
 expect_ok no-subset-calls debian13 || true
-mnt="-v ROOT/TMP/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro -v ROOT/TMP/next/custodio_0.1.1-1_amd64.deb:/pkg-next/custodio_0.1.1-1_amd64.deb:ro -v ROOT/TMP/old/custodio_0.0.9-1_amd64.deb:/pkg-old/custodio_0.0.9-1_amd64.deb:ro -v ROOT/TMP/oldpath/custodio_0.1.0-1_amd64.deb:/pkg-oldpath/custodio_0.1.0-1_amd64.deb:ro"
+mnt="-v ROOT/TMP/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro -v ROOT/TMP/next/custodio_0.1.1-1_amd64.deb:/pkg-next/custodio_0.1.1-1_amd64.deb:ro -v ROOT/TMP/oldpath/custodio_0.1.0-1_amd64.deb:/pkg-oldpath/custodio_0.1.0-1_amd64.deb:ro"
 boot="run -d --name custodio-e2e-debian13-PID --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp $mnt -v ROOT/e2e:/e2e:ro -v ROOT/e2e/targets/debian13:/e2e-target:ro custodio-e2e-debian13
 exec custodio-e2e-debian13-PID systemctl is-system-running"
 expected="build -q -t custodio-e2e-debian13 -f e2e/targets/debian13/Containerfile e2e/targets/debian13
 $boot
 exec custodio-e2e-debian13-PID bash /e2e/guest.sh debian13
-rm -f custodio-e2e-debian13-PID
-$boot
-exec custodio-e2e-debian13-PID bash /e2e/guest.sh debian13 old
 rm -f custodio-e2e-debian13-PID
 $boot
 exec custodio-e2e-debian13-PID bash /e2e/guest.sh debian13 oldpath

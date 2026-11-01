@@ -22,35 +22,21 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     [ -n "$pkg" ] || bad "$T: package.pattern matches none of the fake packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/$pkg:/pkg/$pkg:ro" || bad "the package is not mounted read-only"
     if [ -f "$ROOT/e2e/targets/$T/refusal-only" ]; then
-        # F50: the package never installs on this target; no N+1 and no old package, one read-only mount
+        # F50: the package never installs on this target; no N+1 and no old-path package, one read-only mount
         [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 1 ] || bad "$T: a refusal-only target mounts more than the package"
-        grep -q 'pkg-next\|pkg-old' "$tmp/log" && bad "$T: a refusal-only target mounts N+1 or the old package"
+        grep -q 'pkg-next\|pkg-oldpath' "$tmp/log" && bad "$T: a refusal-only target mounts N+1 or the old-path package"
         continue
     fi
     nxt=$(find "$tmp/next" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
     [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
-    # the mounts and the containers: N and N+1, the old package of F60 (old.pattern) and the old-path fixture of F61 (every target without a no-oldpath marker)
+    # the mounts and the containers: N and N+1 and the old-path fixture of F61 (every target without a no-oldpath marker)
     mounts=2 runs=1
-    [ ! -f "$ROOT/e2e/targets/$T/old.pattern" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
     [ -f "$ROOT/e2e/targets/$T/no-oldpath" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
     [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq "$mounts" ] || bad "$T: expected $mounts different read-only mounts: $(grep '^run ' "$tmp/log")"
     [ "$(grep -c '^run ' "$tmp/log")" -eq "$runs" ] || bad "$T: expected $runs containers, each upgrade source in a fresh one: $(grep -c '^run ' "$tmp/log")"
     [ "$(grep -c '^rm .*custodio-e2e-' "$tmp/log")" -ge "$runs" ] || bad "$T: a container is not removed before the next"
-    if [ -f "$ROOT/e2e/targets/$T/old.pattern" ]; then
-        # F60: the old package is a read-only mount, in the fresh container of the second guest run
-        grep '^run ' "$tmp/log" | grep -q -- "$tmp/old/custodio_0.0.9-1_amd64.deb:/pkg-old/custodio_0.0.9-1_amd64.deb:ro" || bad "$T: the old package is not mounted read-only at /pkg-old"
-        r1=$(grep -n '^run ' "$tmp/log" | head -n 1 | cut -d: -f1)
-        rm1=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
-        r2=$(grep -n '^run ' "$tmp/log" | sed -n 2p | cut -d: -f1)
-        { [ "$r1" -lt "$rm1" ] && [ "$rm1" -lt "$r2" ]; } || bad "$T: the order run, rm, run is wrong: $(cat "$tmp/log")"
-        grep -q "exec .* bash /e2e/guest.sh $T old" "$tmp/log" || bad "$T: the guest is not run in the old mode"
-        grep -q "installed custodio_0.0.9-1_amd64.deb from the mounted file" "$tmp/out" || bad "$T: the old guest's output is not passed through"
-    else
-        grep -q 'pkg-old/' "$tmp/log" && bad "$T: the old package is mounted on a target that has no old.pattern"
-        grep -q 'guest.sh [a-z0-9]* old$' "$tmp/log" && bad "$T: the old-package run happened on a target without old.pattern"
-    fi
     if [ -f "$ROOT/e2e/targets/$T/no-oldpath" ]; then
         grep -q 'pkg-oldpath' "$tmp/log" && bad "$T: the old-path package is mounted on a target with a no-oldpath marker"
         grep -q 'guest.sh [a-z0-9]* oldpath' "$tmp/log" && bad "$T: the old-path run happened on a target with a no-oldpath marker"
@@ -164,39 +150,27 @@ grep -q 'custodiod of N+1 differs' "$tmp/out" || bad "a different custodiod was 
 if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with N as N+1 passed"; fi
 grep -q 'same file' "$tmp/out" || bad "N used as N+1 was not named: $(tail -n 3 "$tmp/out")"
 
-# --- F60: the upgrade from the last cargo-deb .deb is for debian13 only, with its own ids
-old_ids="upgrade-cargo-deb-version-greater upgrade-cargo-deb-service-new-binary upgrade-cargo-deb-state-unchanged upgrade-cargo-deb-keys-listed upgrade-cargo-deb-signs-with-polkit upgrade-cargo-deb-no-manual-step"
+# --- the target's own cases (the purge cycle of F49) are for the deb targets only, with their own ids
+own_ids="purge-service-stopped purge-no-packaged-files purge-not-activatable purge-state-unchanged purge-account-kept purge-notice-keys reinstall-after-purge-keys-listed reinstall-after-purge-signs-with-polkit reinstall-after-purge-no-import"
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
-    if [ "$T" = debian13 ]; then [ -f "$ROOT/e2e/targets/$T/old.pattern" ] || bad "debian13 has no old.pattern"
-    else [ ! -e "$ROOT/e2e/targets/$T/old.pattern" ] || bad "$T has an old.pattern"; fi
-    # the target's own cases.list belongs to the deb targets only (the purge cycle of F49)
+    # the target's own cases.list belongs to the deb targets only
     case $T in debian13 | ubuntu2604 | ubuntu2404) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
 done
-for id in $old_ids; do
+for id in $own_ids; do
     grep -qx "$id" "$ROOT/e2e/targets/debian13/cases.list" || bad "debian13/cases.list lacks $id"
     grep -qx "$id" "$ROOT/e2e/cases.list" && bad "$id is in the common cases.list, so every target would owe it"
     STUB_OMIT=$id expect_fail "omitted $id" debian13 || true
     grep -q "'$id' was not reported" "$tmp/out" || bad "an omitted $id was not named: $(tail -n 3 "$tmp/out")"
 done
-expect_ok "old ids on debian13" debian13 || true
+expect_ok "own ids on debian13" debian13 || true
 grep -q 'cases accounted for' "$tmp/out" || bad "debian13 did not account for the cases"
-# another target that reports one of them fails (no cases.list of its own, so the id is unknown); a stub run of the old mode on it
+# a case that no list of the target owes is refused, on debian13 and on another target
+STUB_EXTRA=upgrade-unlisted-case expect_fail "unlisted case on debian13" debian13 || true
+grep -q "unknown case 'upgrade-unlisted-case'" "$tmp/out" || bad "an unlisted case on debian13 was not named: $(tail -n 3 "$tmp/out")"
 cp -r "$ROOT/e2e/targets/ubuntu2604" "$fake/delta"
-STUB_EXTRA=upgrade-cargo-deb-version-greater run_all delta && bad "a target without the old package accepted an old-package case"
-grep -q "unknown case 'upgrade-cargo-deb-version-greater'" "$tmp/out" || bad "an old-package case on another target was not named: $(tail -n 3 "$tmp/out")"
-# the second run failing fails the target
-STUB_FAIL_OLD=debian13 expect_fail "old run fails" debian13 || true
-grep -q 'upgrade from the old package' "$tmp/out" || bad "a failed old run was not named: $(tail -n 3 "$tmp/out")"
-# no old package: fails before the engine is called
-mkdir -p "$tmp/noold"
-: > "$tmp/log"
-if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_OLD="$tmp/noold" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run without the old package passed"; fi
-grep -q 'no old package' "$tmp/out" || bad "a missing old package was not named: $(tail -n 3 "$tmp/out")"
-! grep -Eq '^(build|run|exec) ' "$tmp/log" || bad "the engine ran without the old package"
-# the old package is not N
-if STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_OLD="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "a run with N as the old package passed"; fi
-grep -q 'old package is the same file' "$tmp/out" || bad "N used as the old package was not named: $(tail -n 3 "$tmp/out")"
-grep -Eqi '^[[:space:]]*(COPY|ADD)\b|pkg-old' "$ROOT/e2e/targets/debian13/Containerfile" && bad "the debian13 image copies or names the old package"
+STUB_EXTRA=upgrade-unlisted-case run_all delta && bad "a target accepted a case that no list owes"
+grep -q "unknown case 'upgrade-unlisted-case'" "$tmp/out" || bad "an unlisted case on another target was not named: $(tail -n 3 "$tmp/out")"
+grep -Eqi '^[[:space:]]*(COPY|ADD)\b' "$ROOT/e2e/targets/debian13/Containerfile" && bad "the debian13 image copies a package"
 
 # --- the packages come from the packages directory: none there, the run fails
 mkdir -p "$tmp/empty"

@@ -144,3 +144,13 @@ with an empty context.
 - Not changed: the `ensure_area` umask race note (non-blocking; only under a umask like 0277 with racing first puts).
 - Evidence: `just quick` exit 0; `just mutants-diff F70 --re store.rs`: 26 caught, 10 unviable, none missed.
 - Next session should: nothing for F70.
+
+### 2026-11-01 — F71 — attempt 1
+- Done: removed `package-old.sh`, `test-e2e-old.sh`, `old.pattern`, the six `upgrade-cargo-deb-*` ids, the `old` mode of `run.sh`/`guest.sh`/`select.sh` and the old-package parts of the host tests and fixtures
+  (`test-e2e-{host,select-host,select,lifecycle,refusal,targets}.sh`, `e2e-host-fixtures.sh`). `e2e-packages` builds N, N+1 and the old-path fixture only. debian13 now runs two guest runs (main, oldpath).
+- Amendments (3, each committed alone): (1) `purge-*` is also owned by ubuntu2604, so the refused own-case assertion uses `refusal-*` (ubuntu2404 only); (2, 3) the evidence grep's `pkg-old` and `packages_old`
+  are anchored, as the unanchored forms match the kept `pkg-oldpath` / `packages_oldpath` strings. The negative control is `upgrade-unlisted-case`; the select-host recipe check writes `'package-'old.sh` so the verify grep stays clean.
+- Evidence: contract grep exits 1 (no match), `just quick` exit 0, host tests green, `just e2e-cases debian13 'upgrade-*'` 12 cases accounted for and passing (podman worked here). The guest needed no change for the M3 layout.
+- Docs: grep of install.md, catalog, manual-acceptance, README, harness/README found no mention of a pre-M3 package. `mutants-diff` is not in the verify.
+- Not touched: F43 lifecycle scripts still simulate an M1 package (out of scope).
+- Next session should: nothing for F71.

@@ -54,7 +54,7 @@ want upgrade "upgrade " upgrade-keys-listed
 want lifecycle "upgrade lifecycle " removal-service-stopped
 want reinstall "upgrade lifecycle " reinstall-keys-listed
 want purge "upgrade lifecycle " purge-account-kept
-want old-modes-only "" upgrade-cargo-deb-keys-listed upgrade-oldpath-version-greater
+want old-modes-only "" upgrade-oldpath-version-greater
 want mixed "user upgrade " nss-deny upgrade-no-manual-step
 want refusal "refusal " refusal-nothing-listens
 all=$(cd "$ROOT" && grep -vh '^[[:space:]]*\(#\|$\)' e2e/cases.list e2e/targets/*/cases.list | sort -u)

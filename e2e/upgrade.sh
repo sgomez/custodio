@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# The upgrade case (F48, F60), run as root by guest.sh from the state the earlier steps left: keys imported with the old package,
+# The upgrade case (F48), run as root by guest.sh from the state the earlier steps left: keys imported with the old package,
 # custodio.service running. Installs the new package with the target's own install.sh and checks that the key files, the key listing,
 # polkit and the running service survived. Usage: upgrade.sh PKG_FROM PKG_TO [ID_PREFIX] (needs WORK and MODULE).
 #   F48: PKG_FROM is package N, PKG_TO is N+1 (the same tree, only the version raised), ID_PREFIX is "upgrade" (the default).
-#   F60: PKG_FROM is the last cargo-deb .deb, PKG_TO is N+1, ID_PREFIX is "upgrade-cargo-deb".
 #   F61: PKG_FROM is the current package with the daemon at the old path (scripts/package-oldpath.sh), ID_PREFIX is "upgrade-oldpath".
 # E2E_INSTALL overrides the install step (the self-test of the case uses it to see that it is never reached).
 set -euo pipefail
