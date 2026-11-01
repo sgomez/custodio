@@ -274,7 +274,7 @@
         "F53"
       ],
       "verify": "just check && just package-gates && bash -n e2e/*.sh && grep -q '/usr/libexec/custodio/custodiod' packaging/nfpm.yaml && grep -q '/usr/lib/custodio/custodiod' packaging/parity-exceptions.txt && grep -q 'unconfined_service_t' docs/decisions.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F62",
