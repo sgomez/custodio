@@ -1,6 +1,7 @@
 //! Custodio signing service.
 #![forbid(unsafe_code)]
 
+pub mod app_id;
 pub mod audit;
 pub mod credentials;
 pub mod dbus;

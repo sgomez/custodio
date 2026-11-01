@@ -286,3 +286,10 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `tests/replace_audit.rs` exceeded the 5000-token file-size gate; the failing-sink, restore-failure and store-before-submit tests moved unchanged to `tests/replace_audit/failing.rs` (`use super::*`).
 - Evidence: `just quick` exit 0, `just mutants-diff F79`: 1 caught, 1 unviable, none missed. Product code unchanged.
 - Next session should: nothing for F79.
+
+### 2026-11-01 — F80 — attempt 1
+- Done: `crates/custodiod/src/app_id.rs` (+ `app_id/tests.rs`), pure, bytes in. `classify(Option<&[u8]>) -> AppIdOutcome { Read(AppId), None, Undetermined }`; `validate(&[u8]) -> Option<AppId>` (flatpak's rules); `AppId` has no public constructor (`compile_fail` doctest). Prefix check first (no prefix → `None`), then the 255-byte bound, then suffix, exactly one `-`, u32 instance id (1–10 digits), unescape (only lower-case `\x2d`; upper-case rejected on purpose, commented), validation. Parsing works on ASCII bytes, so non-UTF-8 is just an invalid character.
+- Evaluator notes taken: longest id under the name bound is 235 chars in `valid_scope_names_are_read`, 255 only through `validate`; no allocation claim (shown structurally: `&[u8]` input, bound checked before `parse`); no negative control (mutants stand in); `module_has_no_io` greps `app_id.rs` only (tests are in `app_id/tests.rs`); recipe test matches the exact `--file crates/custodiod/src/app_id.rs` argument on the custodiod line; `xapp-flatpak-org.a.b-1.scope` is a `None` case.
+- `justfile` `mutants` lists `app_id.rs`.
+- Evidence: `just quick` exit 0, `just mutants-diff F80`: 38 caught, 3 unviable, none missed.
+- Next session should: nothing for F80. F81 reads the scope of the pinned process; F82 puts the outcome in entries.
