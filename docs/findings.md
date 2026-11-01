@@ -1245,7 +1245,7 @@ candidate under the real `custodio.service` on a supported target. Date 2026-11-
 - The process the bus names (`xdg-dbus-proxy`) is in the scope: in `flatpak_run_app` the comment says "Must run this before spawning the dbus proxy, to ensure it
   ends up in the app cgroup" and `flatpak_run_in_transient_unit` is called before `flatpak_run_maybe_start_dbus_proxy` (same tags; line 513/526 in 1.16.1, 634/647 in 1.18.4).
   `flatpak run` moves *itself* into the scope, then spawns the proxy, which inherits the cgroup. That is reading plus the cgroup inheritance rule; it was **not observed**
-  with a real flatpak. `xdg-dbus-proxy` runs as the person's uid (it is a child of `flatpak run`).
+  with a real flatpak. `xdg-dbus-proxy` runs as the person's uid (it is a child of `flatpak run`). The `xdg-dbus-proxy` source was not read for this: the claim relies on flatpak's code above and on cgroup inheritance, not on that source.
 - `xdg-desktop-portal` does not use the scope for flatpaks (it opens `/proc/<pid>/root/.flatpak-info`, `xdp_app_info_flatpak_new`). For non-flatpak apps it parses the unit name
   with `^app-(?:[[:alnum:]]+\-)?(.+?)(?:\-[[:alnum:]]*)(?:\.scope|\.slice)$` and `cunescape` (**read**, `xdp-app-info-host.c`, main). We do not copy that regex (below).
 - Flatpak app-id syntax (`flatpak_is_valid_name`, `common/flatpak-ref-utils.c`, 1.16.1, **read**): not empty, at most 255 characters, at least three elements,
@@ -1265,7 +1265,7 @@ cat: /proc/250/status: No such file or directory
 ```
 custodio's own process, under the unit:  /proc/self/root -> /     /proc/self/cgroup: …/system.slice/custodio.service
 custodio uid, plain shell (no sandbox):  ls: cannot read symbolic link '/proc/250/root': Permission denied
-                                         cat /proc/250/cgroup → …/app.slice/app-flatpak-org.example.My_App\x2dName-4242.scope   (works)
+                                         cat /proc/250/cgroup → …/app.slice/app-flatpak-org.example.My_App\x2dName-4242.scope   (works; `-4242` is from an earlier run of the same forged holder, `-5151` is the one used in the other runs; only the readability matters here)
 alice reading her own pid 250:           /proc/250/root -> /      (works)
 root, no sandbox:                        /proc/250/root -> /      (works)
 ```
