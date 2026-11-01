@@ -17,21 +17,22 @@ None.
 
 ### Method `ListKeys`
 
-Ids of the stored keys.
+`(key id, key type, DER certificate)` for every key of the caller, and no other. The owner is the uid the bus
+reports for the calling connection (checked against its `ProcessFD`); no method takes an owner or a uid. The key
+type is `rsa2048` or `ecdsa-p256`, as `ImportP12` returns it. Asks no polkit. If the caller cannot be identified
+the call fails as `AuthorizationUnavailable`, never with an empty list. A key whose certificate cannot be read
+fails the call as `Internal` instead of being left out.
 
-- out: `as`
-- bounds: none.
+One method gives everything a client lists (the PKCS#11 module needs nothing else), so there is no separate
+method for certificates.
 
-### Method `ListCertificates`
-
-`(key id, DER certificate)` for every key that has a certificate.
-
-- out: `a(say)`
+- out: `a(ssay)`
 - bounds: none.
 
 ### Method `ImportP12`
 
-Imports a `.p12` as key `id`; returns the key type. Needs no polkit authorization.
+Imports a `.p12` as key `id` of the caller; returns the key type. A different user may use the same `id`;
+`KeyIdTaken` is only for the caller's own ids. Needs no polkit authorization.
 
 - in `id`: `s`
 - in `p12`: `ay`
@@ -43,7 +44,9 @@ Imports a `.p12` as key `id`; returns the key type. Needs no polkit authorizatio
 
 ### Method `Sign`
 
-Signs `data` with key `id`, after polkit approves this one call. Every call asks polkit; nothing is cached.
+Signs `data` with the caller's key `id`, after polkit approves this one call. The key is looked up among the
+caller's keys first: a missing id and another user's id both fail as `NoSuchKey`, with no polkit call. Every call
+that finds the key asks polkit; nothing is cached.
 
 - in `id`: `s`
 - in `mechanism`: `u`
@@ -60,8 +63,8 @@ Every failure is one of these names, with a fixed message that repeats nothing t
 
 - error `com.rfirma.Custodio1.Error.InvalidArgs`: a bad key id, mechanism, hash, salt length, or an argument too
   large.
-- error `com.rfirma.Custodio1.Error.NoSuchKey`: the key id is not stored.
-- error `com.rfirma.Custodio1.Error.KeyIdTaken`: `ImportP12` with an id that already exists.
+- error `com.rfirma.Custodio1.Error.NoSuchKey`: the caller has no key with this id (also another user's id).
+- error `com.rfirma.Custodio1.Error.KeyIdTaken`: `ImportP12` with an id the caller already uses.
 - error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the signature.
 - error `com.rfirma.Custodio1.Error.AuthorizationUnavailable`: polkit could not be asked or the caller could not
   be identified.

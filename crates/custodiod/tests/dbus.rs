@@ -215,21 +215,18 @@ fn verify(cert_der: &[u8], digest: &[u8], signature: &[u8]) -> TestResult {
 fn import_list_and_approved_sign() -> TestResult {
     block_on(async {
         let f = Fixture::start(true).await?;
-        let none: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(none, Vec::<String>::new());
+        let none: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        assert_eq!(none.len(), 0);
         assert_eq!(f.import("alice").await?, "ecdsa-p256");
 
-        let keys: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(keys, ["alice"]);
-        let certs: Vec<(String, Vec<u8>)> = f
-            .call("ListCertificates", &())
-            .await?
-            .body()
-            .deserialize()?;
-        let [(cert_id, cert_der)] = certs.as_slice() else {
-            return Err("expected exactly one certificate".into());
+        let keys: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        let [(cert_id, key_type, cert_der)] = keys.as_slice() else {
+            return Err("expected exactly one key".into());
         };
         assert_eq!(cert_id, "alice");
+        assert_eq!(key_type, "ecdsa-p256");
 
         let digest = [7u8; 32];
         let signature = f.sign("alice", CKM_ECDSA, &digest).await?;
@@ -301,8 +298,9 @@ fn bad_arguments_are_rejected_before_polkit() -> TestResult {
         }
         // A mechanism that does not fit the key is refused after approval, with no signature.
         assert!(f.sign("alice", CKM_RSA_PKCS, &[7u8; 32]).await.is_err());
+        // A missing key is refused before polkit is asked.
         assert!(f.sign("missing", CKM_ECDSA, &[7u8; 32]).await.is_err());
-        assert_eq!(f.asked().len(), 2);
+        assert_eq!(f.asked().len(), 1);
         Ok(())
     })
 }
@@ -317,8 +315,9 @@ fn import_errors_do_not_leak_the_password_or_store() -> TestResult {
             .err()
             .ok_or("wrong password imported")?;
         assert!(!format!("{err:?}").contains("wrong-password"));
-        let keys: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(keys, Vec::<String>::new());
+        let keys: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        assert_eq!(keys.len(), 0);
         f.import("bob").await?;
         assert!(f.import("bob").await.is_err());
         Ok(())

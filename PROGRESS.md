@@ -154,3 +154,16 @@ with an empty context.
 - Docs: grep of install.md, catalog, manual-acceptance, README, harness/README found no mention of a pre-M3 package. `mutants-diff` is not in the verify.
 - Not touched: F43 lifecycle scripts still simulate an M1 package (out of scope).
 - Next session should: nothing for F71.
+
+### 2026-11-01 — F72 — attempt 1
+- Done: one list method. `ListKeys` now returns `a(ssay)` = (id, key type, DER certificate) of the caller's keys; `ListCertificates` is removed from service, `docs/api.md`, module and tests (grep over `crates e2e scripts docs/api.md` is clean).
+  Owner is the bus uid of the sender (`owner()`); no sender / credentials error → `AuthorizationUnavailable`, no polkit. A key whose key or certificate cannot be read gives `Internal`, not a shorter list.
+  `Sign` order: arguments → credentials → look up among the caller's keys → polkit → sign. A missing or foreign id is `NoSuchKey`, no polkit, no journal entry (`attempt` returns `Ok(None)`). Other lookup errors are still reported after polkit as `signing_failed`, as before.
+  `ImportP12` already stored under the caller's uid (F70); the two-uid tests prove it.
+- Journal decision (docs/decisions.md, docs/audit.md): no entry for `NoSuchKey`, following the invalid-arguments behaviour; a credentials failure still writes the entry without caller (M1).
+- Tests: new `tests/owners.rs` (two uids through a name→uid credentials fake, pairs 1000/1001 and 0/1000): list scoped, list/import fail closed (NoCredentials, MissingPid, no ProcessFD), unreadable certificate → Internal via D-Bus, import per owner, foreign == missing for sign (Yes and No answers).
+  Adapted, not weakened: `audit.rs` (the missing-id rows now assert `NoSuchKey`, no entry, no polkit; failing-sink tests moved to `audit/failing.rs` for the file-size gate), `errors.rs`, `dbus.rs`, `dbus/tests.rs` (`denied_and_missing_key_are_distinct` keeps both names distinct).
+- Followers: `custodio-pkcs11` backend calls `ListKeys` and drops the type (module unchanged). New `dbus_backend_lists_the_certificates_of_list_keys` (child process with `DBUS_SYSTEM_BUS_ADDRESS` and a fake service) so `mutants-diff` sees the backend. `custodio-cli` and `e2e/` use no list method: no change, `just test-scripts` skipped.
+- Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F72`: dbus.rs 18 caught 2 unviable, backend.rs 7 caught, none missed.
+- Not done: the optional static "no uid/owner argument" check (the two-uid tests cover it behaviourally).
+- Next session should: nothing for F72.

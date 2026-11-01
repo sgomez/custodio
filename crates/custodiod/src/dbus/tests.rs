@@ -127,7 +127,6 @@ mod sign_call {
     use crate::audit::{FailingSink, MemorySink};
     use crate::credentials::CredentialsError;
     use crate::store::StoreError;
-    use secrecy::SecretSlice;
 
     struct Counting {
         result: fn() -> Result<(), AuthError>,
@@ -211,6 +210,7 @@ mod sign_call {
             || Err(AuthError::Unavailable("x".into())),
         ] {
             let r = rig(result)?;
+            import(&r, "k")?;
             let got = zbus::block_on(
                 r.service
                     .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
@@ -228,6 +228,7 @@ mod sign_call {
     #[test]
     fn denied_and_missing_key_are_distinct() -> Result<(), Box<dyn std::error::Error>> {
         let r = rig(|| Err(AuthError::Denied))?;
+        import(&r, "k")?;
         let got = zbus::block_on(
             r.service
                 .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
@@ -238,7 +239,7 @@ mod sign_call {
             r2.service
                 .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
         );
-        assert!(got.is_err());
+        assert_eq!(got, Err(ServiceError::NoSuchKey));
         let outcomes = |r: &Rig| {
             r.sink
                 .entries()
@@ -247,7 +248,9 @@ mod sign_call {
                 .collect::<Vec<_>>()
         };
         assert_eq!(outcomes(&r), [Outcome::Denied]);
-        assert_eq!(outcomes(&r2), [Outcome::SigningFailed]);
+        // A missing key is refused before polkit and leaves no entry.
+        assert_eq!(outcomes(&r2), []);
+        assert_eq!(r2.auth_calls.load(Ordering::SeqCst), 0);
         Ok(())
     }
 
@@ -310,18 +313,22 @@ mod sign_call {
     }
 
     #[test]
-    fn lists_read_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>> {
+    fn list_reads_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>> {
         let r = rig(|| Ok(()))?;
-        let key = SecretSlice::from(b"k".to_vec());
-        r.store.put(11, "mine", &key)?;
-        r.store
-            .put(11, &cert_id("mine"), &SecretSlice::from(b"c".to_vec()))?;
+        assert_eq!(import(&r, "mine")?, "ecdsa-p256");
+        // Another owner's key with a certificate, which must not show.
+        let key = r.store.get(11, "mine")?;
         r.store.put(other_uid(), "theirs", &key)?;
         r.store.put(other_uid(), &cert_id("theirs"), &key)?;
-        assert_eq!(zbus::block_on(r.service.list_keys_call(SENDER))?, ["mine"]);
+        let cert = r.store.get(11, &cert_id("mine"))?;
+        let got = zbus::block_on(r.service.list_keys_call(SENDER))?;
         assert_eq!(
-            zbus::block_on(r.service.list_certificates_call(SENDER))?,
-            [("mine".to_owned(), b"c".to_vec())]
+            got,
+            [(
+                "mine".to_owned(),
+                "ecdsa-p256".to_owned(),
+                cert.expose_secret().to_vec()
+            )]
         );
         Ok(())
     }
@@ -354,6 +361,8 @@ mod sign_call {
     fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
+        let password = SecretString::from("test-password".to_owned());
+        import_p12(&store, 11, "k", P12, &password)?;
         let service = Custodio::new(
             store,
             Counting {

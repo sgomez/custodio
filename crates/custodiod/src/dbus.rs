@@ -1,23 +1,23 @@
-//! The `com.rfirma.Custodio1` D-Bus service: list keys and certificates, import a `.p12`, sign.
+//! The `com.rfirma.Custodio1` D-Bus service: list keys with their certificates, import a `.p12`, sign.
 //!
-//! Every `Sign` call asks polkit first and never caches the answer. Argument parsing lives in
+//! Every `Sign` call for one of the caller's keys asks polkit and never caches the answer. Argument parsing lives in
 //! plain functions ([`parse_sign_request`], [`parse_import_request`]) so it can be fuzzed.
 
 use std::fmt;
 use std::sync::Arc;
 
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use zbus::interface;
 use zbus::message::Header;
 
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, MAX_P12_LEN, cert_id, import_p12};
+use crate::import::{KeyKind, MAX_P12_LEN, cert_id, classify, import_p12};
 use crate::offload::run_on_thread;
 use crate::polkit::{AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash, sign};
-use crate::store::KeyStore;
+use crate::store::{KeyStore, StoreError};
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 
@@ -180,6 +180,9 @@ fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism
     Ok((key_id, AuditMechanism::from(mechanism)))
 }
 
+/// What a `Sign` call records: the outcome, the caller if known, and the reply.
+type Attempt = (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>);
+
 /// The object served at [`OBJECT_PATH`].
 pub struct Custodio<A, C> {
     store: Arc<KeyStore>,
@@ -225,7 +228,12 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let request = parse_sign_request(id, mechanism, hash, salt_len, data)
             .map_err(|e| ServiceError::from(&e))?;
         let (key_id, audit_mechanism) = audit_parts(&request.id, &request.mechanism)?;
-        let (outcome, caller, result) = self.attempt(sender, &request, data).await;
+        // A missing key or another uid's key is refused here: no polkit call and no entry. The
+        // entry would add nothing the caller does not know, and `NoSuchKey` must look the same
+        // for both. See `docs/decisions.md`.
+        let Some((outcome, caller, result)) = self.attempt(sender, &request, data).await? else {
+            return Err(ServiceError::NoSuchKey);
+        };
         let entry = match caller {
             Some(caller) => Entry::new(outcome, caller, key_id, Some(audit_mechanism)),
             None => Entry::without_caller(key_id, Some(audit_mechanism)),
@@ -247,34 +255,34 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             .map_err(|_| ServiceError::AuthorizationUnavailable)
     }
 
-    /// `ListKeys` after the bus handed over the sender.
+    /// `ListKeys` after the bus handed over the sender: `(id, key type, DER certificate)` of every
+    /// key of the caller. Asks no polkit.
     ///
     /// # Errors
-    /// A D-Bus error if the caller is unknown or the store cannot be read.
-    pub async fn list_keys_call(&self, sender: Option<&str>) -> Result<Vec<String>, ServiceError> {
-        let owner = self.owner(sender).await?;
-        let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
-        Ok(ids
-            .into_iter()
-            .filter(|i| !i.ends_with(CERT_SUFFIX))
-            .collect())
-    }
-
-    /// `ListCertificates` after the bus handed over the sender.
-    ///
-    /// # Errors
-    /// A D-Bus error if the caller is unknown or the store cannot be read.
-    pub async fn list_certificates_call(
+    /// [`ServiceError::AuthorizationUnavailable`] if the caller is unknown; [`ServiceError::Internal`]
+    /// if the store cannot be read or a key has no readable certificate or a readable type.
+    pub async fn list_keys_call(
         &self,
         sender: Option<&str>,
-    ) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
+    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
         let owner = self.owner(sender).await?;
         let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
         for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
-            if let Ok(cert) = self.store.get(owner, &cert_id(id)) {
-                out.push((id.clone(), cert.expose_secret().to_vec()));
-            }
+            let key = self
+                .store
+                .get(owner, id)
+                .map_err(|_| ServiceError::Internal)?;
+            let kind = classify(key.expose_secret()).map_err(|_| ServiceError::Internal)?;
+            let cert = self
+                .store
+                .get(owner, &cert_id(id))
+                .map_err(|_| ServiceError::Internal)?;
+            out.push((
+                id.clone(),
+                kind_name(kind).to_owned(),
+                cert.expose_secret().to_vec(),
+            ));
         }
         Ok(out)
     }
@@ -298,20 +306,51 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(kind_name(kind).to_owned())
     }
 
-    /// Credentials, polkit and signing, with the outcome to record.
+    /// Credentials, the caller's key, polkit and signing, with the outcome to record. `Ok(None)`:
+    /// the caller has no key with this id; nothing is recorded and polkit was not asked.
     async fn attempt(
         &self,
         sender: Option<&str>,
         request: &SignRequest,
         data: &[u8],
-    ) -> (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>) {
+    ) -> Result<Option<Attempt>, ServiceError> {
         let unavailable = || ServiceError::AuthorizationUnavailable;
         let Some(sender) = sender else {
-            return (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            return Ok(Some((
+                Outcome::AuthorizationUnavailable,
+                None,
+                Err(unavailable()),
+            )));
         };
         let Ok(caller) = self.credentials.credentials(sender).await else {
-            return (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            return Ok(Some((
+                Outcome::AuthorizationUnavailable,
+                None,
+                Err(unavailable()),
+            )));
         };
+        // Only the caller's own keys are looked at. Any other store failure is reported after
+        // polkit, as a failed signature, as before.
+        let key = match self.store.get(caller.uid, &request.id) {
+            Err(StoreError::NotFound) => return Ok(None),
+            other => other.map_err(|e| ServiceError::from(&e)),
+        };
+        Ok(Some(
+            self.authorize_and_sign(sender, caller, key, request, data)
+                .await,
+        ))
+    }
+
+    /// Polkit, then the signature with the key already looked up.
+    async fn authorize_and_sign(
+        &self,
+        sender: &str,
+        caller: Caller,
+        key: Result<SecretSlice<u8>, ServiceError>,
+        request: &SignRequest,
+        data: &[u8],
+    ) -> Attempt {
+        let unavailable = || ServiceError::AuthorizationUnavailable;
         match self.authorizer.authorize(sender).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
@@ -326,13 +365,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 return (outcome, Some(caller), Err(unavailable()));
             }
         }
-        let signed = self
-            .store
-            .get(caller.uid, &request.id)
-            .map_err(|e| ServiceError::from(&e))
-            .and_then(|key| {
-                sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
-            });
+        let signed = key.and_then(|key| {
+            sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
+        });
         let outcome = if signed.is_ok() {
             Outcome::Signed
         } else {
@@ -348,21 +383,12 @@ where
     A: Authorizer + Send + Sync + 'static,
     C: CallerCredentials + Send + Sync + 'static,
 {
-    /// Ids of the caller's stored keys.
+    /// `(key id, key type, DER certificate)` for every stored key of the caller.
     async fn list_keys(
         &self,
         #[zbus(header)] header: Header<'_>,
-    ) -> Result<Vec<String>, ServiceError> {
+    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
         self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
-            .await
-    }
-
-    /// `(key id, DER certificate)` for every key of the caller that has a certificate.
-    async fn list_certificates(
-        &self,
-        #[zbus(header)] header: Header<'_>,
-    ) -> Result<Vec<(String, Vec<u8>)>, ServiceError> {
-        self.list_certificates_call(header.sender().map(zbus::names::UniqueName::as_str))
             .await
     }
 

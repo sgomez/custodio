@@ -186,10 +186,6 @@ fn store_failures_are_internal() -> TestResult {
             ServiceError::Internal,
         );
         is(
-            &failure(call(&f.client, "ListCertificates", &()).await)?,
-            ServiceError::Internal,
-        );
-        is(
             &failure(import_call(&f, "k", EC_P12, PASSWORD).await)?,
             ServiceError::Internal,
         );

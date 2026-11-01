@@ -85,16 +85,12 @@ impl Backend for DbusBackend {
         block_on(async {
             let connection = Connection::system().await?;
             let reply = connection
-                .call_method(
-                    Some(BUS_NAME),
-                    OBJECT_PATH,
-                    Some(BUS_NAME),
-                    "ListCertificates",
-                    &(),
-                )
+                .call_method(Some(BUS_NAME), OBJECT_PATH, Some(BUS_NAME), "ListKeys", &())
                 .await?;
-            reply.body().deserialize::<Vec<(String, Vec<u8>)>>()
+            reply.body().deserialize::<Vec<(String, String, Vec<u8>)>>()
         })
+        // `ListKeys` also gives the key type; the module reads it from the certificate.
+        .map(|keys| keys.into_iter().map(|(id, _, cert)| (id, cert)).collect())
         .map_err(|e| map_error(&e))
     }
 

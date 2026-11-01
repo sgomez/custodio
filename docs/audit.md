@@ -1,6 +1,9 @@
 # Audit entries
 
-`custodiod` writes one journal entry for every signing request, whatever the result. This page
+`custodiod` writes one journal entry for every signing request that reaches authorization, whatever the
+result. A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
+(missing, or another user's: `NoSuchKey`, no polkit call). A request whose caller the bus cannot name gets an
+entry without uid and pid. This page
 is the interface administrators can rely on when they search, alert on or forward these entries.
 
 ## Compatibility rule
