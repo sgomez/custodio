@@ -74,6 +74,10 @@ Build and test the packages; publishing them waits for M5.
 
 - **Firefox snap:** the confined Firefox cannot load the module. Needs its own investigation
   (snap interfaces, a module inside the snap's reach) or a documented limitation.
+- **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
+  on atomic systems such as Bazzite every browser is a Flatpak. Needs its own investigation (the
+  module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
+  `flatpak override`) or a documented limitation.
 - **Firefox without p11-kit:** Mozilla's builds bundle their own NSS and ignore `.module` files.
   Shipping an enterprise policy overrides the administrator's; another registration path is needed.
 - **Several dialogs per page in TLS client authentication:** correct by design, but tiring on real
