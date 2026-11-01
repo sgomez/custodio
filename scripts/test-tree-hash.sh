@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/tree-hash.sh, the stamp of `just check`: on a scratch repository, the hash follows edits and untracked
-# files, ignores ignored ones, and leaves the index alone.
+# files, ignores ignored ones and the session handoff (PROGRESS.md), and leaves the index alone.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -29,5 +29,9 @@ echo new > "$tmp/new"
 rm "$tmp/new"
 mkdir -p "$tmp/ignored" && echo x > "$tmp/ignored/x"
 [ "$(h)" = "$base" ] || bad "an ignored file changes the hash"
+echo entry > "$tmp/PROGRESS.md"
+[ "$(h)" = "$base" ] || bad "a new PROGRESS.md changes the hash"
+mkdir -p "$tmp/sub" && echo entry > "$tmp/sub/PROGRESS.md"
+[ "$(h)" != "$base" ] || bad "a PROGRESS.md outside the root does not change the hash"
 
 exit "$fail"
