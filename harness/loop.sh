@@ -53,7 +53,35 @@ stop_if_asked() {
 
 # halt <reason> <what to do>: a stop that needs a person; just status shows both.
 halt() { printf '%s\n%s\n' "$1" "$2" > "$STATE/stopped"; die "$1" 2; }
-verdict() { grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*'; }
+# verdict <log> <ok> <bad>: <ok> or <bad>, or nothing when the reply does not say which.
+verdict() {
+  local first lines
+  first=$(grep -m1 -v '^[[:space:]]*$' "$1" | tr -d '[:space:]`*' || true)
+  if [ "$first" = "$2" ] || [ "$first" = "$3" ]; then echo "$first"; return; fi
+  # A verdict line further down counts only if no line names the other verdict.
+  lines=$(grep -xE "[[:space:]\`*]*($2|$3)[[:space:]\`*]*" "$1" | tr -d ' \t\r`*' | sort -u || true)
+  if [ -n "$lines" ] && [ "$(wc -l <<<"$lines")" = 1 ]; then echo "$lines"; fi
+}
+
+# evaluate <log> <ok> <bad> <prompt>: runs the evaluator, once more if its verdict is unclear, and
+# sets $got. Two unclear replies stop the loop: a broken format must not pass nor count as a rejection.
+evaluate() {
+  local logfile=$1 ok=$2 bad=$3 prompt=$4 unclear
+  run_claude evaluator "$logfile" --agent evaluator "$prompt"
+  got=$(verdict "$logfile" "$ok" "$bad")
+  [ -n "$got" ] && return 0
+  unclear="${logfile%.log}-unclear.log"
+  mv "$logfile" "$unclear" && mv "$logfile.jsonl" "$unclear.jsonl" 2>/dev/null || true
+  log "No clear verdict in $unclear; asking the evaluator again"
+  stash_leftovers "$(basename "${unclear%.log}")"
+  run_claude evaluator "$logfile" --agent evaluator "$prompt
+
+Your previous reply ($unclear) did not start with a line that is exactly \`$ok\` or \`$bad\`. Reply
+again in the required format; you may reuse that review."
+  got=$(verdict "$logfile" "$ok" "$bad")
+  [ -n "$got" ] || halt "The evaluator gave no clear verdict twice; see $unclear and $logfile." \
+    "read both logs; then just harness run to evaluate again"
+}
 bump() { local n; n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STATE/$1"; echo "$n"; }
 gated() { bump "$1.attempts" >/dev/null; git rev-parse HEAD > "$STATE/$1.evaluated"; }
 open_steps() { grep -cE '^[[:space:]]*- \[ \]' "$1" || true; }
@@ -121,9 +149,9 @@ $(cat "$STATE/$id.contract-review")"
 Your previous review:
 $(cat "$STATE/$id.contract-eval")"
     fi
-    run_claude evaluator "$LOG_DIR/$stamp-review.log" --agent evaluator "$prompt"
+    evaluate "$LOG_DIR/$stamp-review.log" APPROVED REVISE "$prompt"
     cp "$LOG_DIR/$stamp-review.log" "$STATE/$id.contract-eval"
-    if [ "$(verdict "$LOG_DIR/$stamp-review.log")" = APPROVED ]; then
+    if [ "$got" = APPROVED ]; then
       contract_hash "$c" > "$STATE/$id.contract"
       git rev-parse HEAD > "$STATE/$id.contract-head"
       rm -f "$STATE/$id.contract-review"
@@ -229,10 +257,10 @@ and continue from it.}"
         "just harness fix $id, or: rm -f $STATE/$id.amendments && just harness run"
     approved_head=$(cat "$STATE/$id.contract-head")
     log "$id: contract amended, evaluating the amendment"
-    run_claude evaluator "$LOG_DIR/$stamp-amend.log" --agent evaluator \
+    evaluate "$LOG_DIR/$stamp-amend.log" APPROVED REVISE \
       "Mode: amendment. Feature: $feature. Contract: $c. Amendment: git diff $approved_head..HEAD -- $c"
     stash_leftovers "$stamp-amend"
-    if [ "$(verdict "$LOG_DIR/$stamp-amend.log")" != APPROVED ]; then
+    if [ "$got" != APPROVED ]; then
       # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
       { printf 'The evaluator rejected the amendment to %s. Revise it, or restore the approved text (`git show %s:%s`).\n\n' \
           "$c" "$approved_head" "$c"
@@ -262,14 +290,14 @@ and continue from it.}"
     continue
   fi
   log "$id: evaluating"
-  run_claude evaluator "$LOG_DIR/$stamp-eval.log" --agent evaluator \
+  evaluate "$LOG_DIR/$stamp-eval.log" PASS NEEDS_WORK \
     "Mode: implementation. Feature: $feature. Contract: $c. Changes: git diff $(cat "$STATE/$id.base")..HEAD. Verify log: $LOG_DIR/$stamp-verify.log"
 
   gated "$id"
   stash_leftovers "$stamp-eval"
 
   # 4. Mark as passing
-  if [ "$(verdict "$LOG_DIR/$stamp-eval.log")" = PASS ]; then
+  if [ "$got" = PASS ]; then
     jq --arg id "$id" '(.features[] | select(.id == $id) | .passes) = true' features.json > features.json.tmp
     mv features.json.tmp features.json
     commit "chore($id): mark as passing (verify + evaluator)" features.json
