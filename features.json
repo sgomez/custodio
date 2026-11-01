@@ -264,6 +264,29 @@
       ],
       "manual": true,
       "passes": false
+    },
+    {
+      "id": "F61",
+      "title": "The service binary where each distribution wants it",
+      "description": "Each package installs the service where its distribution's guidelines put internal binaries: /usr/libexec/custodio/custodiod in the .deb and the .rpm, /usr/lib/custodio/custodiod in the Arch package, the difference listed in packaging/parity-exceptions.txt with its reason. The unit's ExecStart follows each path from one source file. Why, recorded in docs/decisions.md in place of the 2026-10-30 entry: on Fedora /usr/lib/custodio is labelled lib_t, so systemd leaves the service in init_t, systemd's own domain, and the key files it writes get init_var_lib_t (seen in F54 and F55); from /usr/libexec (bin_t) it runs in unconfined_service_t, as SPEC expects. Upgrading from a package with the old path keeps the keys and the service starts from the new path; on installations upgraded from it, key files written under init_t get their default label (var_lib_t) back, also when the .rpm is layered with rpm-ostree. The package gates and lintian, rpmlint and namcap accept the three packages.",
+      "depends_on": [
+        "F49",
+        "F53"
+      ],
+      "verify": "just check && just package-gates && bash -n e2e/*.sh && grep -q '/usr/libexec/custodio/custodiod' packaging/nfpm.yaml && grep -q '/usr/lib/custodio/custodiod' packaging/parity-exceptions.txt && grep -q 'unconfined_service_t' docs/decisions.md",
+      "passes": false
+    },
+    {
+      "id": "F62",
+      "title": "SELinux domain by hand: fedora44 and bazzite after the move",
+      "description": "After F61, on a host with a container engine `just e2e all` passes on every target. On fedora44 (dnf) and on bazzite (rpm-ostree, with a reboot), starting from the 0.1.0 package with the old path and keys imported under it, then upgrading to the new package: custodiod runs as unconfined_service_t (ps -eZ), the key files carry var_lib_t, the same keys sign with the polkit dialog without a new import and a cancel makes the signature fail, and no SELinux denial involves the service, polkit or the module. The run is recorded in docs/findings.md.",
+      "depends_on": [
+        "F61",
+        "F54",
+        "F55"
+      ],
+      "manual": true,
+      "passes": false
     }
   ]
 }
