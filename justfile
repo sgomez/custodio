@@ -161,7 +161,8 @@ unit-verify:
     dir=$(mktemp -d)
     trap 'rm -rf "$dir"' EXIT
     sed 's#^ExecStart=.*#ExecStart=/bin/true#' data/custodio.service > "$dir/custodio.service"
-    out=$(systemd-analyze verify "$dir/custodio.service" 2>&1) || { echo "$out" >&2; exit 1; }
+    # Only our unit: the host's own units warn too (ubuntu 26.04's on the removed CPUAccounting=).
+    out=$(systemd-analyze verify --recursive-errors=no "$dir/custodio.service" 2>&1) || { echo "$out" >&2; exit 1; }
     if [ -n "$out" ]; then echo "unit-verify: $out" >&2; exit 1; fi
     # Absolute: systemd < 256 looks a relative name up in the sysusers.d directories.
     out=$(systemd-sysusers --dry-run "$PWD/data/sysusers.d/custodio.conf" 2>&1) || { echo "$out" >&2; exit 1; }
