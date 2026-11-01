@@ -486,3 +486,8 @@ with an empty context.
 - Real runs: `just e2e all` exit 0, "e2e: passed: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604", 0 skipped except the 6 arch `upgrade-oldpath-*`. upgrade `after:` shows `/usr/libexec/custodio/custodiod` (debian13, ubuntu2604, fedora44, alma10), `/usr/lib/custodio/custodiod` (arch); the old-path runs print `before: ... /usr/lib/custodio/custodiod` then `after: ... /usr/libexec/custodio/custodiod` with a new pid (e.g. `86:73016694` -> `86:72637416`-style new inode). Targets are not printed sorted by the log order; the summary line is sorted. `verify` passes (`just check`, `just package-gates`, `bash -n`, greps). No Rust changed: no mutants-diff.
 - Not done: **a person's run** of the two manual sections on `fedora44` and `bazzite`, recorded under "F61" in `docs/findings.md` (labels and `unconfined_service_t` cannot be shown in a container).
 - Next session should: nothing for the build; the evaluator decides, then a person does the two manual runs.
+
+### 2026-11-01 — F56 — session 1
+- Manual run on labvm `omarchy` (Omarchy 4.0.6, polkit 128, Firefox 158 from Arch): `pacman -U` installs; the Quickshell agent shows the dialog for every signature, a second one asks again, a cancel fails. Record in `docs/findings.md` "F56".
+- Arch's Firefox loads no p11-kit proxy: the certificate appears only after `modutil -add` of `/usr/lib/custodio/libcustodio_pkcs11.so` in the profile. Recorded, not decided.
+- Next session should: the milestone approver settles the open question "Firefox on Arch and Omarchy", then a person runs `just milestone pass F56` or not.

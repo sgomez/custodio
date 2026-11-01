@@ -456,7 +456,8 @@ package file names. A polkit dialog is expected for every signature.
    sudo pacman -U custodio-0.1.0-1-x86_64.pkg.tar.zst
    ```
 2. Check the polkit agent: Omarchy's Quickshell agent, not polkit-gnome. `pgrep -a quickshell` shows it
-   (**unverified**: the process name may differ) and `pgrep -a polkit-gnome` shows nothing. Write down what runs.
+   (`quickshell -n -p /usr/share/omarchy/shell` on Omarchy 4.0.6, checked in the F56 run) and `pgrep -a polkit-gnome` shows nothing.
+   Write down what runs.
 3. Import both keys. Sign with Firefox (section 11 step 5): the Quickshell dialog appears for each signature, a second signature asks again,
    and a cancel makes it fail. Fill the table:
 
