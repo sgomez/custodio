@@ -43,11 +43,23 @@ Rules:
   it, a feature that adds it comes first.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
-  Never use a command that always succeeds. Use `just check` plus only the slow gates the feature
-  touches (e.g. `just miri` for FFI code, `just mutants-diff <id>` for files in the `mutants`
-  recipe, never the full `just mutants`), never `just check-slow`: the release runs it in full.
+  Never use a command that always succeeds. Use `just check` and the feature's own tests (unit
+  and integration tests are cheap: always run the ones the feature touches), plus only the slow
+  gates the feature's files reach, never `just check-slow`: the release runs it in full. A slow
+  gate is in `verify` only when the feature changes what it checks:
+  - `just miri` and `just asan` only for a change to the FFI layer;
+  - `just package` and the package gates only for a change to `packaging/`, `data/` or another
+    file the packages ship;
+  - `just mutants-diff <id>` for files in the `mutants` recipe, never the full `just mutants`;
+  - `just e2e <target>` on one target, running only the cases the feature adds or changes, never
+    `just e2e` on all targets. If no recipe can run a subset of cases, the first feature with e2e
+    cases adds one.
   `verify` runs the code the feature adds; a grep or `test -f` alone does not prove it works, and
   must not pass before the feature is built.
+- The full suites run at checkpoints, not in every feature: one feature after each group of
+  related features (for example the service API, the clients, the e2e cases) and one before the
+  manual features, each with `just e2e` on all targets and the package gates in `verify`, and
+  depending on every feature of its group. A failure there is fixed in that checkpoint.
 - An acceptance item that only a person can check (a GUI dialog, hardware, a third-party app) is a
   feature with `"manual": true` and no `verify`.
 - Every `passes` is `false`.
