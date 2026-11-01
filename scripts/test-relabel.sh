@@ -15,7 +15,7 @@ CONF=$ROOT/data/tmpfiles.d/custodio.conf
 STATE=/var/lib/private/custodio
 
 # conf_problems FILE: prints one message per problem
-# shellcheck disable=SC2317 # called through accepts and rejects
+# shellcheck disable=SC2329 # called through accepts and rejects
 conf_problems() {
     local f=$1 lines n
     lines=$(grep -v '^[[:space:]]*\(#\|$\)' "$f" || true)
@@ -79,7 +79,7 @@ else
 fi
 
 # No maintainer script, scriptlet or hook runs a labelling tool: the install cannot fail on it and nothing is relabelled outside the state directory.
-# shellcheck disable=SC2317 # called through accepts and rejects
+# shellcheck disable=SC2329 # called through accepts and rejects
 scripts_problems() { # FILE...: lines that call restorecon, chcon, semanage or systemd-tmpfiles
     local f hits=0
     for f in "$@"; do
