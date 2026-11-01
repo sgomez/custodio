@@ -979,3 +979,32 @@ Acceptance 12: pass.
   counts as that once the server is restarted: every later attempt fails with `SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT`
   without calling the module. Restart Firefox to clear it. The GNOME dock icon on this image starts the Flatpak Firefox
   (159.0), which sees neither the module nor the CA; the run used `/usr/bin/firefox`.
+
+## F55: acceptance 13 by hand on bazzite, the .rpm layered (2026-11-01)
+
+Machine: labvm `bazzite` (libvirt), Bazzite GNOME 44 (`ghcr.io/ublue-os/bazzite-gnome:stable`), SELinux enforcing, dbus-broker 37, polkit 127.
+Image 44.20261006.1 (kernel 7.2.8-ogc5.1.fc44) at the start, 44.20261026 (kernel 7.2.11-ogc4.1.fc44) after step 5. Packages from F53's
+`just package`: `custodio-0.1.0-1.x86_64.rpm` (sha256 `37aebe41aaaed97007d0aa44cdf51ec7939fd432044e206fb1cfb777dd43a939`, as in F54) and
+`custodio-0.1.1-1.x86_64.rpm` (sha256 `31e7973ce5996e308f72a6d938a59398dec2d42bab10394d8a7f1ace5a0d9d36`, `target/packages-next`).
+Followed `docs/manual-acceptance.md` §12, on the host, no toolbox.
+
+| Step | Result |
+|---|---|
+| 1 `getenforce`, `rpm-ostree install ./custodio-0.1.0-1.x86_64.rpm`, reboot | `Enforcing`, window from `11/01/26 07:31:37`; exit 0, no bus-check notice (as `docs/install.md` says) |
+| 2 layered, import | `LocalPackages: custodio-0.1.0-1.x86_64` in the booted deployment; user `custodio` created; `rsa2048` and `p256` imported at 07:34:23 |
+| 3 signature from the host | dialog each time; approved `rsa2048` (`SHA256-RSA-PKCS`) and `p256` (`ECDSA-SHA256`), both `Verified OK` by OpenSSL; cancelled `rsa2048` fails (`C_SignFinal` `CKR_FUNCTION_FAILED`) |
+| 4 `rpm-ostree uninstall custodio --install ./custodio-0.1.1-1.x86_64.rpm`, reboot | `Upgraded: custodio 0.1.0-1 -> 0.1.1-1`; both tokens listed; same three signatures with the same results, no new import |
+| 5 `rpm-ostree upgrade`, reboot | real update, 44.20261006.1 to 44.20261026 (323 upgraded, 5 removed, 43 added), `custodio-0.1.1-1` still layered; same three signatures with the same results |
+| 6 SELinux, after each reboot and at the end | no AVC names custodio, polkit or the module; `USER_AUTH` 22, 35, 50 hits; AVCs 9, 18, 24, all from `tuned_t` and `unconfined_service_t` (`chcon`, `mac_admin`) and `bootupd_t` (`lsblk` on `/proc/swaps`) at boot |
+
+Journal (base query of `docs/audit.md`): 9 entries for 9 actions, 6 `signed`, 3 `denied`, in order; none extra, none missing.
+
+Acceptance 13: pass.
+
+- Bazzite's Firefox is a Flatpak and does not see the module, so the client was `pkcs11-tool` on the host (OpenSC, in the image), started in
+  the desktop session with `labvm-gui`; over plain ssh there is no polkit agent. Input of 2000 bytes, so `pkcs11-tool` uses
+  `C_SignUpdate`/`C_SignFinal` and a cancel asks once.
+- The dialogs were answered from the hypervisor with `virsh send-key` (the lab account's password, or Escape to cancel), after a
+  screenshot showed the dialog open each time. No person clicked them.
+- `custodio import` needs a terminal; the image has neither `script` nor `expect`, so it ran under a Python `pty`.
+- `custodiod` runs as `system_u:system_r:init_t`, as on fedora44: "no denial" says little about a confined service.

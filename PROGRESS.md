@@ -472,3 +472,8 @@ with an empty context.
 - Manual run on labvm `fedora44` (SELinux enforcing, Firefox 150 from Fedora, polkit 127): acceptance 12 passes; record in `docs/findings.md` "F54".
 - `custodiod` runs in `init_t` (no policy module), so "no denial" is weak evidence; `ausearch` over ssh needs `--input-logs`.
 - Next session should: a person runs `just milestone pass F54`.
+
+### 2026-11-01 — F55 — session 1
+- Manual run on labvm `bazzite` (SELinux enforcing): layer 0.1.0, replace with 0.1.1, `rpm-ostree upgrade` to 44.20261026, each with a reboot; the same keys sign with the dialog and a cancel fails each time; no AVC involves the service. Acceptance 13 passes; record in `docs/findings.md` "F55".
+- Client was `pkcs11-tool` from the desktop session (Firefox is a Flatpak); dialogs answered with `virsh send-key`, not by a person.
+- Next session should: a person runs `just milestone pass F55`.
