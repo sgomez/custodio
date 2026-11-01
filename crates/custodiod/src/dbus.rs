@@ -401,6 +401,16 @@ where
         .await
     }
 
+    /// Deletes key `id` of the caller with its certificate, after polkit approves this one call.
+    async fn delete_key(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+    ) -> Result<(), ServiceError> {
+        self.delete_call(header.sender().map(zbus::names::UniqueName::as_str), id)
+            .await
+    }
+
     /// Signs `data` with key `id`, after polkit approves this one call.
     async fn sign(
         &self,
@@ -423,6 +433,7 @@ where
     }
 }
 
+mod delete;
 mod import;
 #[cfg(test)]
 mod tests;

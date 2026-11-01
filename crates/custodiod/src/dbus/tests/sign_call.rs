@@ -7,7 +7,7 @@ use crate::credentials::CredentialsError;
 use crate::import::import_p12;
 use crate::store::StoreError;
 
-struct Counting {
+pub(super) struct Counting {
     result: fn() -> Result<(), AuthError>,
     calls: Arc<AtomicUsize>,
 }
@@ -19,7 +19,7 @@ impl Authorizer for Counting {
     }
 }
 
-struct Creds(Arc<AtomicUsize>);
+pub(super) struct Creds(Arc<AtomicUsize>);
 
 impl CallerCredentials for Creds {
     fn credentials(
@@ -31,16 +31,18 @@ impl CallerCredentials for Creds {
     }
 }
 
-struct Rig {
-    service: Custodio<Counting, Creds>,
-    sink: Arc<MemorySink>,
-    store: Arc<KeyStore>,
-    auth_calls: Arc<AtomicUsize>,
-    cred_calls: Arc<AtomicUsize>,
+pub(super) struct Rig {
+    pub(super) service: Custodio<Counting, Creds>,
+    pub(super) sink: Arc<MemorySink>,
+    pub(super) store: Arc<KeyStore>,
+    pub(super) auth_calls: Arc<AtomicUsize>,
+    pub(super) cred_calls: Arc<AtomicUsize>,
     _dir: tempfile::TempDir,
 }
 
-fn rig(result: fn() -> Result<(), AuthError>) -> Result<Rig, Box<dyn std::error::Error>> {
+pub(super) fn rig(
+    result: fn() -> Result<(), AuthError>,
+) -> Result<Rig, Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
     let auth_calls = Arc::new(AtomicUsize::new(0));
@@ -154,7 +156,7 @@ fn sign_with_unconstructible_key_id_is_refused() {
     assert_eq!(ok.ok(), Some(("good".to_owned(), AuditMechanism::RsaPkcs)));
 }
 
-const P12: &[u8] = include_bytes!("../../../tests/fixtures/p256.p12");
+pub(super) const P12: &[u8] = include_bytes!("../../../tests/fixtures/p256.p12");
 const SENDER: Option<&str> = Some(":1.1");
 
 /// Owner 11 is the fake caller; the test process must be none of the two uids used here.
@@ -166,7 +168,7 @@ fn other_uid() -> u32 {
 }
 
 /// Puts the key straight into the store, for tests whose authorizer refuses.
-fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let password = SecretString::from("test-password".to_owned());
     import_p12(&r.store, 11, id, P12, &password)?;
     Ok(())

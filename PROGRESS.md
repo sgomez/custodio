@@ -220,3 +220,13 @@ with an empty context.
 - Docs: `docs/api.md` (entry recorded before the reply, rollback), `docs/audit.md` (`KeyIdTaken` leaves no entry).
 - Evidence: `just quick` exit 0, `just mutants-diff F75`: 6 caught, 3 unviable, none missed; `just api-contract` and `cargo test -p custodio-it` green.
 - Next session should: nothing for F75.
+
+### 2026-11-01 — F76 — attempt 1
+- Done: `DeleteKey(id: s)` (`Custodio::delete_call` in new `src/dbus/delete.rs`). Order: id bound → credentials → lookup among the caller's keys (`NoSuchKey`, no polkit; any other lookup failure `Internal`) → polkit once under `DELETE_ACTION_ID` with AllowUserInteraction → key removed, then certificate. No journal entry (F77).
+  New `KeyStore::remove_existing` (`Ok(false)` when missing; `remove` is unchanged in behaviour and uses it). The loser of two concurrent deletes gets `NoSuchKey` (it does not touch the certificate).
+- Decision (evaluator note 1): a certificate left without its key (a delete that stopped after the key went) is found by the lookup, so a second `DeleteKey` clears it and the id is usable again; until then the id counts as taken. A non-plain-file entry is never touched (id stays taken until an administrator acts). Stated in `docs/api.md`.
+- Tests: `tests/delete.rs` (+ `delete/concurrent.rs`): one test per Evidence row, plus leftover certificate and key-without-certificate. Sign during delete requires the held sign to succeed (note 4); two approved deletes show two asks (note 5). Unit tests: `dbus/tests/delete_call.rs`, `store/tests.rs`. Counting-authorizer unit test kept small (error mapping and ask counts; mutants).
+  Adapted, not weakened: `dbus/tests/sign_call.rs` helpers made `pub(super)` only.
+- `justfile` `mutants` now also lists `dbus/delete.rs`. Note: `mutants-diff` only sees new files after `git add -N`.
+- Evidence: `just quick` exit 0, `just api-contract` green, `just mutants-diff F76`: 18 caught, 1 unviable, none missed.
+- Next session should: nothing for F76. F77 writes the delete journal entry.

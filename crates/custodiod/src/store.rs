@@ -284,23 +284,35 @@ impl KeyStore {
     /// `InvalidId`; `BadFileType` or `BadOwner` for a file that is not a plain file of the service
     /// uid (a symlink is never followed or removed); `Io` otherwise.
     pub fn remove(&self, owner: u32, id: &str) -> Result<(), StoreError> {
+        self.remove_existing(owner, id).map(|_| ())
+    }
+
+    /// Like [`Self::remove`], but tells whether this call removed the file: `Ok(false)` when there
+    /// was none, so of two callers removing the same file only one gets `Ok(true)`.
+    ///
+    /// # Errors
+    /// The same as [`Self::remove`].
+    pub fn remove_existing(&self, owner: u32, id: &str) -> Result<bool, StoreError> {
         if !valid_key_id(id) {
             return Err(StoreError::InvalidId);
         }
         let Some(area) = self.existing_area(owner)? else {
-            return Ok(());
+            return Ok(false);
         };
         // `get` refuses what is not a plain file of the service uid, without following symlinks, so
         // `remove_file` below only ever sees a file this store wrote.
         match self.get(owner, id) {
             Ok(_) => {}
-            Err(StoreError::NotFound) => return Ok(()),
+            Err(StoreError::NotFound) => return Ok(false),
             Err(e) => return Err(e),
         }
-        fs::remove_file(area.join(id))?;
+        if !removed_by_us(fs::remove_file(area.join(id)))? {
+            return Ok(false);
+        }
         File::open(&area)
             .and_then(|d| d.sync_all())
-            .map_err(StoreError::SyncFailed)
+            .map_err(StoreError::SyncFailed)?;
+        Ok(true)
     }
 
     /// Ids of all keys of `owner`, sorted. An owner without an area has none; nothing is created.
@@ -323,6 +335,16 @@ impl KeyStore {
         }
         ids.sort();
         Ok(ids)
+    }
+}
+
+/// Whether a `remove_file` removed the file: a file already gone (another remover was faster, in
+/// the time since `get`) is `false`, any other failure an error.
+fn removed_by_us(result: io::Result<()>) -> Result<bool, StoreError> {
+    match result {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
     }
 }
 

@@ -419,3 +419,57 @@ fn remove_refuses_a_directory() -> TestResult {
     ));
     Ok(())
 }
+
+#[test]
+fn remove_existing_tells_removed_from_missing() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    // No area: nothing removed, nothing created.
+    assert!(!store.remove_existing(OWNER, "k1")?);
+    assert!(!area(&store).exists());
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.put(OWNER, "k1-cert", &secret(b"c"))?;
+    store.put(OWNER + 1, "k1", &secret(b"b"))?;
+    assert!(!store.remove_existing(OWNER, "other")?);
+    assert!(store.remove_existing(OWNER, "k1")?);
+    assert!(!store.remove_existing(OWNER, "k1")?);
+    // The certificate entry is removed by its own name; other owners and ids are untouched.
+    assert_eq!(store.list(OWNER)?, vec!["k1-cert".to_owned()]);
+    assert!(store.remove_existing(OWNER, "k1-cert")?);
+    assert_eq!(store.list(OWNER)?, Vec::<String>::new());
+    assert_eq!(store.list(OWNER + 1)?, vec!["k1".to_owned()]);
+    assert!(matches!(
+        store.remove_existing(OWNER, "../k1"),
+        Err(StoreError::InvalidId)
+    ));
+    Ok(())
+}
+
+#[test]
+fn remove_existing_refuses_what_remove_refuses() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "real", &secret(b"a"))?;
+    let outside = tmp.path().join("outside");
+    fs::write(&outside, b"x")?;
+    std::os::unix::fs::symlink(&outside, area(&store).join("link"))?;
+    fs::create_dir(area(&store).join("dir"))?;
+    for id in ["link", "dir"] {
+        assert!(matches!(
+            store.remove_existing(OWNER, id),
+            Err(StoreError::BadFileType(_))
+        ));
+    }
+    assert!(outside.exists() && area(&store).join("dir").is_dir());
+    assert!(area(&store).join("real").exists());
+    Ok(())
+}
+
+#[test]
+fn a_file_gone_before_its_removal_is_not_ours() {
+    assert!(matches!(removed_by_us(Ok(())), Ok(true)));
+    let gone = io::Error::from(io::ErrorKind::NotFound);
+    assert!(matches!(removed_by_us(Err(gone)), Ok(false)));
+    let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+    assert!(matches!(removed_by_us(Err(denied)), Err(StoreError::Io(_))));
+}
