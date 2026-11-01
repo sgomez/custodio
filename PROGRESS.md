@@ -281,3 +281,8 @@ with an empty context.
 - Docs: `docs/audit.md` (replace section, query, "Not guaranteed"), `docs/api.md`; doc tests `replace_order_and_outcomes_documented`, `api_describes_the_replace_entry`. Doc comment and `# Errors` of `replace_call` updated.
 - Evidence: `just quick` exit 0, `just mutants-diff F79`: 1 caught, 1 unviable, none missed (cargo-mutants here only generates whole-function mutants for the changed functions).
 - Next session should: nothing for F79.
+
+### 2026-11-01 — F79 — attempt 2
+- Fixed NEXT_FINDINGS: `tests/replace_audit.rs` exceeded the 5000-token file-size gate; the failing-sink, restore-failure and store-before-submit tests moved unchanged to `tests/replace_audit/failing.rs` (`use super::*`).
+- Evidence: `just quick` exit 0, `just mutants-diff F79`: 1 caught, 1 unviable, none missed. Product code unchanged.
+- Next session should: nothing for F79.
