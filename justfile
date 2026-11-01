@@ -62,7 +62,29 @@ test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
+# The gate of every feature: lints and every Rust test (unit and integration). The package, install and e2e
+# script tests run in `just check`, at the checkpoints and the release. A pass stamps the tree in
+# target/quick-ok, and that tree is skipped; QUICK_FORCE=1 runs it.
+quick:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tree=$(scripts/tree-hash.sh)
+    if [ -z "${QUICK_FORCE:-}" ] && [ "$(cat target/quick-ok 2> /dev/null)" = "$tree" ]; then
+        echo "quick: this tree already passed (target/quick-ok)"
+        exit 0
+    fi
+    rm -f target/quick-ok
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
+    taplo fmt --check
+    {{shell_scripts}} | xargs -r shellcheck
+    just deps-check
+    scripts/check-files.sh
+    just test
+    if [ "$(scripts/tree-hash.sh)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/quick-ok; fi
+
+# Every fast check: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
 # ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
 # A pass stamps the tree (scripts/tree-hash.sh) in target/check-ok, and that tree is skipped; CHECK_FORCE=1 runs it.
@@ -139,7 +161,6 @@ test-scripts:
 shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
-    scripts/test-changed-checks.sh
     scripts/test-tree-hash.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
@@ -209,12 +230,6 @@ bus-policy:
         *) echo "bus-policy: unexpected result for another user: $denied" >&2; exit 1 ;;
     esac
 
-# Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
-# The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
-test-integration:
-    cargo test -p custodiod --locked --test dbus --test polkit --test audit
-    cargo test -p custodio-it --locked --test cryptoki
-
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
 # use a fake service, because Miri cannot talk to a bus. Only `ffi::` tests: the other modules forbid
 # `unsafe` (`unsupported.rs` allows it but only returns an error and has no tests), and their pure-Rust
@@ -243,14 +258,6 @@ mutants *args:
     cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
     exit "$status"
-
-# Only the checks the changes since feature <id> started (or a git revision) can break (scripts/changed_checks.py).
-test-changed id_or_rev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    base_file=".harness/state/{{id_or_rev}}.base"
-    if [ -f "$base_file" ]; then base=$(cat "$base_file"); else base={{id_or_rev}}; fi
-    scripts/changed_checks.py --base "$base"
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
 # working tree included. A feature's `verify` gate; CI sweeps every mutant weekly. Extra arguments go to `just mutants`.

@@ -43,18 +43,13 @@ Rules:
   it, a feature that adds it comes first.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
-  Never use a command that always succeeds. Use `just test-changed <id>` (never `just check`: the
-  release runs it in full) and the feature's own tests (unit
-  and integration tests are cheap: always run the ones the feature touches), plus only the slow
-  gates the feature's files reach, never `just check-slow`: the release runs it in full. A slow
-  gate is in `verify` only when the feature changes what it checks:
-  - `just miri` and `just asan` only for a change to the FFI layer;
-  - `just package` and the package gates only for a change to `packaging/`, `data/` or another
-    file the packages ship;
+  Never use a command that always succeeds. Start with `just quick` (lints and every Rust test;
+  never `just check` in a build feature) and add only the feature's own slow gates:
   - `just mutants-diff <id>` for files in the `mutants` recipe, never the full `just mutants`;
-  - `just e2e <target>` on one target, running only the cases the feature adds or changes, never
-    `just e2e` on all targets. If no recipe can run a subset of cases, the first feature with e2e
-    cases adds one.
+  - `just miri` and `just asan` only for a change to the FFI layer;
+  - `just e2e-cases <target> <cases>` only in a feature that adds or changes those e2e cases.
+  Package gates, the install and lifecycle script tests, `just check` and `just e2e` on every
+  target run only in the checkpoint features, never in a build feature.
   `verify` runs the code the feature adds; a grep or `test -f` alone does not prove it works, and
   must not pass before the feature is built.
 - The full suites run at checkpoints, not in every feature: one feature after each group of

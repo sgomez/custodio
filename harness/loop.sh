@@ -28,6 +28,7 @@ if ! approved spec || ! approved features; then
 fi
 
 sessions=0
+last_rc=0
 
 # run_claude <role> <log> <claude args...>
 run_claude() {
@@ -36,8 +37,10 @@ run_claude() {
   if (( sessions >= MAX_SESSIONS )); then die "Reached MAX_SESSIONS=$MAX_SESSIONS." 0; fi
   sessions=$((sessions + 1))
   stop_if_asked
-  claude_session "$role" "$logfile" "$@" \
-    || log "$role session exited non-zero, see $logfile"
+  last_rc=0
+  claude_session "$role" "$logfile" "$@" || last_rc=$?
+  if [ "$last_rc" = 124 ]; then log "$role session ran past SESSION_TIMEOUT, cut; see $logfile"
+  elif [ "$last_rc" != 0 ]; then log "$role session exited non-zero, see $logfile"; fi
   stop_if_asked "$logfile" # the kill-switch hook cut this session short: its output is no verdict
 }
 
@@ -194,6 +197,8 @@ uncommitted work is in the working tree: check it with git status and git diff, 
 and continue from it.}"
   resumed= && rm -f "$STATE/interrupted"
   [ -e BLOCKED.md ] && continue
+  # A builder cut by the timeout keeps its uncommitted work for the next builder, as after a stop.
+  if [ "$last_rc" = 124 ] && tracked_changes; then resumed="$stamp-build.log"; continue; fi
   stash_leftovers "$stamp"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
     # Every step ticked and this HEAD never evaluated: nothing for a builder to do, go to the gate.

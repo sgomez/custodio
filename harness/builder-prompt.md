@@ -10,13 +10,15 @@ Follow "Every session" in CLAUDE.md:
    only when it is done and its evidence passes. A step whose own condition (e.g. "Outcome B
    only") does not hold is marked `- [-]` instead, and PROGRESS.md says why. Change nothing else
    in the contract, except through an amendment (below).
-   Between steps, run the test you are writing and `just test-changed <id>` (lints, crates and
-   script tests the diff can break), never `just check` or the `verify`.
-3. When every step is ticked, run the feature's `verify` command and every piece of evidence in
-   the contract until they pass; the loop runs the `verify` again as the gate. `just check` runs
-   in full only when `just test-changed` escalates to it, and at the release (`just check-slow`).
-   Mutants: run `just mutants-diff <id>`; the full `just mutants` only when the `verify` runs it,
-   once at the end. While killing survivors, narrow it with `--re <regex>` or `--iterate`.
+   Between steps, run only the test you are writing and the tests of the code you touched
+   (`cargo test -p <crate> <filter>`), never `just check`, `just e2e`, the package gates or the
+   `verify`.
+3. When every step is ticked, run `just quick` once, the contract's evidence, and
+   `just mutants-diff <id>` if the `verify` has it (narrow it with `--re <regex>` while killing
+   survivors). Do not run the whole `verify`: the loop runs it as the gate. The package, install
+   and e2e suites run at the checkpoint features and the release, and failures there are fixed
+   there. Run every command in the foreground with `timeout`; background tasks and polling loops
+   are blocked.
 4. Append your entry to PROGRESS.md and commit with a Conventional Commits message scoped to the
    feature id, e.g. `feat(F05): add key store`. Stop at a clean point when your context gets
    long: the next session continues from the contract.

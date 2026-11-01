@@ -1,13 +1,18 @@
-# Commit message format and lints of what is staged; `just check` and CI run the tests. Install with `just setup`.
+# Commit message format and formatting lints of what is staged; `just quick`, `just check` and CI run the rest. Install with `just setup`.
 pre-commit:
   commands:
-    lint:
-      # Lints of the staged files and of the crates they affect; the tests run in `just check`, the loop and CI.
-      # The harness excludes it (LEFTHOOK_EXCLUDE): its verify runs `just test-changed <id>`, which lints the diff.
-      run: scripts/changed_checks.py --staged --lint-only
+    rust:
+      glob: "*.rs"
+      run: cargo fmt --all --check
+    toml:
+      glob: "*.toml"
+      run: taplo fmt --check {staged_files}
+    shell:
+      glob: "*.sh"
+      run: shellcheck -x {staged_files}
     harness:
       glob: "harness/*.sh"
-      run: shellcheck -x {staged_files} && scripts/check-files.sh
+      run: scripts/check-files.sh
 
 commit-msg:
   commands:
