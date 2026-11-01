@@ -75,3 +75,6 @@ Every failure is one of these names, with a fixed message that repeats nothing t
 ## Polkit actions
 
 - action `com.rfirma.custodio.sign`: asked on every `Sign`, `auth_self`, never kept.
+- action `com.rfirma.custodio.import-certificate`: for importing a certificate, `auth_self`, never kept.
+- action `com.rfirma.custodio.delete-certificate`: for deleting a certificate, `auth_self`, never kept.
+- action `com.rfirma.custodio.replace-certificate`: for replacing a certificate, `auth_self`, never kept.

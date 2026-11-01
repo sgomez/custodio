@@ -17,4 +17,40 @@
     <!-- polkit refuses CheckAuthorization on another user's subject from a non-root caller unless it owns the action. -->
     <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
   </action>
+
+  <action id="com.rfirma.custodio.import-certificate">
+    <description>Import a certificate and key into Custodio</description>
+    <message>Authentication is required to import a certificate and key into Custodio</message>
+    <defaults>
+      <!-- auth_self, never auth_self_keep: every call must ask. -->
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
+  </action>
+
+  <action id="com.rfirma.custodio.delete-certificate">
+    <description>Delete a certificate held by Custodio</description>
+    <message>Authentication is required to delete a certificate held by Custodio</message>
+    <defaults>
+      <!-- auth_self, never auth_self_keep: every call must ask. -->
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
+  </action>
+
+  <action id="com.rfirma.custodio.replace-certificate">
+    <description>Replace a certificate held by Custodio</description>
+    <message>Authentication is required to replace a certificate held by Custodio</message>
+    <defaults>
+      <!-- auth_self, never auth_self_keep: every call must ask. -->
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
+  </action>
 </policyconfig>

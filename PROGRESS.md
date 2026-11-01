@@ -115,3 +115,11 @@ with an empty context.
 - Fixed NEXT_FINDINGS: the false "SPEC/feature text names `Spawn.*`" conflict is now a correction of the contract's example only (docs/findings.md, PROGRESS.md); the setup script,
   stub unit and Gio stub are inlined in `## F68`. Note kept: client docs should give a timeout shorter than the 25 s default for the "no reply" case.
 - Next session should: nothing for F68.
+
+### 2026-11-01 — F69 — attempt 1
+- Done: three actions `com.rfirma.custodio.{import,delete,replace}-certificate` in `data/com.rfirma.custodio.policy` (own description/message naming the operation, `auth_self` x3, owner annotation; signing block untouched).
+  `crates/custodiod/tests/policy.rs` now parses per action: exact id set, defaults, owner, distinct non-empty messages containing the operation word, sign text unchanged, `_keep` check on the whole file, with negative-control tests on the helpers.
+  `defines_exactly_the_sign_action` was replaced by `defines_exactly_the_four_actions` (not deleted: it is stricter). `docs/api.md` and `README.md` list the actions.
+- Evidence: `cargo test -p custodiod --test policy` 10 passed, `just api-contract` green, `just quick` exit 0. Package gates left to F90/F100 (nfpm.yaml already ships the whole file).
+- Notes for later: the test hard-codes the three new ids; the first feature adding the Rust constants must switch the test to them (as `ACTION_ID` is used). The `ImportP12` doc line "Needs no polkit authorization" in `docs/api.md` is now stale and is left for the import feature to fix.
+- Next session should: nothing for F69.

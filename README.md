@@ -11,7 +11,8 @@ intent: the dialog cannot prove what is being signed.
 ## Names
 
 - System D-Bus name: `com.rfirma.Custodio1`
-- polkit action: `com.rfirma.custodio.sign`
+- polkit actions: `com.rfirma.custodio.sign`, `com.rfirma.custodio.import-certificate`,
+  `com.rfirma.custodio.delete-certificate`, `com.rfirma.custodio.replace-certificate`
 
 ## Installing and removing
 
