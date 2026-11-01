@@ -358,13 +358,14 @@ records the OS release, kernel, bus daemon and version, polkit version, and the 
   `namcap` and `rpmlint` accept it.
 - **Ubuntu 24.04: does switching the bus break something?** The milestone wants Ubuntu 24.04 with
   `dbus-broker`. If the switch breaks the desktop or system services (acceptance step 15), should
-  the package refuse Ubuntu 24.04 altogether, even with `dbus-broker`? Settled by step 15. Until
-  then the capability check decides.
+  the package refuse Ubuntu 24.04 altogether, even with `dbus-broker`? Settled by step 15 (F57,
+  `docs/findings.md`): the switch broke nothing checked on Ubuntu 24.04.5, so Ubuntu 24.04 is
+  accepted with `dbus-broker` and refused on `dbus-daemon`; the capability check decides.
 - **polkit 124 and the bus pidfd.** `docs/findings.md` takes polkit 124 as the first release with
   pidfd support from its NEWS. It has not confirmed that polkit 124 (Ubuntu 24.04) reads
   `ProcessFD` from the bus rather than falling back to the PID. If it does not, Ubuntu 24.04 is
-  unsafe even on `dbus-broker`. Settle by reading polkit 124's system-bus-name code before the
-  Ubuntu 24.04 work starts. If 124 falls short, raise the minimum and drop Ubuntu 24.04.
+  unsafe even on `dbus-broker`. Settled (F41, `docs/findings.md` section 3a): polkit 124, and
+  Ubuntu 24.04's `124-2ubuntu1.24.04.4`, takes the caller's pidfd from `ProcessFD`.
 - **Installing without a running bus** (chroot, image build, rpm-ostree, whose scriptlets run
   offline with `/var` read-only). The install-time check cannot run there. Proposed: install
   anyway, print a notice, and rely on the runtime refusal of design section 3. The alternative,
