@@ -388,7 +388,7 @@
         "F91"
       ],
       "verify": "just quick && just e2e-cases debian13 'upgrade-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F97",
