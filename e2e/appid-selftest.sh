@@ -4,4 +4,5 @@
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 audit_doc() { if [ -f /e2e-docs/audit.md ]; then echo /e2e-docs/audit.md; else echo "$here/../docs/audit.md"; fi; }
+python3 -I "$here/appid-selftest-rules.py" "$here"
 python3 -I "$here/appid-selftest.py" "$here" "${APPID_DOC:-$(audit_doc)}"

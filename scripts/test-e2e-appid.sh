@@ -15,33 +15,34 @@ mutant() { # NAME FILE SED-EXPRESSION...: a copy of the judgements with one weak
     local name=$1 file=$2 expr
     shift 2
     mkdir -p "$tmp/$name/docs"
-    cp "$ROOT"/e2e/appid.py "$ROOT"/e2e/jo.py "$ROOT"/e2e/appid-selftest.py "$ROOT"/e2e/appid-ledger.txt "$tmp/$name/"
+    cp "$ROOT"/e2e/appid*.py "$ROOT"/e2e/jo.py "$ROOT"/e2e/appid-ledger.txt "$tmp/$name/"
     cp "$ROOT/docs/audit.md" "$tmp/$name/docs/"
     cp "$tmp/$name/$file" "$tmp/$name/$file.orig"
     for expr in "$@"; do sed -i "$expr" "$tmp/$name/$file"; done
     if cmp -s "$tmp/$name/$file.orig" "$tmp/$name/$file"; then bad "mutant $name changes nothing"; fi
-    if python3 -I "$tmp/$name/appid-selftest.py" "$tmp/$name" "$tmp/$name/docs/audit.md" > /dev/null 2>&1; then bad "mutant $name was not caught"; fi
+    if python3 -I "$tmp/$name/appid-selftest-rules.py" "$tmp/$name" > /dev/null 2>&1 \
+        && python3 -I "$tmp/$name/appid-selftest.py" "$tmp/$name" "$tmp/$name/docs/audit.md" > /dev/null 2>&1; then bad "mutant $name was not caught"; fi
 }
 # shellcheck disable=SC2016 # the sed expressions hold literal $ and quotes on purpose
 {
     mutant state-loose appid.py 's/if state != row\["app_state"\]:/if state is None:/'
     mutant id-not-compared appid.py 's/if row\["app_state"\] == "read" and ident != row\["app_id"\]:/if False:/'
     mutant no-field-dropped appid.py 's/if row\["app_state"\] != "read" and "CUSTODIO_APP_ID" in entry:/if False:/'
-    mutant sweep-some-fields appid.py 's/for name, value in entry:/for name, value in [f for f in entry if f[0] == "MESSAGE"]:/'
-    mutant duration-dropped appid.py 's/if r\["dur"\] > limit:/if False:/'
-    mutant slack-ceiling-dropped appid.py 's/if slack > ABS_SLACK_CEILING:/if False:/'
-    mutant unknown-app-query-ignored appid.py 's/problems.append(f"the documented query .{raw}. names the app-id in a way this step does not judge")/pass/'
+    mutant sweep-some-fields appid_journal.py 's/for name, value in entry:/for name, value in [f for f in entry if f[0] == "MESSAGE"]:/'
+    mutant duration-dropped appid_journal.py 's/if r\["dur"\] > limit:/if False:/'
+    mutant slack-ceiling-dropped appid_journal.py 's/if slack > ABS_SLACK_CEILING:/if False:/'
+    mutant unknown-app-query-ignored appid_journal.py 's/problems.append(f"the documented query .{raw}. names the app-id in a way this step does not judge")/pass/'
     mutant pid-dropped appid.py 's/mine = \[e for e in audits if jo.field(e, "CUSTODIO_PID") == row\["pid"\]\]/mine = list(audits)/'
     mutant unexplained-dropped appid.py 's/for e in audits if jo.field(e, "CUSTODIO_PID") not in pids\]/for e in audits if False]/'
     mutant request-count-dropped appid.py 's/if r\["nreq"\] != 1:/if False:/'
     mutant subject-dropped appid.py 's/if r\["subj"\] != f"{r\[.pid.\]}\/{r\[.uid.\]}":/if False:/'
     mutant signature-dropped appid.py 's/and not verify(label):/and False:/'
     mutant result-dropped appid.py 's/if r\["got"\] != r\["result"\]:/if False:/'
-    mutant cap-margin-dropped appid.py 's/if order.index(after) < cap + 2:/if order.index(after) < 0:/'
-    mutant cap-inside-dropped appid.py 's/if order.index(within) > cap - 3:/if False:/'
-    mutant hostile-rules-dropped appid.py 's/if reader_state(name) != (state, ident):/if False:/'
+    mutant cap-margin-dropped appid_rules.py 's/if order.index(after) < cap + 2:/if order.index(after) < 0:/'
+    mutant cap-inside-dropped appid_rules.py 's/if order.index(within) > cap - 3:/if False:/'
+    mutant hostile-rules-dropped appid_rules.py 's/if reader_state(name) != (state, ident):/if False:/'
     mutant ledger-state-dropped appid.py 's/if named\["state"\] != p\["app_state"\] or named\["id"\] != resolved:/if False:/'
-    mutant only-first-id-query appid.py 's/for ident in app_ids:/for ident in app_ids[:1]:/'
+    mutant only-first-id-query appid_journal.py 's/for ident in app_ids:/for ident in app_ids[:1]:/'
     mutant window-ignored jo.py 's/if field(row, "__CURSOR") in cursors:/if True:/'
 }
 
