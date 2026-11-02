@@ -59,6 +59,15 @@ journal-ops-replace
 journal-ops-exactly-one
 journal-ops-no-secrets
 journal-ops-queries
+appid-flatpak
+appid-flatpak-max
+appid-cap
+appid-operations
+appid-none
+appid-hostile
+appid-outcome
+appid-bound
+appid-queries
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged

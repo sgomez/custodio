@@ -134,8 +134,8 @@ def service_audit(rows, unit, uid):
             and (field(e, "MESSAGE_ID") in ids or "CUSTODIO_OPERATION" in e)]
 
 
-def line_problems(entry, line):
-    """What the entry of one ledger line must hold."""
+def line_problems(entry, line, check_app=True):
+    """What the entry of one ledger line must hold. F95 judges the app-id against its own ledger (CHECK_APP false)."""
     message_id, outcomes = OPERATIONS[line["op"]]
     priority, text = outcomes[line["outcome"]]
     want = {
@@ -152,6 +152,8 @@ def line_problems(entry, line):
     problems = [f"{line['label']}: {name} is {entry.get(name)!r}, expected {value!r}"
                 for name, value in want.items() if field(entry, name) != value]
     state, app = field(entry, "CUSTODIO_APP_ID_STATE"), field(entry, "CUSTODIO_APP_ID")
+    if not check_app:
+        return problems
     if state not in APP_ID_STATES:
         problems.append(f"{line['label']}: CUSTODIO_APP_ID_STATE is {state!r}, expected one of {APP_ID_STATES}")
     elif (app is not None) != (state == "read"):
@@ -180,7 +182,7 @@ def entry_problems(window, ledger, unit, uid, ops=None):
     return problems
 
 
-def extract_queries(doc_text, uid, service_uid, key):
+def extract_queries(doc_text, uid, service_uid, key, app_id=NO_SUCH_APP):
     """[(arguments, line)] of the journalctl lines of the fenced blocks of the document, with the placeholders replaced. A query that is not of the
     form 'journalctl FIELD=VALUE...' over the fields judged here, or that lacks the unit and the service account, is an error."""
     queries, fenced = [], False
@@ -203,7 +205,7 @@ def extract_queries(doc_text, uid, service_uid, key):
             elif (name, value) == ("CUSTODIO_KEY_ID", "my-key"):
                 value = key
             elif (name, value) == ("CUSTODIO_APP_ID", "org.example.App"):
-                value = NO_SUCH_APP
+                value = app_id
             args.append(f"{name}={value}")
         names = [a.split("=")[0] for a in args]
         if "_SYSTEMD_UNIT=custodio.service" not in args or f"_UID={service_uid}" not in args or names.count("_UID") != 1:
@@ -218,7 +220,9 @@ def predicted_value(line, name, entry):
     if name == "MESSAGE_ID":
         return OPERATIONS[line["op"]][0]
     if name in ("CUSTODIO_APP_ID", "CUSTODIO_APP_ID_STATE"):
-        return field(entry, name) if entry else None  # not in the ledger: what the entry of that call says (F95 owns the real cases)
+        if "app_state" in line:  # F95's ledger says what the entry must hold, and the query is judged by that
+            return line["app_state"] if name == "CUSTODIO_APP_ID_STATE" else line.get("app_id")
+        return field(entry, name) if entry else None  # F94's ledger has no app-id: what the entry of that call says
     return line[{"CUSTODIO_OPERATION": "op", "CUSTODIO_UID": "uid", "CUSTODIO_KEY_ID": "key", "CUSTODIO_OUTCOME": "outcome"}[name]]
 
 

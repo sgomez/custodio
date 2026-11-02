@@ -138,6 +138,13 @@ if phase_runs journal-ops; then
     WORK=$work MODULE=$MODULE bash /e2e/jo-run.sh || fail "jo-run.sh failed"
 fi
 
+# The app-id cases (F95): alice calls from processes in scopes of her user manager (named as flatpak names them, and hostile ones) and root judges the entries
+# of the journal and that nothing of the hostile names is in it. After journal-ops and before the upgrade, for the same reasons; it makes children of her
+# app.slice and removes them, imports a key and deletes it, so the state and the counts are as before.
+if phase_runs appid; then
+    WORK=$work MODULE=$MODULE bash /e2e/appid-run.sh || fail "appid-run.sh failed"
+fi
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

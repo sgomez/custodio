@@ -154,6 +154,7 @@ test-scripts:
     scripts/test-e2e-ops.sh
     scripts/test-e2e-rd.sh
     scripts/test-e2e-jo.sh
+    scripts/test-e2e-appid.sh
     scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh

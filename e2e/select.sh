@@ -19,6 +19,7 @@ case_group() {
     replace-*) echo replace ;;
     delete-*) echo delete ;;
     journal-ops-*) echo journal-ops ;;
+    appid-*) echo appid ;;
     refusal-*) echo refusal ;;
     *) echo user ;;
     esac
@@ -39,7 +40,7 @@ selected_in() {
 # the signatures' evidence; journal: counts every signature and the unavailable one; upgrade: lifecycle starts from the state it leaves;
 # owner (F91): its own cases, with two accounts and keys of its own; it needs only the setup, and runs after journal so that the counts
 # of the journal step do not see it; ops-polkit (F92): the same, it imports, deletes and replaces for real and stops polkit for a while, so it runs
-# after owner and before upgrade; replace, delete (F93): the same, each with keys of its own, after ops-polkit; journal-ops (F94): the same, with the journal of every operation, after delete; lifecycle, refusal: their own cases.
+# after owner and before upgrade; replace, delete (F93): the same, each with keys of its own, after ops-polkit; journal-ops (F94): the same, with the journal of every operation, after delete; appid (F95): the same, with callers in scopes of alice's user manager, after journal-ops; lifecycle, refusal: their own cases.
 phase_runs() {
     [ -f "$E2E_SELECT_FILE" ] || return 0
     case $1 in
@@ -51,6 +52,7 @@ phase_runs() {
     replace) selected_in replace ;;
     delete) selected_in delete ;;
     journal-ops) selected_in journal-ops ;;
+    appid) selected_in appid ;;
     upgrade) selected_in upgrade || selected_in lifecycle ;;
     lifecycle) selected_in lifecycle ;;
     refusal) selected_in refusal ;;
