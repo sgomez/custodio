@@ -490,7 +490,7 @@
         "F100"
       ],
       "manual": true,
-      "passes": false
+      "passes": true
     },
     {
       "id": "F102",
