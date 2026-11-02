@@ -375,7 +375,7 @@
         "F82"
       ],
       "verify": "just quick && just e2e-cases debian13 'appid-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F96",
