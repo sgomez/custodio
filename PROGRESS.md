@@ -363,3 +363,12 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `two_uids_see_only_their_own_keys` no longer compares the child's whole stdout (it held the runner's timing). It compares only the `NOTOKEN`/`SIG`/`SIGERR` scenario lines of the two runs, without the id, and asserts they are all `NOTOKEN`.
 - Product code unchanged, so `mutants-diff F85` still has no mutants. Evidence: `documented` tests 3 runs green; `just quick` exit 0.
 - Next session should: nothing for F85.
+
+### 2026-11-02 — F86 — attempt 1
+- Step 1 (CLI vs `docs/api.md`): no difference. The call is `ImportP12(s, ay, s)` on the client constants; the CLI checks only the `.p12` size locally (id given with `--id` and password size go to the service, so `InvalidArgs` is reachable on the bus with a 200-char id or a 2000-byte password).
+- New `ServiceFailure` (`custodio-cli/src/failure.rs`): one case per documented name, `ServiceAbsent`, `Transport`, `Unknown(name)`; fixed message each, no service text, no transport detail. Bus-daemon names (`org.freedesktop.DBus.Error.*`) are `ServiceAbsent` (ServiceUnknown/NameHasNoOwner) or `Transport`, never unknown. `Importer` returns it; `ImportFailure::Service` holds it; `bus::failure_of` maps zbus errors (MethodError and FDO).
+- `CliError` (Args / SystemBus / Import), `exit_status` (0/1/2) and `finish` (prints the diagnostic, returns the status) in the library; `main` is `ExitCode::from(finish(&run(), stderr))`, so the unreachable-bus path in `DbusImporter::system()` goes through the same function (`the_binary_exits_1_when_the_bus_is_unreachable`).
+- Tests: `custodio-cli/tests/exit.rs` (status table, binary: usage → 2 with empty stdout, unreachable bus → 1); `custodio-it/tests/import_errors.rs` (private bus, fake polkit approve/deny/unavailable, one test per remaining name, service absent, recording service for the documented call). Certificate mismatch and internal use a decoder double; audit unavailable uses `FailingSink`.
+- Negative controls (red, reverted): changed `KeyIdTaken` text → name test fails; mapping `Import` to 0 → exit tests fail.
+- Evidence: `just quick` exit 0 (verify has no mutants-diff).
+- Next session should: nothing for F86.

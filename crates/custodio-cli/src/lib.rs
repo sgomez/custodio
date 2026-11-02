@@ -10,7 +10,10 @@ use custodio_client::MAX_P12_LEN;
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
+pub use failure::ServiceFailure;
+
 pub mod bus;
+pub mod failure;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
@@ -93,8 +96,13 @@ pub trait Importer {
     /// Returns the key type reported by the service.
     ///
     /// # Errors
-    /// A message that is safe to show (never contains the password).
-    fn import_p12(&self, id: &str, p12: &[u8], password: &SecretString) -> Result<String, String>;
+    /// A [`ServiceFailure`]: it has a fixed message and never holds the password or the service's text.
+    fn import_p12(
+        &self,
+        id: &str,
+        p12: &[u8],
+        password: &SecretString,
+    ) -> Result<String, ServiceFailure>;
 }
 
 #[derive(Debug)]
@@ -102,7 +110,7 @@ pub enum ImportFailure {
     Read(io::Error),
     TooLarge,
     Password(io::Error),
-    Service(String),
+    Service(ServiceFailure),
 }
 
 impl fmt::Display for ImportFailure {
@@ -111,7 +119,7 @@ impl fmt::Display for ImportFailure {
             Self::Read(e) => write!(f, "cannot read the file: {e}"),
             Self::TooLarge => write!(f, "the file is larger than {MAX_P12_LEN} bytes"),
             Self::Password(e) => write!(f, "cannot read the password: {e}"),
-            Self::Service(m) => write!(f, "the service refused the import: {m}"),
+            Self::Service(failure) => write!(f, "{failure}"),
         }
     }
 }
@@ -157,6 +165,46 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         args.file.display()
     );
     Ok(())
+}
+
+/// Everything that can end a run of the tool without success.
+#[derive(Debug)]
+pub enum CliError {
+    /// The command line is wrong: the usage text, exit status 2.
+    Args(ArgError),
+    /// The system bus cannot be reached.
+    SystemBus(String),
+    Import(ImportFailure),
+}
+
+impl fmt::Display for CliError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Args(e) => write!(f, "{e}"),
+            Self::SystemBus(why) => write!(f, "custodio: cannot reach the system bus: {why}"),
+            Self::Import(e) => write!(f, "custodio: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for CliError {}
+
+/// Exit status of a run: 0 on success, 2 for a usage error, 1 for every other failure.
+#[must_use]
+pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
+    match result {
+        Ok(()) => 0,
+        Err(CliError::Args(_)) => 2,
+        Err(CliError::SystemBus(_) | CliError::Import(_)) => 1,
+    }
+}
+
+/// Writes the diagnostic of a failed run to `err` (nothing on success) and returns the exit status.
+pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W) -> u8 {
+    if let Err(e) = result {
+        let _ = writeln!(err, "{e}");
+    }
+    exit_status(result)
 }
 
 /// Read one line without the newline into zeroizing storage.

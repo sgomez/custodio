@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use custodio_cli::bus::DbusImporter;
 use custodio_cli::{
-    ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, parse_args, read_secret_line,
-    run_import,
+    ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, ServiceFailure, parse_args,
+    read_secret_line, run_import,
 };
 use custodio_client::{BUS_NAME, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
@@ -44,11 +44,16 @@ impl PasswordPrompt for FixedPrompt {
 #[derive(Default)]
 struct Recorder {
     calls: RefCell<Vec<(String, usize, String)>>,
-    reply: Option<String>,
+    reply: Option<ServiceFailure>,
 }
 
 impl Importer for Recorder {
-    fn import_p12(&self, id: &str, p12: &[u8], password: &SecretString) -> Result<String, String> {
+    fn import_p12(
+        &self,
+        id: &str,
+        p12: &[u8],
+        password: &SecretString,
+    ) -> Result<String, ServiceFailure> {
         self.calls.borrow_mut().push((
             id.to_owned(),
             p12.len(),
@@ -154,12 +159,17 @@ fn failed_import_does_not_say_the_file_is_safe_to_delete() -> TestResult {
         id: "k".into(),
     };
     let rec = Recorder {
-        reply: Some("wrong password".into()),
+        reply: Some(ServiceFailure::WrongPasswordOrBadP12),
         ..Recorder::default()
     };
     let mut out = Vec::new();
     let err = run_import(&a, &mut FixedPrompt(Some("pw")), &rec, &mut out).err();
-    assert!(matches!(err, Some(ImportFailure::Service(ref m)) if m == "wrong password"));
+    assert!(matches!(
+        err,
+        Some(ImportFailure::Service(
+            ServiceFailure::WrongPasswordOrBadP12
+        ))
+    ));
     assert_eq!(out, b"");
     Ok(())
 }
@@ -293,7 +303,15 @@ fn imports_through_the_service_and_reports_wrong_password() -> TestResult {
 
     let mut out = Vec::new();
     let err = run_import(&a, &mut FixedPrompt(Some("wrong")), &importer, &mut out).err();
-    assert!(matches!(err, Some(ImportFailure::Service(_))), "{err:?}");
+    assert!(
+        matches!(
+            err,
+            Some(ImportFailure::Service(
+                ServiceFailure::WrongPasswordOrBadP12
+            ))
+        ),
+        "{err:?}"
+    );
     assert_eq!(out, b"");
     assert_eq!(store.list(owner()?)?, Vec::<String>::new());
 
