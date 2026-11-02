@@ -1710,3 +1710,6 @@ Acceptance 15: pass. One entry since the step started (`signature made: uid 1000
 - The two lines of step 2 were copied from the page into a file and run with `flatpak run --command=sh --filesystem=/tmp:ro
   com.rfirma.CustodioTest /tmp/step2.sh`, not typed into an interactive shell; the extra read-only `/tmp` is a file permission
   and does not touch the bus policy or the app-id.
+- A person then repeated §17 by hand on the same VM, restored to its clean snapshot with the same package, following the steps in
+  a desktop terminal (import of `p256`, build, detection, sign from `flatpak run --command=sh`, journal) and answering each dialog:
+  every dialog, result and journal entry matched the table above.
