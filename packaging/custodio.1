@@ -58,6 +58,25 @@ takes exactly one argument, the key id, and no options;
 to delete a key whose id starts with a dash, write
 .B \-\-
 before it.
+.PP
+When standard input is a terminal,
+.B import
+and
+.B delete
+start
+.B pkttyagent
+(with
+.B setpriv
+from util\-linux, so that it ends if the command is killed) while they wait for polkit,
+so that polkit can ask on the terminal when the session has no graphical agent.
+The agent is registered for their own process only, as a fallback:
+never for another process or for the whole session, and an agent of your session keeps answering.
+They stop it when the call returns, whether it succeeded, failed or was interrupted.
+If
+.B pkttyagent
+or
+.B setpriv
+is missing, no agent is started and polkit answers as it would without one.
 .SH EXIT STATUS
 .TP
 .B 0

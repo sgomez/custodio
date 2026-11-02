@@ -14,6 +14,7 @@ pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
 
+pub mod agent;
 pub mod bus;
 pub mod delete;
 pub mod failure;

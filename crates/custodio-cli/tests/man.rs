@@ -94,3 +94,20 @@ fn the_exit_status_section_covers_delete() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+
+#[test]
+fn the_agent_for_a_terminal_is_documented() -> Result<(), Box<dyn Error>> {
+    let page = page()?;
+    let text = section(&page, "DESCRIPTION")?;
+    for fact in [
+        "When standard input is a terminal,\n.B import\nand\n.B delete\nstart\n.B pkttyagent",
+        "for their own process only",
+        "never for another process or for the whole session",
+        "an agent of your session keeps answering",
+        "stop it when the call returns",
+        "setpriv",
+    ] {
+        assert!(text.contains(fact), "DESCRIPTION lacks: {fact}");
+    }
+    Ok(())
+}

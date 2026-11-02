@@ -1,5 +1,8 @@
 //! The private bus, the fake polkit and the service of the `custodio delete` tests.
 
+// `tests/delete.rs` and `tests/agent.rs` share this module and each uses a part of it.
+#![allow(dead_code)]
+
 use std::error::Error;
 use std::io::{self, BufRead, BufReader};
 use std::pin::Pin;
@@ -32,6 +35,8 @@ pub const WAIT: Duration = Duration::from_secs(20);
 pub enum Polkit {
     Approve,
     Deny,
+    /// The question is never answered: the call stays open until the caller goes away.
+    Hold,
 }
 
 #[derive(Clone)]
@@ -51,10 +56,13 @@ impl Authorizer for FakePolkit {
             .unwrap_or_else(PoisonError::into_inner)
             .push(action.to_owned());
         let mode = *self.mode.lock().unwrap_or_else(PoisonError::into_inner);
-        std::future::ready(match mode {
-            Polkit::Approve => Ok(()),
-            Polkit::Deny => Err(AuthError::Denied),
-        })
+        async move {
+            match mode {
+                Polkit::Approve => Ok(()),
+                Polkit::Deny => Err(AuthError::Denied),
+                Polkit::Hold => std::future::pending().await,
+            }
+        }
     }
 }
 

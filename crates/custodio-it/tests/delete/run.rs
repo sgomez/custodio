@@ -1,5 +1,8 @@
 //! The real `custodio` binary run as a child, with or without a controlling terminal.
 
+// `tests/delete.rs` and `tests/agent.rs` share this module and each uses a part of it.
+#![allow(dead_code)]
+
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -60,10 +63,18 @@ pub struct Finished {
     pub stderr: String,
 }
 
+/// What the child gets as standard input.
+#[derive(Clone, Copy)]
+pub enum Stdin<'a> {
+    /// A pipe holding these bytes.
+    Pipe(&'a [u8]),
+    /// The slave end of the pseudo-terminal (a terminal even without a controlling terminal).
+    Tty,
+    /// A regular file.
+    File,
+}
+
 impl Run {
-    /// With `terminal`, the child is a session leader whose controlling terminal is a new
-    /// pseudo-terminal; without, a session leader with none. Standard input is a pipe holding
-    /// `stdin`, standard output and error are pipes: only `/dev/tty` is the terminal.
     pub fn start(
         rig: &Rig,
         args: &[&str],
@@ -71,10 +82,45 @@ impl Run {
         terminal: bool,
         stdin: &[u8],
     ) -> Result<Self, Box<dyn Error>> {
+        Self::start_with(rig, args, env, terminal, Stdin::Pipe(stdin))
+    }
+
+    /// With `terminal`, the child is a session leader whose controlling terminal is a new
+    /// pseudo-terminal; without, a session leader with none. Standard input is a pipe holding
+    /// `stdin`, standard output and error are pipes: only `/dev/tty` is the terminal.
+    pub fn start_with(
+        rig: &Rig,
+        args: &[&str],
+        env: &[(&str, &str)],
+        terminal: bool,
+        stdin: Stdin<'_>,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::start_inner(rig, args, env, terminal, &stdin, false)
+    }
+
+    /// Like `start_with`, but `custodio` is a background job of a shell that is the session
+    /// leader, so the binary is not the leader and its death hangs nothing up. The shell writes
+    /// the pid of `custodio` to `rig.dir/cli.pid`.
+    pub fn start_in_shell(
+        rig: &Rig,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::start_inner(rig, args, env, true, &Stdin::Tty, true)
+    }
+
+    fn start_inner(
+        rig: &Rig,
+        args: &[&str],
+        env: &[(&str, &str)],
+        terminal: bool,
+        stdin: &Stdin<'_>,
+        shell: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let mut master = None;
         let mut slave_fd = -1;
         let mut slave_keep = None;
-        if terminal {
+        if terminal || matches!(*stdin, Stdin::Tty) {
             // SAFETY: plain libc calls on descriptors this function owns.
             unsafe {
                 let m = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY | libc::O_CLOEXEC);
@@ -92,31 +138,50 @@ impl Run {
                 master = Some(master_file);
             }
         }
-        let mut command = Command::new(binary()?);
+        // Without `terminal` the slave is not made the controlling terminal below.
+        let ctty_fd = if terminal { slave_fd } else { -1 };
+        let mut command;
+        if shell {
+            command = Command::new("sh");
+            command
+                .arg("-c")
+                .arg(r#"exec 3<&0; "$0" "$@" <&3 & echo $! > "$CLI_PIDFILE"; wait"#)
+                .arg(binary()?);
+        } else {
+            command = Command::new(binary()?);
+        }
         command
             .args(args)
             .env_clear()
             .env("DBUS_SYSTEM_BUS_ADDRESS", &rig.bus.address)
             .envs(env.iter().copied())
-            .stdin(Stdio::piped())
+            .stdin(match stdin {
+                Stdin::Pipe(_) => Stdio::piped(),
+                Stdin::Tty => Stdio::from(slave_keep.as_ref().ok_or("no terminal")?.try_clone()?),
+                Stdin::File => Stdio::from(File::open("/dev/null")?),
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if shell {
+            command.env("CLI_PIDFILE", rig.dir.path().join("cli.pid"));
+        }
         // SAFETY: only async-signal-safe calls (`setsid`, `ioctl`) between fork and exec.
         unsafe {
             command.pre_exec(move || {
                 if libc::setsid() < 0 {
                     return Err(io::Error::last_os_error());
                 }
-                if slave_fd >= 0 && libc::ioctl(slave_fd, libc::TIOCSCTTY, 0) < 0 {
+                if ctty_fd >= 0 && libc::ioctl(ctty_fd, libc::TIOCSCTTY, 0) < 0 {
                     return Err(io::Error::last_os_error());
                 }
                 Ok(())
             });
         }
         let mut child = command.spawn()?;
-        let mut pipe = child.stdin.take().ok_or("no stdin")?;
-        let _ = pipe.write_all(stdin);
-        drop(pipe);
+        if let Stdin::Pipe(bytes) = stdin {
+            let mut pipe = child.stdin.take().ok_or("no stdin")?;
+            let _ = pipe.write_all(bytes);
+        }
         let screen = Arc::new(Mutex::new(Vec::new()));
         let stop = Arc::new(AtomicBool::new(false));
         if let Some(master) = &master {
