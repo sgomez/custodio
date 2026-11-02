@@ -34,6 +34,14 @@ owner-foreign-id-no-such-key
 owner-foreign-id-no-polkit
 owner-foreign-id-journal
 owner-same-id-own-key
+ops-polkit-import-asks-once
+ops-polkit-delete-asks-once
+ops-polkit-replace-asks-once
+ops-polkit-denied
+ops-polkit-unavailable
+ops-polkit-asks-again
+ops-polkit-wrong-password-denied
+ops-polkit-wrong-password-approved
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged

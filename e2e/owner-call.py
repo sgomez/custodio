@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """One call of com.rfirma.Custodio1 that the CLI does not offer, for the owner-* cases (F91), made as the user running it on the system bus.
-Usage: owner-call.py sign ID | delete ID | replace ID CERTIFICATE-DER-FILE
+Usage: owner-call.py sign ID | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD
 Prints one line: "ok" or "error <D-Bus error name>". Exit 0 when that line was printed, 2 on anything else.
 
 Why not busctl: `busctl call` prints "Call failed: <message>" and drops the error name (finding "F91" in docs/findings.md); GLib's D-Bus
@@ -10,6 +10,7 @@ the bus-level policy:
   sign     Sign(id s, mechanism u, hash u, salt_len u, data ay) -> ay   as "(suuuay)": CKM_RSA_PKCS 0x0001, hash 0, salt 0, 32 bytes
   delete   DeleteKey(id s)                                              as "(s)"
   replace  ReplaceCertificate(id s, certificate ay)                     as "(say)"
+  import   ImportP12(id s, p12 ay, password s) -> s                     as "(says)" (F92: the ops-polkit-* cases)
 """
 import sys
 
@@ -29,7 +30,11 @@ def build(argv):
         with open(argv[2], "rb") as f:
             der = f.read()
         return "ReplaceCertificate", GLib.Variant("(say)", (argv[1], der))
-    sys.exit("usage: owner-call.py sign ID | delete ID | replace ID CERTIFICATE-DER-FILE")
+    if len(argv) == 4 and argv[0] == "import":
+        with open(argv[2], "rb") as f:
+            p12 = f.read()
+        return "ImportP12", GLib.Variant("(says)", (argv[1], p12, argv[3]))
+    sys.exit("usage: owner-call.py sign ID | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD")
 
 
 def main():
