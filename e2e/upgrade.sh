@@ -12,6 +12,8 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$here/report.sh"
 # shellcheck source=e2e/upgrade-lib.sh
 source "$here/upgrade-lib.sh"
+# shellcheck source=e2e/upgrade-accts-lib.sh
+source "$here/upgrade-accts-lib.sh"
 : "${WORK:?}" "${MODULE:?}"
 [ $# -eq 2 ] || [ $# -eq 3 ] || fail "usage: upgrade.sh PKG_FROM PKG_TO [ID_PREFIX]"
 pkg=$1
@@ -27,6 +29,19 @@ fmt=$(pkg_format "$next")
 # run the self-test on its own.)
 [ -n "${E2E_NO_SELFTEST:-}" ] || bash "$here/upgrade-selftest.sh" "$fmt" || fail "the upgrade self-test failed"
 manual_step_problems "$here/upgrade.sh" || fail "the upgrade case runs a manual step (see above)"
+
+# The two-account part (F96): upgrade-accts.sh does the work as root and as the two users; E2E_NO_ACCOUNTS is for the tests of this script, which run
+# it with stub tools, never in a guest.
+accts() { [ -z "${E2E_NO_ACCOUNTS:-}" ] || return 0; bash "$here/upgrade-accts.sh" "$@"; }
+# judged WHAT FUNCTION ARGS...: the judgement prints one problem per line and nothing when the evidence is right
+judged() {
+    local what=$1 out
+    shift
+    [ -z "${E2E_NO_ACCOUNTS:-}" ] || return 0
+    out=$("$@")
+    [ -z "$out" ] || { printf '%s\n' "$out" >&2; fail "$what (see above)"; }
+}
+ACC=$WORK/upgrade-acct
 
 user_run() { su -l alice -c "WORK=$WORK MODULE=$MODULE bash /e2e/upgrade-user.sh $1"; }
 
@@ -44,6 +59,9 @@ pid1=$(systemctl show -p MainPID --value custodio)
 bin1=$(unit_binary "$(unit_file)") || fail "cannot read the executable of the unit before the upgrade"
 exe_problems /proc "$pid1" "$bin1" || fail "before the upgrade the service does not run the installed file"
 id1=$(stat -L -c '%d:%i' "/proc/$pid1/exe")
+# Two accounts hold keys, and one certificate is replaced, with the old package, before the state is recorded and anything is installed.
+accts seed || fail "the seed of the two accounts failed"
+judged "the seeded accounts are not as expected" acct_seed_problems "$ACC"
 snapshot_state "$STATE_LINK" > "$WORK/state.before"
 user_run list > "$WORK/listing.before" || fail "the key listing before the upgrade failed"
 uid1=$(id -u custodio):$(id -g custodio)
@@ -75,13 +93,23 @@ snapshot_state "$STATE_LINK" > "$WORK/state.after"
 compare_state "$WORK/state.before" "$WORK/state.after" || fail "the key files changed in the upgrade (see above)"
 [ "$uid1" = "$(id -u custodio):$(id -g custodio)" ] || fail "the uid or gid of the custodio account changed"
 echo "e2e: upgrade: the state directory is identical: $(grep -c . "$WORK/state.after") entries with sha256, owner and mode"
+if [ -z "${E2E_NO_ACCOUNTS:-}" ]; then
+    read -r uid_a uid_b uid_c <<< "$(accts uids)"
+    judged "the keys are not under their owners' directories" acct_state_problems "$WORK/state.after" "$uid_a" "$uid_b" "$uid_c"
+fi
 case_run "$id-state-unchanged"
 
 user_run list > "$WORK/listing.after" || fail "the key listing after the upgrade failed"
 compare_listing "$WORK/listing.before" "$WORK/listing.after" || fail "the keys listed after the upgrade differ (see above)"
+accts collect || fail "the lists after the upgrade failed"
+judged "the accounts do not list their own keys, or the certificates are wrong" acct_after_problems "$ACC"
 case_run "$id-keys-listed"
 
 user_run sign || fail "signing after the upgrade failed"
+accts sign || fail "the signatures of the two accounts failed"
+judged "alice's signatures are wrong" acct_sign_problems "$ACC" alice
+judged "bob's signatures are wrong" acct_sign_problems "$ACC" bob
+accts cleanup || fail "bob's keys could not be deleted at the end of the case"
 case_run "$id-signs-with-polkit"
 # END upgrade-case
 case_run "$id-no-manual-step"
