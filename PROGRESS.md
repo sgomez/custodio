@@ -358,3 +358,8 @@ with an empty context.
 - Fixed NEXT_FINDINGS: (1) `a_replaced_certificate_is_exposed_on_the_next_call` now signs (`sign:ec`) after the replace and verifies the ECDSA signature over `[7; 32]` with the key in `cert-p256-recert.der` (`verify_p256_prehash`). (2) Stale doc paragraph above `error_table()` removed. Note 3 accepted by the evaluator.
 - Product code unchanged, so `mutants-diff F85` still has no mutants. Evidence: `just quick` exit 0.
 - Next session should: nothing for F85.
+
+### 2026-11-02 — F85 — attempt 3
+- Fixed NEXT_FINDINGS: `two_uids_see_only_their_own_keys` no longer compares the child's whole stdout (it held the runner's timing). It compares only the `NOTOKEN`/`SIG`/`SIGERR` scenario lines of the two runs, without the id, and asserts they are all `NOTOKEN`.
+- Product code unchanged, so `mutants-diff F85` still has no mutants. Evidence: `documented` tests 3 runs green; `just quick` exit 0.
+- Next session should: nothing for F85.

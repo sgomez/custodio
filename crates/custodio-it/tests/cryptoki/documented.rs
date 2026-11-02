@@ -93,7 +93,22 @@ fn two_uids_see_only_their_own_keys() -> TestResult {
     let (_, other) = f.run_as(UID_A, "sign:b")?;
     let (_, nobody) = f.run_as(UID_A, "sign:nobody")?;
     assert!(other.contains("NOTOKEN b"), "{other}");
-    assert_eq!(other.replace('b', "x"), nobody.replace("nobody", "x"));
+    // Compare only the scenario lines, without the id (the runner's summary has a timing).
+    let scenario = |out: &str| -> Vec<(String, Vec<String>)> {
+        ["NOTOKEN", "SIG", "SIGERR"]
+            .into_iter()
+            .flat_map(|tag| {
+                lines(out, tag).map(move |l| {
+                    let rest = l.iter().skip(1).map(|s| (*s).to_owned()).collect();
+                    (tag.to_owned(), rest)
+                })
+            })
+            .collect()
+    };
+    let (other_lines, nobody_lines) = (scenario(&other), scenario(&nobody));
+    assert_eq!(other_lines, nobody_lines, "{other}\n{nobody}");
+    assert!(other_lines.iter().any(|(t, _)| t == "NOTOKEN"), "{other}");
+    assert!(other_lines.iter().all(|(t, _)| t == "NOTOKEN"), "{other}");
     // Its own works.
     let (_, own) = f.run_as(UID_A, "sign:a")?;
     assert!(own.contains("SIG a "), "{own}");
