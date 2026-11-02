@@ -490,3 +490,8 @@ with an empty context.
 - Test: `scripts/test-docs-api.sh` (in `test-scripts`) + `scripts/docs_api_run.py` (static checks and runner) + test-only server `crates/custodio-it/examples/docs_api_server.rs` (real `Custodio` with real `BusCredentials`, a polkit fake driven by a `mode` file and an `asked` log; not shipped because `custodiod` is wired to the system bus, real polkit and journal). The runner changes only `--system` → `--address=` through a shell function; the `Sign` example hashes with `openssl dgst`, converts `r||s` to DER and verifies against the certificate `ListKeys` returned. 16 negative controls on broken copies, all red. README links the document.
 - Evidence: `just quick` exit 0; `scripts/test-docs-api.sh` exit 0; `just api-contract` exit 0.
 - Next session should: nothing for F98.
+
+### 2026-11-02 — F98 — attempt 2
+- Fixed NEXT_FINDINGS: the runner (`scripts/docs_api_run.py`) now pairs each variant with its message from `crates/custodiod/src/error.rs` (`Self::<Name> => "<msg>"`) and requires the document's message for a name to equal it. New negative control "two error messages swapped" is red. Contract amendment text extended accordingly.
+- Evidence: `scripts/test-docs-api.sh` ok (all controls), `just quick` ok, `just api-contract` ok.
+- Next session should: nothing for F98.

@@ -160,6 +160,7 @@ def static(doc_path):
 
     # Errors: a "when" sentence and the message of every name; the message is a string of the service.
     src = read("crates/custodiod/src/error.rs")
+    src_msgs = dict(re.findall(r'Self::(\w+) => "([^"]*)"', src))  # variant -> message(), paired by name
     if not errs:
         bad.append("no `- error` lines")
     for name, text in errs.items():
@@ -168,8 +169,9 @@ def static(doc_path):
             bad.append(f"error {name} has no explanation of when it occurs")
         if name not in msgs:
             bad.append(f"error {name} has no Message `...`")
-        elif f'"{msgs[name]}"' not in src:
-            bad.append(f"error {name}: message `{msgs[name]}` is not a message of crates/custodiod/src/error.rs")
+        elif src_msgs.get(name) != msgs[name]:
+            bad.append(f"error {name}: message `{msgs[name]}` is not the message of that variant in "
+                       f"crates/custodiod/src/error.rs (`{src_msgs.get(name)}`)")
     if len(set(msgs.values())) != len(msgs):
         bad.append("two errors share a message, so busctl cannot tell them apart")
 

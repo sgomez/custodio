@@ -97,6 +97,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "compatibility link removed" static sed 's/audit.md#compatibility-rule/audit.md/'
     control "example action changed" run sed '0,/action=com.rfirma.custodio.sign/s//action=com.rfirma.custodio.delete-certificate/'
     control "documented result changed" run sed '0,/^s "ecdsa-p256"$/s//s "rsa2048"/'
+    control "two error messages swapped" static sed 's/Message `not authorized`/Message `@@`/; s/Message `no such key`/Message `not authorized`/; s/Message `@@`/Message `no such key`/'
     control "error name altered" run sed '0,/error=PolkitDenied/s//error=NoSuchKey/'
     control "example removed for one operation" run drop_blocks 'op=ReplaceCertificate'
     control "command broken" run sed '0,/ ListKeys$/s// ListKeyz/'
