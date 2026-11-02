@@ -1745,3 +1745,6 @@ Acceptance 16: pass. No AVC from the start of the run (`ausearch -m AVC,USER_AVC
   in F34; the selector named that directory. After signing it asks "¿Quiere recordar esta firma cada vez que guarde?": answered No.
 - The second account was checked from the command line in its own session, not from a graphical login: its Firefox and LibreOffice
   were not opened. Both load Custodio through the same p11-kit-proxy whose listing in that account is empty.
+- A person then repeated §18 by hand on the same VM, with the same package (keys deleted and imported again, Firefox, LibreOffice
+  with two new documents, journal and AVC check, and the second account in a graphical login: its Firefox and LibreOffice offered no
+  Custodio certificate) and answering each dialog: every dialog, result and journal entry matched the table above.
