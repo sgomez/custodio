@@ -145,6 +145,13 @@ if phase_runs appid; then
     WORK=$work MODULE=$MODULE bash /e2e/appid-run.sh || fail "appid-run.sh failed"
 fi
 
+# The CLI cases (F97): alice lists and deletes with the CLI on a pseudo-terminal, a fresh account (carol) imports and deletes through pkttyagent with no agent registered,
+# PAM checking her password for a while. After appid and before the upgrade, for the same reasons; every key is deleted by its owner, the PAM file is restored and
+# carol removed (the trap of cli-run.sh), so the state and the counts are as before.
+if phase_runs cli; then
+    WORK=$work MODULE=$MODULE bash /e2e/cli-run.sh || fail "cli-run.sh failed"
+fi
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

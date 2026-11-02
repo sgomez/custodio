@@ -68,6 +68,15 @@ appid-hostile
 appid-outcome
 appid-bound
 appid-queries
+cli-list-keys
+cli-list-none
+cli-delete-confirms
+cli-delete-declined-confirmation
+cli-delete-declined-polkit
+cli-no-agent-precondition
+cli-import-pkttyagent
+cli-import-pkttyagent-wrong-password
+cli-delete-pkttyagent
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged
