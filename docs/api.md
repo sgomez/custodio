@@ -72,6 +72,20 @@ and a call fails as `ServiceUnknown`, never as `AccessDenied`. A service that is
 look the same through the proxy, so the client cannot tell them apart; when the name is missing from the list inside
 flatpak, tell the person both causes and name the permission as the one to check.
 
+## Calling with gdbus
+
+The `org.freedesktop.Platform` flatpak runtime ships `gdbus` and `dbus-send`, not `busctl` (`docs/findings.md`, F102). With
+`gdbus` the detection and a `Sign` are (`gdbus` reads the argument types from introspection; `$digest` is the GVariant
+text of the bytes, such as `[byte 0x00, byte 0x00, …]`):
+
+```sh
+gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.NameHasOwner com.rfirma.Custodio1
+gdbus call --system --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.ListActivatableNames
+gdbus call --system --dest com.rfirma.Custodio1 --object-path /com/rfirma/Custodio1 --method com.rfirma.Custodio1.Sign p256 4161 0 0 "$digest"
+```
+
+They print `(true,)`, a tuple of an array of names, and `([byte 0x…, …],)` with the signature's bytes.
+
 ## Properties
 
 None.

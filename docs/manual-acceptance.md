@@ -616,31 +616,35 @@ another key). Then the `<DER>` argument forms of the commands below are the ones
 
 A test application in a flatpak calls Custodio. The manifest the repository ships is
 `packaging/flatpak/com.rfirma.CustodioTest.json`; its app-id is `com.rfirma.CustodioTest` and its only extra permission is
-`--system-talk-name=com.rfirma.Custodio1` (the permission "From a flatpak" in `docs/api.md` names). None of the
-commands here were run when the page was written: they are all **unverified**, including whether the runtime
-ships `busctl`; if it does not, write that down as a failure of acceptance 15 and stop.
+`--system-talk-name=com.rfirma.Custodio1` (the permission "From a flatpak" in `docs/api.md` names). The runtime
+has no `busctl`, so the application and the steps here use `gdbus`, as "From a flatpak" in `docs/api.md` shows.
 
-Prepare: install `flatpak` and `flatpak-builder` and the `org.freedesktop.Platform` and `org.freedesktop.Sdk`
-24.08 runtimes (**unverified** package names), and import the key `p256` on the host as in section 3 (`custodio import`).
+Prepare: install `flatpak` and `flatpak-builder` (distribution packages of those names on Fedora), the runtimes from
+flathub, and import the key `p256` on the host as in section 3 (`custodio import`).
 
 ```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 flatpak-builder --user --install --force-clean build-dir packaging/flatpak/com.rfirma.CustodioTest.json
 flatpak run com.rfirma.CustodioTest
 flatpak run --command=sh com.rfirma.CustodioTest
 ```
 
+If `flatpak-builder` stops with `Failure spawning rofiles-fuse` (seen on fedora44), run it again with
+`--disable-rofiles-fuse`, after removing `.flatpak-builder` (`fusermount3 -u` any mount left in it), and write that down.
+
 1. Detection. The first command runs the detection steps of the "Detection" part of `docs/api.md` from inside the
-   sandbox (the application prints the result of `NameHasOwner` and `ListActivatableNames`). Expected: `b true` and the
-   name listed, as on the host. Write down the output. A `false` and a missing name mean the permission is not
+   sandbox (the application prints the result of `NameHasOwner` and `ListActivatableNames`). Expected: `(true,)` and
+   the name listed, as on the host. Write down the output. A `(false,)` and `not listed` mean the permission is not
    in effect ("From a flatpak" in `docs/api.md`).
 2. In the shell of the third command, sign:
 
    ```sh
-   digest=$(head -c 32 /dev/zero | od -An -v -tu1)
-   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 Sign suuuay p256 4161 0 0 32 $digest
+   digest="[$(printf 'byte 0x00, %.0s' $(seq 31))byte 0x00]"
+   gdbus call --system --dest com.rfirma.Custodio1 --object-path /com/rfirma/Custodio1 --method com.rfirma.Custodio1.Sign p256 4161 0 0 "$digest"
    ```
 3. The polkit dialog shows for the action `com.rfirma.custodio.sign`. Write down what it shows, approve it, and
-   write down the result (`ay 64`).
+   write down the result (`([byte 0x…, …],)` with 64 bytes).
 4. Only after the dialog, an administrator reads the journal. The base query of `docs/audit.md`:
 
    ```sh
@@ -657,9 +661,9 @@ write down the whole entry (without key material).
 
 | # | Step | Expected | Seen | Result (pass/fail, notes) |
 |---|---|---|---|---|
-| 1 | Detection inside the flatpak | `b true`, name listed | | |
+| 1 | Detection inside the flatpak | `(true,)`, name listed | | |
 | 2 | Sign: dialog action | `com.rfirma.custodio.sign` | | |
-| 3 | Sign: result | `ay 64` | | |
+| 3 | Sign: result | 64 bytes | | |
 | 4 | Journal: app-id | `com.rfirma.CustodioTest`, state `read` | | |
 | 5 | Journal: uid | `id -u` of the person | | |
 | 6 | Journal: pid | the proxy's, not the application's | | |

@@ -90,20 +90,21 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
     m=17; part=$p17
     local lines_det lines_call lines_dlg lines_jr
     lines_det=$(grep -nE 'docs/api\.md.*Detection|Detection.*docs/api\.md' <<< "$part" | head -n 1 | cut -d: -f1 || true)
-    lines_call=$(fenced_n "$part" | grep -E 'busctl .* (Sign|ImportP12)( |$)' | head -n 1 | cut -d: -f1 || true)
+    lines_call=$(fenced_n "$part" | grep -E '(busctl|gdbus) .*[ .](Sign|ImportP12)( |$)' | head -n 1 | cut -d: -f1 || true)
     lines_dlg=""
     if [ -n "$lines_call" ]; then
         lines_dlg=$(awk -v c="$lines_call" 'NR > c && /com\.rfirma\.custodio\.(sign|import-certificate)/ { print NR; exit }' <<< "$part")
     fi
     lines_jr=$(grep -nE 'journalctl|CUSTODIO_APP_ID' <<< "$part" | head -n 1 | cut -d: -f1 || true)
     [ -n "$lines_det" ] || bad "$m: no reference to the docs/api.md 'Detection' steps"
-    [ -n "$lines_call" ] || bad "$m: no busctl Sign or ImportP12 step"
+    [ -n "$lines_call" ] || bad "$m: no busctl or gdbus Sign or ImportP12 step"
     [ -n "$lines_dlg" ] || bad "$m: no polkit dialog/action line after the call"
     [ -n "$lines_jr" ] || bad "$m: no journal step"
     if [ -n "$lines_det$lines_call$lines_dlg$lines_jr" ] && [ -n "$lines_det" ] && [ -n "$lines_call" ] && [ -n "$lines_dlg" ] && [ -n "$lines_jr" ]; then
         { [ "$lines_det" -lt "$lines_call" ] && [ "$lines_call" -lt "$lines_dlg" ] && [ "$lines_dlg" -lt "$lines_jr" ]; } ||
             bad "$m: the order must be detection ($lines_det), call ($lines_call), dialog ($lines_dlg), journal ($lines_jr)"
     fi
+    fenced <<< "$part" | grep -q 'busctl' && bad "$m: busctl (the runtime lacks it)"
     need 'CUSTODIO_APP_ID_STATE=read' "no CUSTODIO_APP_ID_STATE=read"
     need 'CUSTODIO_UID' "no CUSTODIO_UID"
     need 'id -u' "no id -u for the person's uid"
@@ -112,7 +113,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
     need 'failure of acceptance 15' "an undetermined or missing app-id is not recorded as a failure of acceptance 15"
     need 'proxy' "no note that the pid is the proxy's"
     need '^\| #.*Result' "no table to record the observations"
-    # The manifest: named by the section, exists, parses, grants only the talk permission, runs busctl or gdbus, same app-id.
+    # The manifest: named by the section, exists, parses, grants only the talk permission, runs gdbus and not busctl, same app-id.
     local mpath
     mpath=$(grep -oE 'packaging/flatpak/[A-Za-z0-9_.-]+\.json' <<< "$part" | head -n 1 || true)
     [ -n "$mpath" ] || bad "$m: the section names no manifest path"
@@ -134,7 +135,8 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
             [ -n "$ids" ] || bad "$m: the section gives no CUSTODIO_APP_ID=<app-id> to look for"
             [ "$ids" = "$mid" ] || bad "$m: the app-id to look for ('$ids') is not the manifest's ('$mid')"
         fi
-        grep -Eq 'busctl|gdbus' "$manifest" || bad "$m: the manifest runs neither busctl nor gdbus"
+        grep -q 'gdbus' "$manifest" || bad "$m: the manifest does not run gdbus"
+        grep -q 'busctl' "$manifest" && bad "$m: the manifest runs busctl"
     fi
     # F67: no deviation, so the page must demand the real app-id.
     if grep -q '^## F67' "$dev"; then
@@ -268,12 +270,13 @@ ctl_api 'no error= in the examples' 's/ error=[A-Za-z0-9]+//'
 ctl_api 'trailing digits lost in the error list' 's/error=WrongPasswordOrBadP12/error=WrongPasswordOrBadP/'
 
 # Acceptance 15: the commands, the order, the journal text, the F67 branch.
-in17 'method name altered in 17' 's/ Sign suuuay / Sig suuuay /'
-in17 'signature altered in 17' 's/ Sign suuuay / Sign suuay /'
-in17 'destination altered in 17' 's/busctl --system call com\.rfirma\.Custodio1 /busctl --system call com.rfirma.Custodio2 /'
+in17 'method name altered in 17' 's/\.Custodio1\.Sign /.Custodio1.Sig /'
+in17 'arguments altered in 17' 's/\.Sign p256 4161 0 0 /.Sign p256 4161 0 /'
+in17 'destination altered in 17' 's/gdbus call --system --dest com\.rfirma\.Custodio1 /gdbus call --system --dest com.rfirma.Custodio2 /'
+in17 'busctl Sign in 17' 's/gdbus (call --system --dest com\.rfirma)/busctl \1/'
 in17 'action id altered in 17' 's/com\.rfirma\.custodio\.sign/com.rfirma.custodio.sing/g'
 in17 'no dialog line' 's/com\.rfirma\.custodio\.(sign|import-certificate)/the action/g'
-in17 'no Sign step' 's/ Sign suuuay / ListKeys /'
+in17 'no Sign step' 's/\.Custodio1\.Sign /.Custodio1.ListKeys /'
 in17 'journal before the dialog' '/Detection.*docs\/api\.md/ s/$/\njournalctl x CUSTODIO_APP_ID=com.rfirma.CustodioTest/'
 in17 'no CUSTODIO_APP_ID_STATE=read' 's/CUSTODIO_APP_ID_STATE=read/CUSTODIO_APP_ID_STATE=seen/g'
 in17 'invented field' 's/CUSTODIO_UID/CUSTODIO_USER/g'
@@ -291,7 +294,8 @@ ctl_manifest 'permission removed' 's/--system-talk-name=com\.rfirma\.Custodio1/-
 ctl_manifest 'talk-name instead' 's/--system-talk-name=/--talk-name=/'
 ctl_manifest 'wide permission added' 's/("--system-talk-name=com\.rfirma\.Custodio1")/\1, "--socket=system-bus"/'
 ctl_manifest 'invalid JSON' 's/^\{/{{/'
-ctl_manifest 'no busctl or gdbus' 's/busctl/true/g; s/gdbus/true/g'
+ctl_manifest 'no gdbus' 's/gdbus/true/g'
+ctl_manifest 'busctl in the manifest' 's/gdbus call/busctl call/'
 ctl_manifest 'other app-id (id key only)' 's/^( *"(app-)?id": *")[^"]*/\1org.example.Other/'
 printf '## F67 — app-id\nx\n' > "$tmp/dev"; dv=$tmp/dev; d=$DOC; mf=$MANIFEST
 fails 'F67 deviation with the app-id demanded'; dv=$DEVIATIONS
