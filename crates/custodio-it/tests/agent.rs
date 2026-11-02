@@ -45,8 +45,21 @@ struct Kit {
     dir: tempfile::TempDir,
 }
 
+/// Makes this test process a child subreaper, once. A descendant orphaned by the CLI then
+/// becomes this process's child instead of PID 1's: if the CLI did not reap the agent, the agent
+/// stays a zombie (`/proc/<pid>` exists) and `gone` fails. Without it PID 1 would reap it.
+fn subreaper() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: `prctl` with an integer argument; it only changes this process's attributes.
+        let rc = unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) };
+        assert_eq!(rc, 0, "PR_SET_CHILD_SUBREAPER");
+    });
+}
+
 impl Kit {
     fn new() -> Result<Self, Box<dyn Error>> {
+        subreaper();
         let dir = tempfile::tempdir()?;
         let bin = dir.path().join("bin");
         fs::create_dir(&bin)?;
@@ -181,8 +194,6 @@ fn delete_starts_the_agent_for_the_cli_process_only_after_the_answer() -> TestRe
     assert_eq!(kit.pids(), [agent]);
     assert_eq!(rig.polkit_asked(), [DELETE_ACTION_ID.to_owned()]);
     assert_eq!(kit.lines("args"), expected_args(run.child.id())?);
-    // The agent is a live child of the CLI, not a zombie, while the CLI runs.
-    assert_ne!(state(agent)?, "Z");
     signal(run.child.id(), libc::SIGINT);
     run.finish()?;
     wait_until("the agent to be gone", || gone(agent))
@@ -204,6 +215,7 @@ fn import_starts_the_agent_for_the_cli_process_only_after_the_password() -> Test
     run.send(format!("{PASSWORD}\n").as_bytes())?;
     let agent = kit.wait_started()?;
     wait_until("polkit to be asked", || !rig.polkit_asked().is_empty())?;
+    assert_eq!(kit.pids(), [agent]);
     assert_eq!(kit.lines("args"), expected_args(run.child.id())?);
     signal(run.child.id(), libc::SIGINT);
     let done = run.finish()?;
@@ -214,7 +226,7 @@ fn import_starts_the_agent_for_the_cli_process_only_after_the_password() -> Test
 #[test]
 fn no_agent_without_a_terminal_as_standard_input() -> TestResult {
     // A controlling terminal for the prompt, but standard input is a pipe, then a file.
-    for stdin in [Stdin::Pipe(b""), Stdin::File] {
+    for stdin in [Stdin::Pipe(b"no\n"), Stdin::File] {
         let rig = rig_with_key(Polkit::Approve)?;
         let kit = Kit::new()?;
         let env = kit.env("ok", false);
@@ -356,7 +368,10 @@ fn a_killed_cli_leaves_no_agent_running() -> TestResult {
     assert!(!gone(agent));
     signal(cli, libc::SIGKILL);
     run.finish()?;
-    wait_until("the agent to be gone", || gone(agent))
+    // Nobody is left to reap the agent: gone, or a zombie under this subreaper.
+    wait_until("the agent to be gone", || {
+        gone(agent) || state(agent).is_ok_and(|s| s == "Z")
+    })
 }
 
 #[test]

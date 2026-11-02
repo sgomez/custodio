@@ -405,3 +405,9 @@ with an empty context.
 - Notes: the "no secrets" test (`a_failed_import_shows_no_secret`) checks the failed run; the success reminder of `import` prints the file path by design (earlier feature), so it is not asserted absent there. The exit status after SIGINT/SIGTERM/SIGHUP is 130 for all three (`ctrlc` does not say which).
 - Evidence: see the commit; `just quick` run once at the end.
 - Next session should: nothing for F89.
+
+### 2026-11-02 — F89 — attempt 2
+- Fixed NEXT_FINDINGS: (1) `agent.rs` makes the test process a child subreaper (`subreaper()`, `PR_SET_CHILD_SUBREAPER`, once, from `Kit::new`), so an agent the CLI did not reap stays a zombie under the test and `gone` fails. The useless `state != "Z"` check before SIGINT is removed. `a_killed_cli_leaves_no_agent_running` accepts "gone or `Z`" (no one is left to reap). (2) `Stdin::File` is now a real temp file in the rig directory (`stdin_file` in `delete/run.rs`). (3) the import test asserts `kit.pids() == [agent]`. (4) the pipe and the file hold `no\n` while the pty answer is `yes`, so a read of stdin would decline and fail the test.
+- Negative control (red, reverted): in `crates/custodio-cli/src/agent/process.rs` `stop_agent`, `let _ = child.wait();` commented out (the `kill()` left in): 6 of 11 agent tests fail (`the_agent_is_gone_after_success_and_after_failure`, `an_interruption_...`, `delete_starts_...`, `import_starts_...`, `the_call_waits_...`, `an_agent_that_ends_...`). Restored; all 11 green.
+- Evidence: `just quick` exit 0.
+- Next session should: nothing for F89.

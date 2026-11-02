@@ -70,8 +70,15 @@ pub enum Stdin<'a> {
     Pipe(&'a [u8]),
     /// The slave end of the pseudo-terminal (a terminal even without a controlling terminal).
     Tty,
-    /// A regular file.
+    /// A regular file (in the rig directory) holding `no`.
     File,
+}
+
+/// A regular file in the rig directory holding `no`, opened for reading.
+fn stdin_file(rig: &Rig) -> io::Result<File> {
+    let path = rig.dir.path().join("stdin.txt");
+    std::fs::write(&path, b"no\n")?;
+    File::open(path)
 }
 
 impl Run {
@@ -158,7 +165,7 @@ impl Run {
             .stdin(match stdin {
                 Stdin::Pipe(_) => Stdio::piped(),
                 Stdin::Tty => Stdio::from(slave_keep.as_ref().ok_or("no terminal")?.try_clone()?),
-                Stdin::File => Stdio::from(File::open("/dev/null")?),
+                Stdin::File => Stdio::from(stdin_file(rig)?),
             })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
