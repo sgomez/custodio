@@ -216,7 +216,7 @@
         "F80"
       ],
       "verify": "just quick && just fuzz-build && just lint-fuzz && just fuzz-smoke",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F85",
