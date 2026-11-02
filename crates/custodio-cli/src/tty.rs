@@ -1,12 +1,12 @@
 //! Password prompt on the controlling terminal (`/dev/tty`), with echo off.
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 
 use rustix::termios::{LocalModes, OptionalActions, tcgetattr, tcsetattr};
 use secrecy::SecretString;
 
-use crate::{PasswordPrompt, read_secret_line};
+use crate::{Confirmation, PasswordPrompt, read_secret_line};
 
 /// Reads from `/dev/tty`, not from stdin, argv or the environment.
 pub struct Terminal;
@@ -18,6 +18,27 @@ impl PasswordPrompt for Terminal {
             prompt,
         )
     }
+}
+
+impl Confirmation for Terminal {
+    fn answer(&mut self, question: &str) -> io::Result<String> {
+        question_on(
+            &mut OpenOptions::new().read(true).write(true).open("/dev/tty")?,
+            question,
+        )
+    }
+}
+
+/// Writes `question` to the terminal `tty` and reads one line, echoed. A read that fails or
+/// finds the end of input gives an empty string: that declines.
+fn question_on(tty: &mut File, question: &str) -> io::Result<String> {
+    tty.write_all(question.as_bytes())?;
+    tty.flush()?;
+    let mut line = String::new();
+    if BufReader::new(&*tty).read_line(&mut line).is_err() {
+        line.clear();
+    }
+    Ok(line)
 }
 
 /// Writes `prompt` to the terminal `tty`, reads one line with echo off and restores the settings.

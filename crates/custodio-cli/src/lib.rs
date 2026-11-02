@@ -10,23 +10,28 @@ use custodio_client::MAX_P12_LEN;
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
+pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
 
 pub mod bus;
+pub mod delete;
 pub mod failure;
 pub mod list;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
        custodio list\n\
-The password is asked on the terminal; it is never taken from arguments or the environment.";
+       custodio delete <key id>\n\
+The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
+arguments or the environment.";
 
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Import(ImportArgs),
     List,
+    Delete(String),
 }
 
 /// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
@@ -41,6 +46,13 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
             Ok(Command::List)
         } else {
             Err(ArgError::Usage)
+        };
+    }
+    if it.peek().map(String::as_str) == Some("delete") {
+        it.next();
+        return match (it.next(), it.next()) {
+            (Some(id), None) if !id.starts_with('-') => Ok(Command::Delete(id)),
+            _ => Err(ArgError::Usage),
         };
     }
     parse_args(it).map(Command::Import)
@@ -203,6 +215,7 @@ pub enum CliError {
     SystemBus(String),
     Import(ImportFailure),
     List(ListFailure),
+    Delete(DeleteFailure),
 }
 
 impl fmt::Display for CliError {
@@ -212,6 +225,7 @@ impl fmt::Display for CliError {
             Self::SystemBus(why) => write!(f, "custodio: cannot reach the system bus: {why}"),
             Self::Import(e) => write!(f, "custodio: {e}"),
             Self::List(e) => write!(f, "custodio: {e}"),
+            Self::Delete(e) => write!(f, "custodio: {e}"),
         }
     }
 }
@@ -224,7 +238,9 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
         Err(CliError::Args(_)) => 2,
-        Err(CliError::SystemBus(_) | CliError::Import(_) | CliError::List(_)) => 1,
+        Err(
+            CliError::SystemBus(_) | CliError::Import(_) | CliError::List(_) | CliError::Delete(_),
+        ) => 1,
     }
 }
 

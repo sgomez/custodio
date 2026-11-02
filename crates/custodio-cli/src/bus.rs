@@ -1,10 +1,11 @@
-//! `ImportP12` and `ListKeys` over D-Bus.
+//! `ImportP12`, `ListKeys` and `DeleteKey` over D-Bus.
 
 use custodio_client::{BUS_NAME, OBJECT_PATH};
 use secrecy::{ExposeSecret, SecretString};
 use zbus::{Connection, block_on};
 
 use crate::Importer;
+use crate::delete::KeyDeleter;
 use crate::failure::ServiceFailure;
 use crate::list::{KeyEntry, KeyLister};
 
@@ -70,6 +71,20 @@ impl KeyLister for DbusImporter {
                 certificate,
             })
             .collect())
+    }
+}
+
+impl KeyDeleter for DbusImporter {
+    fn delete_key(&self, id: &str) -> Result<(), ServiceFailure> {
+        block_on(self.connection.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "DeleteKey",
+            &(id,),
+        ))
+        .map(|_| ())
+        .map_err(|e| failure_of(&e))
     }
 }
 

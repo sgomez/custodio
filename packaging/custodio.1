@@ -1,12 +1,15 @@
 .TH CUSTODIO 1 "" "custodio" "User Commands"
 .SH NAME
-custodio \- import and list keys of the custodio signing service
+custodio \- import, list and delete keys of the custodio signing service
 .SH SYNOPSIS
 .B custodio import
 [\fB\-\-id\fR \fIkey id\fR]
 .I file.p12
 .br
 .B custodio list
+.br
+.B custodio delete
+.I key id
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -35,6 +38,23 @@ Only your own keys are listed.
 If you have none, it prints a sentence saying so and exits with status 0.
 .B list
 takes no arguments and does not ask for authorization: it never calls polkit.
+.PP
+.B delete
+deletes your key
+.IR "key id" ,
+together with its certificate.
+Before it calls the service it asks on the terminal and names the key.
+The question says that the key cannot be recovered.
+Only the answer \fBy\fR or \fByes\fR continues; anything else, an empty answer and the end of input included,
+cancels: nothing is deleted and the exit status is 1.
+There is no option, environment variable or configuration that skips the confirmation.
+It is read from the controlling terminal, never from standard input,
+so without a terminal
+.B delete
+refuses and deletes nothing.
+After you confirm, polkit asks for authorization as well; if it is refused, nothing is deleted.
+.B delete
+takes exactly one argument, the key id, and no options.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -44,7 +64,9 @@ also when there are no keys.
 .TP
 .B 1
 The command failed: the service or the system bus could not be reached, the service answered with an error
-(whose message is shown on standard error), or a certificate could not be read.
+(whose message is shown on standard error), a certificate could not be read, you did not confirm a
+.BR delete ,
+or there is no terminal to confirm it on.
 .TP
 .B 2
 The command line is wrong.

@@ -55,3 +55,41 @@ fn the_exit_status_section_has_all_three_codes() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+
+#[test]
+fn the_synopsis_has_custodio_delete() -> Result<(), Box<dyn Error>> {
+    let page = page()?;
+    assert!(section(&page, "SYNOPSIS")?.contains(".B custodio delete\n.I key id"));
+    Ok(())
+}
+
+#[test]
+fn delete_is_documented_with_its_confirmation_terminal_and_polkit() -> Result<(), Box<dyn Error>> {
+    let page = page()?;
+    let text = section(&page, "DESCRIPTION")?;
+    for fact in [
+        ".B delete\n",
+        "asks on the terminal",
+        "cannot be recovered",
+        "\\fBy\\fR or \\fByes\\fR",
+        "There is no option, environment variable or configuration that skips the confirmation",
+        "never from standard input",
+        "without a terminal",
+        "refuses and deletes nothing",
+        "polkit asks for authorization as well",
+        "takes exactly one argument",
+    ] {
+        assert!(text.contains(fact), "DESCRIPTION lacks: {fact}");
+    }
+    Ok(())
+}
+
+#[test]
+fn the_exit_status_section_covers_delete() -> Result<(), Box<dyn Error>> {
+    let page = page()?;
+    let text = section(&page, "EXIT STATUS")?;
+    for fact in ["you did not confirm", "no terminal to confirm it on"] {
+        assert!(text.contains(fact), "EXIT STATUS lacks: {fact}");
+    }
+    Ok(())
+}

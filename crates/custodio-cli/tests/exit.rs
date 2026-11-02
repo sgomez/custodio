@@ -5,7 +5,8 @@ use std::io;
 use std::process::{Command, Output};
 
 use custodio_cli::{
-    ArgError, CliError, ImportFailure, ListFailure, ServiceFailure, exit_status, finish,
+    ArgError, CliError, DeleteFailure, ImportFailure, ListFailure, ServiceFailure, exit_status,
+    finish,
 };
 
 fn every_failure() -> Vec<CliError> {
@@ -16,6 +17,9 @@ fn every_failure() -> Vec<CliError> {
         CliError::Import(ImportFailure::Password(io::Error::other("no terminal"))),
         CliError::List(ListFailure::Unreadable(2)),
         CliError::List(ListFailure::Output(io::Error::other("closed"))),
+        CliError::Delete(DeleteFailure::Declined),
+        CliError::Delete(DeleteFailure::NoTerminal),
+        CliError::Delete(DeleteFailure::Output(io::Error::other("closed"))),
     ];
     for name in [
         "com.rfirma.Custodio1.Error.InvalidArgs",
@@ -36,6 +40,9 @@ fn every_failure() -> Vec<CliError> {
             ServiceFailure::from_name(name),
         )));
         all.push(CliError::List(ListFailure::Service(
+            ServiceFailure::from_name(name),
+        )));
+        all.push(CliError::Delete(DeleteFailure::Service(
             ServiceFailure::from_name(name),
         )));
     }
@@ -92,6 +99,11 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
         &["import", "my cert.p12"],
         &["list", "extra"],
         &["list", "--id", "x"],
+        &["delete"],
+        &["delete", "a", "b"],
+        &["delete", "--yes", "a"],
+        &["delete", "-y", "a"],
+        &["delete", "--force", "a"],
     ] {
         let out = run(args)?;
         assert_eq!(out.status.code(), Some(2), "{args:?}");
