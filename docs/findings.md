@@ -1619,3 +1619,40 @@ Probed in the debian13 guest (polkit 126, `just e2e-cases debian13 'cli-*'`), as
 - verified: a D-Bus `ImportP12` from the same session with no terminal is refused with `PolkitDenied` (no agent registered), the precondition of those cases.
 - verified: the service leaves an empty directory `<uid>` in its state directory for an account that had keys and deleted them; the step removes carol's (`rmdir`)
   with the account.
+
+## F101: M3 acceptance 14 by hand on ubuntu2604, the client API with busctl (2026-11-02)
+
+Machine: labvm `ubuntu2604` (libvirt), Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic, GNOME on Wayland (autologin, GNOME Shell's polkit agent),
+dbus-daemon 1.16.2 (no dbus-broker), polkit 127 (`polkitd 127-2ubuntu1.1`), systemd 259.5, busctl from systemd 259, OpenSSL 3.5.5. Package
+`custodio_0.1.0-1_amd64.deb` from `just package` at `e5a57af` (sha256 `ec52eebad0e1d16ac9d98cfa29bcddf806f749c1550cb57471d44b07ec43306a`),
+installed with `apt-get install ./…`. Followed `docs/manual-acceptance.md` §16 and `docs/api.md` only; files from the six `openssl` commands
+of "Examples". Every command ran in the desktop session (`labvm-gui`), as uid 1000.
+
+| # | Dialog seen | Error or result seen | Result |
+|---|---|---|---|
+| 1 | none | service not yet started (bus activation): `NameHasOwner` `b false`, listed in `ListActivatableNames`, `StartServiceByName` `u 1`, then `b true`, and `u 2` | pass |
+| 2 | none | `a(ssay) 0` | pass |
+| 3 | "Authentication is required to import a certificate and key into Custodio", cancelled | `Call failed: not authorized` | pass |
+| 4 | the import dialog, approved | `Call failed: wrong password or unreadable .p12 file` | pass |
+| 5 | none | `Call failed: invalid arguments` | pass |
+| 6 | the import dialog, approved | `s "ecdsa-p256"` | pass |
+| 7 | none | `Call failed: a key with this id already exists` | pass |
+| 8 | none | `a(ssay) 1 "demo" "ecdsa-p256" 375 …` | pass |
+| 9 | "Authentication is required to replace a certificate held by Custodio", approved | `Call failed: certificate does not match the key` | pass |
+| 10 | the replace dialog, approved | no output; the listed certificate (382 bytes) equals `renewed.der` byte for byte | pass |
+| 11 | "Authentication is required to sign with a key held by Custodio", approved, twice | `ay 64 …` both times; a dialog each time | pass |
+| 12 | none | `Call failed: no such key` | pass |
+| 13 | "Authentication is required to delete a certificate held by Custodio", cancelled | `Call failed: not authorized`; `demo` still listed | pass |
+| 14 | the delete dialog, approved | no output; `a(ssay) 0` | pass |
+
+Journal (`journalctl -u custodio`): 9 entries for the 9 calls that reached polkit, in order: import denied, import failed (wrong password),
+key imported, certificate replacement refused, certificate replaced, 2 signature made (`ecdsa`), delete denied, key deleted; all uid 1000,
+`CUSTODIO_APP_ID_STATE=none`. Steps 5, 7 and 12 left no entry. None extra, none missing.
+
+Acceptance 14: pass. Nothing needed beyond `docs/api.md`.
+
+- Step 1 of §16 expects `b true` "with the service running". On a fresh install the service is bus-activated and not yet running, so
+  the first answer was `b false`; the page's "do the other steps of Detection" covered it, and those steps matched `docs/api.md`.
+- The two signatures of step 11 are identical: ECDSA here is deterministic (RFC 6979, M0 F-sign), not a cached reply; the dialog showed both times.
+- The dialogs were answered from the hypervisor (`virsh send-key`: the lab account's password and Enter, or Escape), after a screenshot
+  showed each dialog. No person clicked them. Step 15 (`AuthorizationUnavailable`) was not run, as the page says.
