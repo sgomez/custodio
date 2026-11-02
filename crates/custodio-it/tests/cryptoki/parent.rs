@@ -6,6 +6,23 @@ use zbus::export::futures_core::Stream;
 
 use super::*;
 
+/// A credentials source whose uid can be switched between runs: the service is told which uid is
+/// calling. The uid lookup and the `ProcessFD` check of the real source are proven in `custodiod`.
+#[derive(Clone)]
+pub(super) struct SwitchCredentials(Arc<AtomicU32>);
+
+impl CallerCredentials for SwitchCredentials {
+    fn credentials(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send {
+        std::future::ready(Ok(Caller {
+            uid: self.0.load(Ordering::SeqCst),
+            pid: std::process::id(),
+        }))
+    }
+}
+
 struct Bus {
     child: Child,
     address: String,
@@ -71,6 +88,28 @@ pub(super) struct Recorded {
     pub(super) raw: Vec<u8>,
 }
 
+/// A method call to the service as the monitor saw it: where it went and which method it was.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Call {
+    pub(super) destination: String,
+    pub(super) path: String,
+    pub(super) interface: String,
+    pub(super) member: String,
+}
+
+fn call_of(msg: &zbus::Message) -> Option<Call> {
+    if !is_service_call(msg) {
+        return None;
+    }
+    let header = msg.header();
+    Some(Call {
+        destination: header.destination()?.to_string(),
+        path: header.path()?.to_string(),
+        interface: header.interface()?.to_string(),
+        member: header.member()?.to_string(),
+    })
+}
+
 /// Whether `msg` is a method call to the service, whatever the method.
 fn is_service_call(msg: &zbus::Message) -> bool {
     let header = msg.header();
@@ -101,6 +140,9 @@ pub(super) struct Fixture {
     /// Every method call to the service, of any method.
     service_calls: Arc<AtomicUsize>,
     signs: Arc<Mutex<Vec<Recorded>>>,
+    calls: Arc<Mutex<Vec<Call>>>,
+    uid: Arc<AtomicU32>,
+    store: Arc<KeyStore>,
     _bus: Bus,
     state: tempfile::TempDir,
     asked: Arc<Mutex<Vec<String>>>,
@@ -120,14 +162,16 @@ impl Fixture {
         let signs = Arc::new(Mutex::new(Vec::new()));
         let service_calls = Arc::new(AtomicUsize::new(0));
         let counter = service_calls.clone();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let call_log = calls.clone();
+        let owner = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
+        let uid = Arc::new(AtomicU32::new(owner));
+        let credentials = SwitchCredentials(uid.clone());
+        let store = Arc::new(KeyStore::open(state.path().join("keys"))?);
+        let shared = store.clone();
         let approve = Arc::new(AtomicBool::new(approve));
         let switch = approve.clone();
-        let (address, path, log, recorded) = (
-            bus.address.clone(),
-            state.path().join("keys"),
-            asked.clone(),
-            signs.clone(),
-        );
+        let (address, log, recorded) = (bus.address.clone(), asked.clone(), signs.clone());
         std::thread::spawn(move || {
             let setup = async {
                 let bus = Builder::address(address.as_str());
@@ -145,9 +189,7 @@ impl Fixture {
                 polkit.request_name("org.freedesktop.PolicyKit1").await?;
                 let mut connections = vec![polkit];
                 if service {
-                    let owner =
-                        std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
-                    let store = Arc::new(KeyStore::open(path)?);
+                    let store = shared;
                     let password = SecretString::from(PASSWORD);
                     import_p12(&store, owner, "rsa", RSA_P12, &password)?;
                     import_p12(&store, owner, "ec", EC_P12, &password)?;
@@ -158,7 +200,7 @@ impl Fixture {
                             Custodio::new(
                                 store,
                                 PolkitAuthorizer::new(conn.clone()),
-                                BusCredentials::new(conn.clone()),
+                                credentials,
                                 Arc::new(MemorySink::default()),
                             ),
                         )
@@ -185,8 +227,11 @@ impl Fixture {
                         while let Some(Ok(msg)) =
                             std::future::poll_fn(|cx| Pin::new(&mut stream).poll_next(cx)).await
                         {
-                            if is_service_call(&msg) {
+                            if let Some(call) = call_of(&msg) {
                                 counter.fetch_add(1, Ordering::SeqCst);
+                                if let Ok(mut all) = call_log.lock() {
+                                    all.push(call);
+                                }
                             }
                             if let (Some(sign), Ok(mut all)) = (record(&msg), recorded.lock()) {
                                 all.push(sign);
@@ -205,6 +250,9 @@ impl Fixture {
             address: bus.address.clone(),
             _bus: bus,
             signs,
+            calls,
+            uid,
+            store,
             service_calls,
             state,
             asked,
@@ -214,6 +262,85 @@ impl Fixture {
 
     pub(super) fn store(&self) -> Result<KeyStore, Box<dyn Error>> {
         Ok(KeyStore::open(self.state.path().join("keys"))?)
+    }
+
+    /// The uid the service is told is calling, from now on.
+    pub(super) fn set_uid(&self, uid: u32) {
+        self.uid.store(uid, Ordering::SeqCst);
+    }
+
+    /// Imports a `.p12` for `uid` straight into the service's store.
+    pub(super) fn import(&self, uid: u32, id: &str, p12: &[u8]) -> TestResult {
+        import_p12(&self.store, uid, id, p12, &SecretString::from(PASSWORD))?;
+        Ok(())
+    }
+
+    /// `ReplaceCertificate` of `uid`'s key `id`, called as the "other client" (the module never
+    /// does).
+    pub(super) fn replace_certificate(
+        &self,
+        uid: u32,
+        id: &str,
+        certificate: &[u8],
+    ) -> Result<(), zbus::Error> {
+        self.set_uid(uid);
+        block_on(async {
+            let conn = Builder::address(self.address.as_str()).build().await?;
+            let body = (id, certificate);
+            let call = conn.call_method(
+                Some(BUS_NAME),
+                OBJECT_PATH,
+                Some(BUS_NAME),
+                "ReplaceCertificate",
+                &body,
+            );
+            call.await.map(drop)
+        })
+    }
+
+    /// `DeleteKey` of `uid`'s key `id`, called as the "other client".
+    pub(super) fn delete_key(&self, uid: u32, id: &str) -> Result<(), zbus::Error> {
+        self.set_uid(uid);
+        block_on(async {
+            let conn = Builder::address(self.address.as_str()).build().await?;
+            let body = (id,);
+            let call = conn.call_method(
+                Some(BUS_NAME),
+                OBJECT_PATH,
+                Some(BUS_NAME),
+                "DeleteKey",
+                &body,
+            );
+            call.await.map(drop)
+        })
+    }
+
+    /// The calls the service received, once at least `expected` have been seen, plus a moment
+    /// for any extra one.
+    pub(super) fn calls(&self, expected: usize) -> Result<Vec<Call>, Box<dyn Error>> {
+        let count = || self.calls.lock().map(|c| c.len()).unwrap_or_default();
+        for _ in 0..100 {
+            if count() >= expected {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        Ok(self.calls.lock().map_err(|_| "poisoned")?.clone())
+    }
+
+    /// Starts a child scenario that waits for the parent between its steps (see `held`).
+    pub(super) fn spawn(&self, mode: &str) -> Result<Running, Box<dyn Error>> {
+        let mut child = Command::new(std::env::current_exe()?)
+            .args(["--exact", "client", "--nocapture", "--test-threads=1"])
+            .env(MODE_VAR, mode)
+            .env(MODULE_VAR, module_path()?)
+            .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let out = BufReader::new(child.stdout.take().ok_or("no stdout")?);
+        Ok(Running { child, out })
     }
 
     /// Makes polkit approve or refuse from now on.
@@ -253,6 +380,12 @@ impl Fixture {
         Ok(self.signs.lock().map_err(|_| "poisoned")?.clone())
     }
 
+    /// Runs a child scenario while the service is told `uid` is calling.
+    pub(super) fn run_as(&self, uid: u32, mode: &str) -> Result<(bool, String), Box<dyn Error>> {
+        self.set_uid(uid);
+        self.run(mode)
+    }
+
     /// Runs a child scenario; returns whether it passed and its stdout.
     pub(super) fn run(&self, mode: &str) -> Result<(bool, String), Box<dyn Error>> {
         let out = Command::new(std::env::current_exe()?)
@@ -266,6 +399,48 @@ impl Fixture {
             eprintln!("{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
         }
         Ok((out.status.success(), stdout))
+    }
+}
+
+/// A child scenario in progress: the parent reads what it printed until a tag and lets it go on.
+pub(super) struct Running {
+    child: Child,
+    out: BufReader<std::process::ChildStdout>,
+}
+
+impl Running {
+    /// The lines the child printed up to and including the one starting with `tag`.
+    pub(super) fn until(&mut self, tag: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut lines = Vec::new();
+        loop {
+            let mut line = String::new();
+            if self.out.read_line(&mut line)? == 0 {
+                return Err(format!("child ended before {tag}: {lines:?}").into());
+            }
+            let line = line.trim_end().to_owned();
+            let done = line.starts_with(tag);
+            lines.push(line);
+            if done {
+                return Ok(lines);
+            }
+        }
+    }
+
+    /// Lets the child go on to its next step.
+    pub(super) fn go(&mut self) -> TestResult {
+        use std::io::Write;
+        let stdin = self.child.stdin.as_mut().ok_or("no stdin")?;
+        stdin.write_all(b"\n")?;
+        stdin.flush()?;
+        Ok(())
+    }
+
+    /// Waits for the child; whether it passed.
+    pub(super) fn finish(mut self) -> Result<bool, Box<dyn Error>> {
+        drop(self.child.stdin.take());
+        let mut rest = String::new();
+        std::io::Read::read_to_string(&mut self.out, &mut rest)?;
+        Ok(self.child.wait()?.success())
     }
 }
 

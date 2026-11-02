@@ -9,10 +9,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Write as _;
+use std::future::Future;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Once};
 
 use cryptoki::context::{CInitializeArgs, CInitializeFlags, Pkcs11};
@@ -23,8 +24,9 @@ use cryptoki::object::{Attribute, AttributeType, ObjectClass, ObjectHandle};
 use cryptoki::session::Session;
 use cryptoki::types::Ulong;
 use custodio_client::{BUS_NAME, OBJECT_PATH};
+use custodiod::audit::Caller;
 use custodiod::audit::MemorySink;
-use custodiod::credentials::BusCredentials;
+use custodiod::credentials::{CallerCredentials, CredentialsError};
 use custodiod::dbus::Custodio;
 use custodiod::import::import_p12;
 use custodiod::polkit::PolkitAuthorizer;
@@ -63,6 +65,8 @@ fn hex(bytes: &[u8]) -> String {
 mod child;
 mod composed;
 mod composed_child;
+mod documented;
+mod documented_child;
 mod login;
 mod login_child;
 mod multipart;
@@ -71,6 +75,7 @@ mod parent;
 
 use child::*;
 use composed_child::*;
+use documented_child::*;
 use login_child::*;
 use multipart_child::*;
 use parent::*;
@@ -82,7 +87,13 @@ fn client() -> TestResult {
         return Ok(());
     };
     let pkcs11 = module()?;
+    if let Some(label) = mode.strip_prefix("sign:") {
+        return sign_with(&pkcs11, label);
+    }
     match mode.as_str() {
+        "tokens" => tokens(&pkcs11),
+        "held_tokens" => held_tokens(&pkcs11),
+        "held_key" => held_key(&pkcs11),
         "basic" => basic(&pkcs11),
         "denied" => denied(&pkcs11),
         "unsupported" => unsupported(&pkcs11),

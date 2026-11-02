@@ -18,10 +18,12 @@ fn method_error(name: &str) -> Result<zbus::Error, Box<dyn std::error::Error>> {
 /// Each service failure and the `BackendError` it has always ended as: the module turns `Denied`
 /// into `CKR_FUNCTION_FAILED`, `Invalid` into `CKR_DATA_INVALID` and `Unavailable` into
 /// `CKR_DEVICE_ERROR` (pinned by `composed_failure_ends_the_operation`).
-#[test]
-fn every_service_name_maps_to_the_error_it_always_did() -> TestResult {
+/// The service failures and the `BackendError` each ends as, for `ListKeys` and for `Sign` alike
+/// (both go through `map_error`): the ten names of the client crate, names this version does not
+/// know, the generic bus names.
+fn error_table() -> Vec<(&'static str, BackendError)> {
     use BackendError::{Denied, Invalid, Unavailable};
-    let table = [
+    vec![
         (ERROR_POLKIT_DENIED, Denied),
         (ERROR_AUTHORIZATION_UNAVAILABLE, Denied),
         (ERROR_INVALID_ARGS, Invalid),
@@ -39,8 +41,23 @@ fn every_service_name_maps_to_the_error_it_always_did() -> TestResult {
         // The bus itself, or an older service, with the generic names.
         ("org.freedesktop.DBus.Error.AccessDenied", Denied),
         ("org.freedesktop.DBus.Error.InvalidArgs", Invalid),
-    ];
-    for (name, want) in table {
+    ]
+}
+
+/// Each service failure and the `BackendError` it has always ended as: the module turns `Denied`
+/// into `CKR_FUNCTION_FAILED`, `Invalid` into `CKR_DATA_INVALID` and `Unavailable` into
+/// `CKR_DEVICE_ERROR` (pinned by `composed_failure_ends_the_operation`).
+#[test]
+fn every_service_name_maps_to_the_error_it_always_did() -> TestResult {
+    // All ten documented names are in the table.
+    assert_eq!(
+        error_table()
+            .iter()
+            .filter(|(n, _)| n.starts_with("com.rfirma.Custodio1.Error.") && !n.contains("Future"))
+            .count(),
+        10
+    );
+    for (name, want) in error_table() {
         assert_eq!(map_error(&method_error(name)?), want, "{name}");
     }
     Ok(())
@@ -75,14 +92,69 @@ fn listed() -> Vec<(String, String, Vec<u8>)> {
     ]
 }
 
-struct FakeService;
+/// With `fail`, `ListKeys` and `Sign` answer with the next name of `error_table()` (each method
+/// has its own position), so one child can walk the table.
+#[derive(Default)]
+struct FakeService {
+    fail: bool,
+    lists: std::sync::atomic::AtomicUsize,
+    signs: std::sync::atomic::AtomicUsize,
+}
+
+/// An error reply with a given name.
+struct Named(OwnedErrorName);
+
+impl zbus::DBusError for Named {
+    fn create_reply(&self, header: &zbus::message::Header<'_>) -> zbus::Result<zbus::Message> {
+        zbus::Message::error(header, self.0.clone()).build(&"text")
+    }
+
+    fn name(&self) -> zbus::names::ErrorName<'_> {
+        self.0.inner().clone()
+    }
+
+    fn description(&self) -> Option<&str> {
+        Some("text")
+    }
+}
+
+impl FakeService {
+    fn next_error(counter: &std::sync::atomic::AtomicUsize) -> Named {
+        let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let table = error_table();
+        let name = table[n % table.len()].0;
+        Named(OwnedErrorName::try_from(name).unwrap_or_else(|_| {
+            OwnedErrorName::from(zbus::names::ErrorName::from_static_str_unchecked(
+                "org.freedesktop.DBus.Error.Failed",
+            ))
+        }))
+    }
+}
 
 #[zbus::interface(name = "com.rfirma.Custodio1")]
 impl FakeService {
-    // The `interface` macro needs a method with `&self`.
-    #[allow(clippy::unused_self)]
-    fn list_keys(&self) -> Vec<(String, String, Vec<u8>)> {
-        listed()
+    fn list_keys(&self) -> Result<Vec<(String, String, Vec<u8>)>, Named> {
+        if self.fail {
+            return Err(Self::next_error(&self.lists));
+        }
+        Ok(listed())
+    }
+
+    // The `interface` macro needs owned argument types to deserialize the D-Bus message.
+    #[allow(clippy::needless_pass_by_value)]
+    fn sign(
+        &self,
+        id: String,
+        mechanism: u32,
+        hash: u32,
+        salt_len: u32,
+        data: Vec<u8>,
+    ) -> Result<Vec<u8>, Named> {
+        let _ = (id, mechanism, hash, salt_len, data);
+        if self.fail {
+            return Err(Self::next_error(&self.signs));
+        }
+        Ok(vec![9])
     }
 }
 
@@ -104,45 +176,93 @@ fn backend_child() -> TestResult {
     Ok(())
 }
 
+/// The child half of `both_calls_map_every_name_through_the_real_backend`: the same table
+/// position for `ListKeys` and for `Sign`, asserting what the `Backend` caller gets.
 #[test]
-fn dbus_backend_lists_the_certificates_of_list_keys() -> TestResult {
+fn backend_errors_child() {
+    if std::env::var_os(CHILD_VAR).is_none() {
+        return;
+    }
+    let params = SignParams {
+        mechanism: 1,
+        hash: 0,
+        salt_len: 0,
+    };
+    for (name, want) in error_table() {
+        assert_eq!(
+            DbusBackend.list_certificates(),
+            Err(want),
+            "ListKeys {name}"
+        );
+        assert_eq!(
+            DbusBackend.sign("a", params, b"x"),
+            Err(want),
+            "Sign {name}"
+        );
+    }
+    println!("backend-errors-checked");
+}
+
+struct Daemon(std::process::Child);
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Serves `service` on a private bus and runs the test `child` (this binary) against it; returns
+/// the child's stdout.
+fn run_against(service: FakeService, child: &str) -> Result<String, Box<dyn std::error::Error>> {
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
 
-    struct Daemon(std::process::Child);
-    impl Drop for Daemon {
-        fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-        }
-    }
-    let mut child = Command::new("dbus-daemon")
+    let mut daemon = Command::new("dbus-daemon")
         .args(["--session", "--nofork", "--print-address=1"])
         .stdout(Stdio::piped())
         .spawn()?;
     let mut address = String::new();
-    BufReader::new(child.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
-    let _daemon = Daemon(child);
+    BufReader::new(daemon.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
+    let _daemon = Daemon(daemon);
     let address = address.trim().to_owned();
-    let service = block_on(
+    let served = block_on(
         zbus::connection::Builder::address(address.as_str())
-            .serve_at(OBJECT_PATH, FakeService)
+            .serve_at(OBJECT_PATH, service)
             .name(BUS_NAME)
             .build(),
     )?;
     let out = Command::new(std::env::current_exe()?)
-        .args(["--exact", "backend::tests::backend_child", "--nocapture"])
+        .args(["--exact", child, "--nocapture"])
         .env(CHILD_VAR, "1")
         .env("DBUS_SYSTEM_BUS_ADDRESS", &address)
         .output()?;
-    drop(service);
-    let stdout = String::from_utf8_lossy(&out.stdout);
+    drop(served);
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     assert!(
         out.status.success(),
         "{stdout}\n{}",
         String::from_utf8_lossy(&out.stderr)
     );
+    Ok(stdout)
+}
+
+#[test]
+fn dbus_backend_lists_the_certificates_of_list_keys() -> TestResult {
+    let stdout = run_against(FakeService::default(), "backend::tests::backend_child")?;
     // The child really ran the check.
     assert!(stdout.contains("backend-child-checked"), "{stdout}");
+    Ok(())
+}
+
+/// A service answering every name of the table from `ListKeys` and from `Sign`: the real `Backend`
+/// gives the same `BackendError` for both calls, the one `error_table` names.
+#[test]
+fn both_calls_map_every_name_through_the_real_backend() -> TestResult {
+    let service = FakeService {
+        fail: true,
+        ..FakeService::default()
+    };
+    let stdout = run_against(service, "backend::tests::backend_errors_child")?;
+    assert!(stdout.contains("backend-errors-checked"), "{stdout}");
     Ok(())
 }
