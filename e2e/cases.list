@@ -42,6 +42,16 @@ ops-polkit-unavailable
 ops-polkit-asks-again
 ops-polkit-wrong-password-denied
 ops-polkit-wrong-password-approved
+replace-same-key
+replace-list-shows-new
+replace-module-shows-new
+replace-sign-verifies
+replace-different-key
+delete-list-absent
+delete-module-no-token
+delete-sign-no-such-key
+delete-state-file-gone
+delete-reimport
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged

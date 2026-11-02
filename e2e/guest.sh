@@ -123,6 +123,15 @@ if phase_runs ops-polkit; then
     WORK=$work MODULE=$MODULE bash /e2e/ops-run.sh || fail "ops-run.sh failed"
 fi
 
+# The replace-certificate and delete cases (F93): alice, her own session and agent approving, the CLI, the service and the PKCS#11 module. Each group makes keys of its
+# own and deletes them, so the state after is the one before; after ops-polkit and before the upgrade, for the same reasons.
+if phase_runs replace; then
+    WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh replace || fail "rd-run.sh replace failed"
+fi
+if phase_runs delete; then
+    WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh delete || fail "rd-run.sh delete failed"
+fi
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

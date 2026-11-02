@@ -152,6 +152,7 @@ test-scripts:
     scripts/test-e2e-select.sh
     scripts/test-e2e-owner.sh
     scripts/test-e2e-ops.sh
+    scripts/test-e2e-rd.sh
     scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh

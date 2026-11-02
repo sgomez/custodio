@@ -37,7 +37,7 @@ phases() {
     printf '%s\n' "$@" > "$tmp/sel"
     E2E_SELECT_FILE=$tmp/sel bash -c '
         source "$1/e2e/select.sh"
-        for p in user unavailable journal owner ops-polkit upgrade lifecycle refusal; do phase_runs "$p" && printf "%s " "$p"; done
+        for p in user unavailable journal owner ops-polkit replace delete upgrade lifecycle refusal; do phase_runs "$p" && printf "%s " "$p"; done
         true' _ "$ROOT"
 }
 want() { # want NAME "PHASES" SELECTION...
@@ -54,6 +54,12 @@ want owner "owner " owner-list-isolated
 want owner-all "owner " owner-list-isolated owner-foreign-id-no-such-key owner-foreign-id-no-polkit owner-foreign-id-journal owner-same-id-own-key
 want ops-polkit "ops-polkit " ops-polkit-denied
 want ops-polkit-all "ops-polkit " ops-polkit-import-asks-once ops-polkit-delete-asks-once ops-polkit-replace-asks-once ops-polkit-denied ops-polkit-unavailable ops-polkit-asks-again ops-polkit-wrong-password-denied ops-polkit-wrong-password-approved
+want replace "replace " replace-same-key
+want replace-all "replace " replace-same-key replace-list-shows-new replace-module-shows-new replace-sign-verifies replace-different-key
+want delete "delete " delete-list-absent
+want delete-all "delete " delete-list-absent delete-module-no-token delete-sign-no-such-key delete-state-file-gone delete-reimport
+want replace-and-delete "replace delete " replace-different-key delete-reimport
+want replace-and-ops "ops-polkit replace " replace-same-key ops-polkit-denied
 want ops-polkit-and-owner "owner ops-polkit " ops-polkit-asks-again owner-list-isolated
 want owner-and-user "user owner " owner-same-id-own-key nss-approve
 want upgrade "upgrade " upgrade-keys-listed
@@ -65,18 +71,18 @@ want mixed "user upgrade " nss-deny upgrade-no-manual-step
 want refusal "refusal " refusal-nothing-listens
 all=$(cd "$ROOT" && grep -vh '^[[:space:]]*\(#\|$\)' e2e/cases.list e2e/targets/*/cases.list | sort -u)
 # shellcheck disable=SC2086 # one id per word
-want every-case "user unavailable journal owner ops-polkit upgrade lifecycle refusal " $all
+want every-case "user unavailable journal owner ops-polkit replace delete upgrade lifecycle refusal " $all
 # no selection file: everything runs, and a phase name that is none is refused
-got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit upgrade lifecycle refusal; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
-[ "$got" = "user unavailable journal owner ops-polkit upgrade lifecycle refusal " ] || bad "no selection: the steps are '$got'"
+got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit replace delete upgrade lifecycle refusal; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
+[ "$got" = "user unavailable journal owner ops-polkit replace delete upgrade lifecycle refusal " ] || bad "no selection: the steps are '$got'"
 if E2E_SELECT_FILE=$tmp/sel bash -c 'source "$1/e2e/select.sh"; phase_runs nonsense' _ "$ROOT" 2> /dev/null; then bad "an unknown phase was accepted"; fi
 # every id of the lists belongs to a group, and each script that reports ids of one step is in that group
 for id in $all; do
     g=$(bash -c 'source "$1/e2e/select.sh"; case_group "$2"' _ "$ROOT" "$id")
-    case $g in user | unavailable | journal | owner | ops-polkit | upgrade | lifecycle | refusal | other-mode) ;; *) bad "$id: group '$g'" ;; esac
+    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | upgrade | lifecycle | refusal | other-mode) ;; *) bad "$id: group '$g'" ;; esac
 done
 # the guest uses the decision: each step is behind phase_runs
-for p in user unavailable journal owner ops-polkit upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
+for p in user unavailable journal owner ops-polkit replace delete upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
 grep -q 'phase_runs refusal' "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs refusal"
 
 exit "$fail"
