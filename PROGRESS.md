@@ -495,3 +495,9 @@ with an empty context.
 - Fixed NEXT_FINDINGS: the runner (`scripts/docs_api_run.py`) now pairs each variant with its message from `crates/custodiod/src/error.rs` (`Self::<Name> => "<msg>"`) and requires the document's message for a name to equal it. New negative control "two error messages swapped" is red. Contract amendment text extended accordingly.
 - Evidence: `scripts/test-docs-api.sh` ok (all controls), `just quick` ok, `just api-contract` ok.
 - Next session should: nothing for F98.
+
+### 2026-11-02 — F99 — attempt 1
+- Done: `docs/manual-acceptance.md` sections 16 to 19 (M3 acceptance 14, 15, 16 and the result form; title and intro updated), the test flatpak manifest `packaging/flatpak/com.rfirma.CustodioTest.json` (JSON, `--system-talk-name=com.rfirma.Custodio1` only, app-id `com.rfirma.CustodioTest`, runs `busctl`), and `scripts/test-docs-manual-m3.sh` (in `test-scripts`) with about 70 negative controls (section finder, each operation/dialog/error, commands against `docs/api.md`, order and journal text against `docs/audit.md`, manifest, F67 branch, section 18 references and token-listing command, form rows).
+- Decisions: `docs/api.md` offers no `gdbus` example, so the page uses `busctl` only and says so. Section 18 reuses `modutil ... -list` and `pkcs11-tool ... --list-objects` from sections 6 and 3, whole. F67 has no deviation, so the page demands the app-id.
+- Not done / known issues: nothing is run (a person does at the milestone). That the freedesktop runtime ships `busctl` is unverified; the page says to record it as a failure and stop if not.
+- Next session should: F99 awaits the loop's verify and evaluator.

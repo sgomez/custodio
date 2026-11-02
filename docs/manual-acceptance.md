@@ -1,10 +1,11 @@
-# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15)
+# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15, M3 acceptance 14 to 16)
 
-This page has two parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
+This page has three parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
 Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the
 `journalctl` query). Sections 10 to 15 are the M2 steps for `fedora44`, `bazzite`, `omarchy` and
-`ubuntu2404` (the M2 acceptance 12 to 15); start at section 10. Nothing here is
-automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
+`ubuntu2404` (the M2 acceptance 12 to 15); start at section 10. Sections 16 to 19 are the M3 steps (the M3
+acceptance 14 to 16: the client API by hand, a flatpak, Firefox and LibreOffice with a second account); start at
+section 16. Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
 `custodio import` flags) say so; everything else is marked **unverified**: adjust it to your NSS,
 LibreOffice and rFirma version and write down what you changed.
 
@@ -523,5 +524,191 @@ package file names ________
 | 13 bazzite (layering, replace, OS update) | | |
 | 14 omarchy (Quickshell, Firefox) | | |
 | 15 ubuntu2404 (refusal, switch, signing) | | |
+
+Report the filled forms to the milestone approver as in section 9. Do not paste key files or passwords.
+
+## 16. M3 acceptance 14: the client API by hand
+
+A person detects the service, imports a key, lists it, replaces its certificate, signs and deletes it with
+`busctl`, following only `docs/api.md`: if a step needs anything that page does not say, write that down as a
+failure of acceptance 14. `docs/api.md` gives `busctl` commands only, so there is no `gdbus` variant here. Run the
+steps as the one user who signs, in a graphical session with a polkit agent. See each dialog and each error and write
+it into the table below. Commands that were not run while writing this page are **unverified**.
+
+Make the files first: the six `openssl` commands of the first block of "Examples" in `docs/api.md` give `demo.p12`
+(password `secret`), `renewed.der` (a second certificate for the same key) and `other.der` (a certificate for
+another key). Then the `<DER>` argument forms of the commands below are the ones of that page.
+
+1. Detect. Follow the five steps of the "Detection" part of `docs/api.md` in order and write down the result of each.
+   With the service running, step 2 is:
+
+   ```sh
+   busctl --system call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s com.rfirma.Custodio1
+   ```
+
+   Expected: `b true`. If it is `false`, do the other steps of "Detection" and write down what they print.
+2. List with nothing imported. Dialog: none (`ListKeys` asks polkit nothing). Expected `a(ssay) 0`.
+
+   ```sh
+   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
+   ```
+3. Import, and refuse the dialog. Dialog: `com.rfirma.custodio.import-certificate`; press Cancel. Expected error
+   `PolkitDenied` (`Call failed: not authorized`). Nothing is imported.
+
+   ```sh
+   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo $(wc -c < demo.p12) $(od -An -v -tu1 demo.p12) secret
+   ```
+4. Import with a wrong password: the same command with `wrong` instead of `secret`. Dialog:
+   `com.rfirma.custodio.import-certificate`; approve it. Expected error `WrongPasswordOrBadP12`; it is only reported
+   after the approval.
+5. Import with a bad id: the same command with `'bad id'` instead of `demo`. Dialog: none, the call fails before
+   polkit is asked. Expected error `InvalidArgs`.
+6. Import, and approve. Dialog: `com.rfirma.custodio.import-certificate`. Expected `s "ecdsa-p256"`. This is the
+   command of step 3.
+7. Import again with the same id (the command of step 3). Dialog: none. Expected error `KeyIdTaken`.
+8. List again (the command of step 2). Expected one key, `demo`, `ecdsa-p256`, with its certificate.
+9. Replace the certificate with the certificate of another key, approving the dialog. Dialog:
+   `com.rfirma.custodio.replace-certificate`. Expected error `CertificateMismatch`.
+
+   ```sh
+   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ReplaceCertificate say demo $(wc -c < other.der) $(od -An -v -tu1 other.der)
+   ```
+10. Replace the certificate with the right one (`renewed.der` in place of `other.der`), approving the dialog.
+    Dialog: `com.rfirma.custodio.replace-certificate`. Expected: no output. List again: the certificate is the new one.
+11. Sign, and approve. Dialog: `com.rfirma.custodio.sign`. Expected `ay 64` and 64 bytes. Sign a second time: the
+    dialog shows again (nothing is cached).
+
+    ```sh
+    digest=$(head -c 32 /dev/zero | od -An -v -tu1)
+    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 Sign suuuay demo 4161 0 0 32 $digest
+    ```
+12. Sign with an id you do not have: the command of step 11 with `nobody` instead of `demo`. Dialog: none. Expected
+    error `NoSuchKey` (the full name is `com.rfirma.Custodio1.Error.NoSuchKey`).
+13. Delete, and refuse the dialog. Dialog: `com.rfirma.custodio.delete-certificate`; press Cancel. Expected error
+    `PolkitDenied`; the key is still listed.
+
+    ```sh
+    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 DeleteKey s demo
+    ```
+14. Delete, and approve (the command of step 13). Dialog: `com.rfirma.custodio.delete-certificate`. Expected: no
+    output; the list (step 2) is empty again.
+15. `AuthorizationUnavailable`: not reproduced manually, because it needs polkit to be stopped or unreachable, which
+    cannot be done safely on a person's session; the automated tests of the polkit failure cases prove it.
+
+| # (step) | Dialog seen (action) | Error or result seen | Expected | Result (pass/fail, notes) |
+|---|---|---|---|---|
+| 1 | none | | `b true` | |
+| 2 | none | | `a(ssay) 0` | |
+| 3 | import-certificate, cancelled | | `PolkitDenied` | |
+| 4 | import-certificate, approved | | `WrongPasswordOrBadP12` | |
+| 5 | none | | `InvalidArgs` | |
+| 6 | import-certificate, approved | | `s "ecdsa-p256"` | |
+| 7 | none | | `KeyIdTaken` | |
+| 8 | none | | one key listed | |
+| 9 | replace-certificate, approved | | `CertificateMismatch` | |
+| 10 | replace-certificate, approved | | no output, new certificate | |
+| 11 | sign, approved (twice) | | `ay 64`, dialog both times | |
+| 12 | none | | `NoSuchKey` | |
+| 13 | delete-certificate, cancelled | | `PolkitDenied`, key kept | |
+| 14 | delete-certificate, approved | | no output, list empty | |
+
+## 17. M3 acceptance 15: a flatpak calls Custodio
+
+A test application in a flatpak calls Custodio. The manifest the repository ships is
+`packaging/flatpak/com.rfirma.CustodioTest.json`; its app-id is `com.rfirma.CustodioTest` and its only extra permission is
+`--system-talk-name=com.rfirma.Custodio1` (the permission "From a flatpak" in `docs/api.md` names). None of the
+commands here were run when the page was written: they are all **unverified**, including whether the runtime
+ships `busctl`; if it does not, write that down as a failure of acceptance 15 and stop.
+
+Prepare: install `flatpak` and `flatpak-builder` and the `org.freedesktop.Platform` and `org.freedesktop.Sdk`
+24.08 runtimes (**unverified** package names), and import the key `p256` on the host as in section 3 (`custodio import`).
+
+```sh
+flatpak-builder --user --install --force-clean build-dir packaging/flatpak/com.rfirma.CustodioTest.json
+flatpak run com.rfirma.CustodioTest
+flatpak run --command=sh com.rfirma.CustodioTest
+```
+
+1. Detection. The first command runs the detection steps of the "Detection" part of `docs/api.md` from inside the
+   sandbox (the application prints the result of `NameHasOwner` and `ListActivatableNames`). Expected: `b true` and the
+   name listed, as on the host. Write down the output. A `false` and a missing name mean the permission is not
+   in effect ("From a flatpak" in `docs/api.md`).
+2. In the shell of the third command, sign:
+
+   ```sh
+   digest=$(head -c 32 /dev/zero | od -An -v -tu1)
+   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 Sign suuuay p256 4161 0 0 32 $digest
+   ```
+3. The polkit dialog shows for the action `com.rfirma.custodio.sign`. Write down what it shows, approve it, and
+   write down the result (`ay 64`).
+4. Only after the dialog, an administrator reads the journal. The base query of `docs/audit.md`:
+
+   ```sh
+   journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401
+   ```
+
+   Find the entry of the signature (add `-o verbose` to see the fields). Expected: `CUSTODIO_APP_ID=com.rfirma.CustodioTest`
+   with `CUSTODIO_APP_ID_STATE=read`, and `CUSTODIO_UID` equal to `id -u` of the person who ran the sandbox. The
+   `CUSTODIO_PID` is the pid of the `xdg-dbus-proxy`, not of the application (`docs/audit.md`, "Flatpak app-id"); do not
+   compare it with the application. By app-id: add `CUSTODIO_APP_ID=com.rfirma.CustodioTest` to the query.
+
+If `CUSTODIO_APP_ID_STATE` is `undetermined` or `none`, or the app-id is another, that is a failure of acceptance 15:
+write down the whole entry (without key material).
+
+| # | Step | Expected | Seen | Result (pass/fail, notes) |
+|---|---|---|---|---|
+| 1 | Detection inside the flatpak | `b true`, name listed | | |
+| 2 | Sign: dialog action | `com.rfirma.custodio.sign` | | |
+| 3 | Sign: result | `ay 64` | | |
+| 4 | Journal: app-id | `com.rfirma.CustodioTest`, state `read` | | |
+| 5 | Journal: uid | `id -u` of the person | | |
+| 6 | Journal: pid | the proxy's, not the application's | | |
+
+## 18. M3 acceptance 16: Firefox, LibreOffice and a second account
+
+Firefox and LibreOffice still sign with a key that the person imported through the M3 service.
+
+1. Import a key as in section 3 (`custodio import`), if it is not still there.
+2. Firefox: follow the Firefox steps of `## 11. fedora44, SELinux enforcing (acceptance 12)`
+   (the registration and TLS client authentication). Expected: a polkit dialog, then the sign-in works. Write down the dialog.
+3. LibreOffice: follow `## 6. LibreOffice run` (registration and "Sign ODF documents"). Expected: a dialog for each
+   signature and a valid signature after reopening.
+4. Compare the journal with `## 7. Journal comparison`: one entry per signature and per cancellation.
+5. A second account on the same machine (another login, with no keys imported): log in as that account, register the
+   module as in `## 6. LibreOffice run` in that account's database, and list the tokens:
+
+   ```sh
+   modutil -dbdir sql:<nssdb dir> -list
+   pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects
+   ```
+
+   Expected: no token and no object for the key of the first account, and no certificate offered in Firefox or
+   LibreOffice. These listings were not run against the M3 service when the page was written (**unverified**).
+6. In the same account, `ListKeys` (the command of section 16, step 2):
+
+   ```sh
+   busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
+   ```
+
+   Expected: `a(ssay) 0`, an empty list.
+
+| # | Step | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| 1 | Firefox signs, dialog seen | signature made | |
+| 2 | LibreOffice signs, dialog seen | valid signature | |
+| 3 | Journal comparison | none extra, none missing | |
+| 4 | Second account: token listing | no token | |
+| 5 | Second account: `ListKeys` | `a(ssay) 0` | |
+
+## 19. M3 result form
+
+One copy per machine. Machine ________ OS release ________ kernel ________ bus daemon and version ________ polkit
+version ________ flatpak version ________
+
+| Acceptance | Pass / fail / not run | Every dialog and every error seen (notes) |
+|---|---|---|
+| M3 14 client API by hand (section 16) | | |
+| M3 15 flatpak, app-id and uid in the journal (section 17) | | |
+| M3 16 Firefox, LibreOffice, second account (section 18) | | |
 
 Report the filled forms to the milestone approver as in section 9. Do not paste key files or passwords.

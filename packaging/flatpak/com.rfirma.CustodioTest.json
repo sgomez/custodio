@@ -1,0 +1,30 @@
+{
+  "app-id": "com.rfirma.CustodioTest",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "24.08",
+  "sdk": "org.freedesktop.Sdk",
+  "command": "custodio-detect",
+  "finish-args": [
+    "--system-talk-name=com.rfirma.Custodio1"
+  ],
+  "modules": [
+    {
+      "name": "custodio-test-app",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm755 custodio-detect /app/bin/custodio-detect"
+      ],
+      "sources": [
+        {
+          "type": "script",
+          "dest-filename": "custodio-detect",
+          "commands": [
+            "echo 'Custodio test app: detection steps of docs/api.md'",
+            "busctl --system call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus NameHasOwner s com.rfirma.Custodio1",
+            "busctl --system call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ListActivatableNames | grep -oF '\"com.rfirma.Custodio1\"' || echo 'not listed'"
+          ]
+        }
+      ]
+    }
+  ]
+}

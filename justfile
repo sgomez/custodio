@@ -139,6 +139,7 @@ test-scripts:
     scripts/test-docs-api.sh
     scripts/test-docs-install.sh
     scripts/test-docs-manual.sh
+    scripts/test-docs-manual-m3.sh
     scripts/test-install-real.sh
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
