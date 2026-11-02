@@ -49,6 +49,11 @@ for dep in systemd p11-kit; do
     case_fail "rpm-no-$dep" rpm: "$dep" -- dep-del rpm "$dep"
     case_fail "arch-no-$dep" arch: "$dep" -- dep-del archlinux "$dep"
 done
+# setpriv (F89): util-linux on rpm and arch. The deb leaves it out because util-linux is Essential there (lintian flags a dependency on
+# it), and pkttyagent comes with the polkit package already required on every format.
+case_fail rpm-no-util-linux rpm: util-linux -- dep-del rpm util-linux
+case_fail arch-no-util-linux arch: util-linux -- dep-del archlinux util-linux
+case_fail deb-util-linux deb: util-linux -- dep-add deb util-linux
 case_fail deb-no-p11-kit deb: p11-kit -- dep-del deb p11-kit
 # The deb's systemd is a Pre-Depends (the preinst runs systemd-sysusers): missing from both fields fails, only in Depends fails, in both
 # fails, and the two fields are not mixed up.

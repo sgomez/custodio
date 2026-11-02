@@ -1589,3 +1589,11 @@ Line numbers are approximate; no tag was pinned. Commands were run in the dev co
   missing, no agent is started (the same as a missing `pkttyagent`).
 - Signals: the CLI forbids `unsafe`, so handlers come from the `ctrlc` crate (feature
   `termination`: SIGINT, SIGTERM, SIGHUP, MIT/Apache-2.0, depends on `nix`); `cargo deny check bans` passes with it.
+
+## F90: packages that provide `setpriv` and `pkttyagent`
+
+Probes run in the target containers (2026-11-02): `dnf provides /usr/bin/setpriv /usr/bin/pkttyagent` on almalinux:10 and fedora:44 gives
+`util-linux` (setpriv) and `polkit` (pkttyagent) on both, so the rpm needs `util-linux` and already has `polkit`. `pacman -F` on
+archlinux: `core/util-linux` has `usr/bin/setpriv`, `extra/polkit` has `usr/bin/pkttyagent`. Debian 13: `dpkg -S /usr/bin/setpriv` is
+`util-linux`, which is Essential (`dpkg-query -W -f='${Essential}' util-linux` = yes), so the deb adds nothing; `pkttyagent` comes with
+`polkitd`. The proof that the names resolve is `just e2e`, which installs the packages with each target's package manager.

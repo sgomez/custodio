@@ -40,4 +40,5 @@ dependency-not-needed | polkit | the daemon asks polkit over D-Bus at run time, 
 dependency-not-needed | systemd | the daemon runs as a systemd service and the package installs units and sysusers files
 dependency-not-needed | dbus | the daemon is D-Bus-activated and the package installs bus policy files
 dependency-not-needed | p11-kit | the package installs a p11-kit module file that p11-kit loads at run time
+dependency-not-needed | util-linux | the CLI runs setpriv (util-linux) at run time to start pkttyagent with a parent-death signal (F89); namcap sees only linked libraries
 dependency-detected-satisfied | glibc (libraries-needed ['usr/lib/ld-linux-x86-64.so.2', 'usr/lib/libc.so.6'] ['usr/bin/custodio', 'usr/lib/custodio/custodiod', 'usr/lib/custodio/libcustodio_pkcs11.so']) | information: namcap's confirmation that glibc is declared

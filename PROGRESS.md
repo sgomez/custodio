@@ -411,3 +411,13 @@ with an empty context.
 - Negative control (red, reverted): in `crates/custodio-cli/src/agent/process.rs` `stop_agent`, `let _ = child.wait();` commented out (the `kill()` left in): 6 of 11 agent tests fail (`the_agent_is_gone_after_success_and_after_failure`, `an_interruption_...`, `delete_starts_...`, `import_starts_...`, `the_call_waits_...`, `an_agent_that_ends_...`). Restored; all 11 green.
 - Evidence: `just quick` exit 0.
 - Next session should: nothing for F89.
+
+### 2026-11-02 — F90 — attempt 1
+- Baseline: `just check` and `just api-contract` were green with no change needed.
+- Dependencies: `util-linux` added to the rpm and Arch lists (`setpriv`); `pkttyagent` is shipped by the polkit package already required everywhere; the deb adds neither (util-linux is Essential, reason beside the deb list in `packaging/nfpm.yaml` and in `scripts/package_expected.py` with `util-linux` in `FORBIDDEN_DEPS`). `scripts/test-check-packages-deps.sh`: `rpm-no-util-linux`, `arch-no-util-linux`, `deb-util-linux`. Probes in `docs/findings.md`.
+- `just package-gates` first failed on namcap `dependency-not-needed | util-linux`; one reasoned entry in `packaging/lint/namcap.txt` (run-time use of setpriv, same class as polkit/p11-kit).
+- `just e2e` (debian13 single case first, then all six targets) green, 59 cases accounted on ubuntu2604; it proves the new names resolve with dnf/pacman/apt.
+- One `just check` run failed in `scripts/test-e2e-upgrade.sh` ("service does not run the installed file"); it passed twice alone and in the next full `just check`, so it looks like a timing flake under parallel load (not investigated further).
+- No gate weakened: diff of justfile, deny.toml, scripts/check-*, e2e/ is empty; `packaging/lint` only gained the entry above.
+- Final: check, api-contract, e2e, package-gates all exit 0.
+- Next session should: nothing for F90.

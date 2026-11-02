@@ -56,14 +56,18 @@ FORMATS = (("deb", "deb", "*.deb"), ("rpm", "rpm", "*.rpm"), ("arch", "archlinux
 # listed because the Rust binaries always link them; nfpm does not compute shared-library dependencies.
 DEPS = {
     "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit"],
-    "rpm": ["glibc", "libgcc", "polkit >= 124", "systemd", "dbus", "p11-kit"],
-    "arch": ["glibc", "gcc-libs", "polkit>=124", "systemd", "dbus", "p11-kit"],
+    "rpm": ["glibc", "libgcc", "polkit >= 124", "systemd", "dbus", "p11-kit", "util-linux"],
+    "arch": ["glibc", "gcc-libs", "polkit>=124", "systemd", "dbus", "p11-kit", "util-linux"],
 }
+# The CLI runs `setpriv --pdeathsig=KILL -- pkttyagent ...` (F89). setpriv comes from util-linux and pkttyagent from the polkit package
+# the lists above already carry (polkitd on Debian, polkit on Fedora/Alma/Arch), so only rpm and arch add util-linux. The deb leaves it
+# out on purpose: util-linux is Essential on Debian and Ubuntu, and an unversioned dependency on an Essential package is a lintian
+# finding (see FORBIDDEN_DEPS). Probes (F90): `dnf provides /usr/bin/setpriv` is util-linux on alma10 and fedora44, `pacman -F` util-linux.
 # The deb's Pre-Depends field, entry by entry, exactly as dpkg-deb -f writes it. systemd is here and not in Depends because the preinst runs
 # systemd-sysusers and dpkg guarantees Depends only for the postinst (docs/decisions.md, F43). Only the deb has the field.
 PRE_DEPS = {"deb": ["systemd"]}
 # Names that must not appear as a dependency: the unversioned polkit of the old package, the M1 bare dbus, the wrong polkit.
-FORBIDDEN_DEPS = {"deb": {"polkit", "dbus"}, "rpm": {"polkitd"}, "arch": {"polkitd"}}
+FORBIDDEN_DEPS = {"deb": {"polkit", "dbus", "util-linux"}, "rpm": {"polkitd"}, "arch": {"polkitd"}}
 
 # NEEDED soname -> package name per format (deb, rpm, arch). A soname missing here fails the gate.
 NEEDED = {
