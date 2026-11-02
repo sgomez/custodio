@@ -1688,3 +1688,25 @@ Acceptance 15: **fail**. `org.freedesktop.Platform` 24.08 ships no `busctl`; it 
   `CUSTODIO_APP_ID_STATE=read`, `CUSTODIO_UID=1000` (= `id -u`), `CUSTODIO_OPERATION=sign`, `CUSTODIO_OUTCOME=signed`; on the second,
   `CUSTODIO_PID=5090` was the `xdg-dbus-proxy` seen running during the call (the application's `gdbus` was pid 5094). So the service
   meets acceptance 15; the test application and its page do not.
+
+### F102 repeat after `fa76c48` (gdbus): pass
+
+Same VM restored to `limpia`, same `.rpm`, §17 as changed by `fa76c48` (manifest and steps with `gdbus`, runtimes 25.08 from
+flathub as user installs). `custodio import --id p256` again (import dialog, approved).
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Detection inside the flatpak | `(true,)`, name listed | `(true,)`, `'com.rfirma.Custodio1'` | pass |
+| 2 | Sign: dialog action | `com.rfirma.custodio.sign` | "Authentication is required to sign with a key held by Custodio", approved | pass |
+| 3 | Sign: result | 64 bytes | `([byte 0x5b, …],)`, 64 bytes | pass |
+| 4 | Journal: app-id | `com.rfirma.CustodioTest`, state `read` | `CUSTODIO_APP_ID=com.rfirma.CustodioTest`, `CUSTODIO_APP_ID_STATE=read`; also found by the app-id query | pass |
+| 5 | Journal: uid | `id -u` of the person | `CUSTODIO_UID=1000`, `id -u` 1000 | pass |
+| 6 | Journal: pid | the proxy's, not the application's | `CUSTODIO_PID=4121` = `xdg-dbus-proxy`; `gdbus` was 4129 | pass |
+
+Acceptance 15: pass. One entry since the step started (`signature made: uid 1000 pid 4121 key p256`), none extra.
+
+- The documented build failed again on `rofiles-fuse`; the page's fallback (`--disable-rofiles-fuse`) built it. Permissions:
+  only `com.rfirma.Custodio1=talk`.
+- The two lines of step 2 were copied from the page into a file and run with `flatpak run --command=sh --filesystem=/tmp:ro
+  com.rfirma.CustodioTest /tmp/step2.sh`, not typed into an interactive shell; the extra read-only `/tmp` is a file permission
+  and does not touch the bus policy or the app-id.
