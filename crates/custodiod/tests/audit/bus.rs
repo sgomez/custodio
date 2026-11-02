@@ -193,6 +193,20 @@ impl Fixture {
     where
         C: CallerCredentials + Send + Sync + 'static,
     {
+        Self::start_full(answer, credentials, sink, decoder, None).await
+    }
+
+    /// As [`Fixture::start_with`], with an app-id source (already guarded).
+    pub async fn start_full<C>(
+        answer: Answer,
+        credentials: impl FnOnce(&Connection) -> C,
+        sink: Arc<dyn AuditSink>,
+        decoder: Option<Arc<dyn P12Decoder>>,
+        source: Option<custodiod::app_id_source::GuardedSource>,
+    ) -> Result<Self, Box<dyn Error>>
+    where
+        C: CallerCredentials + Send + Sync + 'static,
+    {
         let bus = Bus::start()?;
         let answer = Arc::new(Mutex::new(answer));
         let asked = Arc::new(Mutex::new(Vec::new()));
@@ -226,6 +240,9 @@ impl Fixture {
         );
         if let Some(decoder) = decoder {
             object = object.with_decoder(decoder);
+        }
+        if let Some(source) = source {
+            object = object.with_guarded_app_id_source(source);
         }
         service.object_server().at(OBJECT_PATH, object).await?;
         service.request_name(BUS_NAME).await?;

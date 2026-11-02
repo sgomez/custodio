@@ -276,7 +276,8 @@ CUSTODIO_PID=7654321\n\
 CUSTODIO_KEY_ID=key-1_A\n\
 CUSTODIO_OPERATION=sign\n\
 CUSTODIO_OUTCOME=signed\n\
-CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n";
+CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n\
+CUSTODIO_APP_ID_STATE=undetermined\n";
     assert_eq!(recv(&s)?, expected);
     Ok(())
 }
@@ -347,6 +348,7 @@ fn all_entries_decode_to_expected_fields() -> TestResult {
                 if let Some(m) = m {
                     want.push(("CUSTODIO_MECHANISM".into(), m.name().into()));
                 }
+                want.push(("CUSTODIO_APP_ID_STATE".into(), b"undetermined".to_vec()));
                 assert_eq!(got, want);
             }
         }
@@ -414,7 +416,7 @@ fn one_datagram_per_call() -> TestResult {
         sink.record(&entry(Outcome::Denied, None)?)?;
     }
     for _ in 0..3 {
-        assert_eq!(decode(&recv(&s)?)?.len(), 9);
+        assert_eq!(decode(&recv(&s)?)?.len(), 10);
     }
     would_block(&s)?;
     Ok(())

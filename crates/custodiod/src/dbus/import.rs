@@ -65,11 +65,8 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let request =
             parse_import_request(id, p12, password).map_err(|e| ServiceError::from(&e))?;
         let key_id = KeyId::new(&request.id).map_err(|_| ServiceError::AuditUnavailable)?;
-        let known = match sender {
-            Some(s) => self.credentials.credentials(s).await.ok().map(|c| (s, c)),
-            None => None,
-        };
-        let Some((sender, caller)) = known else {
+        let known = self.known_caller(sender).await;
+        let Some((sender, caller, pidfd)) = known else {
             let entry =
                 OperationEntry::import(ImportOutcome::AuthorizationUnavailable, None, key_id, None);
             let result = Err(ServiceError::AuthorizationUnavailable);
@@ -79,10 +76,12 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         if id_taken(&self.store, owner, &request.id).map_err(|e| ServiceError::from(&e))? {
             return Err(ServiceError::KeyIdTaken);
         }
+        let app_id = self.app_id_of(pidfd.as_ref(), owner).await;
         let (outcome, key_type, result) = self
             .authorize_and_import(sender, owner, &request, p12)
             .await;
-        let entry = OperationEntry::import(outcome, Some(caller), key_id, key_type);
+        let entry =
+            OperationEntry::import(outcome, Some(caller), key_id, key_type).with_app_id(app_id);
         self.finish_import(entry, owner, &request.id, result).await
     }
 

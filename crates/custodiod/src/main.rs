@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use custodiod::app_id_source::CgroupAppIdSource;
 use custodiod::audit::JournalSink;
 use custodiod::credentials::BusCredentials;
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
@@ -33,6 +34,7 @@ fn build_service(
         BusCredentials::new(connection.clone()),
         Arc::new(journal),
     )
+    .with_app_id_source(CgroupAppIdSource::new())
 }
 
 fn run() -> Result<(), Box<dyn Error>> {

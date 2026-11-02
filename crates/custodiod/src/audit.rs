@@ -19,6 +19,8 @@
 //! | `CUSTODIO_OUTCOME` | `signed`, `signing_failed`, `denied` or `authorization_unavailable` |
 //! | `CUSTODIO_MECHANISM` | only when known: `rsa_pkcs`, `rsa_pkcs_pss_sha256`, `rsa_pkcs_pss_sha384`, `rsa_pkcs_pss_sha512`, `ecdsa` |
 //! | `CUSTODIO_KEY_TYPE` | import entries only, when known: `rsa_2048`, `ecdsa_p256` |
+//! | `CUSTODIO_APP_ID_STATE` | always: `read`, `none` or `undetermined` |
+//! | `CUSTODIO_APP_ID` | only with the state `read`: the validated flatpak app-id |
 //!
 //! This table and the outcomes below are for signing; the other operations are in [`OperationEntry`] and docs/audit.md.
 //!
@@ -78,6 +80,20 @@
 //! let _ = Entry::new(Outcome::Denied, String::from("1000"), k, None);
 //! ```
 //!
+//! The app-id of an entry is an [`AppId`](crate::app_id::AppId), which only validation builds; a string is refused:
+//!
+//! ```compile_fail
+//! use custodiod::audit::{Caller, Entry, KeyId, Outcome};
+//! let k = KeyId::new("k").unwrap();
+//! let _ = Entry::new(Outcome::Denied, Caller { uid: 1, pid: 2 }, k, None).with_app_id("org.example.App");
+//! ```
+//!
+//! ```compile_fail
+//! use custodiod::audit::{DeleteOutcome, KeyId, OperationEntry};
+//! let k = KeyId::new("k").unwrap();
+//! let _ = OperationEntry::delete(DeleteOutcome::Deleted, None, k).with_app_id(String::from("org.example.App"));
+//! ```
+//!
 //! The entries of the other operations take typed parts only, and only the outcomes of their own
 //! operation:
 //!
@@ -119,6 +135,7 @@ mod wire;
 use std::fmt;
 use std::io;
 
+use crate::app_id::{AppId, AppIdOutcome};
 use crate::sign::{Mechanism, PssHash};
 use crate::store::valid_key_id;
 
@@ -325,6 +342,7 @@ pub struct Entry {
     caller: Option<Caller>,
     key_id: KeyId,
     mechanism: Option<AuditMechanism>,
+    app_id: AppIdOutcome,
 }
 
 impl Entry {
@@ -340,7 +358,21 @@ impl Entry {
             caller: Some(caller),
             key_id,
             mechanism,
+            app_id: AppIdOutcome::Undetermined,
         }
+    }
+
+    /// The entry with the app-id case of the caller. Without this the case is `undetermined`.
+    #[must_use]
+    pub fn with_app_id(mut self, app_id: AppIdOutcome) -> Self {
+        self.app_id = app_id;
+        self
+    }
+
+    /// The app-id case of the caller.
+    #[must_use]
+    pub const fn app_id(&self) -> &AppIdOutcome {
+        &self.app_id
     }
 
     /// An entry for a call whose caller the bus could not name: the outcome is always
@@ -352,6 +384,7 @@ impl Entry {
             caller: None,
             key_id,
             mechanism,
+            app_id: AppIdOutcome::Undetermined,
         }
     }
 
@@ -382,7 +415,8 @@ impl Entry {
     }
 
     /// The fields in wire order.
-    pub(crate) fn fields(&self) -> Vec<(&'static str, String)> {
+    #[must_use]
+    pub fn fields(&self) -> Vec<(&'static str, String)> {
         let mut f = base_fields(
             self.message(),
             Operation::Sign,
@@ -394,11 +428,35 @@ impl Entry {
         if let Some(m) = self.mechanism {
             f.push(("CUSTODIO_MECHANISM", m.name().to_owned()));
         }
+        push_app_id(&mut f, &self.app_id);
         f
     }
 }
 
 /// `<phrase>: uid <uid> pid <pid> key <key id>`, the shape of every `MESSAGE`.
+/// Field holding which of the three app-id cases an entry records.
+pub const APP_ID_STATE_FIELD: &str = "CUSTODIO_APP_ID_STATE";
+/// Field holding the validated flatpak app-id; only with the state `read`.
+pub const APP_ID_FIELD: &str = "CUSTODIO_APP_ID";
+
+/// Value of [`APP_ID_STATE_FIELD`] for a case.
+#[must_use]
+pub const fn app_id_state(app_id: &AppIdOutcome) -> &'static str {
+    match app_id {
+        AppIdOutcome::Read(_) => "read",
+        AppIdOutcome::None => "none",
+        AppIdOutcome::Undetermined => "undetermined",
+    }
+}
+
+/// Appends the app-id fields. The only text that goes in is an [`AppId`], which is validated.
+pub(crate) fn push_app_id(f: &mut Vec<(&'static str, String)>, app_id: &AppIdOutcome) {
+    f.push((APP_ID_STATE_FIELD, app_id_state(app_id).to_owned()));
+    if let AppIdOutcome::Read(id) = app_id {
+        f.push((APP_ID_FIELD, AppId::as_str(id).to_owned()));
+    }
+}
+
 fn message(phrase: &str, caller: Option<Caller>, key_id: &KeyId) -> String {
     let who = caller.map_or_else(
         || "uid unknown pid unknown".to_owned(),
@@ -432,6 +490,8 @@ fn base_fields(
     f
 }
 
+#[cfg(test)]
+mod app_id_tests;
 #[cfg(test)]
 mod docs_tests;
 #[cfg(test)]

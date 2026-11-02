@@ -6,6 +6,7 @@
 //! a `.p12`, a password, certificate bytes, data and signatures have no place in it.
 
 use super::{Caller, KeyId};
+use crate::app_id::AppIdOutcome;
 
 /// What a request asked Custodio to do. Value of `CUSTODIO_OPERATION`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -310,6 +311,7 @@ pub struct OperationEntry {
     kind: Kind,
     caller: Option<Caller>,
     key_id: KeyId,
+    app_id: AppIdOutcome,
 }
 
 impl OperationEntry {
@@ -327,6 +329,7 @@ impl OperationEntry {
             kind: Kind::Import(outcome, key_type),
             caller,
             key_id,
+            app_id: AppIdOutcome::Undetermined,
         }
     }
 
@@ -337,6 +340,7 @@ impl OperationEntry {
             kind: Kind::Delete(outcome),
             caller,
             key_id,
+            app_id: AppIdOutcome::Undetermined,
         }
     }
 
@@ -351,7 +355,21 @@ impl OperationEntry {
             kind: Kind::Replace(outcome),
             caller,
             key_id,
+            app_id: AppIdOutcome::Undetermined,
         }
+    }
+
+    /// The entry with the app-id case of the caller. Without this the case is `undetermined`.
+    #[must_use]
+    pub fn with_app_id(mut self, app_id: AppIdOutcome) -> Self {
+        self.app_id = app_id;
+        self
+    }
+
+    /// The app-id case of the caller.
+    #[must_use]
+    pub const fn app_id(&self) -> &AppIdOutcome {
+        &self.app_id
     }
 
     /// The operation.
@@ -417,7 +435,8 @@ impl OperationEntry {
     }
 
     /// The fields in wire order.
-    pub(crate) fn fields(&self) -> Vec<(&'static str, String)> {
+    #[must_use]
+    pub fn fields(&self) -> Vec<(&'static str, String)> {
         let op = self.operation();
         let mut f = super::base_fields(
             self.message(),
@@ -430,6 +449,7 @@ impl OperationEntry {
         if let Some(t) = self.key_type() {
             f.push(("CUSTODIO_KEY_TYPE", t.name().to_owned()));
         }
+        super::push_app_id(&mut f, &self.app_id);
         f
     }
 }

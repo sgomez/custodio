@@ -152,6 +152,22 @@ impl<F: Fn(&mut HashMap<String, OwnedVariant>) + Sync> CallerCredentials for Rep
         (self.0)(&mut map);
         ready(caller_from(&map))
     }
+
+    fn pinned_credentials(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<(Caller, Option<std::os::fd::OwnedFd>), CredentialsError>> + Send
+    {
+        let mut map: HashMap<String, OwnedVariant> = HashMap::from([
+            ("UnixUserID".to_owned(), OwnedVariant::from(uid())),
+            (
+                "ProcessID".to_owned(),
+                OwnedVariant::from(std::process::id()),
+            ),
+        ]);
+        (self.0)(&mut map);
+        ready(custodiod::credentials::pinned_from(&map).map(|(c, fd)| (c, Some(fd))))
+    }
 }
 
 /// A pidfd of `pid` as a `ProcessFD` value.

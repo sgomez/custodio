@@ -5,6 +5,8 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
+use crate::app_id::AppIdOutcome;
+
 type TestResult = Result<(), Box<dyn Error>>;
 
 fn read(rel: &str) -> Result<String, Box<dyn Error>> {
@@ -74,18 +76,15 @@ fn operation_entries() -> Result<Vec<OperationEntry>, InvalidKeyId> {
     let mut all = Vec::new();
     for o in ImportOutcome::all() {
         let t = AuditKeyType::all();
-        all.push(OperationEntry::import(
-            o,
-            Some(CALLER),
-            key()?,
-            t.first().copied(),
-        ));
+        all.push(
+            OperationEntry::import(o, Some(CALLER), key()?, t.first().copied()).with_app_id(app()),
+        );
     }
     for o in DeleteOutcome::all() {
-        all.push(OperationEntry::delete(o, Some(CALLER), key()?));
+        all.push(OperationEntry::delete(o, Some(CALLER), key()?).with_app_id(app()));
     }
     for o in ReplaceOutcome::all() {
-        all.push(OperationEntry::replace_certificate(o, Some(CALLER), key()?));
+        all.push(OperationEntry::replace_certificate(o, Some(CALLER), key()?).with_app_id(app()));
     }
     Ok(all)
 }
@@ -156,7 +155,8 @@ fn full(o: Outcome) -> Result<Entry, InvalidKeyId> {
         },
         key()?,
         Some(AuditMechanism::Ecdsa),
-    ))
+    )
+    .with_app_id(app()))
 }
 
 fn names(e: &Entry) -> BTreeSet<&'static str> {
@@ -215,7 +215,12 @@ fn optional_fields_flagged() -> TestResult {
         .collect();
     assert_eq!(
         missing,
-        ["CUSTODIO_MECHANISM", "CUSTODIO_PID", "CUSTODIO_UID"]
+        [
+            "CUSTODIO_APP_ID",
+            "CUSTODIO_MECHANISM",
+            "CUSTODIO_PID",
+            "CUSTODIO_UID"
+        ]
     );
     let mut missing = missing;
     missing.push("CUSTODIO_KEY_TYPE");
@@ -453,12 +458,19 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
                 "CUSTODIO_OUTCOME" => outcome_names.contains(value),
                 "CUSTODIO_UID" => value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty(),
                 "CUSTODIO_KEY_ID" => KeyId::new(value).is_ok(),
+                "CUSTODIO_APP_ID" => crate::app_id::validate(value.as_bytes()).is_some(),
+                "CUSTODIO_APP_ID_STATE" => {
+                    ["read", "none", "undetermined"].contains(&value)
+                        && [AppIdOutcome::None, AppIdOutcome::Undetermined, app()]
+                            .iter()
+                            .any(|c| app_id_state(c) == value)
+                }
                 _ => false,
             };
             assert!(ok, "query term {term} is not something the code emits");
         }
     }
-    assert!(seen >= 8);
+    assert!(seen >= 12);
     Ok(())
 }
 
@@ -559,3 +571,6 @@ fn api_describes_the_replace_entry() -> TestResult {
     assert!(!flat.contains("This method does not write a journal entry"));
     Ok(())
 }
+
+mod app_id;
+use app_id::app;

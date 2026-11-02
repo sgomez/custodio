@@ -25,6 +25,7 @@
 //! maps "no `ProcessFD`" to `Undetermined` itself.
 
 mod bounded;
+mod guarded;
 mod limiter;
 mod scan;
 
@@ -35,6 +36,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::app_id::{AppIdOutcome, validate};
+pub use guarded::{ErasedAppIdSource, GuardedSource};
 use limiter::Limiter;
 
 /// The time a whole lookup may take.

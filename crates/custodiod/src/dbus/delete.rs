@@ -36,11 +36,8 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     pub async fn delete_call(&self, sender: Option<&str>, id: &str) -> Result<(), ServiceError> {
         check_id(id).map_err(|e| ServiceError::from(&e))?;
         let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
-        let known = match sender {
-            Some(s) => self.credentials.credentials(s).await.ok().map(|c| (s, c)),
-            None => None,
-        };
-        let Some((sender, caller)) = known else {
+        let known = self.known_caller(sender).await;
+        let Some((sender, caller, pidfd)) = known else {
             let entry =
                 OperationEntry::delete(DeleteOutcome::AuthorizationUnavailable, None, key_id);
             self.submit(entry).await?;
@@ -55,6 +52,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             return Err(ServiceError::NoSuchKey);
         }
         let found = self.find_for_delete(owner, id)?;
+        let app_id = self.app_id_of(pidfd.as_ref(), owner).await;
         let approved = match self.authorizer.authorize(sender, DELETE_ACTION_ID).await {
             Ok(()) => true,
             Err(AuthError::Denied) => false,
@@ -63,18 +61,21 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                     DeleteOutcome::AuthorizationUnavailable,
                     Some(caller),
                     key_id,
-                );
+                )
+                .with_app_id(app_id);
                 self.submit(entry).await?;
                 return Err(ServiceError::AuthorizationUnavailable);
             }
         };
         if !approved {
-            let entry = OperationEntry::delete(DeleteOutcome::Denied, Some(caller), key_id);
+            let entry = OperationEntry::delete(DeleteOutcome::Denied, Some(caller), key_id)
+                .with_app_id(app_id);
             self.submit(entry).await?;
             return Err(ServiceError::PolkitDenied);
         }
         self.deletes.mark_unusable(owner, id);
-        let entry = OperationEntry::delete(DeleteOutcome::Deleted, Some(caller), key_id);
+        let entry = OperationEntry::delete(DeleteOutcome::Deleted, Some(caller), key_id)
+            .with_app_id(app_id);
         if let Err(e) = self.submit(entry).await {
             self.deletes.restore(owner, id);
             return Err(e);

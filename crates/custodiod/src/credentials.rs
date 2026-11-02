@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
 use std::hash::BuildHasher;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 
 use zbus::{Connection, Fd, OwnedVariant};
 
@@ -42,6 +42,16 @@ pub trait CallerCredentials {
         &self,
         sender: &str,
     ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send;
+
+    /// As [`credentials`](Self::credentials), with the pidfd the bus pinned (the one checked against
+    /// `ProcessID`), when the implementation has one. The default has none.
+    fn pinned_credentials(
+        &self,
+        sender: &str,
+    ) -> impl Future<Output = Result<(Caller, Option<OwnedFd>), CredentialsError>> + Send {
+        let found = self.credentials(sender);
+        async move { found.await.map(|caller| (caller, None)) }
+    }
 }
 
 /// Checks the text of `/proc/self/fdinfo/<fd>` of a pidfd: its `Pid:` line must name `pid`.
@@ -69,6 +79,16 @@ pub fn check_pidfd_info(info: &str, pid: u32) -> Result<(), CredentialsError> {
 pub fn caller_from<S: BuildHasher>(
     map: &HashMap<String, OwnedVariant, S>,
 ) -> Result<Caller, CredentialsError> {
+    pinned_from(map).map(|(caller, _)| caller)
+}
+
+/// As [`caller_from`], and the checked pidfd as an owned duplicate of the one in the reply.
+///
+/// # Errors
+/// As [`caller_from`]; also if the pidfd cannot be duplicated.
+pub fn pinned_from<S: BuildHasher>(
+    map: &HashMap<String, OwnedVariant, S>,
+) -> Result<(Caller, OwnedFd), CredentialsError> {
     let field = |name: &str| {
         map.get(name)
             .and_then(|v| u32::try_from(v).ok())
@@ -85,7 +105,11 @@ pub fn caller_from<S: BuildHasher>(
     let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd()))
         .map_err(|_| CredentialsError::Missing)?;
     check_pidfd_info(&info, caller.pid)?;
-    Ok(caller)
+    let pinned = fd
+        .as_fd()
+        .try_clone_to_owned()
+        .map_err(|_| CredentialsError::Missing)?;
+    Ok((caller, pinned))
 }
 
 /// Asks the bus daemon (`GetConnectionCredentials`) on the given connection.
@@ -103,6 +127,15 @@ impl BusCredentials {
 
 impl CallerCredentials for BusCredentials {
     async fn credentials(&self, sender: &str) -> Result<Caller, CredentialsError> {
+        self.pinned_credentials(sender)
+            .await
+            .map(|(caller, _)| caller)
+    }
+
+    async fn pinned_credentials(
+        &self,
+        sender: &str,
+    ) -> Result<(Caller, Option<OwnedFd>), CredentialsError> {
         let reply = self
             .connection
             .call_method(
@@ -118,7 +151,7 @@ impl CallerCredentials for BusCredentials {
             .body()
             .deserialize()
             .map_err(|_| CredentialsError::Bus)?;
-        caller_from(&map)
+        pinned_from(&map).map(|(caller, fd)| (caller, Some(fd)))
     }
 }
 

@@ -43,7 +43,37 @@ signing `MESSAGE_ID` never changed.
 | `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete` or `replace_certificate` | always |
 | `CUSTODIO_OUTCOME` | Result, one of the values of the operation below | always |
 | `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
+| `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
+| `CUSTODIO_APP_ID` | The flatpak app-id of the caller, validated | omitted unless `CUSTODIO_APP_ID_STATE` is `read` |
 | `CUSTODIO_KEY_TYPE` | Type of the imported key: `rsa_2048` or `ecdsa_p256` | import entries only; omitted when the file did not get far enough to have one (an unreadable file, a wrong password, a refusal before decoding) |
+
+## Flatpak app-id
+
+Every entry of every operation says in `CUSTODIO_APP_ID_STATE` what Custodio found out about the flatpak
+application the caller runs in. There are three cases, and every entry has exactly one:
+
+| `CUSTODIO_APP_ID_STATE` | `CUSTODIO_APP_ID` | Meaning |
+|---|---|---|
+| `read` | the app-id, e.g. `org.example.App` | The caller's cgroup scope names a flatpak application and the name is a valid flatpak app-id |
+| `none` | omitted | No app-id: the caller is not in a flatpak scope, so it is not sandboxed as far as this check can see |
+| `undetermined` | omitted | The app-id could not be determined: the scope is not readable or its name is not a valid app-id, the lookup failed or took longer than 1 s (the bound, `LOOKUP_DEADLINE`), the caller has no pinned process, the bus named no caller, or no source is configured |
+
+Only an app-id that passed flatpak's naming rules is copied into an entry. Any other text, whatever it
+looks like, is not copied anywhere in the entry: not in a field and not in `MESSAGE`. The app-id is
+recorded and nothing more. It never changes the result of the request, the polkit action or the subject
+polkit is asked about, and it is not used to allow or deny. The lookup runs once per request that leaves an
+entry with a caller, adds at most 1 s to it, and a failing lookup is `undetermined`, never an error.
+
+- **The source is the caller's cgroup scope.** The process the bus pinned for the caller is looked for in the
+  scopes of the caller's `app.slice` (`app-flatpak-<app-id>-<n>.scope`, which flatpak creates), and the name of
+  the scope that lists it gives the app-id. `/.flatpak-info` is not used.
+- **The app-id is not authenticated.** A process outside flatpak that can create a scope of that name in the
+  user's `app.slice` can make its entries say any valid app-id. The field is a record to search by, not an
+  authorization and not proof of who called. `none` is a best-effort finding: it does not prove that the
+  caller is not sandboxed.
+- **The pid of a flatpak caller is the proxy's.** A sandboxed application reaches the bus through
+  `xdg-dbus-proxy`, so for a flatpak caller `CUSTODIO_PID` (and the process the app-id is looked up for) is the
+  pid of the proxy, not of the application. `CUSTODIO_UID` is the user's.
 
 ## Outcomes
 
@@ -204,6 +234,21 @@ By key:
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_KEY_ID=my-key
 ```
 
+By flatpak app-id (the id is the value of `CUSTODIO_APP_ID`):
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID=org.example.App
+```
+
+By app-id case: the callers whose app-id was read, those that are not in a flatpak scope, and those whose
+app-id could not be determined:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=read
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=none
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=undetermined
+```
+
 By outcome (add `-o json` for the fields):
 
 ```sh
@@ -226,6 +271,8 @@ journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERAT
   without an entry. A crash between the store and the restore has the same effect.
 - **Identity of a person.** `CUSTODIO_UID` and `CUSTODIO_PID` name the calling process only.
   They do not say who sat at the keyboard, and a shared account looks like one user.
+- **A true app-id.** See "Flatpak app-id": the value is read from a cgroup scope name, and a process that
+  can create such a scope can choose it.
 - **Pid reuse.** A process id is reused after the process exits; `CUSTODIO_PID` may no longer
   belong to the process that asked when you read the entry. Use it with the timestamp.
 - **Rate limiting.** journald may drop or delay entries when a service logs too much

@@ -4,12 +4,15 @@
 //! plain functions ([`parse_sign_request`], [`parse_import_request`]) so it can be fuzzed.
 
 use std::fmt;
+use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use zbus::interface;
 use zbus::message::Header;
 
+use crate::app_id::AppIdOutcome;
+use crate::app_id_source::{AppIdSource, GuardedSource};
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
@@ -183,6 +186,9 @@ fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism
 /// What a `Sign` call records: the outcome, the caller if known, and the reply.
 type Attempt = (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>);
 
+/// A caller the bus named: the sender, its credentials and the pidfd the bus pinned, if any.
+type Known<'a> = (&'a str, Caller, Option<OwnedFd>);
+
 /// The object served at [`OBJECT_PATH`].
 pub struct Custodio<A, C> {
     store: Arc<KeyStore>,
@@ -190,6 +196,7 @@ pub struct Custodio<A, C> {
     credentials: C,
     sink: Arc<dyn AuditSink>,
     decoder: Arc<dyn P12Decoder>,
+    app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
 }
 
@@ -207,6 +214,7 @@ impl<A, C> Custodio<A, C> {
             credentials,
             sink,
             decoder: Arc::new(RealDecoder),
+            app_ids: None,
             deletes: delete_state::DeleteState::default(),
         }
     }
@@ -215,6 +223,23 @@ impl<A, C> Custodio<A, C> {
     #[must_use]
     pub fn with_decoder(mut self, decoder: Arc<dyn P12Decoder>) -> Self {
         self.decoder = decoder;
+        self
+    }
+
+    /// Sets where the flatpak app-id of a caller is read from. Without one every entry says the
+    /// app-id could not be determined. The app-id only goes into the entry: it never changes a reply,
+    /// the polkit request or the store.
+    #[must_use]
+    pub fn with_app_id_source(mut self, source: impl AppIdSource + 'static) -> Self {
+        self.app_ids = Some(GuardedSource::new(source));
+        self
+    }
+
+    /// As [`with_app_id_source`](Self::with_app_id_source), with a source that is already guarded
+    /// (tests choose its deadline).
+    #[must_use]
+    pub fn with_guarded_app_id_source(mut self, source: GuardedSource) -> Self {
+        self.app_ids = Some(source);
         self
     }
 }
@@ -242,17 +267,36 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         // A missing key or another uid's key is refused here: no polkit call and no entry. The
         // entry would add nothing the caller does not know, and `NoSuchKey` must look the same
         // for both. See `docs/decisions.md`.
-        let Some((outcome, caller, result)) = self.attempt(sender, &request, data).await? else {
+        let Some(((outcome, caller, result), app_id)) =
+            self.attempt(sender, &request, data).await?
+        else {
             return Err(ServiceError::NoSuchKey);
         };
         let entry = match caller {
             Some(caller) => Entry::new(outcome, caller, key_id, Some(audit_mechanism)),
             None => Entry::without_caller(key_id, Some(audit_mechanism)),
-        };
+        }
+        .with_app_id(app_id);
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record(&entry)).await {
             Some(Ok(())) => result,
             _ => Err(ServiceError::AuditUnavailable),
+        }
+    }
+
+    /// The caller of a call, when the bus names one: the sender, its credentials and the pinned pidfd.
+    async fn known_caller<'a>(&self, sender: Option<&'a str>) -> Option<Known<'a>> {
+        let sender = sender?;
+        let (caller, pidfd) = self.credentials.pinned_credentials(sender).await.ok()?;
+        Some((sender, caller, pidfd))
+    }
+
+    /// The app-id case of a caller, asked once per call and never later than the lookup deadline. No
+    /// pinned process or no source is `Undetermined`. It is only recorded, never acted on.
+    async fn app_id_of(&self, pidfd: Option<&OwnedFd>, uid: u32) -> AppIdOutcome {
+        match (&self.app_ids, pidfd) {
+            (Some(source), Some(pidfd)) => source.app_id(pidfd, uid).await,
+            _ => AppIdOutcome::Undetermined,
         }
     }
 
@@ -302,28 +346,19 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(out)
     }
 
-    /// Credentials, the caller's key, polkit and signing, with the outcome to record. `Ok(None)`:
+    /// Credentials, the caller's key, polkit and signing, with the outcome to record and the app-id
+    /// case of the caller. `Ok(None)`:
     /// the caller has no key with this id; nothing is recorded and polkit was not asked.
     async fn attempt(
         &self,
         sender: Option<&str>,
         request: &SignRequest,
         data: &[u8],
-    ) -> Result<Option<Attempt>, ServiceError> {
+    ) -> Result<Option<(Attempt, AppIdOutcome)>, ServiceError> {
         let unavailable = || ServiceError::AuthorizationUnavailable;
-        let Some(sender) = sender else {
-            return Ok(Some((
-                Outcome::AuthorizationUnavailable,
-                None,
-                Err(unavailable()),
-            )));
-        };
-        let Ok(caller) = self.credentials.credentials(sender).await else {
-            return Ok(Some((
-                Outcome::AuthorizationUnavailable,
-                None,
-                Err(unavailable()),
-            )));
+        let Some((sender, caller, pidfd)) = self.known_caller(sender).await else {
+            let attempt = (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            return Ok(Some((attempt, AppIdOutcome::Undetermined)));
         };
         // Only the caller's own keys are looked at. Any other store failure is reported after
         // polkit, as a failed signature, as before.
@@ -334,10 +369,11 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             Err(StoreError::NotFound) => return Ok(None),
             other => other.map_err(|e| ServiceError::from(&e)),
         };
-        Ok(Some(
-            self.authorize_and_sign(sender, caller, key, request, data)
-                .await,
-        ))
+        let app_id = self.app_id_of(pidfd.as_ref(), caller.uid).await;
+        let attempt = self
+            .authorize_and_sign(sender, caller, key, request, data)
+            .await;
+        Ok(Some((attempt, app_id)))
     }
 
     /// Polkit, then the signature with the key already looked up.

@@ -71,11 +71,8 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             return Err(ServiceError::InvalidArgs);
         }
         let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
-        let known = match sender {
-            Some(s) => self.credentials.credentials(s).await.ok().map(|c| (s, c)),
-            None => None,
-        };
-        let Some((sender, caller)) = known else {
+        let known = self.known_caller(sender).await;
+        let Some((sender, caller, pidfd)) = known else {
             let entry = OperationEntry::replace_certificate(
                 ReplaceOutcome::AuthorizationUnavailable,
                 None,
@@ -93,6 +90,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             return Err(ServiceError::NoSuchKey);
         }
         self.key_of(owner, id)?;
+        let app_id = self.app_id_of(pidfd.as_ref(), owner).await;
         let (outcome, reply, old) = match self.authorizer.authorize(sender, REPLACE_ACTION_ID).await
         {
             Ok(()) => self.store_certificate(owner, id, certificate),
@@ -107,7 +105,8 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 None,
             ),
         };
-        let entry = OperationEntry::replace_certificate(outcome, Some(caller), key_id);
+        let entry =
+            OperationEntry::replace_certificate(outcome, Some(caller), key_id).with_app_id(app_id);
         if let Err(e) = self.submit(entry).await {
             if let Some(old) = old {
                 // Nothing more can be done if this fails: the reply is the same error either way.
