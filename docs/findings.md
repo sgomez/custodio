@@ -1659,3 +1659,32 @@ Acceptance 14: pass. Nothing needed beyond `docs/api.md`.
 - A person then repeated steps 0 to 14 and the journal check by hand on the same VM, restored to its clean snapshot with the same
   package, typing the commands in a desktop terminal and answering each dialog: every dialog, result and journal entry matched the
   table above.
+
+## F102: M3 acceptance 15 by hand on fedora44, a test flatpak (2026-11-02)
+
+Machine: labvm `fedora44` (libvirt), Fedora 44, GNOME on Wayland (autologin, GNOME Shell's polkit agent), dbus-broker 37, polkit 127,
+systemd 259.5, flatpak 1.17.6, flatpak-builder 1.4.12. Package `custodio-0.1.0-1.x86_64.rpm` from `just package` at `e5a57af` (sha256
+`72953e950230ee984832295fb82b534f91090d4f5bb10d5c977a426e5a961b73`; no code change since), installed with `dnf install`. Followed
+`docs/manual-acceptance.md` §17. Key `p256` made as in §1 and imported with `custodio import` (the import dialog shown and approved).
+Runtimes `org.freedesktop.Platform//24.08` and `org.freedesktop.Sdk//24.08` from flathub, as user installs. Commands ran in the desktop
+session (`labvm-gui`), as uid 1000; dialogs answered from the hypervisor (`virsh send-key`) after a screenshot showed each one.
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Detection inside the flatpak | `b true`, name listed | `busctl: orden no encontrada` (twice), `not listed` | fail |
+| 2-6 | Sign, journal | | not run: §17 says to stop when the runtime lacks `busctl` | not run |
+
+Acceptance 15: **fail**. `org.freedesktop.Platform` 24.08 ships no `busctl`; it ships `gdbus`, `dbus-send` and `python3`. The manifest
+`packaging/flatpak/com.rfirma.CustodioTest.json` (F99) and §17 step 2 call `busctl`.
+
+- `flatpak-builder --user --install --force-clean build-dir …` as written failed: `fusermount3: failed to access mountpoint
+  …/.flatpak-builder/rofiles/rofiles-…: Permission denied`, `Failure spawning rofiles-fuse`, over SSH and in the desktop session alike
+  (no AVC logged). `--disable-rofiles-fuse` built and installed it; `flatpak info --show-permissions` shows only
+  `[System Bus Policy] com.rfirma.Custodio1=talk`. The build also warns that the 24.08 runtime is end-of-life.
+- Diagnosis outside the documented steps, with `gdbus` from the same sandbox (`flatpak run --command=gdbus com.rfirma.CustodioTest`):
+  `NameHasOwner` → `(true,)`; `ListActivatableNames` lists `com.rfirma.Custodio1`; `Sign p256 4161 0 0 <32 zero bytes>` showed
+  "Authentication is required to sign with a key held by Custodio", approved, and returned 64 bytes, twice, a dialog each time. Each
+  signature's journal entry (base query of `docs/audit.md`) has `CUSTODIO_APP_ID=com.rfirma.CustodioTest`,
+  `CUSTODIO_APP_ID_STATE=read`, `CUSTODIO_UID=1000` (= `id -u`), `CUSTODIO_OPERATION=sign`, `CUSTODIO_OUTCOME=signed`; on the second,
+  `CUSTODIO_PID=5090` was the `xdg-dbus-proxy` seen running during the call (the application's `gdbus` was pid 5094). So the service
+  meets acceptance 15; the test application and its page do not.
