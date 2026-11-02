@@ -417,7 +417,12 @@ with an empty context.
 - Dependencies: `util-linux` added to the rpm and Arch lists (`setpriv`); `pkttyagent` is shipped by the polkit package already required everywhere; the deb adds neither (util-linux is Essential, reason beside the deb list in `packaging/nfpm.yaml` and in `scripts/package_expected.py` with `util-linux` in `FORBIDDEN_DEPS`). `scripts/test-check-packages-deps.sh`: `rpm-no-util-linux`, `arch-no-util-linux`, `deb-util-linux`. Probes in `docs/findings.md`.
 - `just package-gates` first failed on namcap `dependency-not-needed | util-linux`; one reasoned entry in `packaging/lint/namcap.txt` (run-time use of setpriv, same class as polkit/p11-kit).
 - `just e2e` (debian13 single case first, then all six targets) green, 59 cases accounted on ubuntu2604; it proves the new names resolve with dnf/pacman/apt.
-- One `just check` run failed in `scripts/test-e2e-upgrade.sh` ("service does not run the installed file"); it passed twice alone and in the next full `just check`, so it looks like a timing flake under parallel load (not investigated further).
+- One `just check` run failed in `scripts/test-e2e-upgrade.sh` ("service does not run the installed file"); it passed twice alone and in the next full `just check`, so it was a race in `scripts/test-e2e-upgrade.sh` (fixed in attempt 2).
 - No gate weakened: diff of justfile, deny.toml, scripts/check-*, e2e/ is empty; `packaging/lint` only gained the entry above.
 - Final: check, api-contract, e2e, package-gates all exit 0.
+- Next session should: nothing for F90.
+
+### 2026-11-02 — F90 — attempt 2
+- Fixed NEXT_FINDINGS: the race in `scripts/test-e2e-upgrade.sh`: the stub unit's `ExecStart` was read from `/proc/$sleeper/exe` right after the fork, when the child could still be bash. The sleep binary is now resolved first (`readlink -f "$(command -v sleep)"`), started by that path, and written to the unit.
+- Evidence: `scripts/test-e2e-upgrade.sh` run 5 times; `just quick` exit 0.
 - Next session should: nothing for F90.

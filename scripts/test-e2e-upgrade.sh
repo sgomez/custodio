@@ -86,10 +86,12 @@ echo "$1" >> "$MARKER"
 exit 1
 STUB
 chmod +x "$t/bin/"* "$t/install.sh"
-sleep 300 &
+# resolve the binary first: reading /proc/PID/exe right after the fork can still name bash
+sleep_bin=$(readlink -f "$(command -v sleep)")
+"$sleep_bin" 300 &
 sleeper=$!
 trap 'kill $sleeper 2> /dev/null || true; fx_cleanup; rm -rf "$t"' EXIT
-printf '[Service]\nExecStart=-%s --arg\n' "$(readlink -f "/proc/$sleeper/exe")" > "$t/custodio.service"
+printf '[Service]\nExecStart=-%s --arg\n' "$sleep_bin" > "$t/custodio.service"
 # case_upgrade INSTALLED TO_FILE [ACTIVE]: the case from from.deb to TO_FILE; the output in $t/out, the status returned
 case_upgrade() {
     rm -f "$t/marker"
