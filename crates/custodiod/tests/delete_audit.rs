@@ -113,7 +113,7 @@ impl AuditSink for TestSink {
 
 async fn start(answer: Answer) -> Result<(Fixture, Arc<TestSink>), Box<dyn Error>> {
     let sink = Arc::new(TestSink::default());
-    let f = Fixture::start(
+    let f = Fixture::start_reading(
         answer,
         |c: &Connection| BusCredentials::new(c.clone()),
         sink.clone(),
@@ -469,6 +469,11 @@ fn delete_entries_hold_no_secrets() -> TestResult {
                 continue;
             }
             for e in sink.inner.operation_entries() {
+                assert!(
+                    e.fields()
+                        .contains(&("CUSTODIO_APP_ID", "org.example.App".to_owned())),
+                    "the scan sees the app-id"
+                );
                 texts.push(format!(
                     "{} {e:?} {} {} {:?} {:?}",
                     e.message(),

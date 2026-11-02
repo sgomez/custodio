@@ -196,6 +196,22 @@ impl Fixture {
         Self::start_full(answer, credentials, sink, decoder, None).await
     }
 
+    /// As [`Fixture::start`], with a source that answers a read app-id (`org.example.App`), so the
+    /// entries carry the id field.
+    pub async fn start_reading<C>(
+        answer: Answer,
+        credentials: impl FnOnce(&Connection) -> C,
+        sink: Arc<dyn AuditSink>,
+    ) -> Result<Self, Box<dyn Error>>
+    where
+        C: CallerCredentials + Send + Sync + 'static,
+    {
+        let fake = custodiod::app_id_source::FakeAppIdSource::reading("org.example.App")
+            .ok_or("fake source")?;
+        let source = custodiod::app_id_source::GuardedSource::new(fake);
+        Self::start_full(answer, credentials, sink, None, Some(source)).await
+    }
+
     /// As [`Fixture::start_with`], with an app-id source (already guarded).
     pub async fn start_full<C>(
         answer: Answer,

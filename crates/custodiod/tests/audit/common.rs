@@ -53,6 +53,19 @@ pub async fn fixture(
     .await
 }
 
+/// As [`fixture`], with a source that answers a read app-id, so entries carry the id field.
+pub async fn fixture_reading(
+    answer: Answer,
+    sink: &Arc<MemorySink>,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    Fixture::start_reading(
+        answer,
+        |c: &Connection| BusCredentials::new(c.clone()),
+        sink.clone(),
+    )
+    .await
+}
+
 pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
     import_with(f, id, p12, PASSWORD).await
 }

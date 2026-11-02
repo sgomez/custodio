@@ -326,3 +326,8 @@ with an empty context.
 - Not done: the "pending-delete id" refusal case of `app_id_not_asked_for_refusals` (invalid, missing, foreign and taken ids are covered); it is the same early return that the other `NoSuchKey` cases use.
 - Evidence: `just quick` exit 0; `just mutants-diff F82`: 24 caught, 21 unviable, none missed.
 - Next session should: nothing for F82. F95/F100 prove the real cgroup reader in the packaged unit.
+
+### 2026-11-02 — F82 — attempt 2
+- Fixed NEXT_FINDINGS: (1) `e2e/catalog-text.txt` has the app-id paragraph; `scripts/test-e2e-catalog.sh` passes. (2) Negative control `app_id_check_rejects_a_wrong_case`: for every operation and case, `assert_case` against each other case panics (`catch_unwind`). (3) The four `*_entries_hold_no_secrets` tests now run with a source answering `org.example.App` (`Fixture::start_reading`, `fixture_reading`; direct entries use `with_app_id`) and assert the id field is in the scanned entries (import without credentials has none). (4) `app_id_never_changes_the_outcome` compares `ListKeys` and a later `Sign` (deterministic RSA) too.
+- Product code unchanged, so the mutants result stands. Evidence: `just quick` exit 0.
+- Next session should: nothing for F82.

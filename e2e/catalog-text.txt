@@ -8,5 +8,7 @@ user and process id that the bus reported for the caller; they are absent when i
 mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
 
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

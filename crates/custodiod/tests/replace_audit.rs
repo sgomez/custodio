@@ -153,7 +153,7 @@ impl AuditSink for TestSink {
 
 async fn start(answer: Answer) -> Result<(Fixture, Arc<TestSink>), Box<dyn Error>> {
     let sink = Arc::new(TestSink::default());
-    let f = Fixture::start(
+    let f = Fixture::start_reading(
         answer,
         |c: &Connection| BusCredentials::new(c.clone()),
         sink.clone(),

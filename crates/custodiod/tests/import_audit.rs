@@ -199,9 +199,9 @@ struct Run {
 async fn run_case(case: &Case) -> Result<Run, Box<dyn Error>> {
     let sink = Arc::new(MemorySink::default());
     let f = if case.credentials_work {
-        common::fixture(case.answer, &sink).await?
+        common::fixture_reading(case.answer, &sink).await?
     } else {
-        Fixture::start(case.answer, |_: &Connection| NoCredentials, sink.clone()).await?
+        Fixture::start_reading(case.answer, |_: &Connection| NoCredentials, sink.clone()).await?
     };
     let root = f.store.dir().to_path_buf();
     if case.unwritable {
@@ -310,6 +310,15 @@ fn import_entries_hold_no_secrets() -> TestResult {
             let run = run_case(&case).await?;
             let entry = run.entries.first().ok_or("no entry")?;
             let text = entry_text(entry);
+            // Without credentials there is no pinned process and no id to see.
+            assert_eq!(
+                entry
+                    .fields()
+                    .contains(&("CUSTODIO_APP_ID", "org.example.App".to_owned())),
+                case.credentials_work,
+                "{}",
+                case.name
+            );
             for secret in secrets(&case) {
                 assert_eq!(
                     scan::leaks(text.as_bytes(), &secret),

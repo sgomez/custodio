@@ -15,7 +15,7 @@ use zbus::{Connection, block_on};
 use super::bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use super::common::{
     CKM_ECDSA, CKM_RSA_PKCS, EC_P12, EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, digest,
-    digest_info, fixture, import, import_via_bus, uid,
+    digest_info, fixture, fixture_reading, import, import_via_bus, uid,
 };
 use super::scan::{base64, hex, leaks};
 
@@ -58,7 +58,7 @@ async fn no_secrets(
     extra: &[Vec<u8>],
 ) -> TestResult {
     let sink = Arc::new(MemorySink::default());
-    let f = fixture(Answer::Yes, &sink).await?;
+    let f = fixture_reading(Answer::Yes, &sink).await?;
     import_via_bus(&f, key, p12, SENTINEL_PASSWORD).await?;
     let signature = sign(&f.client, key, mechanism, data).await?;
     sign(&f.client, key, other, data)
@@ -93,6 +93,11 @@ async fn no_secrets(
     ];
     values.extend_from_slice(extra);
     for entry in &entries {
+        assert_eq!(
+            entry.fields().iter().find(|(n, _)| *n == "CUSTODIO_APP_ID"),
+            Some(&("CUSTODIO_APP_ID", "org.example.App".to_owned())),
+            "the scan sees the app-id"
+        );
         for text in texts(entry)? {
             for value in &values {
                 assert_eq!(leaks(&text, value), Vec::<&str>::new());
@@ -366,6 +371,11 @@ fn operation_entries_hold_no_secrets() -> TestResult {
     ];
     let caller = Some(Caller { uid: 1000, pid: 42 });
     let id = || KeyId::new("the-key");
+    let read = || {
+        custodiod::app_id::validate(b"org.example.App")
+            .map(custodiod::app_id::AppIdOutcome::Read)
+            .ok_or("app id")
+    };
     let mut entries = Vec::new();
     for o in ImportOutcome::all() {
         for t in [
@@ -373,14 +383,14 @@ fn operation_entries_hold_no_secrets() -> TestResult {
             Some(AuditKeyType::Rsa2048),
             Some(AuditKeyType::EcdsaP256),
         ] {
-            entries.push(OperationEntry::import(o, caller, id()?, t));
+            entries.push(OperationEntry::import(o, caller, id()?, t).with_app_id(read()?));
         }
     }
     for o in DeleteOutcome::all() {
-        entries.push(OperationEntry::delete(o, caller, id()?));
+        entries.push(OperationEntry::delete(o, caller, id()?).with_app_id(read()?));
     }
     for o in ReplaceOutcome::all() {
-        entries.push(OperationEntry::replace_certificate(o, None, id()?));
+        entries.push(OperationEntry::replace_certificate(o, None, id()?).with_app_id(read()?));
     }
     assert_eq!(entries.len(), 18 + 4 + 5);
     for entry in &entries {

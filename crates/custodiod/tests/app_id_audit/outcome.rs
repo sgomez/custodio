@@ -40,6 +40,8 @@ struct Result3 {
     requests: Vec<(String, u32)>,
     store: BTreeMap<String, Vec<u8>>,
     entries: Vec<Vec<(&'static str, String)>>,
+    listed: Vec<(String, String, Vec<u8>)>,
+    later_sign: Result<Vec<u8>, String>,
 }
 
 async fn run(
@@ -59,12 +61,51 @@ async fn run(
             .filter(|(n, _)| !n.starts_with("CUSTODIO_APP_ID"))
             .collect::<Vec<_>>()
     };
+    let asked = f.asked();
+    let requests = f.requests.lock().map(|r| r.clone()).unwrap_or_default();
+    let entries = sink.fields().into_iter().map(without_app_id).collect();
+    // The store as a client sees it afterwards: the list, and a later sign (RSA PKCS#1 v1.5 is
+    // deterministic, so equal signatures mean the same key).
+    sink.fail.store(false, Ordering::SeqCst);
+    let listed: Vec<(String, String, Vec<u8>)> = call(&f.client, "ListKeys", &())
+        .await?
+        .body()
+        .deserialize()?;
+    let later_sign = sign(&f.client, "k", CKM_RSA_PKCS, &digest_info())
+        .await
+        .map_err(|e| error_name(&e));
     Ok(Result3 {
         reply,
-        asked: f.asked(),
-        requests: f.requests.lock().map(|r| r.clone()).unwrap_or_default(),
+        asked,
+        requests,
         store: snapshot(f.store_dir())?,
-        entries: sink.fields().into_iter().map(without_app_id).collect(),
+        entries,
+        listed,
+        later_sign,
+    })
+}
+
+/// The negative control: the comparison of a case with an entry fails when the entry carries
+/// another case, for every kind of entry.
+#[test]
+fn app_id_check_rejects_a_wrong_case() -> TestResult {
+    zbus::block_on(async {
+        for op in Operation::all() {
+            for case in answers()? {
+                let sink = Arc::new(Sink::default());
+                let source = GuardedSource::new(Probe::new(case.clone()));
+                let f = start(op, Answer::Yes, &sink, Some(source)).await?;
+                drive(&f, op, Fail::No).await?;
+                let all = sink.fields();
+                let entry = all.first().ok_or("entry")?;
+                for other in answers()? {
+                    let same = app_id_state(&other) == app_id_state(&case);
+                    let caught = std::panic::catch_unwind(|| assert_case(entry, &other)).is_err();
+                    assert_eq!(caught, !same, "{op:?} {case:?} against {other:?}");
+                }
+            }
+        }
+        Ok(())
     })
 }
 

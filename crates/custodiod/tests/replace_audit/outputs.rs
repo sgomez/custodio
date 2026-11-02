@@ -82,6 +82,13 @@ fn replace_entries_hold_no_secrets() -> TestResult {
                 // What the failing sink was handed counts too.
                 let offered = sink.offered.operation_entries();
                 assert_eq!(offered.len(), 1, "{outcome}");
+                for e in &offered {
+                    assert!(
+                        e.fields()
+                            .contains(&("CUSTODIO_APP_ID", "org.example.App".to_owned())),
+                        "the scan sees the app-id"
+                    );
+                }
                 texts.extend(offered.iter().map(text_of));
             }
         }
