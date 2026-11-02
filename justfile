@@ -136,6 +136,7 @@ test-scripts:
     scripts/test-sysusers-sync.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
+    scripts/test-docs-api.sh
     scripts/test-docs-install.sh
     scripts/test-docs-manual.sh
     scripts/test-install-real.sh
