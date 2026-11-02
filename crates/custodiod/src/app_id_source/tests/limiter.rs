@@ -1,4 +1,5 @@
 use super::super::limiter::Limiter;
+use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
@@ -44,7 +45,7 @@ fn a_fast_call_returns_its_value() {
     within(|| {
         let limiter = Limiter::new(Duration::from_secs(5), 2);
         assert_eq!(block_on(limiter.run(|| 7)), Some(7));
-        assert_eq!(limiter.stuck(), 0);
+        assert_eq!(limiter.live(), 0);
     });
 }
 
@@ -54,7 +55,7 @@ fn a_panic_is_none_and_holds_no_slot() {
         let limiter = Limiter::new(Duration::from_secs(5), 1);
         let got = block_on(limiter.run(|| -> u8 { std::panic::resume_unwind(Box::new("boom")) }));
         assert_eq!(got, None);
-        assert_eq!(limiter.stuck(), 0);
+        assert_eq!(limiter.live(), 0);
         assert_eq!(block_on(limiter.run(|| 1)), Some(1));
     });
 }
@@ -69,7 +70,7 @@ fn blocked_reader_returns_undetermined_within_bound() {
         let took = started.elapsed();
         assert!(took >= Duration::from_millis(60), "{took:?}");
         assert!(took < Duration::from_millis(1500), "{took:?}");
-        assert_eq!(limiter.stuck(), 1);
+        assert_eq!(limiter.live(), 1);
     });
 }
 
@@ -91,7 +92,7 @@ fn stuck_lookups_are_capped() {
             assert_eq!(got, None);
             assert!(t.elapsed() >= Duration::from_millis(100));
         }
-        assert_eq!(limiter.stuck(), 2);
+        assert_eq!(limiter.live(), 2);
         let counter = Arc::clone(&started_threads);
         let t = Instant::now();
         let got = block_on(limiter.run(move || counter.fetch_add(1, Ordering::SeqCst)));
@@ -104,7 +105,7 @@ fn stuck_lookups_are_capped() {
             2,
             "no thread for the refused call"
         );
-        assert_eq!(limiter.stuck(), 2);
+        assert_eq!(limiter.live(), 2);
     });
 }
 
@@ -116,7 +117,7 @@ fn released_stuck_thread_frees_its_slot() {
         assert_eq!(block_on(limiter.run(blocked)), None);
         assert_eq!(block_on(limiter.run(|| 5)), None, "at the cap");
         drop(release);
-        wait_for(|| limiter.stuck() == 0);
+        wait_for(|| limiter.live() == 0);
         assert_eq!(block_on(limiter.run(|| 5)), Some(5));
     });
 }
@@ -128,8 +129,63 @@ fn limiters_do_not_share_slots() {
         let b = Limiter::new(Duration::from_millis(30), 1);
         let (_release, blocked) = blocker();
         assert_eq!(block_on(a.run(blocked)), None);
-        assert_eq!(a.stuck(), 1);
-        assert_eq!(b.stuck(), 0);
+        assert_eq!(a.live(), 1);
+        assert_eq!(b.live(), 0);
         assert_eq!(block_on(b.run(|| 2)), Some(2));
+    });
+}
+
+#[test]
+fn concurrent_lookups_cannot_exceed_the_cap() {
+    within(|| {
+        let cap = 3;
+        let limiter = Arc::new(Limiter::new(Duration::from_millis(300), cap));
+        let started = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(std::sync::Barrier::new(cap + 4));
+        let (release, rx) = {
+            let (tx, rx) = mpsc::channel::<()>();
+            (Release { _tx: tx }, Arc::new(std::sync::Mutex::new(rx)))
+        };
+        let handles: Vec<_> = (0..cap + 4)
+            .map(|_| {
+                let (limiter, started, barrier, rx) = (
+                    Arc::clone(&limiter),
+                    Arc::clone(&started),
+                    Arc::clone(&barrier),
+                    Arc::clone(&rx),
+                );
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    block_on(limiter.run(move || {
+                        started.fetch_add(1, Ordering::SeqCst);
+                        let _ = rx.lock().map(|r| r.recv());
+                    }))
+                })
+            })
+            .collect();
+        for h in handles {
+            assert_eq!(h.join().ok(), Some(None));
+        }
+        assert_eq!(started.load(Ordering::SeqCst), cap, "workers started");
+        assert!(limiter.live() <= cap, "{}", limiter.live());
+        drop(release);
+        wait_for(|| limiter.live() == 0);
+    });
+}
+
+#[test]
+fn a_dropped_future_keeps_its_slot_until_the_worker_ends() {
+    within(|| {
+        let limiter = Limiter::new(Duration::from_secs(5), 1);
+        let (release, blocked) = blocker();
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        let mut fut = Box::pin(limiter.run(blocked));
+        assert!(fut.as_mut().poll(&mut cx).is_pending());
+        drop(fut);
+        assert_eq!(limiter.live(), 1);
+        assert_eq!(block_on(limiter.run(|| 5)), None, "at the cap");
+        drop(release);
+        wait_for(|| limiter.live() == 0);
+        assert_eq!(block_on(limiter.run(|| 5)), Some(5));
     });
 }

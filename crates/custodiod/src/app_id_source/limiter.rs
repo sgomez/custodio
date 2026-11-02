@@ -3,15 +3,11 @@
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll, Waker};
 use std::thread;
 use std::time::{Duration, Instant};
-
-const RUNNING: u8 = 0;
-const ABANDONED: u8 = 1;
-const FINISHED: u8 = 2;
 
 struct State<T> {
     value: Option<T>,
@@ -22,7 +18,6 @@ struct State<T> {
 struct Shared<T> {
     state: Mutex<State<T>>,
     wake_watchdog: Condvar,
-    phase: AtomicU8,
 }
 
 fn lock<T>(m: &Mutex<State<T>>) -> MutexGuard<'_, State<T>> {
@@ -33,7 +28,6 @@ fn lock<T>(m: &Mutex<State<T>>) -> MutexGuard<'_, State<T>> {
 struct Waiting<T> {
     shared: Arc<Shared<T>>,
     deadline: Instant,
-    stuck: Arc<AtomicUsize>,
 }
 
 impl<T> Future for Waiting<T> {
@@ -45,19 +39,6 @@ impl<T> Future for Waiting<T> {
             return Poll::Ready(state.value.take());
         }
         if Instant::now() >= self.deadline {
-            drop(state);
-            // The slot is counted before the phase changes, so the worker never subtracts first.
-            self.stuck.fetch_add(1, Ordering::SeqCst);
-            let abandoned = self
-                .shared
-                .phase
-                .compare_exchange(RUNNING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
-                .is_ok();
-            if !abandoned {
-                // The worker finished in between: nothing is stuck, and its value is there.
-                self.stuck.fetch_sub(1, Ordering::SeqCst);
-                return Poll::Ready(lock(&self.shared.state).value.take());
-            }
             return Poll::Ready(None);
         }
         state.waker = Some(cx.waker().clone());
@@ -65,14 +46,25 @@ impl<T> Future for Waiting<T> {
     }
 }
 
-/// Bounds blocking calls: each one has `deadline` to answer, and at most `cap` calls that missed their
-/// deadline may still be running. At the cap a new call is refused at once, so hostile input cannot pile up
-/// threads. One limiter counts its own stuck threads; there is no global state.
+/// Gives the slot back when the worker ends, however it ends.
+struct Slot(Arc<AtomicUsize>);
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Bounds blocking calls: each one has `deadline` to answer, and at most `cap` workers exist at a time,
+/// whether they are still within their deadline, past it, or abandoned by a dropped future. A slot is taken
+/// before the worker starts (so concurrent calls cannot all pass the check) and given back by the worker when
+/// it ends. At the cap a new call is refused at once, so hostile input cannot pile up threads. One limiter
+/// counts its own workers; there is no global state.
 #[derive(Debug)]
 pub(super) struct Limiter {
     deadline: Duration,
     cap: usize,
-    stuck: Arc<AtomicUsize>,
+    live: Arc<AtomicUsize>,
 }
 
 impl Limiter {
@@ -80,7 +72,7 @@ impl Limiter {
         Self {
             deadline,
             cap,
-            stuck: Arc::new(AtomicUsize::new(0)),
+            live: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -89,10 +81,10 @@ impl Limiter {
         self.cap
     }
 
-    /// Threads that missed their deadline and are still running.
+    /// Workers still running (within or past their deadline).
     #[cfg(test)]
-    pub(super) fn stuck(&self) -> usize {
-        self.stuck.load(Ordering::SeqCst)
+    pub(super) fn live(&self) -> usize {
+        self.live.load(Ordering::SeqCst)
     }
 
     /// Runs `f` on a new thread. `None` when the cap is reached (no thread is started), the thread cannot be
@@ -103,9 +95,15 @@ impl Limiter {
         T: Send + 'static,
         F: FnOnce() -> T + Send + 'static,
     {
-        if self.stuck.load(Ordering::SeqCst) >= self.cap {
+        let taken = self
+            .live
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                (n < self.cap).then_some(n + 1)
+            });
+        if taken.is_err() {
             return None;
         }
+        let slot = Slot(Arc::clone(&self.live));
         let deadline = Instant::now() + self.deadline;
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
@@ -114,18 +112,13 @@ impl Limiter {
                 waker: None,
             }),
             wake_watchdog: Condvar::new(),
-            phase: AtomicU8::new(RUNNING),
         });
-        let (worker_shared, worker_stuck) = (Arc::clone(&shared), Arc::clone(&self.stuck));
+        let worker_shared = Arc::clone(&shared);
+        // On a failed spawn the closure, and with it the slot, is dropped.
         let worker = thread::Builder::new().spawn(move || {
             let value = catch_unwind(AssertUnwindSafe(f)).ok();
-            if worker_shared
-                .phase
-                .compare_exchange(RUNNING, FINISHED, Ordering::SeqCst, Ordering::SeqCst)
-                .is_err()
-            {
-                worker_stuck.fetch_sub(1, Ordering::SeqCst);
-            }
+            // Before `done`, so a caller that got the value sees the slot free.
+            drop(slot);
             let waker = {
                 let mut state = lock(&worker_shared.state);
                 state.done = true;
@@ -160,22 +153,10 @@ impl Limiter {
             }
         });
         if watchdog.is_err() {
-            // Without the watchdog nothing would wake the task at the deadline.
-            self.stuck.fetch_add(1, Ordering::SeqCst);
-            if shared
-                .phase
-                .compare_exchange(RUNNING, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
-                .is_err()
-            {
-                self.stuck.fetch_sub(1, Ordering::SeqCst);
-            }
+            // Without the watchdog nothing would wake the task at the deadline. The worker ends on its own
+            // and gives its slot back.
             return None;
         }
-        Waiting {
-            shared,
-            deadline,
-            stuck: Arc::clone(&self.stuck),
-        }
-        .await
+        Waiting { shared, deadline }.await
     }
 }

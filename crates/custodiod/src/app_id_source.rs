@@ -15,7 +15,7 @@
 //! - a read that does not return (a FUSE file, say) leaves a thread behind, but at most [`MAX_STUCK`] such
 //!   threads exist at a time (per reader); at that number a lookup is `Undetermined` at once and starts no
 //!   thread. A stuck thread that finishes gives its slot back. A lookup uses two threads (worker and
-//!   watchdog), so at most `MAX_STUCK` plus twice the lookups in flight run at a time.
+//!   watchdog), so at most `MAX_STUCK` workers (and their watchdogs) exist at a time.
 //!
 //! The cgroup2 mount is `/sys/fs/cgroup`. On a host the tree starts there; in a container sharing the host's
 //! cgroup namespace (the e2e containers) it starts at `/sys/fs/cgroup/<container id>`. The reader takes the

@@ -118,7 +118,7 @@ fn stuck_reader_cap_refuses_without_a_thread_and_recovers() -> TestResult {
     assert!(t.elapsed() < Duration::from_millis(40), "{:?}", t.elapsed());
     drop(tx);
     let until = Instant::now() + Duration::from_secs(10);
-    while source.limiter.stuck() != 0 {
+    while source.limiter.live() != 0 {
         assert!(Instant::now() < until);
         std::thread::sleep(Duration::from_millis(5));
     }
