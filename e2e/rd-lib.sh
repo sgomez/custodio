@@ -15,13 +15,13 @@ RD_ACTION_SIGN=com.rfirma.custodio.sign
 rd_sha_problems() {
     [ -s "$2" ] || { echo "$1: $2 is empty or missing"; return; }
     [ -s "$3" ] || { echo "$1: $3 is empty or missing"; return; }
-    cmp -s "$2" "$3" || echo "$1: $2 is not the certificate in $3"
+    same_file "$2" "$3" || echo "$1: $2 is not the certificate in $3"
 }
 # rd_not_sha_problems LABEL FILE OTHER-FILE: FILE is not OTHER-FILE (but exists)
 rd_not_sha_problems() {
     [ -s "$2" ] || { echo "$1: $2 is empty or missing"; return; }
     [ -s "$3" ] || { echo "$1: $3 is empty or missing"; return; }
-    if cmp -s "$2" "$3"; then echo "$1: $2 is the same certificate as $3"; fi
+    if same_file "$2" "$3"; then echo "$1: $2 is the same certificate as $3"; fi
 }
 # rd_subject_problems LISTFILE ID WANT UNWANTED: the block of ID in `custodio list` has a subject line with WANT and without UNWANTED (the two must not contain each other)
 rd_subject_problems() {

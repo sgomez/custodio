@@ -13,7 +13,7 @@ bad() { echo "test-e2e-cli: $*" >&2; fail=1; }
 bash "$ROOT/e2e/cli-selftest.sh" || bad "the self-test of the cli judgements fails"
 mutant() { # NAME SED-EXPRESSION: a copy of cli-lib.sh whose judgement is weakened must be caught by the self-test
     mkdir "$tmp/$1"
-    cp "$ROOT"/e2e/cli-selftest.sh "$ROOT"/e2e/rd-lib.sh "$ROOT"/e2e/ops-lib.sh "$ROOT"/e2e/owner-lib.sh "$tmp/$1/"
+    cp "$ROOT"/e2e/cli-selftest.sh "$ROOT"/e2e/rd-lib.sh "$ROOT"/e2e/ops-lib.sh "$ROOT"/e2e/owner-lib.sh "$ROOT"/e2e/same-file.sh "$tmp/$1/"
     sed "$2" "$ROOT/e2e/cli-lib.sh" > "$tmp/$1/cli-lib.sh"
     if cmp -s "$ROOT/e2e/cli-lib.sh" "$tmp/$1/cli-lib.sh"; then bad "mutant $1 changes nothing"; fi
     if bash "$tmp/$1/cli-selftest.sh" > /dev/null 2>&1; then bad "mutant $1 was not caught"; fi
@@ -43,7 +43,7 @@ mutant outcome-failed 's/grep -qF .==== AUTHENTICATION FAILED ====. "\$1" ||/tru
 mutant outcome-not-complete 's/! grep -qF .==== AUTHENTICATION COMPLETE ====. "\$1" ||/true ||/'
 mutant state-present 's/\[ "\$n" -gt 0 \] ||/true ||/'
 mutant state-absent 's/\[ "\$n" -eq 0 \] ||/true ||/'
-mutant state-only 's/cmp -s - "\$2" ||/true ||/'
+mutant state-only 's/same_file - "\$2" ||/true ||/'
 
 g=$ROOT/e2e/guest.sh
 line() { grep -n -m1 -E -e "$1" "$g" | cut -d: -f1; }

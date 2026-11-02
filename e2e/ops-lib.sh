@@ -5,6 +5,8 @@
 # "ok", "cli-denied" (non-zero exit and "not authorized" in its output) or "cli-failed". LOGGED is the lines the agent's request log gained during the
 # call, "<mode> <action>" joined by ";" (empty: none).
 # shellcheck disable=SC2034 # used by the scripts that source this file
+# shellcheck source=e2e/same-file.sh
+source "$(dirname "${BASH_SOURCE[0]}")/same-file.sh"
 OPS_DENIED="error com.rfirma.Custodio1.Error.PolkitDenied"
 OPS_UNAVAILABLE="error com.rfirma.Custodio1.Error.AuthorizationUnavailable"
 OPS_WRONG_PASSWORD="error com.rfirma.Custodio1.Error.WrongPasswordOrBadP12"
@@ -29,7 +31,7 @@ ops_state_problems() {
     local label=$1 before=$2 after=$3
     [ -s "$before" ] || { echo "$label: the snapshot before is empty or missing"; return; }
     [ -s "$after" ] || { echo "$label: the snapshot after is empty or missing"; return; }
-    cmp -s "$before" "$after" || echo "$label: the state changed: $(diff "$before" "$after" | head -n 4 | tr '\n' '|')"
+    same_file "$before" "$after" || echo "$label: the state changed: $(diff "$before" "$after" | head -n 4 | tr '\n' '|')"
 }
 
 # ops_listed_problems FILE ID...: "+ID" must be listed in the snapshot (custodio list part: a line "id: ID"), "-ID" must not
@@ -48,5 +50,5 @@ ops_listed_problems() {
 
 # ops_differ_problems LABEL A B: the two snapshots differ (the replace changed the certificate shown)
 ops_differ_problems() {
-    if cmp -s "$2" "$3"; then echo "$1: the snapshot did not change"; fi
+    if same_file "$2" "$3"; then echo "$1: the snapshot did not change"; fi
 }

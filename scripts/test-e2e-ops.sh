@@ -12,16 +12,16 @@ bad() { echo "test-e2e-ops: $*" >&2; fail=1; }
 bash "$ROOT/e2e/ops-selftest.sh" || bad "the self-test of the ops judgements fails"
 mutant() { # NAME SED-EXPRESSION: a copy of ops-lib.sh whose judgement is weakened must be caught by the self-test
     mkdir "$tmp/$1"
-    cp "$ROOT/e2e/ops-selftest.sh" "$tmp/$1/"
+    cp "$ROOT/e2e/ops-selftest.sh" "$ROOT/e2e/same-file.sh" "$tmp/$1/"
     sed "$2" "$ROOT/e2e/ops-lib.sh" > "$tmp/$1/ops-lib.sh"
     if cmp -s "$ROOT/e2e/ops-lib.sh" "$tmp/$1/ops-lib.sh"; then bad "mutant $1 changes nothing"; fi
     if bash "$tmp/$1/ops-selftest.sh" > /dev/null 2>&1; then bad "mutant $1 was not caught"; fi
 }
 mutant result-ignored 's/\[ "\$result" = .\*. \] || \[ "\$got" = "\$result" \]/true/'
 mutant log-ignored 's/\[ "\$got" = "\$logged" \]/true/'
-mutant state-ignored 's/cmp -s "\$before" "\$after" ||/true ||/'
+mutant state-ignored 's/same_file "\$before" "\$after" ||/true ||/'
 mutant listed-present 's/\[ "\${spec%"\$id"}" = + \] || echo "\$file lists \$id"/true/'
-mutant differ-ignored 's/if cmp -s "\$2" "\$3"/if false/'
+mutant differ-ignored 's/if same_file "\$2" "\$3"/if false/'
 
 g=$ROOT/e2e/guest.sh
 line() { grep -n -m1 -E -e "$1" "$g" | cut -d: -f1; }

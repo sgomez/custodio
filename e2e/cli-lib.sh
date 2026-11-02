@@ -83,7 +83,7 @@ cli_state_key_problems() {
 # cli_state_only_problems BEFORE AFTER ID: AFTER is BEFORE without the files of ID, and not empty (the other keys' files are unchanged)
 cli_state_only_problems() {
     [ -s "$2" ] || { echo "$2: the snapshot is empty or missing"; return; }
-    grep -vE "/$3(-cert)?\$" "$1" | cmp -s - "$2" || echo "$2 is not $1 without the files of $3"
+    grep -vE "/$3(-cert)?\$" "$1" | same_file - "$2" || echo "$2 is not $1 without the files of $3"
 }
 # cli_pam_problems FILE: the PAM file of service polkit-1 as it was while the pkttyagent cases ran: it checks the password (pam_unix) and does not accept anything
 cli_pam_problems() {

@@ -13,13 +13,13 @@ bad() { echo "test-e2e-rd: $*" >&2; fail=1; }
 bash "$ROOT/e2e/rd-selftest.sh" || bad "the self-test of the rd judgements fails"
 mutant() { # NAME SED-EXPRESSION: a copy of rd-lib.sh whose judgement is weakened must be caught by the self-test
     mkdir "$tmp/$1"
-    cp "$ROOT"/e2e/rd-selftest.sh "$ROOT"/e2e/ops-lib.sh "$ROOT"/e2e/owner-lib.sh "$tmp/$1/"
+    cp "$ROOT"/e2e/rd-selftest.sh "$ROOT"/e2e/ops-lib.sh "$ROOT"/e2e/owner-lib.sh "$ROOT"/e2e/same-file.sh "$tmp/$1/"
     sed "$2" "$ROOT/e2e/rd-lib.sh" > "$tmp/$1/rd-lib.sh"
     if cmp -s "$ROOT/e2e/rd-lib.sh" "$tmp/$1/rd-lib.sh"; then bad "mutant $1 changes nothing"; fi
     if bash "$tmp/$1/rd-selftest.sh" > /dev/null 2>&1; then bad "mutant $1 was not caught"; fi
 }
-mutant sha-ignored 's/cmp -s "\$2" "\$3" || echo/true || echo/'
-mutant not-sha-ignored 's/if cmp -s "\$2" "\$3"; then echo/if false; then echo/'
+mutant sha-ignored 's/same_file "\$2" "\$3" || echo/true || echo/'
+mutant not-sha-ignored 's/if same_file "\$2" "\$3"; then echo/if false; then echo/'
 mutant subject-want 's/\*"\$3"\*) ;; \*) echo/*"$3"*) ;; *) true/'
 mutant subject-unwanted 's/\*"\$4"\*) echo/*"$4"*) true/'
 mutant token-present 's/\[ "\${spec%"\$id"}" = + \] || echo "\$file has a token for \$id"/true/'

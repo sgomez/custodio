@@ -17,6 +17,8 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$here/report.sh"
 # shellcheck source=e2e/owner-lib.sh
 source "$here/owner-lib.sh"
+# shellcheck source=e2e/same-file.sh
+source "$here/same-file.sh"
 bash "$here/owner-selftest.sh" || fail "the owner self-test failed"
 
 OWN=$WORK/owner
@@ -97,14 +99,14 @@ the calls on alice's id left $(jcount b-foreign) journal entries, expected 0"
 [ "$(jcount a-import)" = 2 ] || p="$p
 alice's two imports left $(jcount a-import) entries in the journal, expected 2 (the query cannot see entries)"
 # her key was not touched: listed, signing (one request each, see owner-user.sh) and with its certificate
-cmp -s "$OWN/a-own.der" "$OWN/a.der" || p="$p
+same_file "$OWN/a-own.der" "$OWN/a.der" || p="$p
 alice's certificate for owner-a after bob's calls is not the one she imported"
 judge owner-foreign-id-journal "$p"
 
 # Acceptance 2: the same id under both uids; each signs with their own key, and the signature verifies against that uid's certificate only.
 p=''
-cmp -s "$OWN/a-same.der" "$OWN/a.der" || p="alice's certificate for owner-same is not hers"
-cmp -s "$OWN/b-same.der" "$OWN/b.der" || p="$p
+same_file "$OWN/a-same.der" "$OWN/a.der" || p="alice's certificate for owner-same is not hers"
+same_file "$OWN/b-same.der" "$OWN/b.der" || p="$p
 bob's certificate for owner-same is not his"
 p="$p
 $(verify_problems "$OWN/a-sign-same.sig" "$OWN/data.bin" "$OWN/a-same.der")

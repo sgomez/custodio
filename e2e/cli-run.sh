@@ -105,7 +105,7 @@ cp "$PAM" "$CLI/pam.during"
 echo "carol:$ACCOUNT_PW" | chpasswd
 session carol cli-pty-user.sh carol.out
 cp -p "$CLI/polkit-1.orig" "$PAM"
-cmp -s "$PAM" "$CLI/polkit-1.orig" || fail "the PAM file of polkit-1 could not be restored"
+same_file "$PAM" "$CLI/polkit-1.orig" || fail "the PAM file of polkit-1 could not be restored"
 # the service keeps the (empty) directory of an account that had keys: it is carol's, and goes with her
 carol_dir=$(readlink -f "$STATE_LINK")/$(id -u carol)
 rmdir "$carol_dir" 2> /dev/null || true # fails if it holds anything, which the comparison below then shows
@@ -186,7 +186,7 @@ judge cli-delete-pkttyagent "$(pcall delete-right ok ''
     cli_state_key_problems "$CLI/p4.state" cli-pty absent
     cli_no_leftover_problems "after the delete" "$CLI/delete-right.procs")"
 end=$(ops_state_problems "the state directory after the step" "$CLI/start.state" "$CLI/end.state"
-    cmp -s "$PAM" "$CLI/polkit-1.orig" || echo "the PAM file of polkit-1 is not the original"
+    same_file "$PAM" "$CLI/polkit-1.orig" || echo "the PAM file of polkit-1 is not the original"
     cli_no_secret_problems "$CLI/journal.txt" e2e-password "$ACCOUNT_PW" "$WRONG_PW")
 if [ -n "$end" ]; then problems="$problems
 end:
