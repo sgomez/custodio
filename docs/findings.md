@@ -1597,3 +1597,11 @@ Probes run in the target containers (2026-11-02): `dnf provides /usr/bin/setpriv
 archlinux: `core/util-linux` has `usr/bin/setpriv`, `extra/polkit` has `usr/bin/pkttyagent`. Debian 13: `dpkg -S /usr/bin/setpriv` is
 `util-linux`, which is Essential (`dpkg-query -W -f='${Essential}' util-linux` = yes), so the deb adds nothing; `pkttyagent` comes with
 `polkitd`. The proof that the names resolve is `just e2e`, which installs the packages with each target's package manager.
+
+## F91: `busctl call` does not report the error name (2026-11-02)
+
+Run in the dev container (systemd 257) against a private `dbus-daemon`: `busctl --user call org.freedesktop.DBus /org/freedesktop/DBus
+org.freedesktop.DBus GetNameOwner s com.nobody.x` prints only `Call failed: Could not get owner of name 'com.nobody.x': no such name`, with
+and without `--verbose`; the error name (`org.freedesktop.DBus.Error.NameHasNoOwner`) is lost. So the per-call error name that F91 compares
+cannot be read from busctl. The guest has GLib's D-Bus through python3-gi (the test agent already needs it, `e2e/agent.py`); a
+`Gio.DBusProxy`-free `Gio.DBusConnection.call_sync` raises a `GLib.Error` whose `Gio.DBusError.get_remote_error` is the name.
