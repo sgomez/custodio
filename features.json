@@ -441,7 +441,7 @@
         "F98"
       ],
       "verify": "just quick && scripts/test-docs-manual-m3.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F100",
