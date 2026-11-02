@@ -115,7 +115,7 @@ refused extra-argument 'unexpected argument' debian13 nss-approve
 # no subset: the whole list of engine calls of a run of debian13 (old path included) is this one, written out
 expect_ok no-subset-calls debian13 || true
 mnt="-v ROOT/TMP/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro -v ROOT/TMP/next/custodio_0.1.1-1_amd64.deb:/pkg-next/custodio_0.1.1-1_amd64.deb:ro -v ROOT/TMP/oldpath/custodio_0.1.0-1_amd64.deb:/pkg-oldpath/custodio_0.1.0-1_amd64.deb:ro"
-boot="run -d --name custodio-e2e-debian13-PID --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp $mnt -v ROOT/e2e:/e2e:ro -v ROOT/e2e/targets/debian13:/e2e-target:ro custodio-e2e-debian13
+boot="run -d --name custodio-e2e-debian13-PID --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp $mnt -v ROOT/e2e:/e2e:ro -v ROOT/docs/audit.md:/e2e-docs/audit.md:ro -v ROOT/crates/custodiod/src/app_id_source.rs:/e2e-src/app_id_source.rs:ro -v ROOT/e2e/targets/debian13:/e2e-target:ro custodio-e2e-debian13
 exec custodio-e2e-debian13-PID systemctl is-system-running"
 expected="build -q -t custodio-e2e-debian13 -f e2e/targets/debian13/Containerfile e2e/targets/debian13
 $boot
