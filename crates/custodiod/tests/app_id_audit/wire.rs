@@ -45,6 +45,8 @@ fn journal_sink_datagram_names_the_app_id() -> TestResult {
                     format!("CUSTODIO_UID={}", uid()),
                     format!("CUSTODIO_PID={}", std::process::id()),
                     "CUSTODIO_KEY_ID=k".to_owned(),
+                    "PRIORITY=6".to_owned(),
+                    "CUSTODIO_OUTCOME=".to_owned() + outcome_of(op),
                     format!("CUSTODIO_OPERATION={}", op.name()),
                     format!("MESSAGE_ID={}", op.message_id()),
                 ];
@@ -63,6 +65,16 @@ fn journal_sink_datagram_names_the_app_id() -> TestResult {
         }
         Ok(())
     })
+}
+
+/// The outcome name of the approved call of `op`.
+fn outcome_of(op: Operation) -> &'static str {
+    match op {
+        Operation::Sign => "signed",
+        Operation::Import => "stored",
+        Operation::Delete => "deleted",
+        Operation::ReplaceCertificate => "replaced",
+    }
 }
 
 /// A fixture cgroup tree in which this process is in the scope `name`.
@@ -85,6 +97,8 @@ fn tree_with(name: &[u8]) -> Result<tempfile::TempDir, Box<dyn Error>> {
 #[test]
 fn hostile_values_never_reach_an_entry() -> TestResult {
     zbus::block_on(async {
+        // A directory name holds no NUL byte and at most 255 bytes, so those two cannot be offered;
+        // the last name is the longest that stays well past an app id.
         let hostile: [&[u8]; 6] = [
             b"app-flatpak-org.a.INJECT\nCUSTODIO_UID=0-1.scope",
             b"app-flatpak-org.a.INJECT=b-1.scope",
@@ -99,12 +113,15 @@ fn hostile_values_never_reach_an_entry() -> TestResult {
             ]
             .concat(),
         ];
-        for name in hostile {
+        for (name, op) in hostile
+            .into_iter()
+            .flat_map(|n| Operation::all().map(move |op| (n, op)))
+        {
             let root = tree_with(name)?;
             let reader =
                 CgroupAppIdSource::with_root(root.path().to_path_buf(), Duration::from_secs(5), 8);
             let bytes = datagram(
-                Operation::Import,
+                op,
                 GuardedSource::with_limits(reader, Duration::from_secs(5), 8),
             )
             .await?;

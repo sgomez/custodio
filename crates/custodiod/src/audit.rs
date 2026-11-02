@@ -433,7 +433,6 @@ impl Entry {
     }
 }
 
-/// `<phrase>: uid <uid> pid <pid> key <key id>`, the shape of every `MESSAGE`.
 /// Field holding which of the three app-id cases an entry records.
 pub const APP_ID_STATE_FIELD: &str = "CUSTODIO_APP_ID_STATE";
 /// Field holding the validated flatpak app-id; only with the state `read`.
@@ -457,6 +456,7 @@ pub(crate) fn push_app_id(f: &mut Vec<(&'static str, String)>, app_id: &AppIdOut
     }
 }
 
+/// `<phrase>: uid <uid> pid <pid> key <key id>`, the shape of every `MESSAGE`.
 fn message(phrase: &str, caller: Option<Caller>, key_id: &KeyId) -> String {
     let who = caller.map_or_else(
         || "uid unknown pid unknown".to_owned(),

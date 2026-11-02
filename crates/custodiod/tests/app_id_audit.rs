@@ -134,6 +134,14 @@ pub(crate) fn answers() -> Result<[AppIdOutcome; 3], Box<dyn Error>> {
 pub struct Sink {
     pub inner: MemorySink,
     pub fail: AtomicBool,
+    /// Holds the next operation entry (after recording it) until the sender is used or dropped.
+    pub gate: Mutex<Option<Gate>>,
+}
+
+/// `entered` tells the test the entry is held; the entry is let go when `release` gets a message.
+pub struct Gate {
+    pub entered: std::sync::mpsc::Sender<()>,
+    pub release: std::sync::mpsc::Receiver<()>,
 }
 
 impl Sink {
@@ -162,7 +170,17 @@ impl AuditSink for Sink {
         if self.fail.load(Ordering::SeqCst) {
             return Err(AuditError::Io(std::io::ErrorKind::Other));
         }
-        self.inner.record_operation(entry)
+        self.inner.record_operation(entry)?;
+        let gate = self
+            .gate
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(gate) = gate {
+            let _ = gate.entered.send(());
+            let _ = gate.release.recv();
+        }
+        Ok(())
     }
 }
 

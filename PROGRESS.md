@@ -331,3 +331,8 @@ with an empty context.
 - Fixed NEXT_FINDINGS: (1) `e2e/catalog-text.txt` has the app-id paragraph; `scripts/test-e2e-catalog.sh` passes. (2) Negative control `app_id_check_rejects_a_wrong_case`: for every operation and case, `assert_case` against each other case panics (`catch_unwind`). (3) The four `*_entries_hold_no_secrets` tests now run with a source answering `org.example.App` (`Fixture::start_reading`, `fixture_reading`; direct entries use `with_app_id`) and assert the id field is in the scanned entries (import without credentials has none). (4) `app_id_never_changes_the_outcome` compares `ListKeys` and a later `Sign` (deterministic RSA) too.
 - Product code unchanged, so the mutants result stands. Evidence: `just quick` exit 0.
 - Next session should: nothing for F82.
+
+### 2026-11-02 — F82 — attempt 3
+- Fixed NEXT_FINDINGS: new `app_id_not_asked_for_a_pending_delete_id` (a held `DeleteKey` entry via `Sink::gate`; then `Sign`, `ReplaceCertificate`, `DeleteKey` on that id give `NoSuchKey`, no new entry, no new source call, no new polkit ask). Notes taken: hostile scope names run through every operation and the journal datagram; comment on why NUL/300-byte names cannot be offered; datagram test checks `PRIORITY` and `CUSTODIO_OUTCOME`; doc comment of `message` moved back above `fn message`.
+- Evidence: `just quick` exit 0. Product code unchanged apart from a moved comment, so the mutants result stands.
+- Next session should: nothing for F82.
