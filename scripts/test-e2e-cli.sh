@@ -43,7 +43,7 @@ mutant outcome-failed 's/grep -qF .==== AUTHENTICATION FAILED ====. "\$1" ||/tru
 mutant outcome-not-complete 's/! grep -qF .==== AUTHENTICATION COMPLETE ====. "\$1" ||/true ||/'
 mutant state-present 's/\[ "\$n" -gt 0 \] ||/true ||/'
 mutant state-absent 's/\[ "\$n" -eq 0 \] ||/true ||/'
-mutant state-only 's/same_file - "\$2" ||/true ||/'
+mutant state-only 's#same_file - "\$2" ||#cat > /dev/null ||#'
 
 g=$ROOT/e2e/guest.sh
 line() { grep -n -m1 -E -e "$1" "$g" | cut -d: -f1; }
