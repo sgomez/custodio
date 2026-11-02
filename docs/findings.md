@@ -1713,3 +1713,35 @@ Acceptance 15: pass. One entry since the step started (`signature made: uid 1000
 - A person then repeated §17 by hand on the same VM, restored to its clean snapshot with the same package, following the steps in
   a desktop terminal (import of `p256`, build, detection, sign from `flatpak run --command=sh`, journal) and answering each dialog:
   every dialog, result and journal entry matched the table above.
+
+## F103: M3 acceptance 16 by hand on fedora44, Firefox, LibreOffice and a second account (2026-11-02)
+
+Machine: labvm `fedora44` (libvirt), Fedora 44, GNOME on Wayland (autologin, GNOME Shell's polkit agent), SELinux enforcing, dbus-broker
+37, polkit 127, systemd 259.5, Firefox 150.0-1.fc44 (Fedora package, `/usr/bin/firefox`), LibreOffice 26.2.1.2-2.fc44, nss 3.131.0,
+p11-kit 0.26.2. Package `custodio-0.1.0-1.x86_64.rpm` from `just package` at `e5a57af` (sha256
+`72953e950230ee984832295fb82b534f91090d4f5bb10d5c977a426e5a961b73`; only the test flatpak manifest changed since), installed with
+`dnf install`. Followed `docs/manual-acceptance.md` §18. Keys `rsa2048` and `p256` made as in §1 and imported with `custodio import` in
+the desktop session (an import dialog each, approved). As in F54, the lab image's `softhsm2.module` was moved out of
+`/usr/share/p11-kit/modules/`. Dialogs answered from the hypervisor after a screenshot showed each one.
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Firefox signs, dialog seen | signature made | No manual registration (through p11-kit-proxy, as F54). `openssl s_server -Verify 1 -www -no_ticket -no_cache` with a server certificate from the test CA. `p256`: selector, a dialog "Authentication is required to sign with a key held by Custodio" per signature, two approved (page and a second connection), page loads (`Peer signature type: ecdsa_secp256r1_sha256`). After a Firefox restart, `rsa2048`: approved, page loads (`rsa_pss_rsae_sha256`); reload and cancel the dialog: `SSL_ERROR_HANDSHAKE_FAILED` | pass |
+| 2 | LibreOffice signs, dialog seen | valid signature | File > Digital Signatures > Digital Signatures > Sign Document offers both certificates. `rsa2048`: dialog, approved, XAdES `rsa-sha256`; signing again and cancelling the dialog added no signature. `p256`: cancel first (no signature added), then approved, XAdES `ecdsa-sha256`. Each document reopened after LibreOffice was closed: "Este documento está firmado digitalmente y la firma es válida" | pass |
+| 3 | Journal comparison | none extra, none missing | 8 entries for 8 dialogs: Firefox 3 `signed` + 1 `denied` (pids 4526 and 5577, the Firefox process before and after the restart), LibreOffice 2 `signed` + 2 `denied` (pids 7061 and 8135, `soffice.bin` for each document); `CUSTODIO_UID=1000`, `CUSTODIO_APP_ID_STATE=none`, mechanisms `ecdsa`, `rsa_pkcs_pss_sha256` (Firefox) and `rsa_pkcs` (LibreOffice). Outside the base query only the two `key imported` entries | pass |
+| 4 | Second account: token listing | no token | account `segunda` (uid 1001, no keys), its own logind session (`machinectl shell segunda@.host`): new NSS database, `modutil -list` shows `p11-kit-proxy` with no slots, `certutil -L -h all` empty, `pkcs11-tool -L` and `--list-objects` `No slots.` | pass |
+| 5 | Second account: `ListKeys` | `a(ssay) 0` | `a(ssay) 0`; `custodio list` "You have no keys in the custodio service." | pass |
+
+Acceptance 16: pass. No AVC from the start of the run (`ausearch -m AVC,USER_AVC --input-logs`: 0; `-m USER_AUTH`: 64);
+`custodiod` runs as `unconfined_service_t`.
+
+- §18 step 3 and step 5 say to register the module with `modutil -add` as in §6. On Fedora that fails: `ERROR: Failed to add module
+  "custodio". Probable cause : "Unknown PKCS #11 error."`, for the person who signs and for the second account alike. Fedora's NSS
+  loads `p11-kit-proxy` into every database, the proxy has already initialized the module in the same process, and the module's
+  `C_Initialize` answers `CKR_CRYPTOKI_ALREADY_INITIALIZED` (`crates/custodio-pkcs11/src/module.rs`), which NSS reports as unknown.
+  Nothing is lost: the tokens reach both clients through the proxy. Without `</dev/null` the command waits at its p11-kit warning
+  prompt even with `-force`.
+- LibreOffice used a dedicated NSS database (`certutil -N --empty-password`, CA trusted `C,C,C`) set as `CertDir` in the profile, as
+  in F34; the selector named that directory. After signing it asks "¿Quiere recordar esta firma cada vez que guarde?": answered No.
+- The second account was checked from the command line in its own session, not from a graphical login: its Firefox and LibreOffice
+  were not opened. Both load Custodio through the same p11-kit-proxy whose listing in that account is empty.
