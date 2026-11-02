@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use super::{Custodio, check_id};
+use super::{Custodio, parse_delete_request};
 use crate::audit::{DeleteOutcome, KeyId, OperationEntry};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
@@ -34,7 +34,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// A D-Bus error for a bad id, an unknown caller, a missing key, a refusal of polkit or a
     /// store failure; [`ServiceError::AuditUnavailable`] if the entry could not be submitted.
     pub async fn delete_call(&self, sender: Option<&str>, id: &str) -> Result<(), ServiceError> {
-        check_id(id).map_err(|e| ServiceError::from(&e))?;
+        parse_delete_request(id).map_err(|e| ServiceError::from(&e))?;
         let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
         let known = self.known_caller(sender).await;
         let Some((sender, caller, pidfd)) = known else {

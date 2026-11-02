@@ -50,6 +50,7 @@ lint-fuzz:
     #!/usr/bin/env bash
     set -euo pipefail
     (cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings)
+    (cd crates/custodiod/fuzz && cargo clippy --all-targets -- -D warnings)
     # Only the guard's compile_error may fail this check; a bare `!` would accept any other error too.
     if out=$(cargo check -p custodio-pkcs11 --features fuzzing --release --locked 2>&1); then
         echo "lint-fuzz: the fuzzing feature built in release" >&2
@@ -381,6 +382,40 @@ fuzz-build:
         (cd "$(dirname "$manifest")/.." && cargo +{{nightly_toolchain}} fuzz build --target "$host")
     done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
     if [ "$found" = 0 ]; then echo "no fuzz targets found" >&2; exit 1; fi
+
+# Run every fuzz target for a fixed number of runs with a fixed seed (a smoke test, not fuzzing). Fails on a crash, on an
+# expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
+# directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
+# `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    runs=2000
+    seed=1
+    host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    ran=" "
+    while IFS= read -r manifest; do
+        dir=$(dirname "$manifest")/..
+        listed=$(cd "$dir" && cargo +{{nightly_toolchain}} fuzz list)
+        for target in $listed; do
+            mkdir -p "$tmp/corpus/$target" "$tmp/artifacts/$target"
+            echo "fuzz-smoke: $target -runs=$runs -seed=$seed"
+            (cd "$dir" && cargo +{{nightly_toolchain}} fuzz run --target "$host" "$target" "$tmp/corpus/$target" -- \
+                -runs=$runs -seed=$seed "-artifact_prefix=$tmp/artifacts/$target/") >"$tmp/log" 2>&1 \
+                || { tail -30 "$tmp/log" >&2; echo "fuzz-smoke: $target failed" >&2; exit 1; }
+            tail -2 "$tmp/log"
+            ran="$ran$target "
+        done
+    done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
+    for target in {{expected}}; do
+        case "$ran" in
+            *" $target "*) ;;
+            *) echo "fuzz-smoke: target $target is missing or did not run" >&2; exit 1 ;;
+        esac
+    done
+    if [ "$ran" = " " ]; then echo "fuzz-smoke: no fuzz targets found" >&2; exit 1; fi
 
 # Regenerate CHANGELOG.md from the Conventional Commits history (git-cliff, cliff.toml).
 changelog:

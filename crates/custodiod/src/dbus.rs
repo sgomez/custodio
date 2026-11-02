@@ -23,6 +23,7 @@ use crate::sign::{Mechanism, PssHash, sign};
 use crate::store::{KeyStore, StoreError};
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
+pub use replace::parse_replace_request;
 
 /// `CKM_RSA_PKCS`.
 pub const CKM_RSA_PKCS: u32 = 0x0001;
@@ -106,6 +107,14 @@ fn check_id(id: &str) -> Result<(), RequestError> {
     } else {
         Err(RequestError::BadId)
     }
+}
+
+/// Check the argument of `DeleteKey`: the id. `delete_call` runs this same check.
+///
+/// # Errors
+/// [`RequestError::BadId`].
+pub fn parse_delete_request(id: &str) -> Result<(), RequestError> {
+    check_id(id)
 }
 
 /// Check the arguments of `Sign`.

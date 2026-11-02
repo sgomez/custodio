@@ -285,9 +285,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "custodio-client"
+version = "0.1.0"
+
+[[package]]
 name = "custodiod"
 version = "0.1.0"
 dependencies = [
+ "custodio-client",
  "p12-keystore",
  "p256",
  "pkcs8",

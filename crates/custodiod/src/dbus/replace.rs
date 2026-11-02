@@ -22,6 +22,21 @@ pub(super) fn is_certificate(der: &[u8]) -> bool {
     within_bound(der.len()) && Certificate::from_der(der).is_ok()
 }
 
+/// The argument check of `ReplaceCertificate`: the id, then the certificate (bound, then DER parse).
+/// `replace_call` runs this same check before it looks at the caller.
+///
+/// # Errors
+/// [`ServiceError`] as the call would answer: a bad id or a certificate that is not exactly one
+/// DER X.509 certificate within [`MAX_CERT_LEN`] bytes.
+pub fn parse_replace_request(id: &str, certificate: &[u8]) -> Result<(), ServiceError> {
+    check_id(id).map_err(|e| ServiceError::from(&e))?;
+    if is_certificate(certificate) {
+        Ok(())
+    } else {
+        Err(ServiceError::InvalidArgs)
+    }
+}
+
 /// The size check alone: `MAX_CERT_LEN` bytes pass, one more does not.
 pub(super) const fn within_bound(len: usize) -> bool {
     len <= MAX_CERT_LEN
@@ -66,10 +81,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         id: &str,
         certificate: &[u8],
     ) -> Result<(), ServiceError> {
-        check_id(id).map_err(|e| ServiceError::from(&e))?;
-        if !is_certificate(certificate) {
-            return Err(ServiceError::InvalidArgs);
-        }
+        parse_replace_request(id, certificate)?;
         let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
         let known = self.known_caller(sender).await;
         let Some((sender, caller, pidfd)) = known else {

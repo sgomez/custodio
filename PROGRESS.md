@@ -336,3 +336,11 @@ with an empty context.
 - Fixed NEXT_FINDINGS: new `app_id_not_asked_for_a_pending_delete_id` (a held `DeleteKey` entry via `Sink::gate`; then `Sign`, `ReplaceCertificate`, `DeleteKey` on that id give `NoSuchKey`, no new entry, no new source call, no new polkit ask). Notes taken: hostile scope names run through every operation and the journal datagram; comment on why NUL/300-byte names cannot be offered; datagram test checks `PRIORITY` and `CUSTODIO_OUTCOME`; doc comment of `message` moved back above `fn message`.
 - Evidence: `just quick` exit 0. Product code unchanged apart from a moved comment, so the mutants result stands.
 - Next session should: nothing for F82.
+
+### 2026-11-02 — F83 — attempt 1
+- Done: entry points `dbus::parse_delete_request(id)` (= `check_id`) and `dbus::parse_replace_request(id, cert)` (id, bound, DER parse); `delete_call` and `replace_call` call them, so the fuzz targets run the service's own checks. New test `the_request_check_refuses_by_id_then_certificate`; the bound/trailing-bytes cases stay in the existing tests.
+- Targets `delete_args`, `replace_cert_args`, `app_id` (asserts an accepted id passes `validate` again, is within `MAX_APP_ID_LEN`, and equals the input). `dbus_args` already took every argument of the sign/import parsers as full-range values and list has no arguments, so it only gained a comment saying so.
+- `just fuzz-smoke [expected]`: every target of every fuzz workspace, `-runs=2000 -seed=1`, corpus and artifacts in a temp dir (local corpus untouched; `git status --porcelain --ignored` minus `target/` unchanged except the fuzz `Cargo.lock` gaining the new bins). Checks the six expected names against `cargo fuzz list`. `lint-fuzz` also lints the custodiod fuzz workspace.
+- Negative controls (reverted): panic on a `zz` prefix in `delete_args` → exit non-zero naming `delete_args`; extra unknown expected name → exit 1 naming it; a clippy warning in the custodiod fuzz crate → clippy errors.
+- Evidence: `just quick`, `just fuzz-build`, `just lint-fuzz`, `just fuzz-smoke` all exit 0.
+- Next session should: nothing for F83.

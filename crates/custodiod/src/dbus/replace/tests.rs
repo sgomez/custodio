@@ -27,6 +27,25 @@ fn the_bound_is_16_kib_and_exact() {
 }
 
 #[test]
+fn the_request_check_refuses_by_id_then_certificate() {
+    assert_eq!(parse_replace_request("k1", P256_RECERT), Ok(()));
+    assert_eq!(
+        parse_replace_request("", P256_RECERT),
+        Err(ServiceError::InvalidArgs)
+    );
+    assert_eq!(
+        parse_replace_request("k1", b"x"),
+        Err(ServiceError::InvalidArgs)
+    );
+    let mut padded = P256_RECERT.to_vec();
+    padded.resize(MAX_CERT_LEN + 1, 0);
+    assert_eq!(
+        parse_replace_request("k1", &padded),
+        Err(ServiceError::InvalidArgs)
+    );
+}
+
+#[test]
 fn only_exactly_one_certificate_is_accepted() {
     for cert in [P256_RECERT, RSA_RECERT, P256_EXPIRED, P384, ED25519] {
         assert!(is_certificate(cert));
