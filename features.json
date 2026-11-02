@@ -430,7 +430,7 @@
         "F83"
       ],
       "verify": "just quick && scripts/test-docs-api.sh && just api-contract",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F99",
