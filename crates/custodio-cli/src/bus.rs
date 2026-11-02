@@ -1,4 +1,4 @@
-//! `ImportP12` over D-Bus.
+//! `ImportP12` and `ListKeys` over D-Bus.
 
 use custodio_client::{BUS_NAME, OBJECT_PATH};
 use secrecy::{ExposeSecret, SecretString};
@@ -6,6 +6,7 @@ use zbus::{Connection, block_on};
 
 use crate::Importer;
 use crate::failure::ServiceFailure;
+use crate::list::{KeyEntry, KeyLister};
 
 /// Talks to the service on the given connection (the system bus in `main`).
 pub struct DbusImporter {
@@ -44,6 +45,31 @@ impl Importer for DbusImporter {
             .body()
             .deserialize::<String>()
             .map_err(|_| ServiceFailure::Transport)
+    }
+}
+
+impl KeyLister for DbusImporter {
+    fn list_keys(&self) -> Result<Vec<KeyEntry>, ServiceFailure> {
+        let reply = block_on(self.connection.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "ListKeys",
+            &(),
+        ))
+        .map_err(|e| failure_of(&e))?;
+        let keys = reply
+            .body()
+            .deserialize::<Vec<(String, String, Vec<u8>)>>()
+            .map_err(|_| ServiceFailure::Transport)?;
+        Ok(keys
+            .into_iter()
+            .map(|(id, key_type, certificate)| KeyEntry {
+                id,
+                key_type,
+                certificate,
+            })
+            .collect())
     }
 }
 

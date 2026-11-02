@@ -1,17 +1,53 @@
 .TH CUSTODIO 1 "" "custodio" "User Commands"
 .SH NAME
-custodio \- import a PKCS#12 key into the custodio signing service
+custodio \- import and list keys of the custodio signing service
 .SH SYNOPSIS
 .B custodio import
 [\fB\-\-id\fR \fIkey id\fR]
 .I file.p12
+.br
+.B custodio list
 .SH DESCRIPTION
 .B custodio
-is the command-line importer of the custodio signing service.
+is the command-line tool of the custodio signing service.
 .B import
 reads a PKCS#12 file and stores its key where the service keeps keys.
 The file password is asked on the terminal.
 It is never taken from the arguments or from the environment.
+.PP
+.B list
+shows each of your keys, in order of key id.
+For every key it prints four lines: its
+.I id
+(the key id),
+its
+.I type
+(\fBrsa2048\fR or \fBecdsa\-p256\fR),
+the
+.I subject
+of its certificate, and the end of its validity
+.RI ( "valid until" ,
+the certificate's notAfter, in UTC).
+If a certificate cannot be read, the key is still listed, its subject and end of validity
+are shown as "certificate unreadable", and the exit status is 1.
+Control characters in any of these texts are shown as \fB\\x\fINN\fR escapes.
+Only your own keys are listed.
+If you have none, it prints a sentence saying so and exits with status 0.
+.B list
+takes no arguments and does not ask for authorization: it never calls polkit.
+.SH EXIT STATUS
+.TP
+.B 0
+The command succeeded; for
+.BR list ,
+also when there are no keys.
+.TP
+.B 1
+The command failed: the service or the system bus could not be reached, the service answered with an error
+(whose message is shown on standard error), or a certificate could not be read.
+.TP
+.B 2
+The command line is wrong.
 .SH OPTIONS
 .TP
 .BI \-\-id " key id"

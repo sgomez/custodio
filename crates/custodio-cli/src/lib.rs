@@ -11,13 +11,40 @@ use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
 pub use failure::ServiceFailure;
+pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
 
 pub mod bus;
 pub mod failure;
+pub mod list;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
+       custodio list\n\
 The password is asked on the terminal; it is never taken from arguments or the environment.";
+
+/// What the command line asks for.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Command {
+    Import(ImportArgs),
+    List,
+}
+
+/// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
+///
+/// # Errors
+/// [`ArgError::Usage`] for anything unexpected, and the errors of [`parse_args`] for `import`.
+pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command, ArgError> {
+    let mut it = args.into_iter().peekable();
+    if it.peek().map(String::as_str) == Some("list") {
+        it.next();
+        return if it.next().is_none() {
+            Ok(Command::List)
+        } else {
+            Err(ArgError::Usage)
+        };
+    }
+    parse_args(it).map(Command::Import)
+}
 
 /// Parsed command line.
 #[derive(Debug, PartialEq, Eq)]
@@ -175,6 +202,7 @@ pub enum CliError {
     /// The system bus cannot be reached.
     SystemBus(String),
     Import(ImportFailure),
+    List(ListFailure),
 }
 
 impl fmt::Display for CliError {
@@ -183,6 +211,7 @@ impl fmt::Display for CliError {
             Self::Args(e) => write!(f, "{e}"),
             Self::SystemBus(why) => write!(f, "custodio: cannot reach the system bus: {why}"),
             Self::Import(e) => write!(f, "custodio: {e}"),
+            Self::List(e) => write!(f, "custodio: {e}"),
         }
     }
 }
@@ -195,7 +224,7 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
         Err(CliError::Args(_)) => 2,
-        Err(CliError::SystemBus(_) | CliError::Import(_)) => 1,
+        Err(CliError::SystemBus(_) | CliError::Import(_) | CliError::List(_)) => 1,
     }
 }
 

@@ -4,7 +4,9 @@
 use std::io;
 use std::process::{Command, Output};
 
-use custodio_cli::{ArgError, CliError, ImportFailure, ServiceFailure, exit_status, finish};
+use custodio_cli::{
+    ArgError, CliError, ImportFailure, ListFailure, ServiceFailure, exit_status, finish,
+};
 
 fn every_failure() -> Vec<CliError> {
     let mut all = vec![
@@ -12,6 +14,8 @@ fn every_failure() -> Vec<CliError> {
         CliError::Import(ImportFailure::Read(io::Error::other("x"))),
         CliError::Import(ImportFailure::TooLarge),
         CliError::Import(ImportFailure::Password(io::Error::other("no terminal"))),
+        CliError::List(ListFailure::Unreadable(2)),
+        CliError::List(ListFailure::Output(io::Error::other("closed"))),
     ];
     for name in [
         "com.rfirma.Custodio1.Error.InvalidArgs",
@@ -29,6 +33,9 @@ fn every_failure() -> Vec<CliError> {
         "org.freedesktop.DBus.Error.AccessDenied",
     ] {
         all.push(CliError::Import(ImportFailure::Service(
+            ServiceFailure::from_name(name),
+        )));
+        all.push(CliError::List(ListFailure::Service(
             ServiceFailure::from_name(name),
         )));
     }
@@ -83,6 +90,8 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
         &["import", "--password", "x", "a.p12"],
         &["import", "--id", "a", "--id", "b", "a.p12"],
         &["import", "my cert.p12"],
+        &["list", "extra"],
+        &["list", "--id", "x"],
     ] {
         let out = run(args)?;
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -96,6 +105,16 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
 fn the_binary_exits_1_when_the_bus_is_unreachable() -> Result<(), io::Error> {
     // A valid command line; it fails in `DbusImporter::system`, before `run_import`.
     let out = run(&["import", "--id", "k", "a.p12"])?;
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(out.stdout, b"" as &[u8]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("cannot reach the system bus"), "{err}");
+    Ok(())
+}
+
+#[test]
+fn the_binary_exits_1_not_2_for_list_when_the_bus_is_unreachable() -> Result<(), io::Error> {
+    let out = run(&["list"])?;
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(out.stdout, b"" as &[u8]);
     let err = String::from_utf8_lossy(&out.stderr);
