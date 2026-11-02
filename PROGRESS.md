@@ -386,3 +386,8 @@ with an empty context.
 - Notes: `custodio delete` connects to the bus before asking (no method call to the service until the answer). A hangup sends SIGHUP to the session leader, so that variant only asserts non-zero and no calls. Evaluator notes 2–7 taken; note 1 (probe in Scope) is documented in the test header instead of editing the contract.
 - Evidence: `just quick` exit 0 (verify has no mutants-diff).
 - Next session should: nothing for F88.
+
+### 2026-11-02 — F88 — attempt 2
+- Fixed NEXT_FINDINGS: `just quick` failed on the file-size check (`custodio-it/tests/delete.rs` ~6000 tokens). Split into `delete.rs` (the tests), `delete/rig.rs` (private bus, fake polkit, service, monitor) and `delete/run.rs` (binary build, child with or without a controlling terminal), wired with `#[path]`. No test changed; 12 tests green.
+- Evidence: `just quick` exit 0.
+- Next session should: nothing for F88.
