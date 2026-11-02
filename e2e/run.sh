@@ -85,6 +85,7 @@ boot_container() {
         --tmpfs /run --tmpfs /run/lock --tmpfs /tmp \
         "${mounts[@]}" \
         -v "$PWD/e2e:/e2e:ro" \
+        -v "$PWD/docs/audit.md:/e2e-docs/audit.md:ro" \
         -v "$PWD/$dir:/e2e-target:ro" \
         "custodio-e2e-$t" > /dev/null || return 1
     for _ in $(seq 60); do

@@ -52,6 +52,13 @@ delete-module-no-token
 delete-sign-no-such-key
 delete-state-file-gone
 delete-reimport
+journal-ops-sign
+journal-ops-import
+journal-ops-delete
+journal-ops-replace
+journal-ops-exactly-one
+journal-ops-no-secrets
+journal-ops-queries
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged
