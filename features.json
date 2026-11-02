@@ -363,7 +363,7 @@
         "F82"
       ],
       "verify": "just quick && just e2e-cases debian13 'journal-ops-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F95",
