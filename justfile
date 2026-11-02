@@ -274,6 +274,10 @@ mutants-diff id *args:
     [ -f "$base_file" ] || { echo "no $base_file: the loop has not started $id" >&2; exit 1; }
     mkdir -p target
     git diff "$(cat "$base_file")" > "target/mutants-$id.diff"
+    # New files too, without `git add -N`: intent-to-add entries break the loop's `git stash`.
+    git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do
+        git diff --no-index -- /dev/null "$f" >> "target/mutants-$id.diff" || [ $? = 1 ]
+    done
     just mutants --in-diff "target/mutants-$id.diff" "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
