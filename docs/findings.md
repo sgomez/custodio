@@ -1655,4 +1655,7 @@ Acceptance 14: pass. Nothing needed beyond `docs/api.md`.
   the first answer was `b false`; the page's "do the other steps of Detection" covered it, and those steps matched `docs/api.md`.
 - The two signatures of step 11 are identical: ECDSA here is deterministic (RFC 6979, M0 F-sign), not a cached reply; the dialog showed both times.
 - The dialogs were answered from the hypervisor (`virsh send-key`: the lab account's password and Enter, or Escape), after a screenshot
-  showed each dialog. No person clicked them. Step 15 (`AuthorizationUnavailable`) was not run, as the page says.
+  showed each dialog. Step 15 (`AuthorizationUnavailable`) was not run, as the page says.
+- A person then repeated steps 0 to 14 and the journal check by hand on the same VM, restored to its clean snapshot with the same
+  package, typing the commands in a desktop terminal and answering each dialog: every dialog, result and journal entry matched the
+  table above.
