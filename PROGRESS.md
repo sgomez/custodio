@@ -426,3 +426,11 @@ with an empty context.
 - Fixed NEXT_FINDINGS: the race in `scripts/test-e2e-upgrade.sh`: the stub unit's `ExecStart` was read from `/proc/$sleeper/exe` right after the fork, when the child could still be bash. The sleep binary is now resolved first (`readlink -f "$(command -v sleep)"`), started by that path, and written to the unit.
 - Evidence: `scripts/test-e2e-upgrade.sh` run 5 times; `just quick` exit 0.
 - Next session should: nothing for F90.
+
+### 2026-11-02 — F91 — attempt 1
+- Amended the contract (`docs(F91): amend contract...`): `busctl call` loses the error name (finding in `docs/findings.md`), so the three calls the CLI lacks are made by `e2e/owner-call.py` with GLib D-Bus; methods, signatures and the no-interactive-flag choice are documented in that file.
+- Built: `owner` group in `e2e/select.sh`, five `owner-*` ids in `e2e/cases.list`, `e2e/owner-run.sh` (root: keys, two sessions, journal, judgement), `owner-user.sh` (alice `a` in a background session for the whole step so her agent logs; bob `b` is ONE session and ONE agent for the foreign calls, a pid/registration check, then his own import, signature and delete), `owner-lib.sh` + `owner-selftest.sh` (judgements, with bad-evidence cases), `owner-journal.py` (entries of custodio.service between two marker entries), `delete.py` (pty confirm). Placement in `guest.sh`: after journal, before upgrade; every key is deleted by its owner. `scripts/test-e2e-owner.sh` (in `test-scripts`) runs the self-test, mutants of the judgements and the placement.
+- Evaluator notes: (1) same session/agent for B's foreign calls and own signature; (2)+(5) alice's two import entries are counted by the same query (expected 2), and control (a) showed the foreign calls as the owner give PolkitDenied; (3) markers are journal entries, `journalctl --sync` and wait until all are seen; (4) comment in `guest.sh` and `owner-run.sh`; (6) the journal check compares to zero and to the control count (kept: cheap).
+- Negative controls (red, reverted): (a) bob's session run as alice: list, no-such-key (`PolkitDenied`), no-polkit (agent log 0→3) and journal (3 entries) red; (b) A's signature checked against B's certificate: `owner-same-id-own-key` red.
+- Evidence: `just quick` exit 0; `just e2e-cases debian13 'owner-*'` exit 0, 5 cases accounted for.
+- Next session should: nothing for F91.

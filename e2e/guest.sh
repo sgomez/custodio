@@ -109,6 +109,13 @@ if phase_runs journal; then
     WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
 fi
 
+# The ownership cases (F91): two ordinary accounts, each with a session and an agent of its own. After the journal step, whose counts they would
+# change (they sign, import and delete), and before the upgrade, whose cases and the lifecycle's look at the state of the keys or at windows of
+# their own: the step deletes every key it imports. Needs nothing from the steps above but the setup.
+if phase_runs owner; then
+    WORK=$work MODULE=$MODULE START=$start bash /e2e/owner-run.sh || fail "owner-run.sh failed"
+fi
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

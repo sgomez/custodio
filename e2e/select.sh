@@ -14,6 +14,7 @@ case_group() {
     upgrade-oldpath-*) echo other-mode ;; # reported by its own guest run (oldpath)
     upgrade-*) echo upgrade ;;
     removal-* | reinstall-* | purge-*) echo lifecycle ;;
+    owner-*) echo owner ;;
     refusal-*) echo refusal ;;
     *) echo user ;;
     esac
@@ -32,13 +33,15 @@ selected_in() {
 # phase_runs PHASE: whether a step runs. A step that only unselected cases need does not; a step a selected case needs for its state does, and
 # reports nothing of what is not selected. user: the signatures (the agent, the evidence, the ledger of the journal check); unavailable: needs
 # the signatures' evidence; journal: counts every signature and the unavailable one; upgrade: lifecycle starts from the state it leaves;
-# lifecycle, refusal: their own cases.
+# owner (F91): its own cases, with two accounts and keys of its own; it needs only the setup, and runs after journal so that the counts
+# of the journal step do not see it; lifecycle, refusal: their own cases.
 phase_runs() {
     [ -f "$E2E_SELECT_FILE" ] || return 0
     case $1 in
     user) selected_in user || selected_in unavailable || selected_in journal ;;
     unavailable) selected_in unavailable || selected_in journal ;;
     journal) selected_in journal ;;
+    owner) selected_in owner ;;
     upgrade) selected_in upgrade || selected_in lifecycle ;;
     lifecycle) selected_in lifecycle ;;
     refusal) selected_in refusal ;;

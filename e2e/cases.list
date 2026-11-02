@@ -29,6 +29,11 @@ journal-signatures
 polkit-unavailable
 journal-entries
 journal-catalog
+owner-list-isolated
+owner-foreign-id-no-such-key
+owner-foreign-id-no-polkit
+owner-foreign-id-journal
+owner-same-id-own-key
 upgrade-version-greater
 upgrade-service-new-binary
 upgrade-state-unchanged
