@@ -308,7 +308,7 @@
         "F89"
       ],
       "verify": "just check && just api-contract && just e2e && just package-gates",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F91",
