@@ -335,7 +335,7 @@
         "F78"
       ],
       "verify": "just quick && just e2e-cases debian13 'ops-polkit-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F93",
