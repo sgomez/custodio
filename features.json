@@ -401,7 +401,7 @@
         "F89"
       ],
       "verify": "just quick && just e2e-cases debian13 'cli-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F98",
