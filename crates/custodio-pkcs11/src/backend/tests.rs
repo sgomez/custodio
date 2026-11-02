@@ -15,9 +15,6 @@ fn method_error(name: &str) -> Result<zbus::Error, Box<dyn std::error::Error>> {
     Ok(zbus::Error::MethodError(name, Some("text".into()), message))
 }
 
-/// Each service failure and the `BackendError` it has always ended as: the module turns `Denied`
-/// into `CKR_FUNCTION_FAILED`, `Invalid` into `CKR_DATA_INVALID` and `Unavailable` into
-/// `CKR_DEVICE_ERROR` (pinned by `composed_failure_ends_the_operation`).
 /// The service failures and the `BackendError` each ends as, for `ListKeys` and for `Sign` alike
 /// (both go through `map_error`): the ten names of the client crate, names this version does not
 /// know, the generic bus names.

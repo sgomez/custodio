@@ -353,3 +353,8 @@ with an empty context.
 - Negative controls (red, reverted): credentials source always uid A → two-uids test fails; list cache in `DbusBackend` → replace and delete tests fail.
 - Evidence: `just quick` exit 0; `just mutants-diff F85`: no mutants.
 - Next session should: nothing for F85.
+
+### 2026-11-02 — F85 — attempt 2
+- Fixed NEXT_FINDINGS: (1) `a_replaced_certificate_is_exposed_on_the_next_call` now signs (`sign:ec`) after the replace and verifies the ECDSA signature over `[7; 32]` with the key in `cert-p256-recert.der` (`verify_p256_prehash`). (2) Stale doc paragraph above `error_table()` removed. Note 3 accepted by the evaluator.
+- Product code unchanged, so `mutants-diff F85` still has no mutants. Evidence: `just quick` exit 0.
+- Next session should: nothing for F85.

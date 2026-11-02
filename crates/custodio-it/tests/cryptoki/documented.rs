@@ -119,6 +119,15 @@ fn a_replaced_certificate_is_exposed_on_the_next_call() -> TestResult {
     assert!(ok);
     assert_eq!(tokens_of(&after), [("ec".to_owned(), second.clone())]);
 
+    // A signature made now verifies with the public key in the second certificate.
+    let (ok, signed) = f.run_as(UID_A, "sign:ec")?;
+    assert!(ok, "{signed}");
+    let sig = lines(&signed, "SIG")
+        .find(|l| l.first() == Some(&"ec"))
+        .and_then(|l| l.get(1).copied())
+        .ok_or("no SIG line")?;
+    verify_p256_prehash(P256_RECERT, &[7; 32], &hex_to_bytes(sig)?)?;
+
     // And a second call inside one loaded module, with no restart in between.
     f.replace_certificate(UID_A, "ec", &hex_to_bytes(&first)?)?;
     let mut child = f.spawn("held_tokens")?;
@@ -132,6 +141,21 @@ fn a_replaced_certificate_is_exposed_on_the_next_call() -> TestResult {
     let lines = child.until("DONE")?;
     assert_eq!(tokens_of(&lines.join("\n")), [("ec".to_owned(), second)]);
     assert!(child.finish()?);
+    Ok(())
+}
+
+/// Checks an ECDSA signature over a 32-byte prehash with the key of a P-256 certificate.
+fn verify_p256_prehash(cert: &[u8], prehash: &[u8], sig: &[u8]) -> TestResult {
+    use p256::ecdsa::signature::hazmat::PrehashVerifier as _;
+    use x509_cert::der::Decode as _;
+    let point = x509_cert::Certificate::from_der(cert)?
+        .tbs_certificate()
+        .subject_public_key_info()
+        .subject_public_key
+        .raw_bytes()
+        .to_vec();
+    let key = p256::ecdsa::VerifyingKey::from_sec1_bytes(&point)?;
+    key.verify_prehash(prehash, &p256::ecdsa::Signature::from_slice(sig)?)?;
     Ok(())
 }
 
