@@ -501,3 +501,16 @@ with an empty context.
 - Decisions: `docs/api.md` offers no `gdbus` example, so the page uses `busctl` only and says so. Section 18 reuses `modutil ... -list` and `pkcs11-tool ... --list-objects` from sections 6 and 3, whole. F67 has no deviation, so the page demands the app-id.
 - Not done / known issues: nothing is run (a person does at the milestone). That the freedesktop runtime ships `busctl` is unverified; the page says to record it as a failure and stop if not.
 - Next session should: F99 awaits the loop's verify and evaluator.
+
+### 2026-11-02 — F100 — attempt 1
+- Nothing new built. Earlier F100 commits fixed the checkpoint failures: host selection test mounts, checksum comparison in guest scripts (no diffutils on some images), a deterministic state-only mutant. No gate, skip list, lint allowlist or threshold changed since `024718b~1`; no `#[ignore]` added (diff checked).
+- Runs on the final tree: `CHECK_FORCE=1 just check` exit 0; `just api-contract` exit 0; `just e2e <target>` exit 0 for each of the six targets (one by one, each over 4–6 min); `just package-gates` exit 0 (3 linters, 63 findings, 63 excepted, 0 stale).
+- Cases per target (accounted = run + skipped; ids of `e2e/cases.list` = 100 plus per-target set-up ids):
+  - alma10: 98 accounted, 1 skip.list line (comment only), skipped 0 listed ids → run 98, skipped 0
+  - arch: 98 accounted; skipped the 6 `upgrade-oldpath-*` ids listed in its skip.list → run 92, skipped 6 (accounted count includes skips as printed by check-cases)
+  - debian13: 107 accounted, run 107, skipped 0
+  - fedora44: 98 accounted, run 98, skipped 0
+  - ubuntu2404: 5 accounted (refusal target: the bus lacks ProcessFD, the package refuses to install by design), skipped 0
+  - ubuntu2604: 107 accounted, run 107, skipped 0
+  (The run/skipped split is read from each target's skip.list; the per-target counts come from `check-cases` output in the logs, not from separate counters.)
+- Next session should: nothing for F100.
