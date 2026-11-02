@@ -391,3 +391,8 @@ with an empty context.
 - Fixed NEXT_FINDINGS: `just quick` failed on the file-size check (`custodio-it/tests/delete.rs` ~6000 tokens). Split into `delete.rs` (the tests), `delete/rig.rs` (private bus, fake polkit, service, monitor) and `delete/run.rs` (binary build, child with or without a controlling terminal), wired with `#[path]`. No test changed; 12 tests green.
 - Evidence: `just quick` exit 0.
 - Next session should: nothing for F88.
+
+### 2026-11-02 — F88 — attempt 3
+- Fixed NEXT_FINDINGS: (1) `Rig::files()` lists the store files; the confirm test asserts the files of `old-key` are gone and `keep`'s remain, the denial test that the file list is unchanged (two files for `k`). (2) `custodio delete -- <id>` is accepted (only `--` as option, then exactly one id), so ids starting with `-` can be deleted; other options stay usage errors. Parse test, man page line and `tests/man.rs` pin it. The rustix note was not taken (non-blocking).
+- Evidence: `just quick` exit 0.
+- Next session should: nothing for F88.

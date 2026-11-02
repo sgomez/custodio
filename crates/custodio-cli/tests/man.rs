@@ -78,6 +78,7 @@ fn delete_is_documented_with_its_confirmation_terminal_and_polkit() -> Result<()
         "refuses and deletes nothing",
         "polkit asks for authorization as well",
         "takes exactly one argument",
+        "starts with a dash, write\n.B \\-\\-\nbefore it",
     ] {
         assert!(text.contains(fact), "DESCRIPTION lacks: {fact}");
     }

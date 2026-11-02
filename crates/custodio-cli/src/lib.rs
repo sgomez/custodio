@@ -50,8 +50,15 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
     }
     if it.peek().map(String::as_str) == Some("delete") {
         it.next();
+        // `--` ends the options, so an id that starts with `-` can still be deleted. It is the
+        // only option accepted, and it is not a bypass of the confirmation.
+        if it.peek().map(String::as_str) == Some("--") {
+            it.next();
+        } else if it.peek().is_some_and(|id| id.starts_with('-')) {
+            return Err(ArgError::Usage);
+        }
         return match (it.next(), it.next()) {
-            (Some(id), None) if !id.starts_with('-') => Ok(Command::Delete(id)),
+            (Some(id), None) => Ok(Command::Delete(id)),
             _ => Err(ArgError::Usage),
         };
     }

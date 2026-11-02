@@ -54,7 +54,10 @@ so without a terminal
 refuses and deletes nothing.
 After you confirm, polkit asks for authorization as well; if it is refused, nothing is deleted.
 .B delete
-takes exactly one argument, the key id, and no options.
+takes exactly one argument, the key id, and no options;
+to delete a key whose id starts with a dash, write
+.B \-\-
+before it.
 .SH EXIT STATUS
 .TP
 .B 0

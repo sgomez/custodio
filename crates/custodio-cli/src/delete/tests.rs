@@ -144,9 +144,24 @@ fn delete_takes_exactly_one_id() {
         &["delete", "a", "--yes"],
         &["delete", "-"],
         &["delete", "--"],
+        &["delete", "--", "a", "b"],
+        &["delete", "--", "--", "--yes"],
     ] {
         assert_eq!(parse(args), Err(crate::ArgError::Usage), "{args:?}");
     }
+}
+
+#[test]
+fn a_double_dash_lets_an_id_start_with_a_dash() {
+    for id in ["-k", "--yes", "--", "-"] {
+        assert_eq!(
+            parse(&["delete", "--", id]),
+            Ok(crate::Command::Delete(id.into())),
+            "{id}"
+        );
+    }
+    // Without it, the same words are options and stay usage errors.
+    assert_eq!(parse(&["delete", "-k"]), Err(crate::ArgError::Usage));
 }
 
 #[test]

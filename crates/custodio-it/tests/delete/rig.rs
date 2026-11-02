@@ -226,6 +226,18 @@ impl Rig {
         Ok(())
     }
 
+    /// File names under the owners' directories of the service's state directory, sorted.
+    pub fn files(&self) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut names = Vec::new();
+        for owner in std::fs::read_dir(self.dir.path().join("state"))? {
+            for entry in std::fs::read_dir(owner?.path())? {
+                names.push(entry?.file_name().to_string_lossy().into_owned());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     pub fn keys(&self) -> Result<Vec<String>, ServiceFailure> {
         Ok(self.client.list_keys()?.into_iter().map(|k| k.id).collect())
     }
