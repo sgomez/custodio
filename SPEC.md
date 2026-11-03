@@ -226,9 +226,11 @@ opens one connection per call; native journal entries. M3 changes the following.
   - Errors are shown from the documented error names, and the exit status is non-zero on failure.
     Usage errors keep their own status, as today.
   - **polkit without a graphical agent.** `import` and `delete` now need polkit, which fails as
-    "authorization unavailable" over SSH or on a console with no agent. When stdin is a terminal and
-    no agent answers for the session, the CLI starts `pkttyagent` registered for its own process
-    only, as `systemctl` does, and stops it when the call returns. It never registers an agent for
+    "authorization unavailable" over SSH or on a console with no agent. When stdin is a terminal,
+    the CLI starts `pkttyagent --fallback` registered for its own process only, as `systemctl`
+    does, and stops it when the call returns. polkitd uses that fallback agent only when the
+    session has no other agent, so a graphical agent keeps answering (polkit cannot be asked
+    whether an agent is registered; see `SPEC_DEVIATIONS.md`, F89). It never registers an agent for
     another process or for the whole session (`docs/reports/polkit-custodian-linux.md`, the
     per-process agent attack).
 

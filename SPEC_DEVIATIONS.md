@@ -19,4 +19,4 @@ Format:
 - SPEC: section 6, "polkit without a graphical agent": "When stdin is a terminal and no agent answers for the session, the CLI starts `pkttyagent`".
 - Proof: `docs/findings.md`, "F89: which agent answers": polkit has no call that tells whether an agent is registered; the only probes register an agent or start an authentication.
 - Instead: on a terminal the CLI always starts `pkttyagent --fallback --process=PID,START_TIME` for its own process. polkitd uses a fallback agent only when the session has no other agent, so a graphical agent keeps answering. Evidence: the argument test (always `--fallback`, only the CLI's process), contract F89.
-- Status: pending
+- Status: accepted
