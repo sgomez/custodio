@@ -27,7 +27,7 @@
         "F105"
       ],
       "verify": "sec=$(awk '/^## F106/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in '0x81000001' 'template' 'owner hierarchy' 'password' 'NV' 'parent name' 'swtpm'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && just with-swtpm cargo run -q --locked -p custodio-it --example tpm-probe -- parent",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F107",
