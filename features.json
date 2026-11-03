@@ -7,7 +7,7 @@
       "description": "The dev container (`harness/Containerfile`) and every CI job that builds or tests the workspace install `swtpm`, `swtpm-tools`, `tpm2-tools` and the TPM2 Software Stack development files that `tss-esapi` builds against (`libtss2-dev`), from the distribution, with a comment saying why. A new recipe `just with-swtpm *cmd` starts a fresh `swtpm` (socket mode, state in a new temporary directory), runs `TPM2_Startup`, exports the TCTI string for it in `TPM2TOOLS_TCTI` (read by `tpm2-tools` and by `tss-esapi`), runs the command, then stops `swtpm` and removes its state whatever the outcome, and exits with the command's status; it fails with a clear message when `swtpm` or `tpm2-tools` is missing. Rebuilding the dev container is a person's step: once the Containerfile and CI change is committed, the builder writes `BLOCKED.md` asking for the rebuild, and the feature passes on the rebuilt container.",
       "depends_on": [],
       "verify": "just quick && pkg-config --exists tss2-esys && just with-swtpm tpm2_getcap algorithms && just with-swtpm tpm2_createprimary -C o -c /dev/null && ! just with-swtpm false",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F105",
