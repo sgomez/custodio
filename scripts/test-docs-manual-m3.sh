@@ -31,6 +31,7 @@ msection() { # FILE EXACT_HEADING: that heading up to the next "## " heading, fe
         on' "$1"
 }
 fenced() { awk '/^[ \t]*```/ { f = !f; next } f { sub(/^[ \t]+/, ""); print }'; } # the lines inside code fences (indent removed), from stdin
+# Pipelines into grep use >/dev/null, not -q: an early exit SIGPIPEs the writer and pipefail fails the check.
 # The base query of docs/audit.md, as docs/audit.md writes it.
 audit_query() { grep -E '^journalctl _SYSTEMD_UNIT=custodio.service _UID=\$\(id -u custodio\) MESSAGE_ID=[0-9a-f]+$' "$1" | head -n 1; }
 # The part of a busctl command that docs/api.md fixes: destination, path, interface, method and the signature.
@@ -104,7 +105,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
         { [ "$lines_det" -lt "$lines_call" ] && [ "$lines_call" -lt "$lines_dlg" ] && [ "$lines_dlg" -lt "$lines_jr" ]; } ||
             bad "$m: the order must be detection ($lines_det), call ($lines_call), dialog ($lines_dlg), journal ($lines_jr)"
     fi
-    fenced <<< "$part" | grep -q 'busctl' && bad "$m: busctl (the runtime lacks it)"
+    fenced <<< "$part" | grep 'busctl' >/dev/null && bad "$m: busctl (the runtime lacks it)"
     need 'CUSTODIO_APP_ID_STATE=read' "no CUSTODIO_APP_ID_STATE=read"
     need 'CUSTODIO_UID' "no CUSTODIO_UID"
     need 'id -u' "no id -u for the person's uid"
@@ -125,7 +126,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
             bad "$m: the manifest does not parse as a JSON object"
         else
             grep -qxF -- 'arg=--system-talk-name=com.rfirma.Custodio1' <<< "$info" || bad "$m: the manifest lacks --system-talk-name=com.rfirma.Custodio1"
-            ! grep -E '^arg=--(talk-name|own-name|socket=system-bus|socket=session-bus|filesystem=host|share=network|system-own-name)' <<< "$info" | grep -q . ||
+            ! grep -E '^arg=--(talk-name|own-name|socket=system-bus|socket=session-bus|filesystem=host|share=network|system-own-name)' <<< "$info" | grep . >/dev/null ||
                 bad "$m: the manifest has a wider permission than the talk name"
             [ "$(grep -c '^arg=--system-talk-name=' <<< "$info")" -eq 1 ] || bad "$m: the manifest must have exactly one --system-talk-name"
             mid=$(sed -n 's/^id=//p' <<< "$info")
@@ -148,7 +149,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
     # ---- The journal text of section 17 against docs/audit.md
     local q f
     q=$(audit_query "$audit"); [ -n "$q" ] || bad "no base query in $audit"
-    fenced <<< "$p17" | awk '{ sub(/ \\$/, "") } 1' | grep -qxF -- "$q" || bad "17: the base journalctl query is not the one of docs/audit.md"
+    fenced <<< "$p17" | awk '{ sub(/ \\$/, "") } 1' | grep -xF -- "$q" >/dev/null || bad "17: the base journalctl query is not the one of docs/audit.md"
 
     # ---- Acceptance 16 (section 18)
     m=18; part=$p18
@@ -176,7 +177,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
     while IFS= read -r c; do
         [ -n "$c" ] || continue
         listed=$((listed + 1))
-        fenced <<< "$outside" | grep -qxF -- "$c" || bad "$m: the listing command '$c' is not a command of another section of the page"
+        fenced <<< "$outside" | grep -xF -- "$c" >/dev/null || bad "$m: the listing command '$c' is not a command of another section of the page"
     done < <(fenced <<< "$part" | grep -E '^(modutil|certutil|pkcs11-tool) ' || true)
     [ "$listed" -ge 1 ] || bad "$m: no token-listing command"
 
@@ -189,7 +190,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
         grep -qxF -- "$t" <<< "$all_api" || bad "the command '$t' is not an example of docs/api.md"
     done < <(fenced <<< "$all_m3" | grep busctl | tuples)
     fenced <<< "$all_m3" | grep busctl | grep -vq -- '--system call' && bad "a busctl command of the M3 part is not 'busctl --system call'"
-    if fenced <<< "$all_m3" | grep -q gdbus; then
+    if fenced <<< "$all_m3" | grep gdbus >/dev/null; then
         local g
         while IFS= read -r g; do
             g=$(sed -E 's/^\$ //' <<< "$g")
