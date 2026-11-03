@@ -17,7 +17,7 @@
         "F104"
       ],
       "verify": "just quick && cargo deny check && cargo machete && cargo test -p custodio-it --test swtpm_fixture --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F106",
