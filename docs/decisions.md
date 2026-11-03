@@ -271,3 +271,22 @@ Format: a title and three short bullets, a couple of lines each:
   (same error, same polkit calls, same journal); an entry would turn probing of ids into journal noise.
 - Rejected: an entry per `NoSuchKey` (as M1 had after polkit); following the credentials-failure
   behaviour (that entry exists because the caller is unknown, which is not the case here).
+
+## 2026-11-03 — TPM parent: a primary recreated from the ECC P-256 SRK template
+- Decision: the parent of every TPM key is a transient primary in the owner hierarchy, created on each use from the TCG SRK
+  template frozen in code (ECC P-256, AES-128-CFB, SHA-256 name) and flushed by the end of the call. The service writes no
+  persistent object and no NV index. Approved by the person in F111.
+- Why: no NV write, no provisioning step, no shared handle; on the hardware TPM of F111 `0x81000001` already held a foreign
+  key. Accepted cost: about 0.5 s per creation on a discrete TPM (494 ms on the STM of F111), so per signature under F114.
+- Rejected: a persistent SRK at `0x81000001` (NV write, owner password when set, foreign key, eviction on removal); the RSA
+  2048 template (3.7 s per creation on hardware); keeping the primary loaded across calls (possible later if latency matters).
+
+## 2026-11-03 — TPM RSA keys: the service pads, the TPM does the raw operation
+- Decision: TPM RSA keys carry `sign|decrypt`; a signature is `TPM2_RSA_Decrypt` with the null scheme over a block the service
+  builds (PKCS#1 v1.5 or EMSA-PSS with the requested salt), checked with the public key before it is returned. P-256 uses
+  `TPM2_Sign` with the digest truncated to 32 bytes and SHA-256. A TPM lacking any item of the F107 list for a key type makes
+  the whole type use the encrypted kind, and `custodio import` says why. Approved by the person in F111.
+- Why: every mechanism is served with the bounds of the encrypted kind. `TPM2_Sign` alone gives only the hash-length PSS
+  salt and no non-`DigestInfo` payload, and the STM TPM of F111 lacks SHA-512, which this way does not need.
+- Rejected: `TPM2_Sign` only (way (a): fewer mechanisms, RSA would lack on TPMs without SHA-512); serving a TPM key with
+  fewer mechanisms than the encrypted kind. Accepted: root controlling the machine can also decrypt with a TPM RSA key.
