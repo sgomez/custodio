@@ -65,7 +65,26 @@ claude_session() {
     { echo "(no result: the session was cut; its last steps follow, the full events are in $logfile.jsonl)"
       jq -rR "$transcript_format" "$logfile.jsonl" | tail -n 80; } > "$logfile" || true
   fi
+  reap_strays
   return "$rc"
+}
+
+# reap_strays: kills every process left over from what this script ran. Only as the container's PID 1,
+# which inherits every orphan: test servers and cargo-mutants runs in their own process groups escape
+# both `timeout` and the process-group kill above, and kept running for hours.
+reap_strays() {
+  [ "$$" = 1 ] || return 0
+  local sig first=1 pids
+  for sig in TERM TERM TERM KILL KILL; do
+    # shellcheck disable=SC2016 # $2 and $1 are awk's
+    mapfile -t pids < <(skip=$BASHPID; ps -eo pid=,ppid=,stat= | awk -v me=$$ -v skip="$skip" '$2 == me && $1 != skip && $3 !~ /^Z/ { print $1 }')
+    (( ${#pids[@]} )) || return 0
+    if [ -n "$first" ]; then
+      first= && log "killing leftovers: $(ps -o comm= -p "$(IFS=,; echo "${pids[*]}")" | sort | uniq -c | xargs)"
+    fi
+    kill "-$sig" "${pids[@]}" 2>/dev/null || true
+    sleep 2 # killed parents hand their children to PID 1 for the next round
+  done
 }
 
 sha() {

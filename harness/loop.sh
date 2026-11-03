@@ -281,7 +281,10 @@ and continue from it.}"
   # 3. Gate: verify, then evaluator
   # An attempt counts only once it has a result, so a stop mid-gate costs none.
   log "$id: verify ($verify)"
-  if ! bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1; then
+  verify_rc=0
+  bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1 || verify_rc=$?
+  reap_strays
+  if (( verify_rc )); then
     gated "$id"
     # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
     { printf 'The verify command failed: `%s`\n\nLast lines of output:\n\n```\n' "$verify"

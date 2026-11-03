@@ -1,0 +1,3 @@
+# nextest gives each test its own process group and kills it on a hang (.config/nextest.toml); with
+# `cargo test` a hung baseline has no timeout at all. nextest skips doctests: mutants they alone catch show as missed.
+test_tool = "nextest"

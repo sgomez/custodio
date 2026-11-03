@@ -1,0 +1,3 @@
+[profile.default]
+# A hung test fails after 3 minutes, its process group killed; the whole custodiod suite takes about 40 s.
+slow-timeout = { period = "60s", terminate-after = 3 }
