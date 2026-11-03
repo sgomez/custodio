@@ -37,13 +37,21 @@ fn build_service(
     .with_app_id_source(CgroupAppIdSource::new())
 }
 
+/// Serves the object on `connection` and takes the bus name.
+async fn serve(
+    store: Arc<KeyStore>,
+    connection: &Connection,
+    journal: JournalSink,
+) -> zbus::Result<()> {
+    let service = build_service(store, connection, journal);
+    connection.object_server().at(OBJECT_PATH, service).await?;
+    connection.request_name(BUS_NAME).await
+}
+
 fn run() -> Result<(), Box<dyn Error>> {
     let store = Arc::new(KeyStore::open(state_dir(env::var_os("STATE_DIRECTORY")))?);
     block_on(async {
-        let connection = Connection::system().await?;
-        let service = build_service(store, &connection, JournalSink::default());
-        connection.object_server().at(OBJECT_PATH, service).await?;
-        connection.request_name(BUS_NAME).await?;
+        serve(store, &Connection::system().await?, JournalSink::default()).await?;
         std::future::pending::<()>().await;
         Ok(())
     })
