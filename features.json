@@ -48,7 +48,7 @@
         "F104"
       ],
       "verify": "sec=$(awk '/^## F108/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'vtpm' '/dev/tpmrm0' 'drop-in' 'TCTI' 'tpm2-tools' 'debian13'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: '",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F109",
