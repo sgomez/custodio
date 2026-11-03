@@ -58,7 +58,7 @@
         "F108"
       ],
       "verify": "sec=$(awk '/^## F109/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'tss' '/dev/tpmrm0' 'PrivateDevices' 'PrivateUsers' 'DeviceAllow' 'exposure' 'debian13' 'ubuntu2404' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && just system-gates",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F110",
