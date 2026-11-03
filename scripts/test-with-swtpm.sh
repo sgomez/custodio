@@ -12,8 +12,8 @@ bad() { echo "test-with-swtpm: $*" >&2; fail=1; }
 
 # --- missing tools: a PATH with nothing, then with a swtpm stub only. The command must not run.
 mkdir -p "$tmp/empty" "$tmp/stub"
-printf '#!/bin/sh\nexit 0\n' > "$tmp/stub/swtpm"
-chmod +x "$tmp/stub/swtpm"
+for t in swtpm swtpm_ioctl; do printf '#!/bin/sh\nexit 0\n' > "$tmp/stub/$t"; done
+chmod +x "$tmp/stub/swtpm" "$tmp/stub/swtpm_ioctl"
 rc=0
 PATH=$tmp/empty "$BASH" "$RUN" touch "$tmp/ran" > /dev/null 2> "$tmp/err" || rc=$?
 [ "$rc" != 0 ] || bad "no swtpm: status 0"
@@ -29,7 +29,7 @@ bash "$RUN" > /dev/null 2>&1 || rc=$?
 [ "$rc" != 0 ] || bad "no command: status 0"
 
 # --- cases with a real TPM
-if ! { command -v swtpm && command -v tpm2_startup && command -v tpm2_getcap && command -v tpm2_evictcontrol; } > /dev/null 2>&1; then
+if ! { command -v swtpm && command -v swtpm_ioctl && command -v tpm2_startup && command -v tpm2_getcap && command -v tpm2_evictcontrol; } > /dev/null 2>&1; then
     if [ -n "${CI:-}" ] || [ "${WITH_SWTPM_REQUIRE:-}" = 1 ]; then
         bad "swtpm or tpm2-tools is missing, and CI or WITH_SWTPM_REQUIRE is set: the real cases must run"
     else
@@ -56,6 +56,8 @@ gone "failing command"
 bash "$RUN" sh -c "$probe; tpm2_getcap algorithms > /dev/null" || bad "succeeding command failed"
 gone "succeeding command"
 
+# Job control (set -m) so the background job does not start with SIGINT ignored, as it would in a plain script.
+set -m
 for sig in TERM INT; do
     rm -f "$PROBE"
     bash "$RUN" sh -c "$probe; sleep 9" &
@@ -68,6 +70,7 @@ for sig in TERM INT; do
     [ "$rc" != 0 ] || bad "SIG$sig: status 0"
     gone "SIG$sig"
 done
+set +m
 
 # --- a new TPM each run: a persistent object from one run is not in the next
 bash "$RUN" sh -c 'tpm2_createprimary -C o -c "$0/p.ctx" > /dev/null && tpm2_evictcontrol -C o -c "$0/p.ctx" 0x81010001 > /dev/null && tpm2_getcap handles-persistent | grep -q 0x81010001' "$tmp" \

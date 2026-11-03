@@ -10,6 +10,10 @@ if ! command -v swtpm > /dev/null 2>&1; then
     echo "with-swtpm: swtpm is not installed (Debian/Ubuntu: apt install swtpm swtpm-tools tpm2-tools libtss2-dev)" >&2
     exit 127
 fi
+if ! command -v swtpm_ioctl > /dev/null 2>&1; then
+    echo "with-swtpm: swtpm-tools is not installed: swtpm_ioctl not found (Debian/Ubuntu: apt install swtpm-tools)" >&2
+    exit 127
+fi
 for tool in tpm2_startup tpm2_getcap; do
     if ! command -v "$tool" > /dev/null 2>&1; then
         echo "with-swtpm: tpm2-tools is not installed: $tool not found (Debian/Ubuntu: apt install tpm2-tools)" >&2
@@ -27,6 +31,11 @@ cleanup() {
         wait "$cmd_pid" 2> /dev/null || true
     fi
     if [ -n "$swtpm_pid" ]; then
+        # Shut swtpm down over its control channel: in some containers it cannot be signalled (kill gives EPERM).
+        # The signal is the fallback.
+        if [ -S "$state/swtpm.sock.ctrl" ] && command -v swtpm_ioctl > /dev/null 2>&1; then
+            timeout 10 swtpm_ioctl --unix "$state/swtpm.sock.ctrl" -s > /dev/null 2>&1 || true
+        fi
         kill -TERM "$swtpm_pid" 2> /dev/null || true
         wait "$swtpm_pid" 2> /dev/null || true
     fi

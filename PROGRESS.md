@@ -28,3 +28,12 @@ with an empty context.
 - Next session should (after the rebuild): run `scripts/test-with-swtpm.sh` with `WITH_SWTPM_REQUIRE=1` directly (it is not in
   `just quick`), the contract's "rebuilt container" evidence, and fix the recipe if swtpm/TCTI details differ. If the TCTI module
   is missing, add its package to the Containerfile, the CI steps and PACKAGES in the sync check.
+
+### 2026-11-03 — F104 — attempt 2 (rebuilt container)
+- Done: ran the real recipe on the rebuilt container. Finding: in this container `swtpm` cannot be signalled (kill gives EPERM,
+  even SIGKILL), so the cleanup hung on `wait`. `scripts/with-swtpm.sh` now stops swtpm with `swtpm_ioctl --unix <sock>.ctrl -s`
+  (package swtpm-tools, checked up front) and keeps the signal as fallback. Script test: stubs `swtpm_ioctl` too, and uses
+  `set -m` so the SIGINT case is real (background jobs in a script start with SIGINT ignored).
+- Verified: `WITH_SWTPM_REQUIRE=1 scripts/test-with-swtpm.sh` passes, sync check passes, the three `with-swtpm` verify commands
+  behave, `pkg-config --exists tss2-esys` ok, `just quick` green. The TCTI needed no extra package.
+- Next session: nothing left; the loop runs the verify.
