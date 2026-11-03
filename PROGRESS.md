@@ -129,3 +129,11 @@ with an empty context.
 - Evidence: `just quick` green; `cargo test -p custodiod --test creds` 12/12; `just mutants-diff F115`: 213 mutants, 149 caught, 64 unviable, 0 missed; each of the three files has caught mutants.
 - This session fixed two clippy errors in `creds/systemd/tests.rs` (underscore binding, slicing) and rustfmt.
 - Not verified: Varlink+TPM (daemon refuses a TPM in a container) is left to F147, as the contract says.
+
+### 2026-11-03 — F111 — manual
+- Done: probes on a hardware TPM (Dell XPS 13 9305, STM, rev 1.38, fw 1.258), `docs/findings.md` `## F111`; the person
+  approved parent B (ECC P-256 primary per use) and parity (b) with `decrypt`, both in `docs/decisions.md` 2026-11-03.
+- Not done: the threat model must say that root controlling the machine can also decrypt with a TPM RSA key (SPEC is
+  not edited by agents).
+- Next session should: F112 queries no SHA-512 (the STM TPM lacks it). F119 states the decrypt point in the client
+  documentation, next to "root can use a TPM key".
