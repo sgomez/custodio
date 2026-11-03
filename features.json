@@ -1,0 +1,591 @@
+{
+  "milestone": "M4",
+  "features": [
+    {
+      "id": "F104",
+      "title": "TPM tools in the dev container and CI, and the with-swtpm recipe",
+      "description": "The dev container (`harness/Containerfile`) and every CI job that builds or tests the workspace install `swtpm`, `swtpm-tools`, `tpm2-tools` and the TPM2 Software Stack development files that `tss-esapi` builds against (`libtss2-dev`), from the distribution, with a comment saying why. A new recipe `just with-swtpm *cmd` starts a fresh `swtpm` (socket mode, state in a new temporary directory), runs `TPM2_Startup`, exports the TCTI string for it in `TPM2TOOLS_TCTI` (read by `tpm2-tools` and by `tss-esapi`), runs the command, then stops `swtpm` and removes its state whatever the outcome, and exits with the command's status; it fails with a clear message when `swtpm` or `tpm2-tools` is missing. Rebuilding the dev container is a person's step: once the Containerfile and CI change is committed, the builder writes `BLOCKED.md` asking for the rebuild, and the feature passes on the rebuilt container.",
+      "depends_on": [],
+      "verify": "just quick && pkg-config --exists tss2-esys && just with-swtpm tpm2_getcap algorithms && just with-swtpm tpm2_createprimary -C o -c /dev/null && ! just with-swtpm false",
+      "passes": false
+    },
+    {
+      "id": "F105",
+      "title": "tss-esapi under the supply-chain policy and an swtpm fixture for Rust tests",
+      "description": "`tss-esapi` (and the crates it pulls in) joins the workspace, pinned in `Cargo.lock`, accepted by `cargo deny` under the existing `deny.toml` policy without loosening it (any new license or advisory exception is justified in a comment), and used, so `cargo machete` passes. `custodio-it` gains an `swtpm` fixture for integration tests: each instance is an independent `swtpm` on a private socket with fresh state, started, with its TCTI string for `tss-esapi` and `tpm2-tools`; it can extend a PCR, restart on the same state, clear the TPM (`tpm2_clear`), and a test can start a second, independent instance; it is killed and its state removed on drop, panics included. Its own tests are the integration test target `swtpm_fixture` in `custodio-it` (they open a `tss-esapi` context through the fixture and read a TPM property, restart and still read it, clear it, and check that two instances have different endorsement or storage primaries).",
+      "depends_on": [
+        "F104"
+      ],
+      "verify": "just quick && cargo deny check && cargo machete && cargo test -p custodio-it --test swtpm_fixture --locked",
+      "passes": false
+    },
+    {
+      "id": "F106",
+      "title": "Research: which parent key in the owner hierarchy",
+      "description": "Settles the open question 'Which parent' before the import is built. A section `## F106` in `docs/findings.md` reports, with the commands run and their output on `swtpm`, the candidates: a persistent SRK at the handle the TCG provisioning guidance reserves (0x81000001, what `systemd-cryptenroll` and `systemd-creds` use), and a primary recreated from a fixed template on each use (which template, RSA 2048 or ECC P-256, and its cost per call). For each: whether it needs a write to the TPM's NV storage or a secret in the service, how it survives reboots and package upgrades, what happens when the owner hierarchy has a password and when the persistent handle holds a key with another template, how a stored blob records the parent name so the service detects a blob of a different parent before using it, and what package removal must clean. The conservative default of SPEC section 'Open questions' applies (no NV write, no secret; an unusable owner hierarchy fails the import). It ends with a line `Decision: ` naming the parent. A probe, `cargo run -p custodio-it --example tpm-probe -- parent [--tcti <tcti>]`, prints the facts the finding relies on, so a person can repeat it on a hardware TPM (F111).",
+      "depends_on": [
+        "F105"
+      ],
+      "verify": "sec=$(awk '/^## F106/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in '0x81000001' 'template' 'owner hierarchy' 'password' 'NV' 'parent name' 'swtpm'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && just with-swtpm cargo run -q --locked -p custodio-it --example tpm-probe -- parent",
+      "passes": false
+    },
+    {
+      "id": "F107",
+      "title": "Research: mechanism parity on the TPM and the capabilities each key type needs",
+      "description": "Settles the open questions 'Mechanism parity on the TPM' and 'A TPM that lacks a capability only for some mechanisms', for a person to approve in F111. A section `## F107` in `docs/findings.md` runs every mechanism the service offers (`CKM_RSA_PKCS` with a caller-supplied payload and with a `DigestInfo` per hash, `CKM_RSA_PKCS_PSS` with each supported hash and salt length, `CKM_ECDSA` on P-256 with SHA-256, SHA-384 and SHA-512 digests and the service's truncation) against `swtpm` both ways: (a) `TPM2_Sign` only, parsing the `DigestInfo` and accepting only the salt the TPM produces, the rest being 'lacks'; (b) padding built in the service and only the raw RSA private operation in the TPM, which needs the `decrypt` attribute. It records the PSS salt length the TPM produces per hash, which hashes a P-256 key needs from the TPM, and weighs the `decrypt` attribute against the SPEC threat model. It lists, once, the TPM capabilities each key type needs (algorithms, curves, schemes, hashes), the list the service will query. It settles how the tests simulate a TPM that lacks one of them with the installed `swtpm` (a profile that disables an algorithm, or a documented replacement), and recommends an answer to the partial-lack question. It ends with a line `Decision: (a)` or `Decision: (b)`. The probe gains `tpm-probe mechanisms [--tcti <tcti>]`, which runs every mechanism and prints the salt lengths, so a person can repeat it on a hardware TPM.",
+      "depends_on": [
+        "F105",
+        "F106"
+      ],
+      "verify": "sec=$(awk '/^## F107/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'CKM_RSA_PKCS' 'CKM_RSA_PKCS_PSS' 'CKM_ECDSA' 'DigestInfo' 'salt' 'decrypt' 'SHA-384' 'SHA-512' 'lacks' 'profile'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(](a|b)[)]' && just with-swtpm cargo run -q --locked -p custodio-it --example tpm-probe -- mechanisms",
+      "passes": false
+    },
+    {
+      "id": "F108",
+      "title": "Research: how swtpm reaches the end-to-end containers",
+      "description": "Settles the open question 'How swtpm reaches the end-to-end containers'. A section `## F108` in `docs/findings.md` reports, with commands and output from the debian13 target container under the dev container's rootless podman, each route: `swtpm` with the kernel's vTPM proxy (`/dev/vtpmx`, the `tpm_vtpm_proxy` host module), which gives the container a real `/dev/tpmrm0`; and the service pointed at `swtpm`'s socket by a test-only drop-in that the shipped unit and packages never contain. For the chosen route it says how the cases get a TPM, no TPM, and a TPM lacking a capability (per F107), how `tpm2-tools` in the container reach the same TPM, how a case extends a PCR, restarts `swtpm` and clears it, and how a run proves the shipped unit carries no test drop-in. If the only working route needs a host change, the finding says so and the builder writes `BLOCKED.md` for a person. It ends with a line `Decision: `.",
+      "depends_on": [
+        "F104"
+      ],
+      "verify": "sec=$(awk '/^## F108/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'vtpm' '/dev/tpmrm0' 'drop-in' 'TCTI' 'tpm2-tools' 'debian13'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: '",
+      "passes": false
+    },
+    {
+      "id": "F109",
+      "title": "Research: how the service reaches the TPM under its unit",
+      "description": "Settles the open question 'How the service reaches the TPM under its unit'. A section `## F109` in `docs/findings.md` reports, on every supported target (debian13, ubuntu2404, ubuntu2604, fedora44, alma10, arch) in its e2e container, whether the `tss` group exists and who owns `/dev/tpmrm0`, whether `PrivateDevices=yes` hides it and what `DeviceAllow=`/`BindPaths=` do with it, whether device access by supplementary group works under `PrivateUsers=yes` with the static `custodio` user, and the `systemd-analyze security` exposure score of each candidate unit against the current threshold of `just security-score`. Only the kernel resource manager `/dev/tpmrm0` is considered, never the raw `/dev/tpm0`. Where the e2e route of F108 does not give a real device node, it says what is checked in containers and what only the hardware acceptance (F147) can show. It ends with a line `Decision: ` and the exact unit directives. If no configuration meets the threshold, the builder writes `BLOCKED.md` for a person; the threshold is not raised.",
+      "depends_on": [
+        "F108"
+      ],
+      "verify": "sec=$(awk '/^## F109/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'tss' '/dev/tpmrm0' 'PrivateDevices' 'PrivateUsers' 'DeviceAllow' 'exposure' 'debian13' 'ubuntu2404' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && just system-gates",
+      "passes": false
+    },
+    {
+      "id": "F110",
+      "title": "Research: how the service uses systemd-creds without root",
+      "description": "Settles the open question 'How the service uses systemd-creds without root'. A section `## F110` in `docs/findings.md` reports, on every supported target (debian13, ubuntu2404, ubuntu2604, fedora44, alma10, arch), its systemd version and, from the service's uid under the real `custodio.service` unit: whether `systemd-creds --user` or the Varlink interface `io.systemd.Credentials` encrypts and decrypts, which scope and call work, whether TPM binding is available that way and whether 'TPM-bound' then means TPM alone or host plus TPM, how to bind to no PCR explicitly whatever the version's default, how the plaintext reaches the call without a temporary file, and which errors mean 'credential service unavailable' and 'cannot decrypt'. It also says how the integration tests in the dev container (no systemd as PID 1) exercise the real `systemd-creds`, against `swtpm` for the TPM-bound case. It ends with one line per target `Decision: <target>: ...`. A target that cannot do it gets a line `Deviation: <target>` and a pending entry `## F110` in `SPEC_DEVIATIONS.md` with the finding; never a plaintext key.",
+      "depends_on": [
+        "F108"
+      ],
+      "verify": "sec=$(awk '/^## F110/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'systemd-creds' 'io.systemd.Credentials' '--user' 'PCR' 'host' 'tpm2' 'debian13' 'ubuntu2404' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && { ! printf '%s\\n' \"$sec\" | grep -qE '^Deviation: ' || grep -q '^## F110' SPEC_DEVIATIONS.md; }",
+      "passes": false
+    },
+    {
+      "id": "F111",
+      "title": "By hand: the TPM probes on a hardware TPM, and approval of the parent and parity choices",
+      "description": "A person runs `tpm-probe parent` and `tpm-probe mechanisms` (F106, F107) with `--tcti device:/dev/tpmrm0` on a machine with a hardware TPM, appends the output and the TPM's manufacturer and firmware version to a section `## F111` in `docs/findings.md`, and approves, or changes, the parent of F106 and the parity choice of F107 (including the `decrypt` attribute and the partial-lack answer). The approved choices are recorded in `docs/decisions.md`, which the import and sign features follow.",
+      "depends_on": [
+        "F106",
+        "F107"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F112",
+      "title": "TPM access point and capability query in custodiod",
+      "description": "custodiod gains a TPM module behind a replaceable access point (a trait): the production implementation opens only the kernel resource manager (`/dev/tpmrm0`, never the raw device) through `tss-esapi`; tests substitute an `swtpm` TCTI or a faulty one, and no configuration of the shipped unit can do so (apart from what F108 decided for e2e, which is test-only). It classifies the TPM as: absent (the platform exposes no TPM device), lacks (the TPM answered the capability query and one capability of the F107/F111 list for the key type is absent, named), ready, or an error (device present but not openable, a TPM error, an owner hierarchy the service cannot use), and never turns an error into absent or lacks. The capability list per key type is documented once in `docs/api.md` (or a page it links), from the finding. New files join the `mutants` recipe. Tests: unit tests of the classification and the integration test target `tpm_access` in custodiod against the `swtpm` fixture, a lacking `swtpm` and injected faults.",
+      "depends_on": [
+        "F105",
+        "F107",
+        "F108",
+        "F111"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_access --locked && just mutants-diff F112",
+      "passes": false
+    },
+    {
+      "id": "F113",
+      "title": "Import a key into the TPM with TPM2_Import",
+      "description": "The TPM module imports an RSA 2048 or P-256 private key with `TPM2_Import` under the parent approved in F111, wrapped to the parent or through an encrypted session as the contract settles (SPEC default: wrap or encrypt). The imported key has an empty `authPolicy`, an empty `authValue`, no PCR policy, and only the usages the approved parity choice needs. The result is the wrapped blob (public and private areas) and the parent's name; nothing from which the private key could be recomputed. The private key stays in `secrecy`/`zeroize` types. A blob whose recorded parent differs from the current one is detected before use. Every object and session created is flushed by the end of the call, whatever the outcome. New files join the `mutants` recipe. Tests: the integration test target `tpm_import` in custodiod against `swtpm` checks each attribute through `tpm2_readpublic` on the stored public area, the parent mismatch, and the flushes.",
+      "depends_on": [
+        "F111",
+        "F112"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_import --locked && just mutants-diff F113",
+      "passes": false
+    },
+    {
+      "id": "F114",
+      "title": "Sign inside the TPM with every mechanism",
+      "description": "The TPM module loads a stored blob under its parent and signs inside the TPM with every mechanism the service offers for the key type (`CKM_RSA_PKCS` with a caller-supplied payload, `CKM_RSA_PKCS_PSS` with the requested hash and salt length, `CKM_ECDSA` with the service's P-256 truncation), as the approved parity choice says, under the same bounds and errors as the existing signer; a mechanism the TPM cannot serve is reported as a missing capability, never dropped or changed. Any new parsing of signing input (for example the `DigestInfo`) is bounded. The private key is never in the service's memory. Every object and session is flushed by the end of the call, whatever the outcome. A blob that does not load (other TPM, other parent, TPM cleared) gives a distinct error. Files join the `mutants` recipe. Tests: the integration test target `tpm_sign` in custodiod against `swtpm`, both key types, every mechanism, each signature verified with the certificate by an independent implementation, more signatures than the TPM has object slots, and a blob in a cleared or second `swtpm`.",
+      "depends_on": [
+        "F113"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_sign --locked && just mutants-diff F114",
+      "passes": false
+    },
+    {
+      "id": "F115",
+      "title": "Encrypted key storage with systemd-creds",
+      "description": "custodiod encrypts a private key with `systemd-creds` the way F110 decided, bound to the TPM when one is reachable and to the host key otherwise, and explicitly to no PCR whatever the default of the installed systemd. The plaintext reaches it without any temporary file, and the encrypted credential is the only form returned. Decryption yields the key in `secrecy`/`zeroize` memory for one signature. 'Credential service unavailable' and 'cannot decrypt' (TPM cleared, host key changed) are distinct errors. The credential client sits behind a replaceable access point, so tests can inject both failures. Files join the `mutants` recipe. Tests: the integration test target `creds` in custodiod with the real `systemd-creds`, host-bound and TPM-bound against `swtpm`, checking that the credential names no PCR, that it does not decrypt after the `swtpm` is cleared, and the injected failures.",
+      "depends_on": [
+        "F105",
+        "F110"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test creds --locked && just mutants-diff F115",
+      "passes": false
+    },
+    {
+      "id": "F116",
+      "title": "New state format with the storage kind",
+      "description": "The key store records per key: owner, id, kind, certificate and the protected key (a TPM blob with its parent's name, or an encrypted credential), in a new state format. The kind has three values (TPM; encrypted, TPM-bound; encrypted, host-bound) with wire strings chosen once and documented in the code for F119/F120. The store's API cannot accept an unprotected key, so nothing it writes holds a plaintext key, temporary files included. The readers of the TPM blob and credential framing are bounded and refuse malformed input. The existing rules apply to every new file: exact modes, owner checks, no symlinks, refuse rather than repair, atomic writes that never overwrite silently; delete, replace certificate and two concurrent imports of one id keep M3's atomicity. There is no reader for the earlier format other than recognising it for the purge (F121). Store unit tests and the integration test target `state_format` in custodiod cover each rule, the concurrent import and the framing readers.",
+      "depends_on": [
+        "F106",
+        "F110",
+        "F111"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test state_format --locked && just mutants-diff F116",
+      "passes": false
+    },
+    {
+      "id": "F117",
+      "title": "Choose the storage kind at import, and fail closed",
+      "description": "After polkit approves the import and the `.p12` is decrypted (M3's order), the service chooses TPM when the TPM is ready for the key type, encrypted TPM-bound only when the TPM lacks a needed capability (including a mechanism it cannot serve, per F111), and encrypted host-bound only when there is no TPM. Every other failure (device present but unopenable, a TPM error during import, an unusable owner hierarchy, the credential service down) fails the import with a documented error, stores nothing and leaves one journal entry; it never falls through to a weaker kind. The `.p12`, password and decrypted key are dropped as soon as the key is stored. The choice joins the `mutants` recipe, so a mutant that falls back on the wrong condition is killed. Tests: the integration test target `storage_choice` in custodiod injects each listed reason and each other failure through the access points and checks the kind, the error, the empty store and the journal entry.",
+      "depends_on": [
+        "F112",
+        "F113",
+        "F115",
+        "F116"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test storage_choice --locked && just mutants-diff F117",
+      "passes": false
+    },
+    {
+      "id": "F118",
+      "title": "Sign, delete and replace certificate for every storage kind",
+      "description": "Sign dispatches on the stored kind: a TPM key signs inside the TPM (F114); an encrypted key is decrypted for that one signature and dropped. Every signature still calls polkit, with no cached authorization. A TPM blob that does not load or a credential that cannot be decrypted makes sign fail with a documented error name (existing or new under the compatibility rule) and a journal entry; the service does not fall back, does not delete the key, and keeps listing it so it can be deleted. Delete and replace certificate work for every kind. Tests: the integration test target `sign_kinds` in custodiod, on the private bus with fake polkit, for each kind and both key types, including a cleared `swtpm`.",
+      "depends_on": [
+        "F114",
+        "F115",
+        "F116",
+        "F117"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test sign_kinds --locked && just mutants-diff F118",
+      "passes": false
+    },
+    {
+      "id": "F119",
+      "title": "The storage kind in the API and the client documentation",
+      "description": "Import returns the kind next to the key type; list returns the kind of each key; TPM and credential-service failures have documented error names. `custodio-client` exposes the kind. `docs/api.md` documents the kind values and the error names, and explains each kind and what it protects against, in the words of the SPEC threat model. The API contract check (`just api-contract`) covers the kinds and error names, and fails when either is missing from the document or the live service. The integration test target `api_kind` in custodiod checks the kind in the import result and the list on the private bus, for each kind.",
+      "depends_on": [
+        "F117",
+        "F118"
+      ],
+      "verify": "just quick && just api-contract && cargo test -p custodiod --test api_kind --locked && just mutants-diff F119",
+      "passes": false
+    },
+    {
+      "id": "F120",
+      "title": "The journal names the storage kind",
+      "description": "The import journal entry names the kind; a sign that fails because the key no longer loads or decrypts has its own documented outcome or error; import failures of the TPM or credential service name their cause without any secret. `docs/audit.md` documents every new field and value and gives queries for them. The integration test target `kind_audit` in custodiod checks each entry, for each kind and failure, and that no secret reaches it.",
+      "depends_on": [
+        "F117",
+        "F118"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test kind_audit --locked && just mutants-diff F120",
+      "passes": false
+    },
+    {
+      "id": "F121",
+      "title": "Purge pre-M4 keys before answering any call",
+      "description": "When custodiod starts and finds key files of the earlier format, it deletes them, following the store's rules (no symlinks followed, refuse rather than repair), and leaves one journal entry per purged key (owner, id, purged), documented in `docs/audit.md`. It does not answer calls (the bus name is not taken) until the purge is complete. This holds for every package format and for the service started without an upgrade; a second start purges nothing. Tests: the integration test target `purge` in custodiod with an M3-format state fixture, checking the empty state, the absence from list, the journal entries, that the same ids import again, and that no call is answered during the purge.",
+      "depends_on": [
+        "F116",
+        "F120"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test purge --locked && just mutants-diff F121",
+      "passes": false
+    },
+    {
+      "id": "F122",
+      "title": "Fuzz targets for stored state and TPM signing input",
+      "description": "custodiod's fuzz workspace gains targets for the readers of the TPM blob framing and the credential framing as read back from disk, and for any parsing of signing input the TPM path added (for example the `DigestInfo`): at least `tpm_blob` and `cred_frame`, and `digest_info` if such parsing exists. `just fuzz-smoke`'s default list of expected targets includes the new ones.",
+      "depends_on": [
+        "F114",
+        "F115",
+        "F116"
+      ],
+      "verify": "just quick && just fuzz-build && just lint-fuzz && just fuzz-smoke && just fuzz-smoke \"delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame\"",
+      "passes": false
+    },
+    {
+      "id": "F123",
+      "title": "custodio import and list show the storage kind",
+      "description": "`custodio import` says which kind the key got and, when it is not TPM, says plainly that the key is weaker and why (no TPM, or the TPM lacks the named capability). `custodio list` shows the kind of each key. The CLI uses only `custodio-client`. Tests: the test target `storage_kind` in custodio-cli checks the text for each kind and reason.",
+      "depends_on": [
+        "F119"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test storage_kind --locked",
+      "passes": false
+    },
+    {
+      "id": "F124",
+      "title": "The unit reaches the TPM and the credential service",
+      "description": "`custodio.service` gains only the access F109 and F110 decided (the resource manager node, the group, the credential service), and nothing for the raw `/dev/tpm0`. The exposure gate passes at its current threshold. The unit-hardening check expects the new directives and refuses a unit that allows the raw device or carries a TCTI override; `scripts/test-check-unit-hardening.sh` covers both with negative controls.",
+      "depends_on": [
+        "F109",
+        "F110",
+        "F112",
+        "F115"
+      ],
+      "verify": "just quick && just system-gates && scripts/test-check-unit-hardening.sh",
+      "passes": false
+    },
+    {
+      "id": "F125",
+      "title": "Packages declare the TPM2 Software Stack",
+      "description": "The `.deb`, `.rpm` and Arch packages declare the TPM2 Software Stack libraries custodiod links on each target, and anything F109 or F110 needs (the `tss` group, the `systemd-creds` version), and `docs/install.md` lists them. The package checks expect the new dependencies. A new script `scripts/check-tss-deps.sh <binary> <nfpm.yaml>` maps every `libtss2` soname the binary needs to a declared dependency for each package format, and fails when one is missing or when the binary needs no `libtss2` soname at all; `scripts/test-check-packages-deps.sh` gains cases for it with negative controls.",
+      "depends_on": [
+        "F109",
+        "F110",
+        "F112",
+        "F115"
+      ],
+      "verify": "just quick && scripts/test-check-packages-deps.sh && cargo build --release -p custodiod --locked && scripts/check-tss-deps.sh target/release/custodiod packaging/nfpm.yaml",
+      "passes": false
+    },
+    {
+      "id": "F126",
+      "title": "Integration suites under each storage kind",
+      "description": "The integration suites for import, list, sign, delete and replace certificate run under each kind: the `swtpm` fixture (TPM), a `swtpm` lacking a needed capability as F107 settled (encrypted, TPM-bound) and no TPM (encrypted, host-bound), for both key types and every mechanism, each signature verified with the certificate by an independent implementation. Test target `kinds_suite` in custodiod.",
+      "depends_on": [
+        "F107",
+        "F118",
+        "F119",
+        "F120"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test kinds_suite --locked",
+      "passes": false
+    },
+    {
+      "id": "F127",
+      "title": "No-plaintext check",
+      "description": "A script `scripts/check-no-plaintext.sh <state-dir> <p12>` (password on stdin) derives every encoding of the private key it can (raw scalar or primes, PKCS#1, PKCS#8, SEC1, the `.p12` itself) with the `openssl` CLI and searches every file under the state directory, failing and naming the file on any match. The integration test target `no_plaintext` in custodiod runs it after each import under every kind, and a negative control plants each encoding and sees it fail. The e2e cases and the manual steps reuse the script.",
+      "depends_on": [
+        "F105",
+        "F117"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test no_plaintext --locked",
+      "passes": false
+    },
+    {
+      "id": "F128",
+      "title": "Duplication check for TPM keys",
+      "description": "For every TPM key the service stores, the integration test target `tpm_duplicate` in custodiod uses `tpm2-tools` on the stored blob: `tpm2_readpublic` shows an empty `authPolicy`, `tpm2_duplicate` on the loaded key fails, and the blob does not load in a second, independent `swtpm`.",
+      "depends_on": [
+        "F113",
+        "F117"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_duplicate --locked",
+      "passes": false
+    },
+    {
+      "id": "F129",
+      "title": "PCR, restart and TPM-clear checks",
+      "description": "The integration test target `tpm_lifecycle` in custodiod imports TPM and TPM-bound keys, extends PCR 7 and other PCRs in `swtpm`, restarts `swtpm` and the service, and checks that every key still signs; then clears the TPM and checks that signing with each fails with the documented error and a journal entry, that the keys are still listed, and that they can be deleted.",
+      "depends_on": [
+        "F118",
+        "F120"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_lifecycle --locked",
+      "passes": false
+    },
+    {
+      "id": "F130",
+      "title": "Resource test: more calls than TPM object slots",
+      "description": "The integration test target `tpm_resources` in custodiod runs more signatures and more imports in a row than the `swtpm` has object slots (counted from its reported capability), and all succeed, including after calls that fail midway.",
+      "depends_on": [
+        "F118"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test tpm_resources --locked",
+      "passes": false
+    },
+    {
+      "id": "F131",
+      "title": "End-to-end runs with a TPM, without one, and with a lacking TPM",
+      "description": "The e2e harness gives the target containers a TPM by the F108 route, with `tpm2-tools` installed, and an `E2E_TPM` variable (`swtpm`, the default; `none`; `lacking`) honoured by `just e2e` and `just e2e-cases`. `just e2e` runs every target with `swtpm` and with `none`, so every M0-M3 case runs both ways, and the record under `target/e2e/` names the mode. A test-only drop-in, if F108 chose one, exists only in the containers, and the run checks the installed unit has none. CI's e2e jobs run both modes. The host-side script tests of the e2e harness cover the variable.",
+      "depends_on": [
+        "F107",
+        "F108",
+        "F118",
+        "F119",
+        "F121",
+        "F123",
+        "F124",
+        "F125"
+      ],
+      "verify": "just quick && just e2e-cases debian13 pkcs11-tool-approve-rsa && E2E_TPM=none just e2e-cases debian13 pkcs11-tool-approve-rsa && E2E_TPM=lacking just e2e-cases debian13 pkcs11-tool-approve-rsa",
+      "passes": false
+    },
+    {
+      "id": "F132",
+      "title": "Checkpoint: the TPM service, clients, unit and packages",
+      "description": "The full suites pass on the work so far: `just check`, the integration tests, the API contract check, the fuzz smoke run, `just e2e` on every target in both TPM modes, and the package gates. Any failure found here is fixed in this feature.",
+      "depends_on": [
+        "F104",
+        "F105",
+        "F106",
+        "F107",
+        "F108",
+        "F109",
+        "F110",
+        "F111",
+        "F112",
+        "F113",
+        "F114",
+        "F115",
+        "F116",
+        "F117",
+        "F118",
+        "F119",
+        "F120",
+        "F121",
+        "F122",
+        "F123",
+        "F124",
+        "F125",
+        "F126",
+        "F127",
+        "F128",
+        "F129",
+        "F130",
+        "F131"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just e2e && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F133",
+      "title": "End-to-end cases: TPM kind on import, list and journal",
+      "description": "Acceptance 1. With `swtpm`, importing an RSA 2048 and a P-256 `.p12` with `custodio import` gives kind TPM in the import result, the API's list and `custodio list`, and the import journal entry names the kind. Cases `tpm-kind-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'tpm-kind-*'",
+      "passes": false
+    },
+    {
+      "id": "F134",
+      "title": "End-to-end cases: every mechanism signs under each kind",
+      "description": "Acceptances 2 and 6 (signing). Each key type signs through the PKCS#11 module with every mechanism the service offers, PSS with each supported hash and salt length, and every signature verifies with the key's certificate using `openssl`. Cases `sign-*`, run with a TPM, without one and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'sign-*' && E2E_TPM=none just e2e-cases debian13 'sign-*' && E2E_TPM=lacking just e2e-cases debian13 'sign-*'",
+      "passes": false
+    },
+    {
+      "id": "F135",
+      "title": "End-to-end cases: no plaintext key in the state directory",
+      "description": "Acceptance 3. After every import, under each kind, `scripts/check-no-plaintext.sh` finds none of the encodings of the private key in the state directory, and no unencrypted key file exists. Cases `noplain-*`, in all three modes. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F127",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'noplain-*' && E2E_TPM=none just e2e-cases debian13 'noplain-*' && E2E_TPM=lacking just e2e-cases debian13 'noplain-*'",
+      "passes": false
+    },
+    {
+      "id": "F136",
+      "title": "End-to-end cases: TPM keys cannot be duplicated",
+      "description": "Acceptance 4. For each TPM key, `tpm2_readpublic` on the stored public area shows an empty `authPolicy`, `tpm2_duplicate` on the loaded key fails, and the blob does not load in a second `swtpm`. Cases `tpm-dup-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F128",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'tpm-dup-*'",
+      "passes": false
+    },
+    {
+      "id": "F137",
+      "title": "End-to-end cases: keys survive a PCR change and restarts",
+      "description": "Acceptance 5 (first part). After extending PCR 7 and restarting `swtpm` and the service, every TPM and TPM-bound key still signs. Cases `pcr-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F129",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'pcr-*' && E2E_TPM=lacking just e2e-cases debian13 'pcr-*'",
+      "passes": false
+    },
+    {
+      "id": "F138",
+      "title": "End-to-end cases: the fallback kinds and what the CLI says",
+      "description": "Acceptance 6. With no TPM, import gives kind 'encrypted, host-bound'; with a lacking TPM, 'encrypted, TPM-bound'; in both, `custodio import` says the key is weaker and why, and `custodio list` shows the kind. Cases `fallback-*`, without a TPM and with a lacking one. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F123",
+        "F131"
+      ],
+      "verify": "just quick && E2E_TPM=none just e2e-cases debian13 'fallback-*' && E2E_TPM=lacking just e2e-cases debian13 'fallback-*'",
+      "passes": false
+    },
+    {
+      "id": "F139",
+      "title": "End-to-end cases: injected TPM and credential failures",
+      "description": "Acceptance 7. With a TPM device present but failing in each injected way of SPEC Harnesses (device unopenable, a TPM error, the credential service down), import fails with the documented error, stores nothing, leaves one journal entry, and no key ends up in a weaker kind. Cases `tpmfail-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F117",
+        "F120",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'tpmfail-*'",
+      "passes": false
+    },
+    {
+      "id": "F140",
+      "title": "End-to-end cases: signing after the TPM is cleared",
+      "description": "Acceptance 8. After the TPM is cleared, signing with a TPM key and with a TPM-bound key fails with the documented error and a journal entry; the keys are still listed and can be deleted. Cases `tpm-clear-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F129",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'tpm-clear-*' && E2E_TPM=lacking just e2e-cases debian13 'tpm-clear-*'",
+      "passes": false
+    },
+    {
+      "id": "F141",
+      "title": "End-to-end cases: upgrade between M4 builds keeps kinds",
+      "description": "Acceptance 5 (second part). The upgrade cases upgrade between two M4 builds (package N to N+1) with keys of each kind available in the mode, and keep keys, owners, certificates and kinds. New cases `upgrade-kinds-*`; the existing `upgrade-*` cases still pass. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'upgrade-*' && E2E_TPM=none just e2e-cases debian13 'upgrade-*'",
+      "passes": false
+    },
+    {
+      "id": "F142",
+      "title": "End-to-end cases: upgrade from an M3 build purges its keys",
+      "description": "Acceptance 9. A script builds M3 packages from the tag `v0.5.0` into `target/packages-m3`, and `just e2e-packages` builds them. On the targets with an M3 package, the case installs the M3 build, imports keys, upgrades to this tree's package, and checks that the state directory has no file of the old format, `list` shows none of those keys, the journal has one purge entry per key, and the same ids import again. Cases `upgrade-m3-*`, listed in `e2e/cases.list`.",
+      "depends_on": [
+        "F121",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'upgrade-m3-*' && just e2e-cases fedora44 'upgrade-m3-*'",
+      "passes": false
+    },
+    {
+      "id": "F143",
+      "title": "End-to-end cases: more calls than TPM object slots",
+      "description": "Acceptance 10. More signatures and imports in a row than the TPM has object slots all succeed. Cases `tpm-slots-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F130",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'tpm-slots-*'",
+      "passes": false
+    },
+    {
+      "id": "F144",
+      "title": "End-to-end cases: journal queries for kinds, purge and load failures",
+      "description": "Acceptance 11. The queries `docs/audit.md` gives for the kind, the purge entries and the failed loads work against the real journal and find exactly the expected entries. Cases `journal-kind-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "depends_on": [
+        "F120",
+        "F121",
+        "F131"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'journal-kind-*'",
+      "passes": false
+    },
+    {
+      "id": "F145",
+      "title": "Written manual acceptance steps for M4",
+      "description": "`docs/manual-acceptance.md` gains an M4 part with the steps for acceptance 13 (hardware TPM: import RSA 2048 and P-256, both kind TPM; as root, `tpm2_readpublic` shows an empty `authPolicy` and `tpm2_duplicate` fails; then a reboot, an upgrade to the next M4 package and a `fwupd` `dbx` update or the documented substitute that changes PCR 7, after each Firefox and LibreOffice sign with both keys after the polkit dialog), 14 (a VM without a TPM: host-bound kind and the weaker notice in `custodio import` and `custodio list`, signing after a reboot) and 15 (a copy of the whole state directory taken as root, checked with `scripts/check-no-plaintext.sh`). A test `scripts/test-docs-manual-m4.sh` (in `just test-scripts`) checks each part holds its items and that its commands match `docs/api.md`, `docs/audit.md` and the scripts they name, with negative controls.",
+      "depends_on": [
+        "F119",
+        "F120",
+        "F123",
+        "F127",
+        "F136",
+        "F137"
+      ],
+      "verify": "just quick && scripts/test-docs-manual-m4.sh",
+      "passes": false
+    },
+    {
+      "id": "F146",
+      "title": "Checkpoint: end-to-end cases and documentation",
+      "description": "The full suites pass on the whole milestone: `just check`, the integration tests, the API contract check, the fuzz smoke run, `just e2e` on every target in both TPM modes, and the package gates. Any failure found here is fixed in this feature.",
+      "depends_on": [
+        "F104",
+        "F105",
+        "F106",
+        "F107",
+        "F108",
+        "F109",
+        "F110",
+        "F111",
+        "F112",
+        "F113",
+        "F114",
+        "F115",
+        "F116",
+        "F117",
+        "F118",
+        "F119",
+        "F120",
+        "F121",
+        "F122",
+        "F123",
+        "F124",
+        "F125",
+        "F126",
+        "F127",
+        "F128",
+        "F129",
+        "F130",
+        "F131",
+        "F132",
+        "F133",
+        "F134",
+        "F135",
+        "F136",
+        "F137",
+        "F138",
+        "F139",
+        "F140",
+        "F141",
+        "F142",
+        "F143",
+        "F144",
+        "F145"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just e2e && just package-gates",
+      "passes": false
+    },
+    {
+      "id": "F147",
+      "title": "Acceptance 13 by hand: a hardware TPM",
+      "description": "On a machine with a hardware TPM, following the M4 steps: an RSA 2048 and a P-256 `.p12` are both kind TPM; as root, the stored public area shows an empty `authPolicy` and `tpm2_duplicate` fails. Then, in order, a reboot, an upgrade to the next M4 package and a `fwupd` `dbx` update (or the documented substitute); after each, Firefox and LibreOffice still sign with both keys after the polkit dialog. The result, and what F109 left to hardware, is recorded in `docs/findings.md`.",
+      "depends_on": [
+        "F145",
+        "F146"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F148",
+      "title": "Acceptance 14 by hand: a VM without a TPM",
+      "description": "In a VM without a TPM, following the M4 steps: an imported `.p12` is kind 'encrypted, host-bound', and `custodio import` and `custodio list` say it is weaker; after a reboot it still signs from Firefox or LibreOffice. The result is recorded in `docs/findings.md`.",
+      "depends_on": [
+        "F145",
+        "F146"
+      ],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F149",
+      "title": "Acceptance 15 by hand: no private key in a copy of the state directory",
+      "description": "On both machines of F147 and F148, a copy of the whole state directory taken as root contains no private key, checked with the command of the M4 steps. The result is recorded in `docs/findings.md`.",
+      "depends_on": [
+        "F145",
+        "F146",
+        "F147",
+        "F148"
+      ],
+      "manual": true,
+      "passes": false
+    }
+  ]
+}
