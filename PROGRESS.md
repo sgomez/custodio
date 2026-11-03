@@ -112,3 +112,13 @@ with an empty context.
   group access works under `PrivateUsers=yes` on all six.
 - Not verified (left to F147): `DeviceAllow=` effect (the control C0 still opens in rootless containers, so *inferred*), a real node's owner,
   SELinux on fedora44/alma10. Nothing in `data/`, recipes or Containerfiles changed; applying the Decision is for a later feature.
+
+### 2026-11-03 — F110 — attempt 1
+- Done: `## F110` in `docs/findings.md`, run as a real probe unit (shipped text, F109 directives, static `custodio` uid) on the six e2e containers, plus the dev container
+  (`unshare -m --map-root-user --map-users=auto`, `systemd-socket-activate -a --fdname=varlink`, `setpriv` uid 42, `just with-swtpm` for the explicit-device TPM cases). Six `Decision:` lines.
+- Findings: scope `user` + Varlink works without polkit on 257/259/262 (no `--user`/Varlink on ubuntu2404 255); system scope or another uid needs polkit; the Varlink daemon picks the key
+  (`auto`) and the PCR mask itself (PCR 7 on 255/257, empty on 259/262); `withKey` (259+) in user scope yields an unscoped or null credential, so never send it; `--tpm2-pcrs=` = no PCR (all six);
+  `tpm2` = TPM alone, `host+tpm2` = both. A container never uses the TPM through the daemon (`running in a container`), so the Varlink TPM case is *inferred* from source and left to F147.
+- Deviations (pending, `SPEC_DEVIATIONS.md` `## F110`): debian13, alma10 (PCR 7 on a TPM machine, not changeable per call), ubuntu2404 (TPM-alone only). Not security rules of CLAUDE.md.
+- Not done / not run: strace inside the unit (needs `ptrace`; run as the uid with `setpriv` instead), strace in the dev container (not installed; the evaluator's note said it was), real TPM, SELinux.
+- Next session should: nothing left; the loop runs the verify. F120 uses the Decisions and the read-back guard.

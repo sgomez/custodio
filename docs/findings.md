@@ -2801,3 +2801,158 @@ Why: `BindPaths=` brings the node back through `PrivateDevices=yes`; the `-` kee
 the group of `root:tss 0660` or `tss:tss 0660` under `PrivateUsers=yes` (verified on all six); score 0.7 against the threshold 1.0, no `PrivateDevices=no`
 (0.8). The packages must depend on what creates `tss` (`tpm-udev`, `tpm2-tss`) or the sysusers file gains `g tss -`; no change to `sysusers.d`, `data/` or
 the Containerfiles is made by this feature.
+
+## F110
+
+Question (SPEC open question "How the service uses `systemd-creds` without root"): from the service's uid, under its real unit, which scope and
+which call of `systemd-creds` / the Varlink interface `io.systemd.Credentials` encrypt and decrypt, is a TPM binding available that way, does
+"TPM-bound" mean the TPM alone or host plus TPM, how is the credential bound to no PCR whatever the version's default, how does the plaintext
+reach the call without a temporary file, and which errors mean "credential service unavailable" and "cannot decrypt"? Run on 2026-11-03 in the six
+e2e containers (images of F109, started as `e2e/run.sh` does: `podman run -d --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp`,
+rootless podman, vfs; `strace`, `swtpm`, `swtpm-tools`, `tpm2-tools` added at run time), and in the dev container (systemd 257.13, uid 1000, no PID 1
+systemd, no `strace`; `swtpm` 0.7.1, `tpm2-tools` 5.7, `ls /dev/tpm*` → none, `podman info` → rootless, `vfs`). The probe is a real unit started by the container's systemd: the shipped `data/custodio.service` text, `Type=dbus`/`BusName=`/`After=`/
+`Requires=` removed, `Type=oneshot`, F109's `DeviceAllow=/dev/tpmrm0 rw`, `BindPaths=-/dev/tpmrm0`, `SupplementaryGroups=tss`, `ExecStart=` swapped for a shell
+probe. It runs as the static `custodio` user (created with `systemd-sysusers`: uid 988/992/992/995/997/968 on debian13, ubuntu2404, ubuntu2604, fedora44,
+alma10, arch; `uid_map` `0 0 1` / `<uid> <uid> 1`, `groups=<uid>,65534`): the whole sandbox is on (`PrivateUsers`, `PrivateTmp`, `ProtectSystem=strict`,
+`RestrictAddressFamilies=AF_UNIX`, `SystemCallFilter`, empty capability set). The scratch scripts are outside the repository. Verified unless marked *inferred*.
+
+### Versions and what exists
+| target | `systemd-creds --version` | `--user`/`--uid=` | socket `/run/systemd/io.systemd.Credentials` (`systemd-creds.socket`, mode 0666) | `varlinkctl introspect` | `withKey` parameter |
+|---|---|---|---|---|---|
+| debian13 | 257.13 | yes | yes | `Encrypt`, `Decrypt`; errors `BadFormat NameMismatch TimeMismatch NoSuchUser BadScope` | no |
+| ubuntu2404 | 255.4 | **no**: `systemd-creds: unrecognized option '--user'` | **no**: `Failed to open '/run/systemd/io.systemd.Credentials': No such file or directory`; no `systemd-creds.socket` unit | - | - |
+| ubuntu2604 | 259.9 | yes | yes | as above plus `CantFindPCRSignature NullKeyNotAllowed KeyBelongsToOtherTPM TPMInDictionaryLockout UnexpectedPCRState NVIndexUnusable` | yes |
+| fedora44 | 259.10 | yes | yes | as ubuntu2604 | yes |
+| alma10 | 257-23 | yes | yes | as debian13 | no |
+| arch | 262.1 | yes | yes | as ubuntu2604 | yes |
+The SPEC's "v256 for both" holds: from the source (tags v255 to v259, read by a subagent; NEWS) v255 has neither, v256 adds `--user`, `--uid=`, the Varlink
+interface and `systemd-creds.socket`, v259 adds `withKey` to `Encrypt` (NEWS v259). The "v257 or v258 for completeness" question: nothing in v257 or later is missing for
+the `user` scope as used below; what v258 changes is the default PCR mask (below).
+
+### Which scope and call work from the service's uid
+All of this inside the probe unit, each target with `--user` (five of six). Output of debian13 (the other four: the same lines, byte counts differ):
+```
+[user encrypt --with-key=host]      rc=0   [user decrypt] rc=0 plaintext equal     header id 55b9ed1d38594d43a8319d2ebb332ac6 (host key, scoped)
+[user encrypt --with-key=host+tpm2] rc=0   [user decrypt] rc=0 plaintext equal     same id (no TPM in reach: see "Key used")
+[user encrypt --with-key=auto]      rc=0   [user decrypt] rc=0 plaintext equal     same id
+[user encrypt --with-key=tpm2]      rc=1 Selected key not available in --uid= scoped mode, refusing.      (also --with-key=null)
+[system encrypt] (no --user)        rc=1 Failed to encrypt: io.systemd.InteractiveAuthenticationRequired
+[varlink Encrypt scope=user]        rc=0 {"blob":"VbntHThZ..."}      [varlink Decrypt scope=user] {"data":"<base64 of the marker>"}
+[varlink Encrypt scope=system]      rc=1 io.systemd.InteractiveAuthenticationRequired
+[varlink Encrypt scope=user uid=0]  rc=1 io.systemd.InteractiveAuthenticationRequired
+```
+- **`user` scope, own uid, works without polkit** by the CLI (`systemd-creds --user encrypt|decrypt --name=NAME - -`) and by a direct Varlink call
+  (`Encrypt {"name","text"|"data","scope":"user"}` → `{"blob"}`; `Decrypt {"name","blob","scope":"user"}` → `{"data"}` base64). Both are the same daemon call.
+  Same on debian13, ubuntu2604, fedora44, alma10, arch.
+- **`system` scope, or another uid, needs polkit**: `io.systemd.InteractiveAuthenticationRequired` (actions `io.systemd.credentials.encrypt`/`.decrypt`, implicit
+  `auth_admin_keep` for any/inactive/active, `pkaction -a ... -v` on debian13). The service must never use them (an authorization, even if a rule granted it, is not
+  to be cached; and a polkit rule for the service uid is not a thing to add for this). The dev container, which has no bus, shows the same call as `io.systemd.System {"errno":2}` (the daemon's polkit connection fails).
+- **The CLI as a non-root uid always goes through Varlink** (`systemd-creds [--user] encrypt` with no socket: `Failed to connect to io.systemd.Credentials: No such file or directory`,
+  dev container, all five `--with-key` values). The unprivileged CLI never reads `/var/lib/systemd/credential.secret` itself.
+- **Bound to uid (verified), user name and machine-id (the user name by the source: `NoSuchUser`; machine-id *inferred*: only the uid was changed).** A credential made by the service's uid
+  decrypted by uid 65534 (`nobody`), CLI and Varlink, all five targets: `Bad credential format.` / `io.systemd.Credentials.BadFormat`. Asking for the other uid's scope
+  (`scope=user, uid=<service uid>`, from uid 65534, or `uid=4242` from the service) goes to polkit: `InteractiveAuthenticationRequired`. The service can only encrypt/decrypt for its own uid.
+- **The host secret is not readable by the service**: `cat /var/lib/systemd/credential.secret` → `Permission denied` (`-r-------- root root 4112`) in the sandbox, five targets;
+  the root daemon (`systemd-creds@.service`, started by the socket) reads it. In `user` scope the secret is mixed in: replacing it (root, random 4096 bytes) makes decrypt fail, restoring it makes it work again:
+  `decrypt as service uid after host secret replaced: rc=1 Failed to decrypt: io.systemd.System` / Varlink `io.systemd.System {"errno":2}` (257) or `No such file or directory {"origin":"linux","errno":2,"errnoName":"ENOENT"}` (259, 262), `after restore: rc=0 MARKER`.
+- **ubuntu2404 (255) has neither `--user` nor Varlink.** A non-root uid: `--with-key=host` and `host+tpm2` → `Failed to determine local credential host secret: Permission denied`.
+  `--with-key=tpm2 --tpm2-pcrs= --tpm2-device=swtpm:path=...` **works** as uid 992 against `swtpm` (see "Key used"), encrypt and decrypt rc=0 (run by `setpriv` as the service uid, not inside the unit's sandbox). So on 255 only a TPM-alone credential can be made without root, and none without a TPM.
+
+### Key used: TPM alone or host plus TPM, and where the TPM is opened
+The Varlink path has **no key choice before v259 and no TPM choice ever**: `vl_method_encrypt` passes `_CRED_AUTO_SCOPED` (user) or `_CRED_AUTO` to `encrypt_credential_and_warn`
+(creds.c v257:1219; v258:1288; v259:1371 reads `withKey` if given). `auto` means host key plus TPM when the root daemon finds a usable TPM, else host key only; a scoped credential is never TPM-only
+(creds-util.c v258:1010). The daemon opens the TPM itself (the process is root's `systemd-creds` started by `systemd-creds.socket`); the caller cannot point it at a device or a PCR mask: those are
+command-line globals of the daemon (creds.c v259:62, :984). `SYSTEMD_TPM2_DEVICE` exists but only the daemon's own environment is read.
+- **No TPM is reachable by that daemon in any test environment here, so a TPM-bound Varlink credential was not produced; it is *inferred* from the source above and goes to F147.**
+  In a real unit, with `SYSTEMD_LOG_LEVEL=debug` on `systemd-creds@.service` (drop-in, removed afterwards), debian13, `--user --with-key=host+tpm2` from the service uid:
+  ```
+  Found container virtualization podman.   (journal of systemd-creds@...:  `System lacks TPM2 support or running in a container, not attempting to use TPM2.`)
+  $ ls /sys/class/tpmrm | wc -l  -> 0       $ systemd-detect-virt -c -> podman
+  ```
+  `tpm2_support()` skips the TPM when `detect_container() > 0` and there is no `/sys/class/tpmrm` device (tpm2-util.c v255:7324, v258:7770); no option bypasses it. Neither the e2e containers nor the dev container (also podman) can ever
+  show a TPM-bound Varlink credential; `swtpm` (F108 route 2) is a socket, not a kernel device.
+- **`withKey` (v259+) is a trap in `user` scope.** ubuntu2604, service uid: `withKey=host, scope=user` → blob id `5a1c6a86df9d4096b1d5a65e0862f19a` (host key, **not scoped**), and the service itself cannot decrypt it:
+  `Decrypt scope=user` → `io.systemd.Credentials.BadScope`, `scope=system` → `InteractiveAuthenticationRequired` (uid 65534 the same). Without `withKey` the id is `55b9ed1d...` (scoped) and decrypts.
+  `withKey=null, scope=user` **succeeds** (id `058469daf6f54324800549da0f8ea2fb`, no encryption) and `host+tpm2` is not a value (`host_tpm2`, enum; in the container `ENOTRECOVERABLE`). The service must therefore not send `withKey`, and must refuse a blob whose header id is the null id.
+- **What "TPM-bound" means, shown with the tool's own TPM path (root, explicit device).** The CLI as root opens the TPM in its own process; `--tpm2-device=swtpm:path=<sock>` (a TCTI string) points it at `swtpm`, started by `just with-swtpm` (dev container) or `scripts/with-swtpm.sh` (targets).
+  Each cell's expected result written before the run; the first four lines of the encrypt log say `rc=0` for `tpm2`, `host+tpm2`, `host`:
+
+  | credential made with | nothing changed (exp. ok) | host secret replaced (exp.) | observed | TPM state replaced, new `swtpm` (exp.) | observed |
+  |---|---|---|---|---|---|
+  | `--with-key=tpm2` | ok | **ok** (TPM only) | ok | **fail** | `rc=1 Esys_Load ... Received TPM Error` |
+  | `--with-key=host+tpm2` | ok | **fail** (needs both) | `Decryption failed (incorrect key?)` | **fail** | `rc=1 Esys_Load ... Received TPM Error` |
+  | `--with-key=host` | ok | fail | `Decryption failed (incorrect key?)` | ok (no TPM involved) | `MARKER` |
+
+  Identical on all six (dev container 257.13 and the six targets; arch prints `Esys_Load.c:314`, the others `:324`). So `tpm2` is **TPM alone**, `host+tpm2` and `auto` with a TPM are **host plus TPM**: clearing the TPM or replacing the host secret each loses the key of the second.
+  The `user` scope adds the uid (and user name, *inferred* for the name and machine-id) to the host key. The service's `auto_scoped` can only be host plus TPM, or host alone.
+- **ubuntu2404 (255), service uid, TPM alone as non-root** (the only TPM binding there, no host key): `--with-key=tpm2 --tpm2-pcrs= --tpm2-device=swtpm:path=...` rc=0, decrypt rc=0 `MARKER`. Anyone who can open the TPM can decrypt it: no uid binding.
+
+### No PCR, explicitly
+`systemd-creds encrypt --with-key=tpm2` (root, explicit device, all six), stored policy read back from the credential header: the id (16 bytes), four `le32`, the IV (12 bytes) pad to 8, then `le64 pcr_mask` at **byte 48** (creds-util.c v258:645-672; for a
+non-TPM id those bytes are IV, not a mask). `od` of `base64 -d`:
+
+| target | `systemd-creds` | no `--tpm2-pcrs` (default) | `--tpm2-pcrs=` (empty) | `--tpm2-pcrs=7` |
+|---|---|---|---|---|
+| debian13, ubuntu2404, alma10 | 257, 255, 257 | mask `8000000000000000` (PCR 7; it also warns `none of the selected PCRs are valid` on swtpm) | `0000000000000000` | `8000000000000000` |
+| ubuntu2604, fedora44, arch | 259, 259, 262 | `0000000000000000` | `0000000000000000` | `8000000000000000` |
+So **`--tpm2-pcrs=` with an empty value is the explicit "no PCR" argument, accepted by all six** (tpm2-util.c: empty clears the mask), and the default is non-empty (PCR 7) on 255 and 257, empty on 259 and 262 (NEWS v258: the new default
+is empty). The negative control is the default run on the 255/257 targets. `host+tpm2` has the same mask at the same offset (checked, same table). **But the service cannot pass that argument**: the Varlink daemon takes it from its own command line
+(`ExecStart=-systemd-creds`, no argument), so on 255-257 a TPM present on the machine makes `auto` produce PCR 7 (`arg_tpm2_pcr_mask = TPM2_PCR_MASK_DEFAULT`, creds.c v257:1032-1033; *inferred from the source*, not run: no TPM
+reachable, see above). On 258+ the default is empty (creds.c v258:1101-1102), *inferred* the same way. Decision for every target: the service reads the header back after each `Encrypt` (id and, for a TPM id, the mask at byte 48) and **refuses to store a credential whose mask is not 0, or whose id is the null id**; that holds whatever
+a future default is. F147 runs it on real hardware.
+
+### Plaintext without a temporary file
+`strace -f -qq -s 300 -e trace=execve,openat,creat,connect,write,send,sendto,sendmsg` of `systemd-creds --user encrypt --name=k - -` and `decrypt ... - -`, as the service uid (`setpriv`, outside the sandbox: `strace` needs `ptrace`, which `@system-service` refuses; debian13 and the four other `--user` targets, same result; ubuntu2404 has no `--user` to trace):
+```
+argv: ["systemd-creds","--user","encrypt","--name=k","-","-"]  /  ["systemd-creds","--user","decrypt","--name=k","-","-"]     execve lines containing the marker or its base64: 0
+files opened for write/create (openat/creat) by both calls: none            connect(): 2 x AF_UNIX /run/systemd/io.systemd.Credentials
+plaintext reaches the call:  sendto(3, "{\"method\":\"io.systemd.Credentials.Encrypt\", ...")   (stdin -> Varlink JSON, `data` base64)
+plaintext leaves the call:   write(1, "F110-STRACE-MARKER-1610", 23)                           (stdout)
+marker (raw or base64) in /tmp /var/tmp /var/lib /run /root after both calls: none
+```
+The probe unit does the same search from inside its own sandbox at the end of its run on all six (`grep -rIl --binary-files=text MARKER /tmp /var/tmp /var/lib/custodio /run` → no `MATCH:`; ubuntu2404 too, where it did not encrypt). Plaintext never passes through argv (`--name=` is the only data in argv, and
+`ProtectProc=invisible` hides other processes' `/proc`). Exposures that remain: the pipe to `systemd-creds` (stdin/stdout of the child) or the Varlink socket, and, in the root daemon, its memory (root can read it: the SPEC's threat model already says so). A direct Varlink call, with `data`, needs no child
+and no pipe. The base64 `data` in the reply is the plaintext: zeroize it. `SYSTEMD_LOG_LEVEL=debug` prints `"data":"<sensitive data>"`, not the bytes.
+
+### Errors
+Forced cases, service uid, `--user`/Varlink; the same on debian13, ubuntu2604, fedora44, alma10, arch unless a second form is given (257 form / 259-262 form):
+| case | CLI (always rc=1) | Varlink | class |
+|---|---|---|---|
+| socket missing (`systemd-creds.socket` stopped, socket removed) | `Failed to connect to io.systemd.Credentials: No such file or directory` | connect fails: `Failed to open '/run/systemd/io.systemd.Credentials': No such file or directory` | **unavailable** |
+| `systemd-creds` cannot start / no socket on ubuntu2404 | `unrecognized option '--user'` | socket absent (as above) | **unavailable** |
+| encrypt, no key (host secret on tmpfs, no TPM; dev container) | `Failed to encrypt: io.systemd.System` | `io.systemd.System {"errno":2}` | **unavailable** |
+| encrypt/decrypt that needs polkit (system scope, other uid) | `...: io.systemd.InteractiveAuthenticationRequired` | the same | **unavailable** (never called) |
+| TPM missing / unusable at encrypt (259: `withKey=tpm2` in the container) | - | `State not recoverable {"errno":131,"errnoName":"ENOTRECOVERABLE"}` | **unavailable** |
+| corrupted blob, garbage, empty, another uid | `Bad credential format.` | `io.systemd.Credentials.BadFormat {}` | **cannot decrypt** |
+| wrong `--name` | `Name in credential doesn't match expectations.` | `io.systemd.Credentials.NameMismatch` | **cannot decrypt** |
+| blob not base64 | - | `org.varlink.service.InvalidParameter {"parameter":"blob"}` | caller bug |
+| host secret changed | `Failed to decrypt: io.systemd.System` | `io.systemd.System {"errno":2}` / `No such file or directory {...ENOENT}` | **cannot decrypt** |
+| TPM state replaced (root CLI, not via Varlink) | `Esys_Load ... Received TPM Error` | *not shown* (no TPM): 259+ names `KeyBelongsToOtherTPM`, `TPMInDictionaryLockout`, `UnexpectedPCRState`, `NVIndexUnusable` | **cannot decrypt** (*inferred*) |
+| scope mismatch (`withKey=host` blob decrypted with `scope=user`) | - | `io.systemd.Credentials.BadScope` | **cannot decrypt** |
+The CLI loses the error name (always rc=1, text only); the service should speak Varlink itself and read the reply's error name (`varlinkctl` is only the test tool). **Pairs that cannot be told apart**: on 257 `io.systemd.System {"errno":2}` is both "no key available" at `Encrypt` and "host secret changed"
+at `Decrypt` (the call tells which); and at `Decrypt` "TPM unusable / cleared / locked out" cannot be separated from "key wrong" on 257 (all `io.systemd.System`). Conservative mapping: a failure to connect, or any `Encrypt` error other than a named caller bug, is **unavailable**; every reply of `Decrypt` (any error) is **cannot decrypt**, the
+same as a TPM blob that does not load (SPEC section 3), and no signature is made either way.
+
+### Dev container (no systemd as PID 1), uid 1000
+`strace` is not installed there (the strace run is on the targets). What the real binary does, with no mock:
+```
+$ systemd-creds --user encrypt --name=k - -   (also host|tpm2|null|auto, with SYSTEMD_CREDENTIAL_SECRET=...)    -> Failed to connect to io.systemd.Credentials: No such file or directory   (the unprivileged CLI needs the daemon)
+$ unshare -Urm bash -c 'mount -t tmpfs t /var/lib/systemd; systemd-creds encrypt --with-key=host ...'                                                -> works: root of a user namespace takes the direct path (it generates the secret itself)
+```
+- **`--user` and Varlink, real daemon, no root, no PID 1:** `unshare -m --map-root-user --map-users=auto --map-groups=auto` (rootless podman's `newuidmap` and `/etc/subuid` give uids 1-998), then inside: `mount -t tmpfs t /run/systemd`;
+  `mount --bind <dir on a real filesystem> /var/lib/systemd` (a tmpfs there gives `no encryption key available`: the secret must not be on tmpfs); `systemd-socket-activate -a --fdname=varlink -l /run/systemd/io.systemd.Credentials systemd-creds &` (**`--fdname=varlink`**, else the child runs `list` and
+  the client gets `Connection reset by peer`); `chmod 0666` the socket; clients as `setpriv --reuid=42 --regid=42 --clear-groups systemd-creds --user ...` (uid 42 is `_apt`, a uid that resolves: an unknown uid gives `No such user.`). Result as uid 42:
+  `--user` `host`, `host+tpm2`, `auto` encrypt+decrypt rc=0 (`MARKER`, id `55b9ed1d...`, no TPM), `tpm2` and `null` refused, system scope `io.systemd.System {"errno":2}` (no polkit bus), uid 1 decrypting uid 42's blob `BadFormat`, wrong name `NameMismatch`, host secret replaced → `io.systemd.System {"errno":2}`,
+  socket removed → `Failed to connect to io.systemd.Credentials: No such file or directory`, `varlinkctl` introspect lists `Encrypt`/`Decrypt`. This covers every error row above except the TPM ones.
+- **TPM-bound, `swtpm`, explicit device:** `just with-swtpm unshare -m --map-root-user bash -c 'mount --bind <real dir> /var/lib/systemd; systemd-creds encrypt --with-key=tpm2|host+tpm2 --tpm2-device="$TPM2TOOLS_TCTI" ...'` (the TCTI string `swtpm:path=<sock>` is what `with-swtpm` exports): the table in "Key used" and the PCR table were produced there first (two `with-swtpm` calls: the second is the "new TPM"). The CLI process opens the TPM.
+- **Not possible there, so these cases belong to `just e2e-cases`/F147 with a real kernel TPM:** a Varlink `Encrypt` that includes the TPM (the daemon refuses a TPM in a container and without `/sys/class/tpmrm`, no environment variable bypasses it), and the stored mask of such a credential. Everything else above can be a normal integration test with the real `systemd-creds`, `swtpm` for the explicit-device TPM cases, and no fake.
+
+Decision: debian13: scope `user` (own uid, no polkit), call the Varlink interface directly (`Encrypt`/`Decrypt` with `name`, `data`, `scope":"user"`, no `withKey`; plain `systemd-creds --user ... - -` is the same call), key `auto` is the daemon's (host+uid, plus the TPM when it finds one); no per-call no-PCR argument exists (`--tpm2-pcrs=` is the daemon's), so the service reads the mask back at byte 48 and refuses a nonzero mask or the null id; Encrypt error or connect failure → credential service unavailable, any Decrypt error → cannot decrypt.
+Decision: ubuntu2404: no `--user`, no Varlink; the service can only run `systemd-creds encrypt|decrypt --with-key=tpm2 --tpm2-pcrs= --tpm2-device=<device> - -` itself (TPM alone, non-root, `--tpm2-pcrs=` = no PCR, stdin/stdout); no host-bound form without root; CLI exit 1 text: `Failed to determine local credential host secret` and a missing TPM → credential service unavailable, `Esys_Load` / `Decryption failed` / `Bad credential format` → cannot decrypt.
+Decision: ubuntu2604: scope `user`, Varlink `Encrypt`/`Decrypt` directly, never `withKey` (user scope + `withKey` gives an unscoped or null credential); the default mask is empty in 259 (verified with the root CLI, source for Varlink) and the service reads the mask back at byte 48 and refuses nonzero or the null id; Encrypt error or connect failure → credential service unavailable, any Decrypt error (`BadFormat`, `NameMismatch`, `BadScope`, `io.systemd.System`, the TPM names) → cannot decrypt.
+Decision: fedora44: as ubuntu2604 (systemd 259.10): scope `user`, Varlink directly, no `withKey`, read-back refusing nonzero mask or null id; Encrypt error or connect failure → credential service unavailable, any Decrypt error → cannot decrypt.
+Decision: alma10: as debian13 (systemd 257): scope `user`, Varlink directly, no `withKey` (not in 257); no per-call no-PCR argument, read-back of the mask at byte 48 refusing nonzero or the null id; Encrypt error or connect failure → credential service unavailable, any Decrypt error → cannot decrypt.
+Decision: arch: as ubuntu2604 (systemd 262.1): scope `user`, Varlink directly, no `withKey`, default mask empty (source), read-back refusing nonzero mask or the null id (the header ids differ in 262: `d4062dfb...` TPM, `1414258818...` host+TPM, so the id test is a list per version, not a constant); Encrypt error or connect failure → credential service unavailable, any Decrypt error → cannot decrypt.
+Deviation: debian13 (systemd 257, `auto` binds to PCR 7 on a machine with a usable TPM and the caller cannot change it; the encrypted fallback is unavailable there when a TPM is present, host+uid-bound otherwise)
+Deviation: alma10 (systemd 257, the same)
+Deviation: ubuntu2404 (systemd 255: no `--user`, no Varlink, no host-bound credential without root; only a TPM-alone credential, no uid binding, and nothing on a machine without a TPM)
