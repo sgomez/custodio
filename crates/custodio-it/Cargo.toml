@@ -20,7 +20,7 @@ custodio-pkcs11 = { path = "../custodio-pkcs11", version = "0.1.0" }
 custodiod = { path = "../custodiod", version = "0.1.0" }
 der = { version = "0.8.3", features = ["alloc", "oid"] }
 libc = "0.2.191"
-libloading = "0.8.9"
+libloading = "0.9.0"
 p256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa"] }
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["std", "sha2"] }
 secrecy = "0.10.3"
