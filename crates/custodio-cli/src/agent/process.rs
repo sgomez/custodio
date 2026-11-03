@@ -77,14 +77,14 @@ impl AgentSpawner for Pkttyagent {
             .stderr(Stdio::null())
             .spawn()?;
         *AGENT.lock().unwrap_or_else(PoisonError::into_inner) = Some(child);
-        wait_for_close(&notified);
+        wait_for_close(&notified, NOTIFY_WAIT);
         Ok(Box::new(Running))
     }
 }
 
-/// Waits until the write end is closed (the agent registered, or ended), at most [`NOTIFY_WAIT`].
-fn wait_for_close(read: &impl AsFd) {
-    let deadline = std::time::Instant::now() + NOTIFY_WAIT;
+/// Waits until the write end is closed (the agent registered, or ended), at most `wait`.
+fn wait_for_close(read: &impl AsFd, wait: Duration) {
+    let deadline = std::time::Instant::now() + wait;
     loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         let Ok(secs) = i64::try_from(left.as_secs()) else {
@@ -113,3 +113,6 @@ fn wait_for_close(read: &impl AsFd) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

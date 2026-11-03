@@ -46,3 +46,30 @@ fn rollback_import_removes_both_files_and_nothing_else() -> Result<(), StoreErro
     assert_eq!(store.list(7)?, ["b", "b-cert"]);
     Ok(())
 }
+
+#[test]
+fn every_import_error_has_its_own_message() {
+    let cases = [
+        (ImportError::TooLarge, "larger than"),
+        (
+            ImportError::Parse("bad mac".into()),
+            "wrong password): bad mac",
+        ),
+        (ImportError::NoPrivateKey, "no private key"),
+        (ImportError::MultipleKeys, "more than one private key"),
+        (ImportError::NoCertificate, "has no certificate"),
+        (ImportError::CertificateMismatch, "matches the private key"),
+        (
+            ImportError::UnsupportedKey("RSA 4096".into()),
+            "unsupported key: RSA 4096;",
+        ),
+        (
+            ImportError::Store(StoreError::AlreadyExists),
+            "cannot store the key: ",
+        ),
+    ];
+    for (error, expected) in cases {
+        let message = error.to_string();
+        assert!(message.contains(expected), "{message:?} lacks {expected:?}");
+    }
+}
