@@ -2198,7 +2198,7 @@ case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-1 outcome=served rc=- 
 case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-256 outcome=served rc=- verified=yes
 case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-384 outcome=served rc=- verified=yes
 case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-512 outcome=served rc=- verified=yes
-case: way=a mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 (TLS 1.0/1.1)" outcome=lacks rc=service parser: not a known DigestInfo tpm_if_passed_as_digest=Code: 0x000001D5, Message: Structure is the wrong size (associated with parameter number 1). 
+case: way=a mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 stand-in (TLS 1.0/1.1)" outcome=lacks rc=service parser: not a known DigestInfo tpm_if_passed_as_digest=Code: 0x000001D5, Message: Structure is the wrong size (associated with parameter number 1). 
 case: way=a mechanism=CKM_RSA_PKCS payload="DigestInfo with an unknown hash OID" outcome=lacks rc=service parser: not a known DigestInfo tpm_if_passed_as_digest=Code: 0x000001D5, Message: Structure is the wrong size (associated with parameter number 
 salt_found: hash=SHA-256 tpm_salt=32 hash_len=32 equals_hash_len=yes largest_possible=222 wrong_salt_verifies=no
 case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=32 outcome=served rc=- salt_found=32 verified=yes
@@ -2225,7 +2225,7 @@ case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-1 outcome=served rc=- 
 case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-256 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
 case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-384 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
 case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-512 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
-case: way=b mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 (TLS 1.0/1.1)" outcome=served rc=- verified=yes bytes_equal_way_a_same_key=n/a (way a lacks)
+case: way=b mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 stand-in (TLS 1.0/1.1)" outcome=served rc=- verified=yes bytes_equal_way_a_same_key=n/a (way a lacks)
 case: way=b mechanism=CKM_RSA_PKCS payload="DigestInfo with an unknown hash OID" outcome=served rc=- verified=yes bytes_equal_way_a_same_key=n/a (way a lacks)
 case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=32 outcome=served rc=- salt_found=32 verified=yes
 case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=222 outcome=served rc=- salt_found=222 verified=yes
@@ -2256,7 +2256,6 @@ capability: call=GetCapability(ALGS) item=algorithm ECC (0x0023) present
 capability: call=GetCapability(ALGS) item=algorithm MGF1 (0x0007) present
 capability: call=GetCapability(ECC_CURVES) item=curve NIST P-256 (0x0003) present
 capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-1 supported
-capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-1 supported
 capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-256 supported
 capability: call=TestParms key=rsa2048 scheme=RSAPSS hash=SHA-256 supported
 capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-256 supported
@@ -2285,7 +2284,7 @@ Every "served" cell was verified by `openssl` (above). `lacks` cells give the ca
 | Mechanism | Way (a) `TPM2_Sign` only | Way (b) padding in the service, raw private operation in the TPM |
 |---|---|---|
 | `CKM_RSA_PKCS`, `DigestInfo` SHA-1, SHA-256, SHA-384, SHA-512 | served, verified (the probe parses the `DigestInfo` and passes the digest with `RSASSA` and the hash) | served, verified, and the bytes equal (a)'s on the same key (PKCS#1 v1.5 is deterministic) |
-| `CKM_RSA_PKCS`, payload that is not a `DigestInfo`: the 36-byte MD5+SHA-1 of TLS 1.0/1.1, and a `DigestInfo` with a hash OID no table knows | `lacks`: the parser refuses; handed to the TPM as a digest it answers `0x1D5` (wrong size) | served, verified |
+| `CKM_RSA_PKCS`, payload that is not a `DigestInfo`: a 36-byte stand-in for the MD5+SHA-1 of TLS 1.0/1.1 (right length, SHA-256 bytes), and a `DigestInfo` with a hash OID no table knows | `lacks`: the parser refuses; handed to the TPM as a digest it answers `0x1D5` (wrong size) | served, verified |
 | `CKM_RSA_PKCS_PSS`, SHA-256/384/512, salt = hash length (32/48/64) | served, verified (this is what the TPM produces) | served, verified |
 | `CKM_RSA_PKCS_PSS`, salt largest that fits (222/206/190) | `lacks` (policy: the TPM's salt is the hash length) | served, verified at that salt |
 | `CKM_RSA_PKCS_PSS`, salt 0 and salt 20 | `lacks` (policy) | served, verified at that salt |
