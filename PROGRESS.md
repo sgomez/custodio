@@ -102,3 +102,13 @@ with an empty context.
   with a persistent handle and its name unchanged; clear removes it and changes the owner seed; drop-in negative control and `dpkg -L` = 0
   against the real deb. Other targets are inferred, with the F109 check for each.
 - Not done: other targets, SELinux, hardware. `just quick` green, the `verify` passes.
+
+### 2026-11-03 — F109 — attempt 1
+- Done: `## F109` in `docs/findings.md`, run as real units under each of the six e2e containers' own systemd (stand-in (a) `/dev/null` as
+  `/dev/tpmrm0`, (b) a `root:tss 0660` regular file). `Decision:` keep `PrivateDevices=yes`, add `DeviceAllow=/dev/tpmrm0 rw`,
+  `BindPaths=-/dev/tpmrm0`, `SupplementaryGroups=tss`; score 0.7 (threshold 1.0), `PrivateDevices=no` would be 0.8. No `BLOCKED.md`.
+- Findings: plain `BindPaths=` makes the unit fail 226/NAMESPACE without a TPM, hence the `-`; a missing `tss` group fails the unit (216/GROUP),
+  so the packages must depend on `tpm-udev`/`tpm2-tss` (or sysusers `g tss -`); owner is `tss:tss` on the Debian family, `root:tss` elsewhere;
+  group access works under `PrivateUsers=yes` on all six.
+- Not verified (left to F147): `DeviceAllow=` effect (the control C0 still opens in rootless containers, so *inferred*), a real node's owner,
+  SELinux on fedora44/alma10. Nothing in `data/`, recipes or Containerfiles changed; applying the Decision is for a later feature.
