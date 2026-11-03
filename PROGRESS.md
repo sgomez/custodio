@@ -122,3 +122,10 @@ with an empty context.
 - Deviations (pending, `SPEC_DEVIATIONS.md` `## F110`): debian13, alma10 (PCR 7 on a TPM machine, not changeable per call), ubuntu2404 (TPM-alone only). Not security rules of CLAUDE.md.
 - Not done / not run: strace inside the unit (needs `ptrace`; run as the uid with `setpriv` instead), strace in the dev container (not installed; the evaluator's note said it was), real TPM, SELinux.
 - Next session should: nothing left; the loop runs the verify. F120 uses the Decisions and the read-back guard.
+
+### 2026-11-03 — F115 — attempt 1
+- Done: `creds` module in custodiod (`creds.rs` access-point trait + two errors, `creds/systemd.rs` real client, `creds/header.rs` PCR read-back guard);
+  host-bound over Varlink, TPM-bound via CLI with explicit `--tpm2-pcrs=`; decrypt returns secrecy/zeroize memory. Three files added to the `mutants` recipe.
+- Evidence: `just quick` green; `cargo test -p custodiod --test creds` 12/12; `just mutants-diff F115`: 213 mutants, 149 caught, 64 unviable, 0 missed; each of the three files has caught mutants.
+- This session fixed two clippy errors in `creds/systemd/tests.rs` (underscore binding, slicing) and rustfmt.
+- Not verified: Varlink+TPM (daemon refuses a TPM in a container) is left to F147, as the contract says.

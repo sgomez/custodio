@@ -5,6 +5,7 @@ pub mod app_id;
 pub mod app_id_source;
 pub mod audit;
 pub mod credentials;
+pub mod creds;
 pub mod dbus;
 pub mod error;
 pub mod import;

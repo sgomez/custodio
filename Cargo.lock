@@ -425,6 +425,7 @@ name = "custodiod"
 version = "0.1.0"
 dependencies = [
  "custodio-client",
+ "custodio-it",
  "p12-keystore",
  "p256",
  "pkcs8",

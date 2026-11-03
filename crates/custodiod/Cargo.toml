@@ -44,4 +44,5 @@ zbus = { version = "6", default-features = false, features = [
 zeroize = "1.9.1"
 
 [dev-dependencies]
+custodio-it = { path = "../custodio-it", version = "0.1.0" }
 tempfile = "3.27.0"
