@@ -1,5 +1,6 @@
 //! Composed mechanisms through `Module`, against a backend that records what the service gets.
 
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
@@ -259,8 +260,9 @@ fn composed_backend_runs_outside_the_state_lock() {
     assert_eq!(m.sign_init(s, mechanism, KEY_HANDLE), Ok(()));
     let worker = m.clone();
     thread::spawn(move || {
-        let _ = worker.sign(s, b"abc", Some(64));
-        let _ = tx.send(true);
+        // A panic must report at once: the hook's clone of `tx` would keep `recv_timeout` waiting.
+        let ok = panic::catch_unwind(AssertUnwindSafe(|| worker.sign(s, b"abc", Some(64)))).is_ok();
+        let _ = tx.send(ok);
     });
     assert_eq!(rx.recv_timeout(Duration::from_secs(20)), Ok(true));
     assert_eq!(rx.recv_timeout(Duration::from_secs(20)), Ok(true));
