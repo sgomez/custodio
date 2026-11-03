@@ -57,3 +57,11 @@ with an empty context.
   swtpm serves one client at a time: drop a `tss-esapi` Context before running a tool on the same instance.
   Tools leave objects in the TPM's few slots: tests run `tpm2_flushcontext -t` after createprimary/readpublic.
 - Next session: nothing left if `just quick` and the verify pass.
+
+### 2026-11-03 — F106 — attempt 1
+- Done: probe `crates/custodio-it/examples/tpm-probe.rs` (`parent [--tcti]`, read-only, exit 1 when the TPM is unreachable or the
+  owner hierarchy unusable, 2 on usage) and `## F106` in `docs/findings.md` with the swtpm experiments (persist, restart via
+  `swtpm_ioctl -i` + `tpm2_startup -c` inside `with-swtpm`, clear, owner password `0x9A2`, foreign occupant, load error `0x1DF`).
+  Decision: B, primary recreated each use from the ECC P-256 TCG SRK template. `just quick` green, verify passes.
+- Not done: hardware TPM run (F111). Template fields beyond the TCG deltas, and "systemd never evicts on removal", are marked inferred.
+- Next session should: nothing left; the loop runs the verify.

@@ -1748,3 +1748,396 @@ Acceptance 16: pass. No AVC from the start of the run (`ausearch -m AVC,USER_AVC
 - A person then repeated §18 by hand on the same VM, with the same package (keys deleted and imported again, Firefox, LibreOffice
   with two new documents, journal and AVC check, and the second account in a graphical login: its Firefox and LibreOffice offered no
   Custodio certificate) and answering each dialog: every dialog, result and journal entry matched the table above.
+
+## F106
+
+Which parent key in the owner hierarchy wraps the imported keys (the SPEC "Which parent" open
+question). Everything below ran on `swtpm` (libtpms, IBM manufacturer id `0x49424d00`, TPM 2.0 in the
+dev container) through `just with-swtpm bash -c '...'`, with `tpm2-tools` and the probe
+`cargo run -p custodio-it --example tpm-probe -- parent [--tcti <tcti>]`. The restart and clear
+experiments also use `just with-swtpm`: it exposes the control socket at `<TCTI path>.ctrl`, so
+`swtpm_ioctl --unix <sock>.ctrl -i` (re-initialise, state kept) followed by `tpm2_startup -c` inside one
+`bash -c` is a TPM restart on the same state. Nothing here was run on a hardware TPM: that is F111, with the
+same probe. Each claim is **verified** (a command run here, or a source read) or **inferred**.
+
+### The two candidates
+
+- **A. Persistent SRK** at `0x81000001`, the handle the TCG provisioning guidance reserves for the SRK
+  (what `systemd-cryptenroll` and `systemd-creds` use), created once from the TCG SRK template and made
+  persistent with `TPM2_EvictControl`.
+- **B. Primary recreated from a fixed template** on each use: `TPM2_CreatePrimary` in the owner hierarchy
+  from a template the code carries. A primary is a function of the hierarchy seed and the template, so the
+  same template gives the same key every time (the probe creates each template twice and compares). The
+  object is transient and flushed after use.
+
+The template compared is the TCG SRK template: restricted decryption key, `fixedTPM|fixedParent|
+sensitiveDataOrigin|userWithAuth|noDA|restricted|decrypt`, name algorithm SHA-256, AES-128-CFB, null scheme,
+empty unique field, in two variants: RSA 2048 and ECC P-256 (the probe's `srk_template`).
+
+### The probe
+
+`tpm-probe parent` prints one `key: value` line each. It never calls `EvictControl`, never sets an auth value
+and never clears; it creates transient primaries and flushes them. Exit status: 0 when the TPM answered and
+the owner hierarchy accepts an empty auth; 1 when the TPM cannot be reached or the owner hierarchy is
+unusable (the facts that can still be read are printed first, the persistent key among them); 2 on a usage
+error. The exit is therefore non-zero with an owner password even when candidate A would still work: the probe
+reports "can the service provision or recreate", not "can it use an existing key", and prints the second fact
+too (`persistent_0x81000001*`).
+
+Read-only check: persistent handles, NV indexes and the persistent/NV counters before and after a probe, in
+one `with-swtpm` call (each call starts a new TPM, so separate calls would prove nothing). It was run on the
+fresh TPM and again with an SRK persisted (second diff below):
+
+```
+### A. read-only check on a fresh TPM
+probe exit=0
+listings identical
+$ tpm2_getcap handles-persistent
+$ tpm2_getcap handles-nv-index
+$ tpm2_getcap properties-variable | grep -E 'HR_PERSISTENT|HR_NV|NV_COUNTERS'
+TPM2_PT_HR_NV_INDEX: 0x0
+TPM2_PT_HR_PERSISTENT: 0x0
+TPM2_PT_HR_PERSISTENT_AVAIL: 0x41
+TPM2_PT_NV_COUNTERS: 0x0
+TPM2_PT_NV_COUNTERS_AVAIL: 0x19
+```
+
+Output on a fresh `swtpm` (`just with-swtpm cargo run -q --locked -p custodio-it --example tpm-probe -- parent`):
+
+```
+manufacturer: 0x49424d00 (IBM)
+persistent_handles: none
+nv_indexes: 0
+persistent_0x81000001: empty
+owner_hierarchy: accepts empty auth
+rsa2048_name: 000b5579a95be4992ffc65f1af40ad99464974076145fdb1f68d09964f8ab5bad361
+rsa2048_public_sha256: 5579a95be4992ffc65f1af40ad99464974076145fdb1f68d09964f8ab5bad361
+rsa2048_deterministic: yes
+rsa2048_mean_ms: 32.8 (N=5, each call includes ReadPublic and FlushContext)
+ecc_p256_name: 000baf5f61e7b762f4b3e72f0dabdceb88977702a0fd434a40843a8480eb1d1618bf
+ecc_p256_public_sha256: af5f61e7b762f4b3e72f0dabdceb88977702a0fd434a40843a8480eb1d1618bf
+ecc_p256_deterministic: yes
+ecc_p256_mean_ms: 4.4 (N=5, each call includes ReadPublic and FlushContext)
+persistent_0x81000001_matches_srk: empty
+```
+
+Negative controls (the probe can fail). The environment TCTI is unset here; the messages differ by cause, so a
+person on F111 can tell them apart:
+
+```
+$ tpm-probe parent --tcti swtpm:path=/nonexistent     (parsed fine, connect fails)   exit=1
+tpm-probe: cannot connect to the TPM: TSS Layer: TCTI, Code: 0x000A000A, Message: IO failure.
+$ tpm-probe parent --tcti bogus:x                     (fails while parsing)          exit=1
+tpm-probe: malformed --tcti "bogus:x": The provided parameter is invalid for that type.
+$ tpm-probe parent                                    (no TCTI at all)               exit=1
+tpm-probe: no TCTI: pass --tcti or set TPM2TOOLS_TCTI/TCTI/TEST_TCTI: Some of the required parameters were not provided.
+$ tpm-probe frob                                      (usage)                        exit=2
+```
+
+### Cost per call (candidate B)
+
+Means over N=5 timed calls (after two untimed ones), each including `CreatePrimary`, `ReadPublic` and
+`FlushContext`, on `swtpm`: **ECC P-256 about 4.3 to 4.4 ms, RSA 2048 about 23 to 33 ms** (two runs above:
+32.8 and 23.1 ms). `swtpm` is software: a hardware TPM is slower for RSA by a large factor (RSA 2048 key
+generation takes seconds on some parts), and ECC P-256 primaries are normally far cheaper there too. N is kept
+small for that reason and printed next to each mean so F111 numbers can be compared. **Inferred** for hardware.
+Mitigation either way: the service creates the primary once per import or load of a key, not per signature,
+and may hold the loaded transient parent only while it loads a child.
+
+### Candidate A: persistent SRK at `0x81000001`
+
+NV write: **yes**. `TPM2_EvictControl` stores the object in the TPM's NV storage and consumes a persistent
+slot. It does not create an NV index, so `handles-nv-index` stays empty; the persistent counters show it:
+
+```
+### B. persist an ECC P-256 SRK at 0x81000001
+name-alg:
+attributes:
+persistent-handle: 0x81000001
+action: persisted
+$ tpm2_getcap handles-persistent
+- 0x81000001
+$ tpm2_getcap handles-nv-index
+$ tpm2_getcap properties-variable | grep -E 'HR_PERSISTENT|HR_NV|NV_COUNTERS'
+TPM2_PT_HR_NV_INDEX: 0x0
+TPM2_PT_HR_PERSISTENT: 0x1
+TPM2_PT_HR_PERSISTENT_AVAIL: 0x40
+TPM2_PT_NV_COUNTERS: 0x0
+TPM2_PT_NV_COUNTERS_AVAIL: 0x19
+### probe with persisted SRK
+manufacturer: 0x49424d00 (IBM)
+persistent_handles: 0x81000001
+nv_indexes: 0
+persistent_0x81000001: occupied
+persistent_0x81000001_template: ecc NistP256 fixedtpm=true fixedparent=true sensitivedataorigin=true userwithauth=true noda=true restricted=true decrypt=true sign=false
+persistent_0x81000001_name: 000b59644dbdbedad559d8520067a3b2ce1c54dbcad446e6155dbe368eafb1f4c7cf
+owner_hierarchy: accepts empty auth
+rsa2048_name: 000b589ff68f2c2c3807ef8d4db72516ccbced13b1791648ca7c0c4ed5b7b938bc50
+rsa2048_public_sha256: 589ff68f2c2c3807ef8d4db72516ccbced13b1791648ca7c0c4ed5b7b938bc50
+rsa2048_deterministic: yes
+rsa2048_mean_ms: 23.1 (N=5, each call includes ReadPublic and FlushContext)
+ecc_p256_name: 000b59644dbdbedad559d8520067a3b2ce1c54dbcad446e6155dbe368eafb1f4c7cf
+ecc_p256_public_sha256: 59644dbdbedad559d8520067a3b2ce1c54dbcad446e6155dbe368eafb1f4c7cf
+ecc_p256_deterministic: yes
+ecc_p256_mean_ms: 4.3 (N=5, each call includes ReadPublic and FlushContext)
+persistent_0x81000001_matches_srk: yes (ecc_p256)
+exit=0
+### read-only check, persisted SRK present
+listings identical
+```
+
+Secret in the service: **none**. The key is generated by the TPM from its seed and has an empty auth value (the
+TCG template, `userWithAuth` with an empty auth, `noDA`). Provisioning needs the owner hierarchy authorisation,
+which the service would have to hold when the owner has a password (see below).
+
+Reboot: **survives** (verified). A restart of the TPM on the same state keeps the handle, the name and the
+template (restart: `swtpm_ioctl -i` then `tpm2_startup -c`):
+
+```
+### C. restart swtpm on the same state (swtpm_ioctl -i on the control socket, then tpm2_startup -c)
+startup rc=0
+$ tpm2_getcap handles-persistent
+- 0x81000001
+$ tpm2_getcap handles-nv-index
+$ tpm2_getcap properties-variable | grep -E 'HR_PERSISTENT|HR_NV|NV_COUNTERS'
+TPM2_PT_HR_NV_INDEX: 0x0
+TPM2_PT_HR_PERSISTENT: 0x1
+TPM2_PT_HR_PERSISTENT_AVAIL: 0x40
+TPM2_PT_NV_COUNTERS: 0x0
+TPM2_PT_NV_COUNTERS_AVAIL: 0x19
+persistent_0x81000001: occupied
+persistent_0x81000001_template: ecc NistP256 fixedtpm=true fixedparent=true sensitivedataorigin=true userwithauth=true noda=true restricted=true decrypt=true sign=false
+persistent_0x81000001_name: 000b59644dbdbedad559d8520067a3b2ce1c54dbcad446e6155dbe368eafb1f4c7cf
+rsa2048_name: 000b589ff68f2c2c3807ef8d4db72516ccbced13b1791648ca7c0c4ed5b7b938bc50
+ecc_p256_name: 000b59644dbdbedad559d8520067a3b2ce1c54dbcad446e6155dbe368eafb1f4c7cf
+persistent_0x81000001_matches_srk: yes (ecc_p256)
+```
+
+`TPM2_Clear` (verified): the owner seed changes and the persistent object is removed with it. The next probe
+shows the handle empty and new template names for both candidates:
+
+```
+### D. tpm2_clear (lockout auth empty)
+rc=0
+$ tpm2_getcap handles-persistent
+$ tpm2_getcap handles-nv-index
+$ tpm2_getcap properties-variable | grep -E 'HR_PERSISTENT|HR_NV|NV_COUNTERS'
+TPM2_PT_HR_NV_INDEX: 0x0
+TPM2_PT_HR_PERSISTENT: 0x0
+TPM2_PT_HR_PERSISTENT_AVAIL: 0x41
+TPM2_PT_NV_COUNTERS: 0x0
+TPM2_PT_NV_COUNTERS_AVAIL: 0x19
+persistent_handles: none
+persistent_0x81000001: empty
+rsa2048_name: 000b69d5385230987b95e648d5ab6787396c50142101930b0c4a322671aa22118b4f
+ecc_p256_name: 000be85b77e10a0c9f28dc3e6ce6a4705b4a6ce42639a267f5e5dd4d4002ac698185
+persistent_0x81000001_matches_srk: empty
+```
+
+Package upgrade: **inferred**. The TPM state is not part of the package, so an upgrade does not touch it. A
+new package version could carry a different template, which would leave the old SRK at the handle with a name
+that no longer matches (see "another template" below). Both candidates need the template to be frozen across
+versions.
+
+### Candidate B: primary recreated on each use
+
+NV write: **no**. `CreatePrimary` allocates only a transient object, flushed after use; the probe does it twice
+plus N timed calls and the listings are identical before and after (run A above). Secret in the service:
+**none**. The primary has an empty auth value and no `sensitive.data` input; it derives from the owner seed and
+the template only (the probe's `*_deterministic: yes` lines).
+
+Reboot: **survives** (verified). The primary is a function of the seed: the names after the restart equal the
+names before it (`rsa2048_name` `000b589f...` and `ecc_p256_name` `000b5964...` in the "probe with persisted SRK" run
+and again after the restart, section C above). `TPM2_Clear`: **changes** (verified, section D: the names become
+`000b69d5...` and `000be85b...`), so every key wrapped under the old primary is lost either way. Package
+upgrade: **inferred**: the only thing the package carries is the template, so as long as the template bytes do
+not change, the primary is the same; a changed template gives a different name, which the stored-parent-name
+check (below) turns into an error instead of a failed load.
+
+### Owner hierarchy with a password
+
+`tpm2_changeauth -c o secret`, then creation without the password (verified):
+
+```
+### E. owner password, nothing persisted (candidate B, and first provisioning of A)
+changeauth rc=0
+ERROR: Esys_CreatePrimary(0x9A2) - tpm:session(1):authorization failure without DA implications
+ERROR: Unable to run tpm2_createprimary
+createprimary (no password) rc=1
+$ probe
+manufacturer: 0x49424d00 (IBM)
+persistent_handles: none
+nv_indexes: 0
+persistent_0x81000001: empty
+owner_hierarchy: unusable (TSS Layer: TPM, Code: 0x000009A2, Message: Authorization failure without DA implications (associated with session number 1).)
+persistent_0x81000001_matches_srk: empty
+probe exit=1
+$ bad password
+ERROR: Esys_CreatePrimary(0x9A2) - tpm:session(1):authorization failure without DA implications
+ERROR: Unable to run tpm2_createprimary
+rc=1
+$ right password, candidate B works
+rc=0
+persistent-handle: 0x81000001
+action: persisted
+```
+
+The exact response is `0x9A2`: `TPM_RC_AUTH_FAIL` as seen through a session ("authorization failure without DA
+implications"; the owner hierarchy is not subject to the dictionary-attack lockout). The probe exits 1 and
+quotes the code, and still prints the occupant of `0x81000001`.
+
+- **B** needs the owner authorisation on every use, so with a password it fails with `0x9A2` on every import
+  *and* on every later load: the service would have to keep the owner password. That is a secret in the
+  service, which the SPEC default rules out. It fails; it does not fall back.
+- **A** needs the owner authorisation only to provision, not to use. With an SRK already persisted, creating a
+  child under it and loading it works without the owner password, while changing the persistent set (evict)
+  still fails with `0x9A2`:
+
+```
+### F. owner password set AFTER the SRK was persisted: the persisted key still loads as a parent
+$ probe
+persistent_0x81000001: occupied
+persistent_0x81000001_template: ecc NistP256 fixedtpm=true fixedparent=true sensitivedataorigin=true userwithauth=true noda=true restricted=true decrypt=true sign=false
+persistent_0x81000001_name: 000b04dcc9f0f0b3c06b7033af2d521ac56d0adf7d32303d3b3becff3455160843e3
+owner_hierarchy: unusable (TSS Layer: TPM, Code: 0x000009A2, Message: Authorization failure without DA implications (associated with session number 1).)
+persistent_0x81000001_matches_srk: unknown (owner hierarchy unusable, no template name to compare)
+probe exit=1
+create under persisted SRK without owner password rc=0
+name: 000b1f19e7a19cedc43a74b8f8cb6f5f8608aab60bf70d9cd7da59f73904f96d4bfa
+load under persisted SRK without owner password rc=0
+$ evict without password
+ERROR: Esys_EvictControl(0x9A2) - tpm:session(1):authorization failure without DA implications
+ERROR: Unable to run tpm2_evictcontrol
+rc=1
+password removed rc=0
+```
+
+If the owner has a password and the handle is empty, A cannot be provisioned either (`0x9A2`).
+
+Service behaviour (both): an owner hierarchy it cannot use makes the import fail with a named error carrying the
+TPM response code (`TPM_RC_AUTH_FAIL`, `0x9A2`); no fallback to the software key store, no retry with another
+parent, and the service never asks for or stores the owner password.
+
+### Another key at `0x81000001`
+
+The occupant can be anything. A naive "use whatever is at the handle" would wrap keys under a key the
+service did not create: a signing key cannot be a parent at all, and a storage key with another template or
+a known auth value could be one the service cannot recreate or that another program controls. Negative controls
+on `swtpm` (verified; G1 a signing key, G2 the SRK template with `noDA` cleared, G3 the service trying to write
+over it):
+
+```
+### G. foreign occupants of 0x81000001
+--- G1: a signing key (different type of use)
+persistent_0x81000001: occupied
+persistent_0x81000001_template: ecc NistP256 fixedtpm=true fixedparent=true sensitivedataorigin=true userwithauth=true noda=false restricted=false decrypt=false sign=true
+persistent_0x81000001_name: 000bdac6def86a62661909e6a1d150b1706bad0d9bfa710f2428ccdb97ab1f86268f
+ecc_p256_name: 000b04dcc9f0f0b3c06b7033af2d521ac56d0adf7d32303d3b3becff3455160843e3
+persistent_0x81000001_matches_srk: no
+--- G2: same type, one attribute differs (noda cleared)
+persistent_0x81000001: occupied
+persistent_0x81000001_template: ecc NistP256 fixedtpm=true fixedparent=true sensitivedataorigin=true userwithauth=true noda=false restricted=true decrypt=true sign=false
+persistent_0x81000001_name: 000bbcdb0ba2d4cd920323778505ccd5cd1fea621f1655d589b5d8eab4875b8fb115
+ecc_p256_name: 000b04dcc9f0f0b3c06b7033af2d521ac56d0adf7d32303d3b3becff3455160843e3
+persistent_0x81000001_matches_srk: no
+probe exit=0
+--- G3: evictcontrol onto an occupied handle (what a service must never do)
+ERROR: Esys_EvictControl(0x14C) - tpm:error(2.0): NV Index or persistent object already defined
+ERROR: Unable to run tpm2_evictcontrol
+persist onto occupied rc=1
+```
+
+The probe tells them apart in two ways: the `persistent_0x81000001_template` line (restricted, decrypt, sign,
+noda), and the name, which is the SHA-256 of the whole public area, so any difference gives
+`persistent_0x81000001_matches_srk: no`, while the expected SRK gives `yes (ecc_p256)` or `yes (rsa2048)`. The
+service must treat `no` as unusable: error, no overwrite, no eviction (it does not own the handle; and
+`EvictControl` onto an occupied handle fails with `0x14C` anyway). Candidate B has no such case: it never reads
+the handle.
+
+### Where a stored blob records the parent name
+
+A key created under a parent is stored as `TPM2B_PUBLIC` plus `TPM2B_PRIVATE`. Neither carries the parent name
+in clear (verified below: the digest of the parent's name does not occur in either file). What the TPM enforces is cryptographic: the
+private part is an inner-wrapped sensitive area plus an integrity HMAC whose key is derived from the parent's
+seed and which covers the child's name. `TPM2_Load` under any other parent, or under the same template after a
+`TPM2_Clear`, fails:
+
+```
+### H. parent name in the stored blob
+A name: 000bd220817b6187c743d7ae66c7c2e120fa00f5ac76be002724aab1ee89ca4e134b
+create rc=0
+34 c.cdata
+128 c.priv
+90 c.pub
+parent name digest inside c.pub: 0
+parent name digest inside c.priv: 0
+parent name digest inside c.cdata: 0
+$ load under A (same parent)
+name: 000be63b67ed957b7b8deaf56488e73309c64b4f8f1832632bbe2f657403742bf894
+rc=0
+$ load under B (RSA SRK template, same hierarchy)
+ERROR: Esys_Load(0x1DF) - tpm:parameter(1):integrity check failed
+ERROR: Unable to run tpm2_load
+rc=1
+$ load under A' (same template, after tpm2_clear)
+A' name: 000bb3488b64ff9b06d5aa9bf527e412fb6a859608af624900def561e1843c5cb234
+ERROR: Esys_Load(0x1DF) - tpm:parameter(1):integrity check failed
+ERROR: Unable to run tpm2_load
+rc=1
+```
+
+The error is `0x1DF`, `TPM_RC_INTEGRITY` on parameter 1 ("integrity check failed"). It does not say which
+parent was expected, and the same code appears for a damaged blob. So the **service stores the parent name
+itself, next to the blob** (a `parent_name` field: the 34 bytes `000b || sha256` of the parent's public area),
+and before `Load` it computes the name of the parent it is about to use (B: `CreatePrimary` then
+`ReadPublic`; A: `ReadPublic` of `0x81000001`) and compares: a mismatch is the named error "stored under a
+different parent" (clear, other template, other TPM, other template version) without ever sending the blob to
+the TPM. The TPM check is the backstop; its `0x1DF` is the error the service reports if the check was skipped
+or the stored name was edited.
+
+### Package removal
+
+For the chosen parent (B): **nothing in the TPM**. No persistent object, no NV index and no auth value was
+created, so removal has nothing to evict. Only the service's own state (the stored wrapped keys and their
+`parent_name`) is removed or kept, as the removal policy for the key store dictates. For A, removal must not
+evict `0x81000001`: the handle is shared with `systemd-cryptenroll`, `systemd-creds` and other tools, whose
+credentials depend on it, so a package that removes it can destroy data it did not create. Even the rule "evict
+only if the name matches our template" would remove keys of other tools that use the same TCG template.
+
+### Sources read
+
+- **TCG TPM v2.0 Provisioning Guidance**, Version 1.0 Revision 1.0 (15 March 2017), Table 2: the SRK is
+  `0x81000001` (EK `0x81010001`). **verified** (PDF read). Section 7.5.1 derives the shared SRK template from
+  the EK Credential Profile 2.0 with four changes (set `userWithAuth`, clear `adminWithPolicy`, set `noDA`,
+  empty `authPolicy`), and a shared SRK uses an all-zero well-known auth value. **verified**. The remaining fields
+  of the probe's template (AES-128-CFB, null scheme, SHA-256 name, RSA 2048 / exponent 0 / 256 zero bytes of
+  unique, ECC P-256 / 32+32 zero bytes) come from the EK profile and were **inferred** from memory, not read.
+  The "Persistent Handle Assignments" reference was not read.
+- **systemd v257** (`src/shared/tpm2-util.c`, `tpm2-util.h`, `src/tpm2-setup/tpm2-setup.c`; about 200 of the 330 KB
+  of `tpm2-util.c` were read): `TPM2_SRK_HANDLE` is `0x81000001`; the template is ECC P-256 (preferred) or
+  RSA 2048, SHA-256 name, AES-128-CFB, null scheme, empty authPolicy, `noDA`, `userWithAuth`, unique zeroed.
+  **verified**. With the handle empty, `tpm2_get_or_create_srk` runs `CreatePrimary` in the owner hierarchy and
+  `Esys_EvictControl` with the owner as authoriser, so it relies on an empty owner auth. **verified**. With the
+  handle occupied it compares nothing: it uses whatever is there (on `TPM2_RC_NV_DEFINED` it re-reads the
+  handle and uses that). **verified**. `systemd-tpm2-setup` pins the SRK public key in
+  `/run/systemd/tpm2-srk-public-key.pem` and under `/var/lib/systemd/`; a mismatch with the `/run` copy is
+  fatal. **verified**. No evict, clear or flush of the SRK was found in the files read; the last 130 KB of
+  `tpm2-util.c`, the package scripts, and the `cryptenroll` and `creds` sources were not read, so "never
+  evicts on removal" is **inferred**. This matches the finding above: systemd's "use whatever is there" is
+  exactly the behaviour Custodio must not copy.
+- `tpm2_createprimary` (tpm2-tools 5.7): name hash SHA-256, RSA 2048 and ECC P-256 are the defaults, a
+  restricted parent gets `aes128cfb`. **verified**. Its default attributes do not include `noDA` (**inferred**;
+  the experiments above pass the attributes explicitly).
+
+### Decision
+
+Applying the SPEC default (no NV write, no secret in the service, an unusable owner hierarchy fails the import
+and never falls back): candidate B. A is rejected because it needs an NV write, a provisioning step that needs
+the owner password when one is set, a shared handle with a foreign-key case, and an eviction rule on removal.
+B costs 4 ms per creation on ECC P-256 (RSA 2048 about 25 ms on `swtpm`, far more on hardware), fails
+with `0x9A2` when the owner has a password, and loses every wrapped key at `TPM2_Clear`, as A does too.
+The template is the ECC P-256 TCG SRK template above, frozen in code with its name checked in a test;
+F111 runs the probe on a hardware TPM and confirms the cost and that ECC P-256 is available there before
+the choice is recorded in `docs/decisions.md`. The service never writes persistent state to the TPM.
+
+Decision: a primary recreated on each use from the fixed TCG SRK template, ECC P-256 (no persistent SRK at 0x81000001)
