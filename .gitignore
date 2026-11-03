@@ -9,3 +9,4 @@ NEXT_FINDINGS.md
 /crates/*/fuzz/artifacts
 /node_modules
 __pycache__/
+*.profraw
