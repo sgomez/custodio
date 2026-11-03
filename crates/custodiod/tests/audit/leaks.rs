@@ -6,13 +6,16 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-use custodiod::audit::{Entry, JournalSink, MemorySink, Outcome};
+use custodiod::audit::{
+    AuditKeyType, Caller, DeleteOutcome, Entry, ImportOutcome, JournalSink, KeyId, MemorySink,
+    OperationEntry, Outcome, ReplaceOutcome,
+};
 use zbus::{Connection, block_on};
 
 use super::bus::{Answer, Fixture, TestResult, call, error_name, sign};
 use super::common::{
     CKM_ECDSA, CKM_RSA_PKCS, EC_P12, EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, digest,
-    digest_info, fixture, import, import_with, uid,
+    digest_info, fixture, fixture_reading, import, import_via_bus, uid,
 };
 use super::scan::{base64, hex, leaks};
 
@@ -55,8 +58,8 @@ async fn no_secrets(
     extra: &[Vec<u8>],
 ) -> TestResult {
     let sink = Arc::new(MemorySink::default());
-    let f = fixture(Answer::Yes, &sink).await?;
-    import_with(&f, key, p12, SENTINEL_PASSWORD).await?;
+    let f = fixture_reading(Answer::Yes, &sink).await?;
+    import_via_bus(&f, key, p12, SENTINEL_PASSWORD).await?;
     let signature = sign(&f.client, key, mechanism, data).await?;
     sign(&f.client, key, other, data)
         .await
@@ -90,6 +93,11 @@ async fn no_secrets(
     ];
     values.extend_from_slice(extra);
     for entry in &entries {
+        assert_eq!(
+            entry.fields().iter().find(|(n, _)| *n == "CUSTODIO_APP_ID"),
+            Some(&("CUSTODIO_APP_ID", "org.example.App".to_owned())),
+            "the scan sees the app-id"
+        );
         for text in texts(entry)? {
             for value in &values {
                 assert_eq!(leaks(&text, value), Vec::<&str>::new());
@@ -133,7 +141,7 @@ fn rejected_id_is_not_copied() -> TestResult {
                 .await
                 .err()
                 .ok_or("signed")?;
-            assert_eq!(error_name(&err), "org.freedesktop.DBus.Error.InvalidArgs");
+            assert_eq!(error_name(&err), custodio_client::ERROR_INVALID_ARGS);
         }
         assert_eq!(f.asked(), Vec::<String>::new());
         for entry in sink.entries() {
@@ -275,6 +283,7 @@ fn journal_sink_datagram_per_call() -> TestResult {
             format!("CUSTODIO_UID={}", uid()),
             format!("CUSTODIO_PID={}", std::process::id()),
             "CUSTODIO_KEY_ID=ec".to_owned(),
+            "CUSTODIO_OPERATION=sign".to_owned(),
             "CUSTODIO_OUTCOME=signed".to_owned(),
             format!("MESSAGE_ID={}", custodiod::audit::MESSAGE_ID),
         ] {
@@ -332,4 +341,77 @@ fn leak_scanner_detects_planted_values() {
         assert!(leaks(&buf, value).contains(&form), "{form}");
     }
     assert_eq!(leaks(b"nothing to see here", b"foo"), Vec::<&str>::new());
+}
+
+/// The datagram, `Debug` and `message()` of an operation entry.
+fn operation_texts(entry: &OperationEntry) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("j.sock");
+    let socket = UnixDatagram::bind(&path)?;
+    socket.set_read_timeout(Some(Duration::from_secs(2)))?;
+    custodiod::audit::AuditSink::record_operation(&JournalSink::new(&path), entry)?;
+    let mut buf = vec![0u8; 65536];
+    let n = socket.recv(&mut buf)?;
+    buf.truncate(n);
+    buf.extend_from_slice(format!("{entry:?}").as_bytes());
+    buf.extend_from_slice(entry.message().as_bytes());
+    Ok(buf)
+}
+
+/// Entries of import, delete and replace certificate hold the typed parts and nothing else: the
+/// secrets only ever go to the neighbouring API, never to the entry.
+#[test]
+fn operation_entries_hold_no_secrets() -> TestResult {
+    let secrets: [&[u8]; 5] = [
+        SENTINEL_PASSWORD.as_bytes(),
+        b"P12-SENTINEL-BYTES",
+        b"CERT-SENTINEL-BYTES",
+        b"DATA-SENTINEL-BYTES",
+        b"SIGNATURE-SENTINEL-BYTES",
+    ];
+    let caller = Some(Caller { uid: 1000, pid: 42 });
+    let id = || KeyId::new("the-key");
+    let read = || {
+        custodiod::app_id::validate(b"org.example.App")
+            .map(custodiod::app_id::AppIdOutcome::Read)
+            .ok_or("app id")
+    };
+    let mut entries = Vec::new();
+    for o in ImportOutcome::all() {
+        for t in [
+            None,
+            Some(AuditKeyType::Rsa2048),
+            Some(AuditKeyType::EcdsaP256),
+        ] {
+            entries.push(OperationEntry::import(o, caller, id()?, t).with_app_id(read()?));
+        }
+    }
+    for o in DeleteOutcome::all() {
+        entries.push(OperationEntry::delete(o, caller, id()?).with_app_id(read()?));
+    }
+    for o in ReplaceOutcome::all() {
+        entries.push(OperationEntry::replace_certificate(o, None, id()?).with_app_id(read()?));
+    }
+    assert_eq!(entries.len(), 18 + 4 + 5);
+    for entry in &entries {
+        let text = operation_texts(entry)?;
+        assert!(
+            !leaks(&text, b"the-key").is_empty(),
+            "the scan sees the key id"
+        );
+        for secret in secrets {
+            assert_eq!(leaks(&text, secret), Vec::<&str>::new());
+        }
+    }
+    // Negative control: an entry whose key id is a secret is caught by the same scan.
+    let leaking = OperationEntry::delete(
+        DeleteOutcome::Deleted,
+        caller,
+        KeyId::new("CERT-SENTINEL-BYTES")?,
+    );
+    assert_eq!(
+        leaks(&operation_texts(&leaking)?, b"CERT-SENTINEL-BYTES").first(),
+        Some(&"raw")
+    );
+    Ok(())
 }

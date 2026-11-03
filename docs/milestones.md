@@ -19,7 +19,7 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
   no hash contents.
 - Manual acceptance with a P-256 key, not only RSA 2048.
 
-## M2 — Packaging and distributions
+## M2 — Packaging and distributions (done)
 
 Build and test the packages; publishing them waits for M5.
 
@@ -42,7 +42,7 @@ Build and test the packages; publishing them waits for M5.
 - Firefox on Fedora and Arch: confirm that the system NSS sees the module through p11-kit without
   manual registration.
 
-## M3 — Client API
+## M3 — Client API (done)
 
 What any client needs from the service, rFirma included. The rFirma side waits for M5.
 

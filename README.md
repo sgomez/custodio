@@ -11,12 +11,19 @@ intent: the dialog cannot prove what is being signed.
 ## Names
 
 - System D-Bus name: `com.rfirma.Custodio1`
-- polkit action: `com.rfirma.custodio.sign`
+- polkit actions: `com.rfirma.custodio.sign`, `com.rfirma.custodio.import-certificate`,
+  `com.rfirma.custodio.delete-certificate`, `com.rfirma.custodio.replace-certificate`
 
 ## Installing and removing
 
 Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
 requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
+
+## Writing a client
+
+Client authors: see [docs/api.md](docs/api.md) for detecting the service (on the host and from a flatpak), every
+method with its arguments, bounds, results and errors, the polkit dialogs, ownership, what is journalled, and a
+`busctl` example per operation.
 
 ## Development
 

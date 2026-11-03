@@ -5,7 +5,7 @@ use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 
 use super::wire::encode;
-use super::{AuditError, AuditSink, Entry};
+use super::{AuditError, AuditSink, Entry, OperationEntry};
 
 /// Where journald listens for the Native Journal Protocol.
 pub const DEFAULT_JOURNAL_SOCKET: &str = "/run/systemd/journal/socket";
@@ -47,6 +47,10 @@ impl Default for JournalSink {
 
 impl AuditSink for JournalSink {
     fn record(&self, entry: &Entry) -> Result<(), AuditError> {
+        send_fields(&self.path, self.max, &entry.fields())
+    }
+
+    fn record_operation(&self, entry: &OperationEntry) -> Result<(), AuditError> {
         send_fields(&self.path, self.max, &entry.fields())
     }
 }

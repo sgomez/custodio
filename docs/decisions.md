@@ -262,3 +262,12 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings.md`, F56); elsewhere nothing system-wide is read.
 - Rejected: an enterprise policy (`/etc/firefox/policies/policies.json` is one file, it would override the administrator's); for
   M2, a `custodio` command that edits the user's profiles (left in `docs/milestones.md`, "Firefox without p11-kit").
+
+## 2026-11-01 — A refused sign for a key the caller does not have leaves no journal entry
+- Decision: `Sign` for an id the caller does not own (missing, or another uid's) fails as `NoSuchKey`
+  before polkit and writes no entry, the way invalid arguments do. A failed credentials lookup still
+  writes the entry without caller, as in M1.
+- Why: the lookup precedes polkit so that another uid's id is indistinguishable from a missing one
+  (same error, same polkit calls, same journal); an entry would turn probing of ids into journal noise.
+- Rejected: an entry per `NoSuchKey` (as M1 had after polkit); following the credentials-failure
+  behaviour (that entry exists because the caller is unknown, which is not the case here).

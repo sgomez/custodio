@@ -5,7 +5,6 @@ use cryptoki_sys::{
     CKM_ECDSA, CKM_ECDSA_SHA1, CKM_ECDSA_SHA224, CKM_RSA_PKCS, CKM_RSA_PKCS_PSS, CKM_SHA1_RSA_PKCS,
     CKM_SHA224_RSA_PKCS, CKM_SHA256,
 };
-use custodiod::sign::{Mechanism, sign};
 use der::Encode;
 use der::asn1::{Null, OctetString};
 use p256::ecdsa::signature::hazmat::PrehashVerifier;
@@ -284,6 +283,27 @@ fn fixture_key(name: &str) -> Result<SecretSlice<u8>, Box<dyn Error>> {
     Ok(SecretSlice::from(data.to_vec()))
 }
 
+/// What the service does for `CKM_RSA_PKCS` (raw PKCS#1 v1.5 over the given bytes) and `CKM_ECDSA`
+/// (ECDSA over a prehash), written out here so that this crate's tests do not link the service.
+/// `tests/composed_openssl.rs` of `custodio-it` runs the same inputs through the real service code.
+fn raw_sign(
+    composed: Composed,
+    key: &SecretSlice<u8>,
+    input: &[u8],
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    use p256::ecdsa::signature::hazmat::PrehashSigner;
+    use secrecy::ExposeSecret;
+    if composed.raw() == CKM_RSA_PKCS {
+        let key = RsaPrivateKey::from_pkcs8_der(key.expose_secret())?;
+        Ok(key.sign_with_rng(&mut rand::rng(), rsa::Pkcs1v15Sign::new_unprefixed(), input)?)
+    } else {
+        use p256::pkcs8::DecodePrivateKey as _;
+        let key = p256::ecdsa::SigningKey::from_pkcs8_der(key.expose_secret())?;
+        let sig: p256::ecdsa::Signature = key.sign_prehash(input)?;
+        Ok(sig.to_bytes().to_vec())
+    }
+}
+
 fn service_sign(
     composed: Composed,
     key: &SecretSlice<u8>,
@@ -291,11 +311,7 @@ fn service_sign(
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut h = DigestHasher::new(composed.hash());
     h.update(message);
-    let mechanism = match composed.raw() {
-        CKM_RSA_PKCS => Mechanism::RsaPkcs,
-        _ => Mechanism::Ecdsa,
-    };
-    Ok(sign(key, mechanism, &sign_input(composed, &h))?)
+    raw_sign(composed, key, &sign_input(composed, &h))
 }
 
 fn rsa_public(key: &SecretSlice<u8>) -> Result<RsaPublicKey, Box<dyn Error>> {
@@ -355,7 +371,7 @@ fn cross_verify_rsa() -> TestResult {
         };
         let mut h = DigestHasher::new(other.hash());
         h.update(MESSAGE);
-        let wrong = sign(&key, Mechanism::RsaPkcs, &sign_input(other, &h))?;
+        let wrong = raw_sign(other, &key, &sign_input(other, &h))?;
         assert!(!rsa_verify(*composed, &public, MESSAGE, &wrong));
     }
     Ok(())

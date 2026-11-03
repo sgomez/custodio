@@ -84,6 +84,7 @@ mod wiring {
         let password = SecretString::from("test-password".to_owned());
         import_p12(
             &store,
+            rustix::process::geteuid().as_raw(),
             "ec",
             include_bytes!("../tests/fixtures/p256.p12"),
             &password,
@@ -95,9 +96,7 @@ mod wiring {
             polkit.object_server().at(path, Approving).await?;
             polkit.request_name("org.freedesktop.PolicyKit1").await?;
             let conn = Builder::address(address.as_str()).build().await?;
-            let service = build_service(store, &conn, JournalSink::new(&journal));
-            conn.object_server().at(OBJECT_PATH, service).await?;
-            conn.request_name(BUS_NAME).await?;
+            serve(store, &conn, JournalSink::new(&journal)).await?;
             let client = Builder::address(address.as_str()).build().await?;
             let body = ("ec", 0x1041u32, 0u32, 0u32, vec![7u8; 32]);
             client

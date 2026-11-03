@@ -19,7 +19,10 @@ pub const RSA_SENTINEL_P12: &[u8] = include_bytes!("../fixtures/rsa2048-sentinel
 pub const SENTINEL_PASSWORD: &str = "P@ss-sentinel-7f3a91c4";
 pub const CKM_RSA_PKCS: u32 = 0x0001;
 pub const CKM_ECDSA: u32 = 0x1041;
-pub const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+pub use custodio_client::{
+    ERROR_AUDIT_UNAVAILABLE as ERR_AUDIT, ERROR_AUTHORIZATION_UNAVAILABLE as ERR_AUTH,
+    ERROR_POLKIT_DENIED as ERR_DENIED,
+};
 
 /// SHA-256 `DigestInfo` prefix.
 const SHA256_PREFIX: [u8; 19] = [
@@ -50,11 +53,36 @@ pub async fn fixture(
     .await
 }
 
+/// As [`fixture`], with a source that answers a read app-id, so entries carry the id field.
+pub async fn fixture_reading(
+    answer: Answer,
+    sink: &Arc<MemorySink>,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    Fixture::start_reading(
+        answer,
+        |c: &Connection| BusCredentials::new(c.clone()),
+        sink.clone(),
+    )
+    .await
+}
+
 pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
     import_with(f, id, p12, PASSWORD).await
 }
 
+/// Puts the key straight into the store under the test process's uid (the owner the real
+/// credentials give), so tests with failing or odd credentials can still set a key up.
+// Stays `async` so the many call sites keep their `.await`.
+#[allow(clippy::unused_async)]
 pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
+    let password = secrecy::SecretString::from(password.to_owned());
+    custodiod::import::import_p12(&f.store, uid(), id, p12, &password)?;
+    Ok(())
+}
+
+/// Imports through the service's `ImportP12`, so the password goes through the real method.
+/// Needs credentials that work (the owner is the caller's uid).
+pub async fn import_via_bus(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
     call(&f.client, "ImportP12", &(id, p12.to_vec(), password)).await?;
     Ok(())
 }
@@ -136,6 +164,22 @@ impl<F: Fn(&mut HashMap<String, OwnedVariant>) + Sync> CallerCredentials for Rep
         ]);
         (self.0)(&mut map);
         ready(caller_from(&map))
+    }
+
+    fn pinned_credentials(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<(Caller, Option<std::os::fd::OwnedFd>), CredentialsError>> + Send
+    {
+        let mut map: HashMap<String, OwnedVariant> = HashMap::from([
+            ("UnixUserID".to_owned(), OwnedVariant::from(uid())),
+            (
+                "ProcessID".to_owned(),
+                OwnedVariant::from(std::process::id()),
+            ),
+        ]);
+        (self.0)(&mut map);
+        ready(custodiod::credentials::pinned_from(&map).map(|(c, fd)| (c, Some(fd))))
     }
 }
 

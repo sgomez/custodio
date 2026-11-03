@@ -27,8 +27,7 @@ const OID_P256: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3
 /// Modulus size accepted for RSA keys, in bits.
 const RSA_BITS: usize = 2048;
 
-/// Largest `.p12` accepted. Real files are a few kilobytes.
-pub const MAX_P12_LEN: usize = 1024 * 1024;
+pub use custodio_client::MAX_P12_LEN;
 
 /// Key types Custodio accepts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,28 +151,87 @@ pub fn check_archive(archive: &Pkcs12Archive) -> Result<ParsedP12, ImportError> 
     })
 }
 
-/// Parse a `.p12` and store its key as `id` and its certificate as `<id>-cert`.
+/// Decodes a `.p12`. The service holds one; tests replace it to prove when it runs.
+pub trait P12Decoder: Send + Sync {
+    /// # Errors
+    /// See [`ImportError`].
+    fn decode(&self, data: &[u8], password: &SecretString) -> Result<ParsedP12, ImportError>;
+}
+
+/// The real decoder: [`parse_p12`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RealDecoder;
+
+impl P12Decoder for RealDecoder {
+    fn decode(&self, data: &[u8], password: &SecretString) -> Result<ParsedP12, ImportError> {
+        parse_p12(data, password)
+    }
+}
+
+/// Whether `owner` already has a key `id` (or a certificate entry of that name).
+///
+/// # Errors
+/// [`StoreError`] if the owner's area cannot be listed.
+pub fn id_taken(store: &KeyStore, owner: u32, id: &str) -> Result<bool, StoreError> {
+    let ids = store.list(owner)?;
+    Ok(ids.iter().any(|i| i == id || *i == cert_id(id)))
+}
+
+/// Store, for `owner`, the key of `parsed` as `id` and its certificate as `<id>-cert`.
 ///
 /// The certificate is written first: it is public, so a failure between the two writes leaves
 /// nothing sensitive behind.
 ///
 /// # Errors
 /// See [`ImportError`].
+pub fn store_parsed(
+    store: &KeyStore,
+    owner: u32,
+    id: &str,
+    parsed: ParsedP12,
+) -> Result<KeyKind, ImportError> {
+    // Check up front so a refused key write cannot leave a certificate without a key behind.
+    if id_taken(store, owner, id)? {
+        return Err(StoreError::AlreadyExists.into());
+    }
+    store.put(owner, &cert_id(id), &SecretSlice::from(parsed.certificate))?;
+    store.put(owner, id, &parsed.key)?;
+    Ok(parsed.kind)
+}
+
+/// Undo [`store_parsed`] for `id`: remove the key, then the certificate.
+///
+/// The key goes first, so a partial rollback never leaves a key without its certificate (the
+/// certificate is written first, see [`store_parsed`]). If the key cannot be removed the
+/// certificate is left alone.
+///
+/// # Errors
+/// The first [`StoreError`] of a removal.
+pub fn rollback_import(store: &KeyStore, owner: u32, id: &str) -> Result<(), StoreError> {
+    rollback_with(id, |name| store.remove(owner, name))
+}
+
+/// [`rollback_import`] with the removal given, so a test can see the order.
+fn rollback_with(
+    id: &str,
+    mut remove: impl FnMut(&str) -> Result<(), StoreError>,
+) -> Result<(), StoreError> {
+    remove(id)?;
+    remove(&cert_id(id))
+}
+
+/// Parse a `.p12` and store it for `owner`: [`parse_p12`], then [`store_parsed`].
+///
+/// # Errors
+/// See [`ImportError`].
 pub fn import_p12(
     store: &KeyStore,
+    owner: u32,
     id: &str,
     data: &[u8],
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
-    let parsed = parse_p12(data, password)?;
-    // Check up front so a refused key write cannot leave a certificate without a key behind.
-    let ids = store.list()?;
-    if ids.iter().any(|i| i == id || *i == cert_id(id)) {
-        return Err(StoreError::AlreadyExists.into());
-    }
-    store.put(&cert_id(id), &SecretSlice::from(parsed.certificate))?;
-    store.put(id, &parsed.key)?;
-    Ok(parsed.kind)
+    store_parsed(store, owner, id, parse_p12(data, password)?)
 }
 
 /// Key store id of the certificate belonging to key `id`.
@@ -241,7 +299,7 @@ fn trim(bytes: &[u8]) -> &[u8] {
 /// Canonical public key of a PKCS#8 private key: `n || e` (each length-prefixed) for RSA, the
 /// uncompressed SEC1 point for P-256. The point is computed from the private scalar, never taken
 /// from the file.
-fn public_key_of(kind: KeyKind, pkcs8_der: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn public_key_of(kind: KeyKind, pkcs8_der: &[u8]) -> Option<Vec<u8>> {
     let info = PrivateKeyInfoRef::from_der(pkcs8_der).ok()?;
     match kind {
         KeyKind::Rsa2048 => {
@@ -277,7 +335,7 @@ fn rsa_canonical(n: &[u8], e: &[u8]) -> Vec<u8> {
 
 /// Public key of a certificate in the same form as [`public_key_of`]; `None` if the certificate
 /// does not parse or holds a key of another type.
-fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
+pub(crate) fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
     let cert = X509::from_der(cert_der).ok()?;
     let spki = cert.tbs_certificate().subject_public_key_info();
     let oid = spki.algorithm.oid;
@@ -304,3 +362,6 @@ fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests;

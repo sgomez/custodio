@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-use custodiod::audit::{AuditError, AuditSink, Entry, MemorySink};
+use custodiod::audit::{AuditError, AuditSink, Entry, MemorySink, OperationEntry};
 use zbus::{Connection, block_on};
 
 use super::bus::{Answer, Fixture, TestResult, call, sign};
@@ -39,6 +39,10 @@ impl AuditSink for GateSink {
             .unwrap_or_else(PoisonError::into_inner)
             .recv();
         Ok(())
+    }
+
+    fn record_operation(&self, entry: &OperationEntry) -> Result<(), AuditError> {
+        self.inner.record_operation(entry)
     }
 }
 

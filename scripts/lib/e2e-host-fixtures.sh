@@ -14,10 +14,7 @@ trap 'fx_cleanup; rm -rf "$tmp"' EXIT
 fx_build cur 0.1.0 '' none
 fx_build next 0.1.1 '' none
 fx_build oldpath 0.1.0 '' oldpath
-mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/old" "$tmp/oldpath"
-# the old package (F60) is a third file, distinct from N and N+1; only its name matters to the host
-cp "$(fx_file cur deb)" "$tmp/old/custodio_0.0.9-1_amd64.deb"
-export E2E_PACKAGES_OLD=$tmp/old
+mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/oldpath"
 for f in deb rpm archlinux; do
     cp "$(fx_file cur "$f")" "$tmp/pkgs/"
     cp "$(fx_file next "$f")" "$tmp/next/"
@@ -34,44 +31,41 @@ case $1 in
 run)
     sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg"
     sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.next"
-    sed -n 's|.*:/pkg-old/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.old"
     sed -n 's|.*:/pkg-oldpath/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.oldpath"
     ;;
 exec)
     case "$*" in
     *"is-system-running"*) echo running ;;
     *"/e2e/guest.sh"*)
+        # F63: with -e E2E_SELECT=ids the fake guest reports only those cases (and STUB_EXTRA still adds one)
+        sel=''
+        for a in "$@"; do case $a in E2E_SELECT=*) sel=${a#E2E_SELECT=} ;; esac; done
         mode=main
         t=${*: -1}
-        if [ "$t" = old ] || [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
+        if [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
         if [ "$mode" = oldpath ]; then
             echo "e2e: installed $(cat "$STUB_LOG.oldpath") from the mounted file"
             list=$STUB_ROOT/e2e/cases.list
             [ "$t" != "${STUB_FAIL_OLDPATH:-}" ] || { echo "e2e: FAIL: stubbed (oldpath)"; exit 1; }
-        elif [ "$mode" = old ]; then
-            echo "e2e: installed $(cat "$STUB_LOG.old") from the mounted file"
-            list=${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list
-            [ "$t" != "${STUB_FAIL_OLD:-}" ] || { echo "e2e: FAIL: stubbed (old)"; exit 1; }
         else
             echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
-            # the main run reports the common cases and the target's own, except the ones of the old-package run (F60)
+            # the main run reports the common cases and the target's own
             list=$STUB_LOG.main
             : > "$list"
             [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
             # F61: the cases of the upgrade from the old path run in their own container, except on a target that has none (skipped in the main run)
             if [ ! -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then grep -v '^upgrade-oldpath-' "$list" > "$list.x" || true; mv "$list.x" "$list"; fi
-            grep -v '^upgrade-cargo-deb-' "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
+            cat "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
         fi
         while IFS= read -r c; do
             case $c in '' | '#'*) continue ;; esac
-            if [ "$mode" = old ]; then case $c in upgrade-cargo-deb-*) ;; *) continue ;; esac; fi
             if [ "$mode" = oldpath ]; then case $c in upgrade-oldpath-*) ;; *) continue ;; esac; fi
             [ "$c" = "${STUB_OMIT:-}" ] && continue
+            if [ -n "$sel" ]; then case " $sel " in *" $c "*) ;; *) continue ;; esac; fi
             if [ "$mode" = main ] && [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then case $c in upgrade-oldpath-*) echo "E2E-CASE skipped $c"; continue ;; esac; fi
             if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
         done < "$list"
-        [ "$mode" = old ] && exit 0
         [ "$mode" = oldpath ] && exit 0
         [ -z "${STUB_EXTRA:-}" ] || echo "E2E-CASE run $STUB_EXTRA"
         if [ -z "${STUB_NOPROBE:-}" ]; then

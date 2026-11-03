@@ -22,7 +22,6 @@ grep -qi 'dbus-broker' "$T/Containerfile" && bad "the Containerfile installs dbu
 grep -Eqi '^[[:space:]]*(COPY|ADD)\b|/pkg' "$T/Containerfile" && bad "the Containerfile copies or names a package"
 grep -Eq '(^|[[:space:]])polkitd([[:space:]]|$)' "$T/Containerfile" || bad "the Containerfile does not install polkitd"
 grep -Eq '(^|[[:space:]])dbus([[:space:]]|$)' "$T/Containerfile" || bad "the Containerfile does not install dbus"
-[ ! -e "$T/old.pattern" ] || bad "the refusal target has an old.pattern"
 # shellcheck disable=SC2016 # the pattern looks for a literal "$1"
 grep -Eq 'apt-get .*install .*"\$1"' "$T/install.sh" || bad "install.sh does not apt install the mounted file"
 grep -q 'dev/null' "$T/install.sh" && bad "install.sh discards output"
@@ -52,7 +51,7 @@ grep -q 'exit 0' <<< "$block" || bad "the refusal path does not end the run"
 if grep -Eq 'import\.py|upgrade\.sh|lifecycle\.sh|user\.sh|unavailable\.sh|journal|systemctl (start|reload)|pkg-next|pkg_next' <<< "$block"; then bad "the refusal path runs a step that needs a service"; fi
 
 # --- the host, with a stub engine
-mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/nonext" "$tmp/noold" "$tmp/targets"
+mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/nonext" "$tmp/targets"
 : > "$tmp/pkgs/custodio_0.1.0-1_amd64.deb"
 cat > "$tmp/bin/podman" <<'STUB'
 #!/usr/bin/env bash
@@ -77,7 +76,7 @@ STUB
 chmod +x "$tmp/bin/podman"
 export STUB_ROOT=$ROOT STUB_TARGETS=$tmp/targets
 cp -r "$T" "$tmp/targets/ubuntu2404"
-run() { : > "$tmp/log"; rm -rf "$tmp/o"; STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_TARGETS="$tmp/targets" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/nonext" E2E_PACKAGES_OLD="$tmp/noold" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" "$@" > "$tmp/out" 2>&1; }
+run() { : > "$tmp/log"; rm -rf "$tmp/o"; STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_TARGETS="$tmp/targets" E2E_PACKAGES="$tmp/pkgs" E2E_PACKAGES_NEXT="$tmp/nonext" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" "$@" > "$tmp/out" 2>&1; }
 run ubuntu2404 || bad "the refusal target failed with no N+1 and no old package: $(tail -n 4 "$tmp/out")"
 grep -q 'guest.sh ubuntu2404' "$tmp/log" || bad "the guest did not run"
 [ "$(grep '^run ' "$tmp/log" | grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' | sort -u | wc -l)" -eq 1 ] || bad "the refusal target mounts more than the package"
@@ -96,11 +95,7 @@ rm "$tmp/targets/ubuntu9999/refusal-only"
 run ubuntu9999 && bad "a target without the marker ran with no package N+1"
 grep -q 'no package N+1' "$tmp/out" || bad "the missing N+1 was not named: $(tail -n 3 "$tmp/out")"
 grep -Eq '^(build|run|exec) ' "$tmp/log" && bad "the engine ran for a target without the marker and without N+1"
-# a marked target with an old.pattern, or without its own cases, is refused
-cp -r "$T" "$tmp/targets/ubuntu9998"
-echo 'custodio_*.deb' > "$tmp/targets/ubuntu9998/old.pattern"
-run ubuntu9998 && bad "a refusal-only target with an old.pattern was accepted"
-rm -rf "$tmp/targets/ubuntu9998"
+# a marked target without its own cases is refused
 cp -r "$T" "$tmp/targets/ubuntu9997"
 rm "$tmp/targets/ubuntu9997/cases.list"
 run ubuntu9997 && bad "a refusal-only target without cases.list was accepted"

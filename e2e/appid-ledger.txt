@@ -1,0 +1,47 @@
+# The calls of the appid-* cases (F95), in the order alice makes them: LABEL PHASE KIND CG OP MODE OUTCOME STATE ID RESULT.
+# PHASE: main, cap (the children that bring app.slice over the cap are there), end. KIND is how appid-user.sh starts the caller: flatpak (systemd-run --unit
+# app-flatpak-<escaped id>-<n>, as flatpak does), gnome (an app-gnome-... scope), session (alice's session itself), cg (a child of app.slice made by alice
+# or root under the name CG of names.tsv, entered by writing to its cgroup.procs). OP: sign (pkcs11-tool) / import / replace_certificate / delete (owner-call.py).
+# MODE: what the agent answers. OUTCOME and STATE: what the journal entry must say (docs/audit.md); ID: "-" or the label of names.tsv whose id the entry must
+# hold. RESULT: what the caller saw: p11-ok / p11-failed (pkcs11-tool), ok (owner-call.py).
+import-flatpak main flatpak - import approve stored read flatpak ok
+sign-flatpak-approve main flatpak - sign approve signed read flatpak p11-ok
+sign-flatpak-deny main flatpak - sign deny denied read flatpak p11-failed
+sign-max-approve main cg max sign approve signed read max p11-ok
+sign-max-deny main cg max sign deny denied read max p11-failed
+sign-session-approve main session - sign approve signed none - p11-ok
+sign-session-deny main session - sign deny denied none - p11-failed
+sign-gnome-approve main gnome - sign approve signed none - p11-ok
+sign-gnome-deny main gnome - sign deny denied none - p11-failed
+sign-h-two-hyphens-approve main cg h-two-hyphens sign approve signed undetermined - p11-ok
+sign-h-two-hyphens-deny main cg h-two-hyphens sign deny denied undetermined - p11-failed
+sign-h-instance-text-approve main cg h-instance-text sign approve signed undetermined - p11-ok
+sign-h-instance-text-deny main cg h-instance-text sign deny denied undetermined - p11-failed
+sign-h-instance-long-approve main cg h-instance-long sign approve signed undetermined - p11-ok
+sign-h-instance-long-deny main cg h-instance-long sign deny denied undetermined - p11-failed
+sign-h-instance-overflow-approve main cg h-instance-overflow sign approve signed undetermined - p11-ok
+sign-h-instance-overflow-deny main cg h-instance-overflow sign deny denied undetermined - p11-failed
+sign-h-escape-other-approve main cg h-escape-other sign approve signed undetermined - p11-ok
+sign-h-escape-other-deny main cg h-escape-other sign deny denied undetermined - p11-failed
+sign-h-escape-upper-approve main cg h-escape-upper sign approve signed undetermined - p11-ok
+sign-h-escape-upper-deny main cg h-escape-upper sign deny denied undetermined - p11-failed
+sign-h-id-two-elements-approve main cg h-id-two-elements sign approve signed undetermined - p11-ok
+sign-h-id-two-elements-deny main cg h-id-two-elements sign deny denied undetermined - p11-failed
+sign-h-id-digit-start-approve main cg h-id-digit-start sign approve signed undetermined - p11-ok
+sign-h-id-digit-start-deny main cg h-id-digit-start sign deny denied undetermined - p11-failed
+sign-h-id-hyphen-early-approve main cg h-id-hyphen-early sign approve signed undetermined - p11-ok
+sign-h-id-hyphen-early-deny main cg h-id-hyphen-early sign deny denied undetermined - p11-failed
+sign-h-chars-approve main cg h-chars sign approve signed undetermined - p11-ok
+sign-h-chars-deny main cg h-chars sign deny denied undetermined - p11-failed
+sign-h-no-suffix-approve main cg h-no-suffix sign approve signed undetermined - p11-ok
+sign-h-no-suffix-deny main cg h-no-suffix sign deny denied undetermined - p11-failed
+sign-h-256-approve main cg h-256 sign approve signed undetermined - p11-ok
+sign-h-256-deny main cg h-256 sign deny denied undetermined - p11-failed
+sign-h-255-invalid-approve main cg h-255-invalid sign approve signed undetermined - p11-ok
+sign-h-255-invalid-deny main cg h-255-invalid sign deny denied undetermined - p11-failed
+replace-flatpak main flatpak - replace_certificate approve replaced read flatpak ok
+sign-cap-within-approve cap cg cap-within sign approve signed read cap-within p11-ok
+sign-cap-within-deny cap cg cap-within sign deny denied read cap-within p11-failed
+sign-cap-after-approve cap cg cap-after sign approve signed undetermined - p11-ok
+sign-cap-after-deny cap cg cap-after sign deny denied undetermined - p11-failed
+delete-flatpak end flatpak - delete approve deleted read flatpak ok

@@ -2,11 +2,13 @@ Custodio handled one request to sign with a stored key. There is one entry per r
 
 `MESSAGE` says what happened, for whom and with which key. `PRIORITY` is 6 for signed,
 5 for denied, 4 for authorization unavailable and 3 for signing failed after approval.
-`CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+`CUSTODIO_OPERATION` is sign. `CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
 mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

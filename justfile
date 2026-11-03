@@ -37,7 +37,12 @@ lint:
     zizmor --offline .github/workflows
     cargo deny check
     cargo machete
+    just deps-check
     scripts/check-files.sh
+
+# Fails, naming the path, when custodio-cli or custodio-pkcs11 reaches the custodiod crate in any dependency kind (normal, build, dev).
+deps-check:
+    scripts/deps_check.py
 
 # Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
 # another configuration, so they run with the nightly checks, not in `check`.
@@ -45,6 +50,7 @@ lint-fuzz:
     #!/usr/bin/env bash
     set -euo pipefail
     (cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings)
+    (cd crates/custodiod/fuzz && cargo clippy --all-targets -- -D warnings)
     # Only the guard's compile_error may fail this check; a bare `!` would accept any other error too.
     if out=$(cargo check -p custodio-pkcs11 --features fuzzing --release --locked 2>&1); then
         echo "lint-fuzz: the fuzzing feature built in release" >&2
@@ -52,12 +58,38 @@ lint-fuzz:
     fi
     grep -q "must not be built outside fuzz or debug builds" <<< "$out" || { echo "$out" >&2; exit 1; }
 
+# The client document docs/api.md against the live service, the error type and the policy file (also part of `test`).
+api-contract:
+    cargo test -p custodiod --test api_contract --locked
+
 # Unit tests.
 test:
     cargo test --workspace --locked
     cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
 
-# Fast checks: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
+# The gate of every feature: lints and every Rust test (unit and integration). The package, install and e2e
+# script tests run in `just check`, at the checkpoints and the release. A pass stamps the tree in
+# target/quick-ok, and that tree is skipped; QUICK_FORCE=1 runs it.
+quick:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tree=$(scripts/tree-hash.sh)
+    if [ -z "${QUICK_FORCE:-}" ] && [ "$(cat target/quick-ok 2> /dev/null)" = "$tree" ]; then
+        echo "quick: this tree already passed (target/quick-ok)"
+        exit 0
+    fi
+    rm -f target/quick-ok
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets --locked -- -D warnings
+    cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
+    taplo fmt --check
+    {{shell_scripts}} | xargs -r shellcheck
+    just deps-check
+    scripts/check-files.sh
+    just test
+    if [ "$(scripts/tree-hash.sh)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/quick-ok; fi
+
+# Every fast check: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
 # ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
 # file size and tests out of the code.
 # A pass stamps the tree (scripts/tree-hash.sh) in target/check-ok, and that tree is skipped; CHECK_FORCE=1 runs it.
@@ -103,8 +135,11 @@ test-scripts:
     scripts/test-bus-check-sync.sh
     scripts/test-sysusers-sync.sh
     scripts/test-bus-check.sh
+    scripts/test-deps-check.sh
+    scripts/test-docs-api.sh
     scripts/test-docs-install.sh
     scripts/test-docs-manual.sh
+    scripts/test-docs-manual-m3.sh
     scripts/test-install-real.sh
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
@@ -116,6 +151,14 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
+    scripts/test-e2e-select.sh
+    scripts/test-e2e-owner.sh
+    scripts/test-e2e-ops.sh
+    scripts/test-e2e-rd.sh
+    scripts/test-e2e-jo.sh
+    scripts/test-e2e-appid.sh
+    scripts/test-e2e-cli.sh
+    scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
@@ -123,15 +166,14 @@ test-scripts:
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-refusal.sh
-    scripts/test-e2e-old.sh
     scripts/test-e2e-oldpath.sh
+    scripts/test-e2e-import.sh
     scripts/test-relabel.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
-    scripts/test-changed-checks.sh
     scripts/test-tree-hash.sh
 
 # Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
@@ -201,12 +243,6 @@ bus-policy:
         *) echo "bus-policy: unexpected result for another user: $denied" >&2; exit 1 ;;
     esac
 
-# Integration tests against a private dbus-daemon with a fake polkit authority (needs `dbus-daemon`).
-# The PKCS#11 test builds the module itself and loads it through the `cryptoki` crate.
-test-integration:
-    cargo test -p custodiod --locked --test dbus --test polkit --test audit
-    cargo test -p custodio-pkcs11 --locked --test cryptoki
-
 # The FFI layer of the PKCS#11 module under Miri (needs nightly with the miri component). The tests
 # use a fake service, because Miri cannot talk to a bus. Only `ffi::` tests: the other modules forbid
 # `unsafe` (`unsupported.rs` allows it but only returns an error and has no tests), and their pure-Rust
@@ -232,17 +268,9 @@ mutants *args:
     set -uo pipefail
     mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
     status=0
-    cargo mutants -p custodiod --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
-    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
+    cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/error.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
+    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
     exit "$status"
-
-# Only the checks the changes since feature <id> started (or a git revision) can break (scripts/changed_checks.py).
-test-changed id_or_rev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    base_file=".harness/state/{{id_or_rev}}.base"
-    if [ -f "$base_file" ]; then base=$(cat "$base_file"); else base={{id_or_rev}}; fi
-    scripts/changed_checks.py --base "$base"
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
 # working tree included. A feature's `verify` gate; CI sweeps every mutant weekly. Extra arguments go to `just mutants`.
@@ -255,6 +283,10 @@ mutants-diff id *args:
     [ -f "$base_file" ] || { echo "no $base_file: the loop has not started $id" >&2; exit 1; }
     mkdir -p target
     git diff "$(cat "$base_file")" > "target/mutants-$id.diff"
+    # New files too, without `git add -N`: intent-to-add entries break the loop's `git stash`.
+    git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do
+        git diff --no-index -- /dev/null "$f" >> "target/mutants-$id.diff" || [ $? = 1 ]
+    done
     just mutants --in-diff "target/mutants-$id.diff" "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
@@ -322,12 +354,20 @@ glibc-ceiling:
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
 # (modutil, certutil) while a test authentication agent approves or denies. Prints and saves the record (bus daemon, polkit version) under
-# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. On debian13 it also builds, once and cached, the last .deb that cargo-deb built (M1) into target/packages-old and upgrades from it (cargo-deb is installed privately by scripts/package-old.sh, not a tool of this repository). Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
-e2e target="all": package
-    scripts/package-next.sh
-    scripts/package-old.sh
-    scripts/package-oldpath.sh
+# target/e2e/. Also builds package N+1 (the same tree, the patch number raised) into target/packages-next for the upgrade case. Also builds the old-path fixture (the .deb and the .rpm with the daemon at /usr/lib/custodio, from this tree) into target/packages-oldpath and upgrades from it on the targets that run the upgrade cases. Not part of `check-slow`: it needs a container engine that can run systemd, which the dev container may not have.
+e2e target="all": e2e-packages
     bash e2e/run.sh {{target}}
+
+# The packages the end-to-end tests install: package N, package N+1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
+e2e-packages: package
+    scripts/package-next.sh
+    scripts/package-oldpath.sh
+
+# Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the
+# given names or match one as a shell glob, e.g. `just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*'` (quote the glob). The accounting then requires each selected
+# case exactly once and no other. A name that matches no case of the target is refused before any container starts.
+e2e-cases target +names: e2e-packages
+    bash e2e/run.sh {{target}} --cases {{quote(names)}}
 
 # Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.
@@ -350,6 +390,40 @@ fuzz-build:
         (cd "$(dirname "$manifest")/.." && cargo +{{nightly_toolchain}} fuzz build --target "$host")
     done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
     if [ "$found" = 0 ]; then echo "no fuzz targets found" >&2; exit 1; fi
+
+# Run every fuzz target for a fixed number of runs with a fixed seed (a smoke test, not fuzzing). Fails on a crash, on an
+# expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
+# directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
+# `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    runs=2000
+    seed=1
+    host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    ran=" "
+    while IFS= read -r manifest; do
+        dir=$(dirname "$manifest")/..
+        listed=$(cd "$dir" && cargo +{{nightly_toolchain}} fuzz list)
+        for target in $listed; do
+            mkdir -p "$tmp/corpus/$target" "$tmp/artifacts/$target"
+            echo "fuzz-smoke: $target -runs=$runs -seed=$seed"
+            (cd "$dir" && cargo +{{nightly_toolchain}} fuzz run --target "$host" "$target" "$tmp/corpus/$target" -- \
+                -runs=$runs -seed=$seed "-artifact_prefix=$tmp/artifacts/$target/") >"$tmp/log" 2>&1 \
+                || { tail -30 "$tmp/log" >&2; echo "fuzz-smoke: $target failed" >&2; exit 1; }
+            tail -2 "$tmp/log"
+            ran="$ran$target "
+        done
+    done < <(find . -name Cargo.toml -path '*/fuzz/Cargo.toml' -not -path '*/target/*')
+    for target in {{expected}}; do
+        case "$ran" in
+            *" $target "*) ;;
+            *) echo "fuzz-smoke: target $target is missing or did not run" >&2; exit 1 ;;
+        esac
+    done
+    if [ "$ran" = " " ]; then echo "fuzz-smoke: no fuzz targets found" >&2; exit 1; fi
 
 # Regenerate CHANGELOG.md from the Conventional Commits history (git-cliff, cliff.toml).
 changelog:

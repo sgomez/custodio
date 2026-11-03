@@ -7,11 +7,13 @@ Custodio handled one request to sign with a stored key. There is one entry per r
 
 `MESSAGE` says what happened, for whom and with which key. `PRIORITY` is 6 for signed,
 5 for denied, 4 for authorization unavailable and 3 for signing failed after approval.
-`CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+`CUSTODIO_OPERATION` is sign. `CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
 mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
@@ -24,11 +26,121 @@ Custodio handled one request to sign with a stored key. There is one entry per r
 
 `MESSAGE` says what happened, for whom and with which key. `PRIORITY` is 6 for signed,
 5 for denied, 4 for authorization unavailable and 3 for signing failed after approval.
-`CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+`CUSTODIO_OPERATION` is sign. `CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
 mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 4c7163ce45d0b9faf8e7c38d098bdb22 en
+Subject: Custodio key import handled
+Defined-By: custodio
+
+Custodio handled one request to import a key and certificate from a .p12 file. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is import. `CUSTODIO_OUTCOME` holds the result as a
+name: stored, denied, authorization_unavailable, wrong_password, unsupported_key or storage_failure. `PRIORITY` is 6 for stored, 5 for denied, 4 for authorization unavailable, a wrong password and an unsupported key, and 3 for a storage failure after approval.
+`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. The file and the
+password are never written.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 4c7163ce45d0b9faf8e7c38d098bdb22
+Subject: Custodio key import handled
+Defined-By: custodio
+
+Custodio handled one request to import a key and certificate from a .p12 file. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is import. `CUSTODIO_OUTCOME` holds the result as a
+name: stored, denied, authorization_unavailable, wrong_password, unsupported_key or storage_failure. `PRIORITY` is 6 for stored, 5 for denied, 4 for authorization unavailable, a wrong password and an unsupported key, and 3 for a storage failure after approval.
+`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. The file and the
+password are never written.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 13d1a981ea8f64fc1a6f390bee7fd66c en
+Subject: Custodio key deletion handled
+Defined-By: custodio
+
+Custodio handled one request to delete a stored key. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is delete. `CUSTODIO_OUTCOME` holds the result as a
+name: deleted, denied, authorization_unavailable or storage_failure. `PRIORITY` is 6 for deleted, 5 for denied, 4 for authorization unavailable and 3 for a storage failure after approval.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 13d1a981ea8f64fc1a6f390bee7fd66c
+Subject: Custodio key deletion handled
+Defined-By: custodio
+
+Custodio handled one request to delete a stored key. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is delete. `CUSTODIO_OUTCOME` holds the result as a
+name: deleted, denied, authorization_unavailable or storage_failure. `PRIORITY` is 6 for deleted, 5 for denied, 4 for authorization unavailable and 3 for a storage failure after approval.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 336e0b53720a735afb179ebc7f779ed6 en
+Subject: Custodio certificate replacement handled
+Defined-By: custodio
+
+Custodio handled one request to replace the certificate of a stored key. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is replace_certificate. `CUSTODIO_OUTCOME` holds the result as a
+name: replaced, denied, authorization_unavailable, certificate_mismatch or storage_failure. `PRIORITY` is 6 for replaced, 5 for denied, 4 for authorization unavailable and a certificate that does not match the key, and 3 for a storage failure after approval.
+The certificate is never written.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+
+The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 336e0b53720a735afb179ebc7f779ed6
+Subject: Custodio certificate replacement handled
+Defined-By: custodio
+
+Custodio handled one request to replace the certificate of a stored key. There is one entry per request that reaches authorization.
+
+`MESSAGE` says what happened, for whom and with which key. `CUSTODIO_UID` and `CUSTODIO_PID` are the
+user and process id that the bus reported for the caller; they are absent when it named none.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is replace_certificate. `CUSTODIO_OUTCOME` holds the result as a
+name: replaced, denied, authorization_unavailable, certificate_mismatch or storage_failure. `PRIORITY` is 6 for replaced, 5 for denied, 4 for authorization unavailable and a certificate that does not match the key, and 3 for a storage failure after approval.
+The certificate is never written.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

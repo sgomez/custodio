@@ -1205,3 +1205,546 @@ F62: pass on both machines.
 - The directory itself is `var_lib_t` before the move too: only files the old service created are `init_var_lib_t`.
 - As in F55, the dialogs were answered from the hypervisor (`virsh send-key`: the lab account's password, or Escape) after a screenshot
   showed each one. No person clicked them. `pkcs11-tool` writes ECDSA as raw `r||s`; `--signature-format openssl` gives the DER that `openssl dgst -verify` reads.
+
+## F67
+
+How `custodiod` can read the caller's flatpak app-id (SPEC open question "How `custodiod` can read the app-id"), settled by trying each
+candidate under the real `custodio.service` on a supported target. Date 2026-11-01.
+
+**Decision: (c)** is at the end. Everything below was run; where something was only read or is inferred, it says so.
+
+### Setup
+
+- Target `debian13` (`e2e/targets/debian13/Containerfile`, built as `custodio-e2e-debian13`), rootless podman 5.4.2, started like
+  `e2e/run.sh` does (`--privileged --cgroupns=host`, tmpfs on `/run`, `/tmp`), `systemctl is-system-running --wait` → booted.
+  The packaged `target/packages/custodio_0.1.0-1_amd64.deb` was installed, so the unit is the one a user gets.
+  Versions: kernel `7.0.0-42-generic` (the container shares the host kernel), systemd 257.13-1~deb13u1, `dbus-daemon` 1.16.2, polkitd as in the image.
+- The unit under test: `sha256sum` of `/usr/lib/systemd/system/custodio.service` in the container is `e12c2ed0…`, of `data/custodio.service`
+  `2ad1fbd0…`. They differ in one line, made by packaging (`diff` output): `ExecStart=/usr/libexec/custodio/custodiod` (package) against
+  `ExecStart=/usr/lib/custodio/custodiod` (`data/`). Every hardening line is identical.
+- To run probes *as the service* without changing the unit file, a drop-in `/etc/systemd/system/custodio.service.d/probe.conf` replaces only
+  `Type=oneshot` and `ExecStart=` (a script that runs the probe file; `runprobe` copies a script to `/run`, restarts the unit and prints its
+  journal). The unit is not edited. `systemctl show custodio.service` in that state:
+  `User=custodio DynamicUser=yes PrivateUsers=yes ProtectProc=invisible ProcSubset=pid CapabilityBoundingSet= AmbientCapabilities= ProtectControlGroups=yes`.
+  Inside the probe: `id: uid=993(custodio)`, `CapEff/CapBnd/CapAmb: 0000000000000000`, `ls /proc | grep -c '^[0-9]'` → 4 (its own tree only).
+- The callers: user `alice` (uid 1001, `useradd`, `loginctl enable-linger alice` → `user@1001.service` active, so there is a real user manager).
+  Processes were started in alice's own manager with `systemd-run --user --scope --unit=… python3 holder.py` (it connects to the system bus and stays):
+  - positive: `app-flatpak-org.example.My_App\x2dName-5151.scope`, with `/proc/<pid>/cgroup` (seen as root)
+    `…/user.slice/user-1001.slice/user@1001.service/app.slice/app-flatpak-org.example.My_App\x2dName-5151.scope`. The app-id has `.`, `_` and `-`.
+  - negative 1: `app-gnome-gedit-99b.scope` in the same `app.slice`.
+  - negative 2: a process outside alice's user manager (`/init.scope`).
+  Real flatpak is **absent** from the container, so the scope is forged by the user manager exactly as flatpak requests it (below). A person can forge it the same way.
+  The container nests all cgroups under `/sys/fs/cgroup/<container id>/…`; on a host the same tree starts at `/sys/fs/cgroup/user.slice/…`.
+- Where flatpak places the scope (**verified** by reading `common/flatpak-run.c` at tags 1.16.1 and 1.18.4): `flatpak_run_in_transient_unit()` escapes the app id
+  with `systemd_unit_name_escape()` (keeps `[A-Za-z0-9:_.]`, every other byte becomes `\xNN`, so `-` is `\x2d`), builds
+  `g_strdup_printf ("app-flatpak-%s-%s.scope", app_id_escaped, instance_id_escaped)` and calls `StartTransientUnit` with the property `PIDs=[getpid()]` on the
+  *user* manager's private socket `/run/user/<uid>/systemd/private`. No `Slice` is set, so systemd puts it in the user manager's `app.slice`:
+  `user@<uid>.service/app.slice/app-flatpak-<escaped id>-<n>.scope` (the placement was **observed** with `systemd-run --user --scope` above).
+  The instance id `<n>` is `g_strdup_printf ("%u", g_random_int ())` (`common/flatpak-instance.c`, `flatpak_instance_allocate_id`): a decimal u32, not a pid.
+  If there is no `/run/user/<uid>/systemd/private`, flatpak only logs `g_info ("Failed to run in transient scope: …")` and runs without a scope.
+- The process the bus names (`xdg-dbus-proxy`) is in the scope: in `flatpak_run_app` the comment says "Must run this before spawning the dbus proxy, to ensure it
+  ends up in the app cgroup" and `flatpak_run_in_transient_unit` is called before `flatpak_run_maybe_start_dbus_proxy` (same tags; line 513/526 in 1.16.1, 634/647 in 1.18.4).
+  `flatpak run` moves *itself* into the scope, then spawns the proxy, which inherits the cgroup. That is reading plus the cgroup inheritance rule; it was **not observed**
+  with a real flatpak. `xdg-dbus-proxy` runs as the person's uid (it is a child of `flatpak run`). The `xdg-dbus-proxy` source was not read for this: the claim relies on flatpak's code above and on cgroup inheritance, not on that source.
+- `xdg-desktop-portal` does not use the scope for flatpaks (it opens `/proc/<pid>/root/.flatpak-info`, `xdp_app_info_flatpak_new`). For non-flatpak apps it parses the unit name
+  with `^app-(?:[[:alnum:]]+\-)?(.+?)(?:\-[[:alnum:]]*)(?:\.scope|\.slice)$` and `cunescape` (**read**, `xdp-app-info-host.c`, main). We do not copy that regex (below).
+- Flatpak app-id syntax (`flatpak_is_valid_name`, `common/flatpak-ref-utils.c`, 1.16.1, **read**): not empty, at most 255 characters, at least three elements,
+  elements `[A-Za-z0-9_-]`, not starting with a digit, `-` only in the last element, `_` anywhere, no leading `.`.
+
+### Baseline: the premise holds, and it is the unit that causes it
+
+As `custodio` under the unit (pids 250 = the forged scope, 253 = outside any app scope, 264/267 other scopes, all uid 1001):
+
+```
+-- alice pid 250
+ls: cannot access '/proc/250/root': No such file or directory
+cat: /proc/250/cgroup: No such file or directory
+cat: /proc/250/status: No such file or directory
+```
+(the same for every alice pid: `ProtectProc=invisible` hides them, so the error is ENOENT, not EACCES.) Controls, all in the same container:
+```
+custodio's own process, under the unit:  /proc/self/root -> /     /proc/self/cgroup: …/system.slice/custodio.service
+custodio uid, plain shell (no sandbox):  ls: cannot read symbolic link '/proc/250/root': Permission denied
+                                         cat /proc/250/cgroup → …/app.slice/app-flatpak-org.example.My_App\x2dName-4242.scope   (works; `-4242` is from an earlier run of the same forged holder, `-5151` is the one used in the other runs; only the readability matters here)
+alice reading her own pid 250:           /proc/250/root -> /      (works)
+root, no sandbox:                        /proc/250/root -> /      (works)
+```
+So `/proc/<pid>/cgroup` of another uid is readable without the sandbox and invisible with it (`ProtectProc=invisible`), and the `root` link fails for another uid
+even without the sandbox (the `PTRACE_MODE_READ` check), as the SPEC says.
+
+### (a) Loosen the unit — rejected
+
+Each step is a drop-in on top of the probe drop-in, same caller pid 250, same `runprobe`:
+
+| Step | Setting changed | `/proc/250/root` as `custodio` |
+|---|---|---|
+| a1 | `ProtectProc=default`, `ProcSubset=all` (18 pids visible) | `Permission denied` (`PrivateUsers=yes` still maps other uids to nobody) |
+| a2 | a1 + `PrivateUsers=no` | `Permission denied`, `CapEff=0` |
+| a3 | a2 + `CapabilityBoundingSet=CAP_SYS_PTRACE`, `AmbientCapabilities=CAP_SYS_PTRACE` (`CapEff: 0000000000080000`) | **`/proc/250/root -> /` readable** |
+| a4 | a2 + `CAP_DAC_READ_SEARCH` instead (`CapEff: 0000000000000004`) | `Permission denied` |
+
+Pid 250 is a plain `tail`, not a real flatpak sandbox, so there is no `/.flatpak-info` under its root (`No such file or directory` in a3); the point of a3 is that the root link is
+readable. The smallest loosening is therefore four settings together (`ProtectProc=default`, `ProcSubset=all`, `PrivateUsers=no`, `CAP_SYS_PTRACE`).
+The exposure gate, run on `data/custodio.service` with exactly those four sed-edited lines:
+
+```
+$ systemd-analyze security --offline=yes --no-pager --threshold=10 data/custodio.service | tail -1      (exit 0)
+→ Overall exposure level for custodio.service: 0.6 SAFE 😀
+$ systemd-analyze security --offline=yes --no-pager --threshold=10 <loosened copy> | tail -1             (exit 1)
+→ Overall exposure level for custodio.service: 1.3 OK 🙂
+$ scripts/check-unit-hardening.sh <loosened copy>                                                         (exit 1)
+unit-hardening: … must have 'ProtectProc=invisible' exactly once and no other ProtectProc= line   (and the same for ProcSubset=pid, PrivateUsers=yes)
+```
+**Rejected**: it fails `just security-score` (1.3 above the threshold 10 = 1.0) and `just unit-hardening`, and a3 shows what it buys the key holder: a process
+with `CAP_SYS_PTRACE` that sees all 18 pids. SPEC: "Never (a)".
+
+### (b) A separate privileged reader — not built in M3
+
+What it would need, from a3/a4: a process with `CAP_SYS_PTRACE` in the bounding and ambient sets, `PrivateUsers=no`, `ProtectProc=default` (it has to see the caller's pid),
+plus an interface to `custodiod`: a unix socket or an fd handed over with the caller's pidfd, from which it resolves the pid (`/proc/self/fdinfo/<pidfd>`, `Pid:`), reads
+`/proc/<pid>/root/.flatpak-info` hostilely (no symlinks, bounded size and time) and returns the id. a3 proves that the capability set is enough; nothing more was built.
+**Not built in M3**: it adds a second unit with `CAP_SYS_PTRACE` and an IPC channel, a new privileged attack surface and a package, install and uninstall path (SELinux
+domain on fedora/alma, polkit/bus policy for the socket), all for a field that is only a record and that (c) delivers without any privilege.
+
+### (c) Sources that need no `/proc` access of another uid — works
+
+All run as `custodio` under the unchanged unit, with the three callers above. The bus is `dbus-daemon` 1.16.2, so `GetConnectionCredentials` has `ProcessFD`.
+The probe (`/run/probe_c.py`, Python/Gio) asked `org.freedesktop.DBus.GetConnectionCredentials(<unique name>)` and used the returned fd. Output (trimmed):
+
+```
+=== caller pos: bus name :1.11
+GetConnectionCredentials keys: ['LinuxSecurityLabel', 'ProcessFD', 'ProcessID', 'UnixGroupIDs', 'UnixUserID'] UnixUserID 1001 ProcessID 921 ProcessFD fd 7
+fdinfo: pos: 0 | flags: 02000002 | mnt_id: 5 | ino: 6502949 | Pid: 921 | NSpid: 921 |
+PIDFD_GET_INFO ok: mask=0x7 cgroupid=131639 pid=921 tgid=921
+resolve by walking /sys/fs/cgroup comparing st_ino: ['/sys/fs/cgroup/<cid>/user.slice/user-1001.slice/user@1001.service/app.slice/app-flatpak-org.example.My_App\x2dName-5151.scope'] (0.001s)
+targeted lookup in user@<uid>.service/app.slice: ['app-flatpak-org.example.My_App\x2dName-5151.scope'] 0.0006s
+GetUnitByPID   -> ('/org/freedesktop/systemd1/unit/user_401001_2eservice',)
+GetUnitByPIDFD -> ('/org/freedesktop/systemd1/unit/user_401001_2eservice', 'user@1001.service', [212, 201, …])
+sandbox view of the caller: /proc/921/cgroup -> [Errno 2] No such file or directory
+=== caller gedit:  … cgroupid=131683 … targeted lookup: ['app-gnome-gedit-99b.scope']  GetUnitByPID → user@1001.service
+=== caller loose:  … cgroupid=129296 … resolve: [' …/init.scope'] ; targeted lookup in user@<uid>.service/app.slice: []  GetUnitByPID → /org/freedesktop/systemd1/unit/init_2escope
+```
+
+| Source (as `custodio`, under the unit) | Positive caller | Negative callers | Verdict |
+|---|---|---|---|
+| (c1) pidfd `fdinfo` | `Pid: 921` only: no cgroup | same | gives the pid, not the scope |
+| (c2) `ioctl(pidfd, PIDFD_GET_INFO)` with `PIDFD_INFO_CGROUPID` (`_IOWR(0xFF, 11, struct pidfd_info)`, size 64, mask 7) | `cgroupid=131639` | 131683 (gedit), 129296 (init.scope) | works; id is the cgroupfs directory's inode number |
+| (c2b) resolve the cgroup id to a name: list `app.slice` of `user@<uid>.service` and compare `st_ino` | `app-flatpak-org.example.My_App\x2dName-5151.scope`, 0.0006 s | `app-gnome-gedit-99b.scope`; for the process outside the user manager: not found | works under `ProtectControlGroups=yes` (a read-only mount) |
+| (c2c) `open_by_handle_at` with the cgroup id as a handle | – | – | **fails: the unit's seccomp filter kills the service** (`code=killed, status=31/SYS`, `Failed with result 'signal'`), and the call needs `CAP_DAC_READ_SEARCH` anyway. Do not use it. |
+| (c3) fdinfo `Pid:` + read `cgroup.procs` of each scope in `user@<uid>.service/app.slice` (mode 0644) | pid 921 found in `app-flatpak-org.example.My_App\x2dName-5151.scope`; 6 scopes scanned in 0.0009 s | gedit: `app-gnome-gedit-99b.scope`; outside: not found (`None`) | works, needs no new kernel feature |
+| (c4) systemd `GetUnitByPID` / `GetUnitByPIDFD` over the system bus | `user@1001.service` | `user@1001.service`; `init.scope` | **does not work**: the system manager only knows `user@<uid>.service`, the scope belongs to the user manager, whose bus (`/run/user/<uid>/bus`, `/run/user/1001/systemd/private`) `custodio` cannot reach. |
+
+Notes on (c4): the bus policy (`data/com.rfirma.Custodio1.conf`, the default `org.freedesktop.systemd1.conf`) let the call through, and no polkit authentication was asked (no agent
+was running and the call returned at once). If polkit were asked it would be systemd's own check on `org.freedesktop.systemd1.*`, not Custodio's per-signature authorization;
+it must not be mistaken for it or cached as one. The result is useless anyway.
+Kernel dependency: `PIDFD_GET_INFO` and `PIDFD_INFO_CGROUPID` appear in `include/uapi/linux/pidfd.h` at `v6.13` and not at `v6.12` (**read** on both tags; `fs/pidfs.c` at `v6.12`
+has no `PIDFD_GET_INFO`). Debian 13's stock kernel is 6.12 (stated from memory of the distribution, not run here: the e2e containers always use the host's kernel, 7.0). So (c2) cannot be
+the only source; (c3) uses only `fdinfo` and a plain file read and has no such floor. Only the 7.0 kernel was run; the `cgroup.procs` read is a stable interface, not tested on 6.12.
+`/proc/<pid>/cgroup` stays invisible in the sandbox (last line of the output), as does `sd_pid_get_user_unit()` which reads it.
+
+### (d) The deviation — not chosen
+
+Every (c) source above was tried first and two of them (c2b, c3) work, so the condition for (d) ("only if every (c) source failed") does not hold. No entry was added to
+`SPEC_DEVIATIONS.md` and acceptances 9 and 15 stand as written, with the source of (c) in place of `/.flatpak-info`.
+
+### What a reader (the F-parser and F-reader features) needs
+
+- **Source** (the contract for the reader): take the `ProcessFD` and `UnixUserID` that `GetConnectionCredentials` returned for the sender (the same pinned process the bus names, which is
+  `xdg-dbus-proxy` for a flatpak). Primary: (c3). `pid` from `/proc/self/fdinfo/<fd>` (`Pid:`; `0` means another pid namespace and `-1` a terminated process: both undetermined, per `pidfd_open(2)`).
+  Directory `/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service/app.slice/` (the standard layout when custodiod runs on the host; the e2e container's nested root is why the
+  experiment walked the tree to find the same directory, and the direct path was **not** tried here, so the first reader feature must test it, or find the cgroup2 mount from `/proc/self/mountinfo`
+  or `/proc/self/cgroup`). For every direct child directory (never follow a symlink; `is_dir(follow_symlinks=False)`), read `cgroup.procs`, and the child that lists the pid names the scope.
+  Optional shortcut on kernels ≥ 6.13: `PIDFD_GET_INFO` cgroup id compared with each child's `st_ino` (c2b). It must give the same answer as (c3) and is not required.
+  `<uid>` must be the one from the credentials, so a uid cannot name another uid's scope (only its own user manager can create units under its own `user@<uid>.service`; nothing was run to
+  attempt the opposite, this is systemd's permission model).
+- **Format of the name**: `app-flatpak-<E>-<N>.scope`. `<E>` is the app id with every byte outside `[A-Za-z0-9:_.]` replaced by `\xNN` (lower-case hex, so `-` is `\x2d`; this was seen in
+  the forged name `org.example.My_App\x2dName`, which systemd kept). `<N>` is the decimal instance id (flatpak: `%u` of a u32). Because `<E>` contains no `-` and `<N>` neither, the string
+  after `app-flatpak-` and before `.scope` has exactly one `-`: **split at the last `-`** (reject a name with more or fewer than one, or an `<N>` that is not 1 to 10 digits). Unescape `<E>` accepting
+  only `\x2d` (anything else, such as `\x2f`, is invalid). Then validate the result as a flatpak app id (rules above, at most 255 characters, `-` only in the last element). A value that fails is never copied.
+  Do not use the portal's regex: it accepts a launcher word and an empty id.
+- **Bounds**: the scope name is at most 255 bytes including `.scope`. Checked: systemd accepted a 255-byte name and answered `Failed to mangle scope name: Invalid argument` for 256, so
+  the escaped id plus `app-flatpak-`, `-<N>` and `.scope` is at most 255 (the unescaped id is below that; a flatpak with an id so long that systemd refuses the scope simply runs without one, which the reader reports as "no flatpak scope"). Read at most a fixed number of
+  children of `app.slice` (suggested 4096) and each `cgroup.procs` bounded in size (suggested 1 MiB) and in time (the whole lookup shares one deadline, suggested 1 s; the measured cost is 1 ms for 6 scopes).
+  A pid list is parsed as decimal numbers only.
+- **Same process afterwards**: re-read the pinned fd's `Pid:` after the scan; it must be equal and not `-1`. For (c2) read `PIDFD_GET_INFO` a second time, same `cgroupid`.
+  The pidfd refers to the process, not to a pid number, so a reused pid cannot be confused. (Not run here: the re-read after exit.)
+- **The three cases**: *read*: the pinned process is listed in a scope whose name parses and validates as above; *none*: the scan of the caller's `app.slice` finished without finding the pid in any
+  `app-flatpak-…` scope (a different scope such as `app-gnome-gedit-99b.scope`, or not under `user@<uid>.service` at all: both seen above); *undetermined*: no `ProcessFD`, `Pid:` 0 or -1, a read error,
+  a limit hit, a name that does not parse or validate, or a pid mismatch after the scan. Known limit: a flatpak started without a user manager (no scope created, see `g_info` above) is *none*.
+- The app-id is a record, not an authorization: any process of a person can create an `app-flatpak-*.scope` in its own user manager (done above with `systemd-run --user --scope`), as the SPEC says.
+
+Decision: (c)
+
+### F81 follow-up: where the cgroup tree starts
+
+The F67 setup observed the e2e container (`--cgroupns=host`) nesting the tree as `/sys/fs/cgroup/<container id>/user.slice/…`, a host as
+`/sys/fs/cgroup/user.slice/…`. The service's own `/proc/self/cgroup` is `0::/<prefix>/system.slice/custodio.service` in both, so the reader
+(`app_id_source/scan.rs` `tree_root`) takes everything in front of the first `system.slice` component as the prefix, once, at start. An unexpected
+shape (no `0::` line, no `system.slice`, `.`, `..`, empty or NUL component) gives the bare mount, which finds no scope (`None`), never a wrong id.
+Tested on fixture trees only (`tests/tree_root.rs`); the real container run is F95. Not re-run in a container here.
+
+
+## F68
+
+Service detection through `xdg-dbus-proxy` (SPEC open question "Detection through the flatpak proxy"). Date 2026-11-01. Markers: `read` = from source only,
+`run` = measured here. Nothing here edits the SPEC; the conflicts with it are at the end.
+
+### Sources and setup
+
+- **Proxy source**: `flatpak/xdg-dbus-proxy` tag **0.1.6**, file `flatpak-proxy.c`. The binary that was run is Debian trixie's `xdg-dbus-proxy 0.1.6-1+deb13u3`
+  (`xdg-dbus-proxy --version` → `0.1.6`); the Debian patches were not diffed against the tag. Function and rule table: `get_dbus_method_handler()` (bus-driver
+  calls, lines ~1985–2090) decides the handler of each call; `flatpak_proxy_client_get_max_policy_and_matched()` gives the policy of the destination; the switch
+  in the client-to-bus path (lines ~2490–2600) applies the handler; the rule table is the comment at lines ~60–186.
+- **How flatpak starts the proxy** (`read`, flatpak tag **1.16.1**): `--system-talk-name=NAME` is a flatpak option, not a proxy option
+  (`common/flatpak-context.c` `option_system_talk_name_cb` → `flatpak_context_set_system_bus_policy(…, FLATPAK_POLICY_TALK)`). `flatpak_context_add_bus_filters()`
+  (same file, ~2665) writes `--filter` and then `--talk=NAME` for each entry (`flatpak_policy_to_string()` → `talk`), and `common/flatpak-run-dbus.c` (~347–362) calls
+  it with `app_id = NULL` for the system bus, so there is no `--own`. The proxy command line is therefore
+  `xdg-dbus-proxy unix:path=/run/dbus/system_bus_socket <socket> --filter --talk=com.rfirma.Custodio1`; the client sees `<socket>` as its system bus.
+  Without `--filter` the proxy forwards everything and would show every call passing, so it is always given.
+- **Run on** (`run`): the e2e image `custodio-e2e-debian13` booted with systemd as PID 1 in rootless podman (`podman run -d --privileged --cgroupns=host --tmpfs /run
+  --tmpfs /run/lock --tmpfs /tmp`, as `e2e/run.sh`), kernel 7.0.0-42, systemd 257.13. Two system buses, both started by systemd:
+  **dbus-broker 37-2** (`dbus-broker-launch --scope system --audit`; `apt-get install dbus-broker`, container restarted) and **dbus-daemon 1.16.2**
+  (`--system --systemd-activation`, the image's own). The real `data/com.rfirma.Custodio1.service` (`Exec=/bin/false`, `User=custodio`,
+  `SystemdService=custodio.service`) and `data/com.rfirma.Custodio1.conf` are installed; user `custodio` from `data/sysusers.d`.
+  Proxies: `systemd-run --unit=f68-proxy-talk xdg-dbus-proxy unix:path=/run/dbus/system_bus_socket /run/f68-talk.sock --filter --talk=com.rfirma.Custodio1`
+  and `… /run/f68-none.sock --filter` (the "name not allowed by the sandbox" case: `--filter` with no `--talk` for the name).
+  Client: `dbus-send --bus=ADDRESS --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.<Call> …`; `call-unowned` is
+  `dbus-send --dest=com.rfirma.Custodio1 /com/rfirma/Custodio1 org.freedesktop.DBus.Peer.Ping` (auto-start allowed, the default).
+- **The situations** (`run`, by `setup.sh <situation>` in the container; the script and the stub are inlined below, `/root/activation.service` and `/root/com.rfirma.Custodio1.conf`
+  are copies of `data/com.rfirma.Custodio1.service` and `data/com.rfirma.Custodio1.conf`):
+  ```sh
+  #!/bin/bash
+  # usage: setup.sh running|masked|missing|failing|notinstalled
+  S=/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
+  U=/etc/systemd/system/custodio.service
+  systemctl stop custodio.service 2>/dev/null; systemctl unmask custodio.service 2>/dev/null; systemctl reset-failed custodio.service 2>/dev/null
+  rm -f $U $S /etc/dbus-1/system.d/com.rfirma.Custodio1.conf
+  case $1 in
+   notinstalled) ;;
+   *) cp /root/activation.service $S; cp /root/com.rfirma.Custodio1.conf /etc/dbus-1/system.d/ ;;
+  esac
+  case $1 in
+   running) cp /root/custodio-run.service $U ;;
+   masked) systemctl mask custodio.service >/dev/null 2>&1 ;;
+   failing) sed 's#ExecStart=.*#ExecStart=/bin/false#' /root/custodio-run.service > $U ;;
+  esac   # missing: nothing more (no custodio.service)
+  systemctl daemon-reload; systemctl reload dbus-broker   # on the dbus-daemon run: systemctl reload dbus
+  [ "$1" = running ] && systemctl start custodio.service
+  ```
+  `/root/custodio-run.service`:
+  ```ini
+  [Unit]
+  Description=F68 stub for custodio.service
+  [Service]
+  Type=dbus
+  BusName=com.rfirma.Custodio1
+  User=custodio
+  ExecStart=/usr/bin/python3 /usr/local/bin/f68-stub.py
+  ```
+  `/usr/local/bin/f68-stub.py` (owns the name through Gio):
+  ```python
+  import gi
+  gi.require_version("Gio", "2.0")
+  from gi.repository import Gio, GLib
+  Gio.bus_own_name(Gio.BusType.SYSTEM, "com.rfirma.Custodio1", Gio.BusNameOwnerFlags.NONE, None, None, None)
+  GLib.MainLoop().run()
+  ```
+  The situations:
+  - *running*: `/etc/systemd/system/custodio.service` is a stub (`Type=dbus`, `BusName=com.rfirma.Custodio1`, `User=custodio`, `ExecStart=python3` owning the name through
+    Gio), started; the activation file and policy installed.
+  - *not activatable*, three setups, because they give different errors: **masked** (`systemctl mask custodio.service`), **missing** (activation file installed, no
+    `custodio.service`), **failing** (`custodio.service` with `ExecStart=/bin/false`, `Type=dbus`). In all of them the activation file is the real one, `Exec=/bin/false`.
+    The Debian package ships neither a stub nor a masked unit, so the one that matches "installed, not started" best on a real host is **failing** or **missing**.
+  - *not installed*: activation file, policy and unit removed.
+  - *name not allowed*: the `--filter` proxy without `--talk`.
+- Also run, **labelled extra**: a private `dbus-daemon` (`--config-file` with `<servicedir>`, no systemd, no policy) with the real activation file and its proxy with
+  `--talk`. It is a third stand-in for hosts where dbus-daemon execs `Exec=` itself, never for the host baseline; it gives `Spawn.ChildExited` (below).
+
+### What the proxy does with each call (`--filter --talk=com.rfirma.Custodio1`) — `read`, each confirmed by `run`
+
+| Call | Rule in `flatpak-proxy.c` 0.1.6 | With `--talk` | Without `--talk` (name has policy NONE) |
+|---|---|---|---|
+| NameHasOwner | `HANDLE_FILTER_HAS_OWNER_REPLY`: passed only if arg0 has policy ≥ SEE (`validate_arg0_name`), otherwise **rewritten** to a synthetic reply `false` | **pass** | **rewritten**: `false` |
+| GetNameOwner | `HANDLE_FILTER_GET_OWNER_REPLY`, same test, else synthetic error | **pass** | **rewritten**: `org.freedesktop.DBus.Error.NameHasNoOwner` |
+| ListActivatableNames | `HANDLE_FILTER_NAME_LIST_REPLY`: always sent, the reply is **filtered** to names with policy ≥ SEE (`EXPECTED_REPLY_LIST_NAMES`) | **filtered**: our name stays (run: 9 names → 2 on broker, `org.freedesktop.DBus` and ours) | **filtered**: ours removed (1 name left, `org.freedesktop.DBus`) |
+| StartServiceByName | `HANDLE_VALIDATE_TALK`: passed if arg0 has policy ≥ TALK; with policy NONE the call is hidden (`handle_hide`) | **pass** | **rewritten**: `org.freedesktop.DBus.Error.ServiceUnknown` (no message text) |
+| call-unowned (any method to the name) | policy of the destination: `< SEE` → `HANDLE_HIDE`, `SEE` only → `HANDLE_DENY` (`AccessDenied`), `TALK` → forwarded if `any_filter_matches()` accepts the call, which `--talk` satisfies (measured: `Ping` passes, the bus activates) | **pass** (the bus activates and answers) | **rewritten**: `ServiceUnknown` (or `NameHasNoOwner` if the call has `NO_AUTO_START` or the destination is a unique name) |
+
+Not seen: `AccessDenied` for a hidden name (it needs `--see`, which flatpak never gives a system-bus name from `--system-talk-name`). `ListNames` is filtered the same
+way as `ListActivatableNames` (not run). `UpdateActivationEnvironment` and `BecomeMonitor` are denied.
+
+### What a client sees (`run`)
+
+Columns: **host** = plain bus; **talk** = through the proxy with `--talk`; **none** = through `--filter` without `--talk`. On every cell of every bus **talk is identical to host**
+(compared line by line, apart from the `ListActivatableNames` total); only the `none` column differs, so it is given once per bus. "msg" is the message text, which is not API.
+Unique names (`:1.N`) vary. `NoReply` = `dbus-send`'s 25 s reply timeout.
+
+**dbus-broker 37 (the baseline target), host = talk:**
+
+| Situation | NameHasOwner | ListActivatableNames | StartServiceByName | GetNameOwner | call-unowned |
+|---|---|---|---|---|---|
+| running | `true` | lists the name | `uint32 2` (already running) | `":1.40"` | `Ping` returns |
+| not activatable, **masked** | `false` | lists the name | `ServiceUnknown`, msg `…activation request failed: unit is masked` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…unit is masked` |
+| not activatable, **missing** unit | `false` | lists the name | `ServiceUnknown`, msg `…unknown unit` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…unknown unit` |
+| not activatable, **failing** unit | `false` | lists the name | `ServiceUnknown`, msg `…startup job failed` | `NameHasNoOwner` | `NameHasNoOwner`, msg `…startup job failed` |
+| not installed | `false` | **absent** | `ServiceUnknown`, msg `The name is not activatable` | `NameHasNoOwner` | `ServiceUnknown`, msg `The name is not activatable` |
+| **none** (not allowed), any of the above four | `false` (rewritten) | **absent** (filtered) | `ServiceUnknown`, msg = the error name (rewritten) | `NameHasNoOwner`, msg = the error name (rewritten) | `ServiceUnknown`, msg = the error name (rewritten) |
+
+**dbus-daemon 1.16.2 (`--systemd-activation`, the Debian/Ubuntu default), host = talk:**
+
+| Situation | NameHasOwner | ListActivatableNames | StartServiceByName | GetNameOwner | call-unowned |
+|---|---|---|---|---|---|
+| running | `true` | lists the name | `uint32 2` | `":1.2"` | `Ping` returns |
+| not activatable, **masked** | `false` | lists the name | `org.freedesktop.systemd1.UnitMasked` | `NameHasNoOwner` | `org.freedesktop.systemd1.UnitMasked` |
+| not activatable, **missing** unit | `false` | lists the name | `org.freedesktop.systemd1.NoSuchUnit` | `NameHasNoOwner` | `org.freedesktop.systemd1.NoSuchUnit` |
+| not activatable, **failing** unit | `false` | lists the name | `NoReply` after 25 s (no reply at all) | `NameHasNoOwner` | `NoReply` after 25 s |
+| not installed | `false` | **absent** | `ServiceUnknown`, msg `The name com.rfirma.Custodio1 was not provided by any .service files` | `NameHasNoOwner` | same `ServiceUnknown` |
+| **none** (not allowed), any | `false` (rewritten) | **absent** (filtered) | `ServiceUnknown` (rewritten) | `NameHasNoOwner` (rewritten) | `ServiceUnknown` (rewritten) |
+
+**Extra, private `dbus-daemon` without systemd (labelled; the real file `Exec=/bin/false` is executed):** not activatable → `StartServiceByName` and `call-unowned` both
+`org.freedesktop.DBus.Error.Spawn.ChildExited` (msg `Process com.rfirma.Custodio1 exited with status 1`), `ListActivatableNames` lists the name; not installed →
+`ServiceUnknown` (msg `…was not provided by any .service files`), name absent; through `--talk` identical in every cell.
+
+Findings that the documentation must not get wrong:
+
+1. **`Spawn.*` is not what the supported hosts return** for "installed but not activatable". Under systemd activation the name is `ServiceUnknown` (dbus-broker, on
+   `StartServiceByName`), `NameHasNoOwner` (dbus-broker, on a plain call), `org.freedesktop.systemd1.UnitMasked` / `NoSuchUnit` (dbus-daemon), or no reply (dbus-daemon, failing
+   unit). `Spawn.ChildExited` appears only on a bus without systemd that executes `Exec=/bin/false`. The documentation must not name one error for this case.
+2. What is **stable** across both buses and all three setups: `ListActivatableNames` lists the name exactly when the activation file is installed (broker 9 vs 8 names, daemon
+   likewise); `NameHasOwner` is `true` only when the service runs; `GetNameOwner` fails with `NameHasNoOwner` whenever it does not run.
+3. Through the proxy, **`--talk` makes every one of these results identical to the host** (including the error names and messages), so the same steps work.
+4. Without `--talk`, **three situations collapse** into one: not installed, not activatable and running all look like *not installed* (`NameHasOwner false`, name absent from
+   `ListActivatableNames`, `ServiceUnknown`). "Name not allowed by the sandbox" is therefore **indistinguishable from "not installed"** to the client; the proxy never answers
+   `AccessDenied` for it. Only the documentation (the missing `--system-talk-name`) can separate them.
+
+### Detection steps for the client documentation
+
+Each step names the rows it separates.
+
+1. Connect to the system bus (`DBUS_SYSTEM_BUS_ADDRESS`, or `/run/dbus/system_bus_socket`; inside flatpak it is the proxy socket). If it cannot connect: no system bus (not Custodio's problem).
+2. `NameHasOwner("com.rfirma.Custodio1")` = `true` → **installed and running**; go on to call. Separates *running* from every other row.
+3. `false` → `ListActivatableNames`, and look for the name. Present → **installed but not running**: go to step 4. Absent → **not installed, or not allowed by the sandbox**
+   (the two cannot be told apart through the proxy, see finding 4): tell the person to install Custodio and, inside flatpak, to check that the app has
+   `--system-talk-name=com.rfirma.Custodio1`. Separates *installed* from *not installed / not allowed*.
+4. Installed, not running: `StartServiceByName("com.rfirma.Custodio1", 0)` (or just make the call; the bus activates it). Result `1` or `2` → started, go on. Any error (`ServiceUnknown`,
+   `NameHasNoOwner`, `UnitMasked`, `NoSuchUnit`, `Spawn.*`, no reply) → **installed but not activatable**: report the error name and message to the person. Do not branch on
+   which name, only on that it failed (finding 1).
+5. After a successful start, use the interface; any error from it is a Custodio error (`docs/api.md`), not a detection result.
+
+Distinguished: running / not activatable / not installed-or-not-allowed. Not distinguished: not installed vs not allowed by the sandbox (proxy rewrites every probe to the
+same answers).
+
+### Conflicts with the SPEC
+
+- SPEC "Detection": "what a client sees when the service is absent, not activatable, or blocked by the sandbox" cannot be three different results: absent and blocked
+  look the same through the proxy (finding 4). The documentation should say so and give the permission as the cause to check.
+- Not a conflict with the SPEC, but a correction to the contract's example: it names `org.freedesktop.DBus.Error.Spawn.*` for "not activatable" (to be measured), and that name does not occur on dbus-broker or on dbus-daemon under systemd (finding 1). The SPEC names no error; it is not edited.
+- Acceptance 15 ("detects the service by the documented steps") holds with steps 1–5: with `--talk`, every call the steps make passes. Real flatpak was not run here; the
+  proxy was started with the command line flatpak 1.16.1 builds (`read`).
+
+Detection: connect to the system bus; `NameHasOwner` true → running; else `ListActivatableNames` has the name → installed, try `StartServiceByName` and treat any error as not activatable (do not rely on one error name); the name absent → not installed or not allowed (`--system-talk-name` missing), indistinguishable through the proxy.
+
+## F89: which agent answers, and how the agent dies with the CLI (2026-11-02)
+
+Sources: polkit master (GitHub mirror `polkit-org/polkit`, `src/programs/pkttyagent.c`,
+`src/polkitbackend/polkitbackendinteractiveauthority.c`; the installed `polkitd` is 126-2 and its
+`pkttyagent --help` matches), systemd main (`src/shared/polkit-agent.c`, `src/shared/exec-util.c`).
+Line numbers are approximate; no tag was pinned. Commands were run in the dev container.
+
+**Deciding "no agent answers" (Outcome B).**
+- verified: polkitd keeps agents in a table keyed by the subject exactly as registered; registering
+  a subject that is already there fails ("An authentication agent already exists for the given
+  subject"). A `unix-process` subject is accepted without a session check, so registering for a
+  pid never collides with the session's agent.
+- verified (`get_authentication_agent_for_subject`): for the subject being authorized, polkitd looks
+  up the agent registered for that exact process; if it has `fallback=true` it is only remembered,
+  then the session's agent is looked up, and the remembered fallback is used only if there is none.
+  So `--fallback` never replaces or outranks an agent of the session. An agent registered for the
+  process *without* `--fallback` would outrank the session's agent.
+- verified: the Authority interface has no call or property that tells whether an agent exists
+  (methods: EnumerateActions, CheckAuthorization, CancelCheckAuthorization, (Un)Register
+  AuthenticationAgent(+WithOptions), AuthenticationAgentResponse(2), Enumerate/RevokeTemporary...;
+  properties BackendName, BackendVersion, BackendFeatures). `pkcheck` has no such option. The only
+  probe left, registering an agent for the session, is itself the forbidden act, and a
+  `CheckAuthorization` with interaction starts an authentication. inferred: nothing side-effect-free
+  exists. systemd does not probe either: `polkit_agent_open` forks `pkttyagent --notify-fd N
+  --fallback` whenever the process has a controlling terminal and is not root.
+- Result: no reliable check. The narrowest replacement that polkit itself enforces is
+  `pkttyagent --fallback --process=PID,START_TIME`: it runs, but only for the CLI's process, and an
+  agent of the session keeps answering. Recorded in `SPEC_DEVIATIONS.md`.
+- command run: `pkttyagent --fallback --process=$$,1` exits 127 here ("Authorization not
+  available"): no `polkitd` in the dev container, so a real registration cannot be shown here.
+
+**`pkttyagent` and its parent (kill mechanism).**
+- verified: `pkttyagent` never watches its parent or stdin (it sits in `g_main_loop_run`, handles
+  only SIGTERM/SIGINT/SIGTSTP); `objdump -T /usr/bin/pkttyagent` imports `getppid` and no `prctl`.
+  Option (1) is out. systemd uses `FORK_DEATHSIG_SIGTERM` (parent-death signal) itself.
+- Option (2) probed in the container (`setpriv from util-linux 2.41.5`): a process started as
+  `setpriv --pdeathsig=KILL -- sleep 300` from a shell was gone one second after `kill -9` of the
+  shell; the same `sleep` started without `setpriv` was still alive. `setpriv` execs, so `ps` and
+  `/proc/<pid>/cmdline` show `sleep 300`: the agent keeps its pid and its own argv.
+- The signal fires when the parent *thread* exits, so the agent is spawned from the main thread.
+- `setpriv` is not pinned by the packages: packaging must list `util-linux` (it is part of the
+  base system of Debian, Fedora and Arch) as a runtime dependency. It is not optional: if it is
+  missing, no agent is started (the same as a missing `pkttyagent`).
+- Signals: the CLI forbids `unsafe`, so handlers come from the `ctrlc` crate (feature
+  `termination`: SIGINT, SIGTERM, SIGHUP, MIT/Apache-2.0, depends on `nix`); `cargo deny check bans` passes with it.
+
+## F90: packages that provide `setpriv` and `pkttyagent`
+
+Probes run in the target containers (2026-11-02): `dnf provides /usr/bin/setpriv /usr/bin/pkttyagent` on almalinux:10 and fedora:44 gives
+`util-linux` (setpriv) and `polkit` (pkttyagent) on both, so the rpm needs `util-linux` and already has `polkit`. `pacman -F` on
+archlinux: `core/util-linux` has `usr/bin/setpriv`, `extra/polkit` has `usr/bin/pkttyagent`. Debian 13: `dpkg -S /usr/bin/setpriv` is
+`util-linux`, which is Essential (`dpkg-query -W -f='${Essential}' util-linux` = yes), so the deb adds nothing; `pkttyagent` comes with
+`polkitd`. The proof that the names resolve is `just e2e`, which installs the packages with each target's package manager.
+
+## F91: `busctl call` does not report the error name (2026-11-02)
+
+Run in the dev container (systemd 257) against a private `dbus-daemon`: `busctl --user call org.freedesktop.DBus /org/freedesktop/DBus
+org.freedesktop.DBus GetNameOwner s com.nobody.x` prints only `Call failed: Could not get owner of name 'com.nobody.x': no such name`, with
+and without `--verbose`; the error name (`org.freedesktop.DBus.Error.NameHasNoOwner`) is lost. So the per-call error name that F91 compares
+cannot be read from busctl. The guest has GLib's D-Bus through python3-gi (the test agent already needs it, `e2e/agent.py`); a
+`Gio.DBusProxy`-free `Gio.DBusConnection.call_sync` raises a `GLib.Error` whose `Gio.DBusError.get_remote_error` is the name.
+
+## F97: pkttyagent with PAM checking the password (2026-11-02)
+
+Probed in the debian13 guest (polkit 126, `just e2e-cases debian13 'cli-*'`), as the contract's step asked, before relying on it:
+- verified: with the image's `polkit-1` PAM file (`pam_permit`) polkit's agent helper has no conversation, so a typed password proves nothing (control: the same run
+  with `pam_permit` set for the step gives no `Password:` prompt, `import-right` fails to find the pkttyagent banner, and the wrong-password import succeeds).
+- verified: with `auth required pam_unix.so` / `account required pam_unix.so` in `/etc/pam.d/polkit-1`, a `chpasswd`-set password for a fresh account (`carol`), and
+  `/usr/lib/polkit-1/polkit-agent-helper-1` setuid root, `custodio import` and `custodio delete` on a pseudo-terminal with no agent in the session print
+  `==== AUTHENTICATING FOR com.rfirma.custodio.<action> ====`, `Authenticating as: carol`, `Password: `; the right password ends `==== AUTHENTICATION COMPLETE ====`
+  and the call succeeds; a wrong one ends `==== AUTHENTICATION FAILED ====`, `custodio: not authorized`, exit non-zero (no second prompt). So `pam_permit` is not needed
+  as a fallback and the wrong-password case stays.
+- verified: a D-Bus `ImportP12` from the same session with no terminal is refused with `PolkitDenied` (no agent registered), the precondition of those cases.
+- verified: the service leaves an empty directory `<uid>` in its state directory for an account that had keys and deleted them; the step removes carol's (`rmdir`)
+  with the account.
+
+## F101: M3 acceptance 14 by hand on ubuntu2604, the client API with busctl (2026-11-02)
+
+Machine: labvm `ubuntu2604` (libvirt), Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic, GNOME on Wayland (autologin, GNOME Shell's polkit agent),
+dbus-daemon 1.16.2 (no dbus-broker), polkit 127 (`polkitd 127-2ubuntu1.1`), systemd 259.5, busctl from systemd 259, OpenSSL 3.5.5. Package
+`custodio_0.1.0-1_amd64.deb` from `just package` at `e5a57af` (sha256 `ec52eebad0e1d16ac9d98cfa29bcddf806f749c1550cb57471d44b07ec43306a`),
+installed with `apt-get install ./…`. Followed `docs/manual-acceptance.md` §16 and `docs/api.md` only; files from the six `openssl` commands
+of "Examples". Every command ran in the desktop session (`labvm-gui`), as uid 1000.
+
+| # | Dialog seen | Error or result seen | Result |
+|---|---|---|---|
+| 1 | none | service not yet started (bus activation): `NameHasOwner` `b false`, listed in `ListActivatableNames`, `StartServiceByName` `u 1`, then `b true`, and `u 2` | pass |
+| 2 | none | `a(ssay) 0` | pass |
+| 3 | "Authentication is required to import a certificate and key into Custodio", cancelled | `Call failed: not authorized` | pass |
+| 4 | the import dialog, approved | `Call failed: wrong password or unreadable .p12 file` | pass |
+| 5 | none | `Call failed: invalid arguments` | pass |
+| 6 | the import dialog, approved | `s "ecdsa-p256"` | pass |
+| 7 | none | `Call failed: a key with this id already exists` | pass |
+| 8 | none | `a(ssay) 1 "demo" "ecdsa-p256" 375 …` | pass |
+| 9 | "Authentication is required to replace a certificate held by Custodio", approved | `Call failed: certificate does not match the key` | pass |
+| 10 | the replace dialog, approved | no output; the listed certificate (382 bytes) equals `renewed.der` byte for byte | pass |
+| 11 | "Authentication is required to sign with a key held by Custodio", approved, twice | `ay 64 …` both times; a dialog each time | pass |
+| 12 | none | `Call failed: no such key` | pass |
+| 13 | "Authentication is required to delete a certificate held by Custodio", cancelled | `Call failed: not authorized`; `demo` still listed | pass |
+| 14 | the delete dialog, approved | no output; `a(ssay) 0` | pass |
+
+Journal (`journalctl -u custodio`): 9 entries for the 9 calls that reached polkit, in order: import denied, import failed (wrong password),
+key imported, certificate replacement refused, certificate replaced, 2 signature made (`ecdsa`), delete denied, key deleted; all uid 1000,
+`CUSTODIO_APP_ID_STATE=none`. Steps 5, 7 and 12 left no entry. None extra, none missing.
+
+Acceptance 14: pass. Nothing needed beyond `docs/api.md`.
+
+- Step 1 of §16 expects `b true` "with the service running". On a fresh install the service is bus-activated and not yet running, so
+  the first answer was `b false`; the page's "do the other steps of Detection" covered it, and those steps matched `docs/api.md`.
+- The two signatures of step 11 are identical: ECDSA here is deterministic (RFC 6979, M0 F-sign), not a cached reply; the dialog showed both times.
+- The dialogs were answered from the hypervisor (`virsh send-key`: the lab account's password and Enter, or Escape), after a screenshot
+  showed each dialog. Step 15 (`AuthorizationUnavailable`) was not run, as the page says.
+- A person then repeated steps 0 to 14 and the journal check by hand on the same VM, restored to its clean snapshot with the same
+  package, typing the commands in a desktop terminal and answering each dialog: every dialog, result and journal entry matched the
+  table above.
+
+## F102: M3 acceptance 15 by hand on fedora44, a test flatpak (2026-11-02)
+
+Machine: labvm `fedora44` (libvirt), Fedora 44, GNOME on Wayland (autologin, GNOME Shell's polkit agent), dbus-broker 37, polkit 127,
+systemd 259.5, flatpak 1.17.6, flatpak-builder 1.4.12. Package `custodio-0.1.0-1.x86_64.rpm` from `just package` at `e5a57af` (sha256
+`72953e950230ee984832295fb82b534f91090d4f5bb10d5c977a426e5a961b73`; no code change since), installed with `dnf install`. Followed
+`docs/manual-acceptance.md` §17. Key `p256` made as in §1 and imported with `custodio import` (the import dialog shown and approved).
+Runtimes `org.freedesktop.Platform//24.08` and `org.freedesktop.Sdk//24.08` from flathub, as user installs. Commands ran in the desktop
+session (`labvm-gui`), as uid 1000; dialogs answered from the hypervisor (`virsh send-key`) after a screenshot showed each one.
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Detection inside the flatpak | `b true`, name listed | `busctl: orden no encontrada` (twice), `not listed` | fail |
+| 2-6 | Sign, journal | | not run: §17 says to stop when the runtime lacks `busctl` | not run |
+
+Acceptance 15: **fail**. `org.freedesktop.Platform` 24.08 ships no `busctl`; it ships `gdbus`, `dbus-send` and `python3`. The manifest
+`packaging/flatpak/com.rfirma.CustodioTest.json` (F99) and §17 step 2 call `busctl`.
+
+- `flatpak-builder --user --install --force-clean build-dir …` as written failed: `fusermount3: failed to access mountpoint
+  …/.flatpak-builder/rofiles/rofiles-…: Permission denied`, `Failure spawning rofiles-fuse`, over SSH and in the desktop session alike
+  (no AVC logged). `--disable-rofiles-fuse` built and installed it; `flatpak info --show-permissions` shows only
+  `[System Bus Policy] com.rfirma.Custodio1=talk`. The build also warns that the 24.08 runtime is end-of-life.
+- Diagnosis outside the documented steps, with `gdbus` from the same sandbox (`flatpak run --command=gdbus com.rfirma.CustodioTest`):
+  `NameHasOwner` → `(true,)`; `ListActivatableNames` lists `com.rfirma.Custodio1`; `Sign p256 4161 0 0 <32 zero bytes>` showed
+  "Authentication is required to sign with a key held by Custodio", approved, and returned 64 bytes, twice, a dialog each time. Each
+  signature's journal entry (base query of `docs/audit.md`) has `CUSTODIO_APP_ID=com.rfirma.CustodioTest`,
+  `CUSTODIO_APP_ID_STATE=read`, `CUSTODIO_UID=1000` (= `id -u`), `CUSTODIO_OPERATION=sign`, `CUSTODIO_OUTCOME=signed`; on the second,
+  `CUSTODIO_PID=5090` was the `xdg-dbus-proxy` seen running during the call (the application's `gdbus` was pid 5094). So the service
+  meets acceptance 15; the test application and its page do not.
+
+### F102 repeat after `fa76c48` (gdbus): pass
+
+Same VM restored to `limpia`, same `.rpm`, §17 as changed by `fa76c48` (manifest and steps with `gdbus`, runtimes 25.08 from
+flathub as user installs). `custodio import --id p256` again (import dialog, approved).
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Detection inside the flatpak | `(true,)`, name listed | `(true,)`, `'com.rfirma.Custodio1'` | pass |
+| 2 | Sign: dialog action | `com.rfirma.custodio.sign` | "Authentication is required to sign with a key held by Custodio", approved | pass |
+| 3 | Sign: result | 64 bytes | `([byte 0x5b, …],)`, 64 bytes | pass |
+| 4 | Journal: app-id | `com.rfirma.CustodioTest`, state `read` | `CUSTODIO_APP_ID=com.rfirma.CustodioTest`, `CUSTODIO_APP_ID_STATE=read`; also found by the app-id query | pass |
+| 5 | Journal: uid | `id -u` of the person | `CUSTODIO_UID=1000`, `id -u` 1000 | pass |
+| 6 | Journal: pid | the proxy's, not the application's | `CUSTODIO_PID=4121` = `xdg-dbus-proxy`; `gdbus` was 4129 | pass |
+
+Acceptance 15: pass. One entry since the step started (`signature made: uid 1000 pid 4121 key p256`), none extra.
+
+- The documented build failed again on `rofiles-fuse`; the page's fallback (`--disable-rofiles-fuse`) built it. Permissions:
+  only `com.rfirma.Custodio1=talk`.
+- The two lines of step 2 were copied from the page into a file and run with `flatpak run --command=sh --filesystem=/tmp:ro
+  com.rfirma.CustodioTest /tmp/step2.sh`, not typed into an interactive shell; the extra read-only `/tmp` is a file permission
+  and does not touch the bus policy or the app-id.
+- A person then repeated §17 by hand on the same VM, restored to its clean snapshot with the same package, following the steps in
+  a desktop terminal (import of `p256`, build, detection, sign from `flatpak run --command=sh`, journal) and answering each dialog:
+  every dialog, result and journal entry matched the table above.
+
+## F103: M3 acceptance 16 by hand on fedora44, Firefox, LibreOffice and a second account (2026-11-02)
+
+Machine: labvm `fedora44` (libvirt), Fedora 44, GNOME on Wayland (autologin, GNOME Shell's polkit agent), SELinux enforcing, dbus-broker
+37, polkit 127, systemd 259.5, Firefox 150.0-1.fc44 (Fedora package, `/usr/bin/firefox`), LibreOffice 26.2.1.2-2.fc44, nss 3.131.0,
+p11-kit 0.26.2. Package `custodio-0.1.0-1.x86_64.rpm` from `just package` at `e5a57af` (sha256
+`72953e950230ee984832295fb82b534f91090d4f5bb10d5c977a426e5a961b73`; only the test flatpak manifest changed since), installed with
+`dnf install`. Followed `docs/manual-acceptance.md` §18. Keys `rsa2048` and `p256` made as in §1 and imported with `custodio import` in
+the desktop session (an import dialog each, approved). As in F54, the lab image's `softhsm2.module` was moved out of
+`/usr/share/p11-kit/modules/`. Dialogs answered from the hypervisor after a screenshot showed each one.
+
+| # | Step | Expected | Seen | Result |
+|---|---|---|---|---|
+| 1 | Firefox signs, dialog seen | signature made | No manual registration (through p11-kit-proxy, as F54). `openssl s_server -Verify 1 -www -no_ticket -no_cache` with a server certificate from the test CA. `p256`: selector, a dialog "Authentication is required to sign with a key held by Custodio" per signature, two approved (page and a second connection), page loads (`Peer signature type: ecdsa_secp256r1_sha256`). After a Firefox restart, `rsa2048`: approved, page loads (`rsa_pss_rsae_sha256`); reload and cancel the dialog: `SSL_ERROR_HANDSHAKE_FAILED` | pass |
+| 2 | LibreOffice signs, dialog seen | valid signature | File > Digital Signatures > Digital Signatures > Sign Document offers both certificates. `rsa2048`: dialog, approved, XAdES `rsa-sha256`; signing again and cancelling the dialog added no signature. `p256`: cancel first (no signature added), then approved, XAdES `ecdsa-sha256`. Each document reopened after LibreOffice was closed: "Este documento está firmado digitalmente y la firma es válida" | pass |
+| 3 | Journal comparison | none extra, none missing | 8 entries for 8 dialogs: Firefox 3 `signed` + 1 `denied` (pids 4526 and 5577, the Firefox process before and after the restart), LibreOffice 2 `signed` + 2 `denied` (pids 7061 and 8135, `soffice.bin` for each document); `CUSTODIO_UID=1000`, `CUSTODIO_APP_ID_STATE=none`, mechanisms `ecdsa`, `rsa_pkcs_pss_sha256` (Firefox) and `rsa_pkcs` (LibreOffice). Outside the base query only the two `key imported` entries | pass |
+| 4 | Second account: token listing | no token | account `segunda` (uid 1001, no keys), its own logind session (`machinectl shell segunda@.host`): new NSS database, `modutil -list` shows `p11-kit-proxy` with no slots, `certutil -L -h all` empty, `pkcs11-tool -L` and `--list-objects` `No slots.` | pass |
+| 5 | Second account: `ListKeys` | `a(ssay) 0` | `a(ssay) 0`; `custodio list` "You have no keys in the custodio service." | pass |
+
+Acceptance 16: pass. No AVC from the start of the run (`ausearch -m AVC,USER_AVC --input-logs`: 0; `-m USER_AUTH`: 64);
+`custodiod` runs as `unconfined_service_t`.
+
+- §18 step 3 and step 5 say to register the module with `modutil -add` as in §6. On Fedora that fails: `ERROR: Failed to add module
+  "custodio". Probable cause : "Unknown PKCS #11 error."`, for the person who signs and for the second account alike. Fedora's NSS
+  loads `p11-kit-proxy` into every database, the proxy has already initialized the module in the same process, and the module's
+  `C_Initialize` answers `CKR_CRYPTOKI_ALREADY_INITIALIZED` (`crates/custodio-pkcs11/src/module.rs`), which NSS reports as unknown.
+  Nothing is lost: the tokens reach both clients through the proxy. Without `</dev/null` the command waits at its p11-kit warning
+  prompt even with `-force`.
+- LibreOffice used a dedicated NSS database (`certutil -N --empty-password`, CA trusted `C,C,C`) set as `CertDir` in the profile, as
+  in F34; the selector named that directory. After signing it asks "¿Quiere recordar esta firma cada vez que guarde?": answered No.
+- The second account was checked from the command line in its own session, not from a graphical login: its Firefox and LibreOffice
+  were not opened. Both load Custodio through the same p11-kit-proxy whose listing in that account is empty.
+- A person then repeated §18 by hand on the same VM, with the same package (keys deleted and imported again, Firefox, LibreOffice
+  with two new documents, journal and AVC check, and the second account in a graphical login: its Firefox and LibreOffice offered no
+  Custodio certificate) and answering each dialog: every dialog, result and journal entry matched the table above.

@@ -162,7 +162,7 @@ fn key_id_matches_store_rule() -> TestResult {
     for s in [
         "", "a", "A-b_9", "a.b", "../x", "a b", "a\n", "é", &long, &ok64, "a/b", "a\0",
     ] {
-        let rejected = matches!(store.get(s), Err(crate::store::StoreError::InvalidId));
+        let rejected = matches!(store.get(1, s), Err(crate::store::StoreError::InvalidId));
         assert_eq!(KeyId::new(s).is_ok(), !rejected, "{s:?}");
     }
     Ok(())
@@ -274,8 +274,10 @@ SYSLOG_IDENTIFIER=custodiod\n\
 CUSTODIO_UID=1234567\n\
 CUSTODIO_PID=7654321\n\
 CUSTODIO_KEY_ID=key-1_A\n\
+CUSTODIO_OPERATION=sign\n\
 CUSTODIO_OUTCOME=signed\n\
-CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n";
+CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n\
+CUSTODIO_APP_ID_STATE=undetermined\n";
     assert_eq!(recv(&s)?, expected);
     Ok(())
 }
@@ -340,11 +342,13 @@ fn all_entries_decode_to_expected_fields() -> TestResult {
                     ("CUSTODIO_UID".into(), b"0".to_vec()),
                     ("CUSTODIO_PID".into(), u32::MAX.to_string().into_bytes()),
                     ("CUSTODIO_KEY_ID".into(), k.into()),
+                    ("CUSTODIO_OPERATION".into(), b"sign".to_vec()),
                     ("CUSTODIO_OUTCOME".into(), o.name().into()),
                 ];
                 if let Some(m) = m {
                     want.push(("CUSTODIO_MECHANISM".into(), m.name().into()));
                 }
+                want.push(("CUSTODIO_APP_ID_STATE".into(), b"undetermined".to_vec()));
                 assert_eq!(got, want);
             }
         }
@@ -412,7 +416,7 @@ fn one_datagram_per_call() -> TestResult {
         sink.record(&entry(Outcome::Denied, None)?)?;
     }
     for _ in 0..3 {
-        assert_eq!(decode(&recv(&s)?)?.len(), 8);
+        assert_eq!(decode(&recv(&s)?)?.len(), 10);
     }
     would_block(&s)?;
     Ok(())

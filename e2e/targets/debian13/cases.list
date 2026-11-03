@@ -1,11 +1,4 @@
-# Cases of this target only, added to e2e/cases.list by e2e/run.sh. Only debian13 ever had a package built by cargo-deb, so only it upgrades from one
-# (F60). They are reported by the second guest run on a fresh container (guest.sh debian13 old); a target without this file that reports one fails.
-upgrade-cargo-deb-version-greater
-upgrade-cargo-deb-service-new-binary
-upgrade-cargo-deb-state-unchanged
-upgrade-cargo-deb-keys-listed
-upgrade-cargo-deb-signs-with-polkit
-upgrade-cargo-deb-no-manual-step
+# Cases of this target only (apt-get purge cycle and reinstall), added to e2e/cases.list by e2e/run.sh; a target without this file that reports one fails.
 # The purge cycle of F49 (apt-get purge), reported by the main guest run on the deb targets only.
 purge-service-stopped
 purge-no-packaged-files

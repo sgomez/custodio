@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for the harness scripts. Source it; do not run it.
 
-# The pre-commit lint (lefthook.yml) repeats what the verify gate runs; commitlint still runs.
-export LEFTHOOK_EXCLUDE=lint
-
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; hc_last=$*; hc_status working "$*"; }
 die() { log "$1" >&2; exit "${2:-1}"; }
 
@@ -43,11 +40,24 @@ transcript_format='
 
 # claude_session <role> <log> <claude args...>: a headless session. <log>.jsonl gets its events, which
 # the herdr terminals follow (hc-sessions.sh); <log> its final message, as plain `claude -p` prints it.
+# Returns 124 when it ran past SESSION_TIMEOUT. claude -p waits for its own background tasks, so once the
+# session has reported its result, whatever is left of its process group is killed.
 claude_session() {
-  local role=$1 logfile=$2 rc=0
+  local role=$1 logfile=$2 rc=0 pid killed=
   shift 2
-  HARNESS_ROLE=$role claude -p --dangerously-skip-permissions --output-format stream-json --verbose \
-    "$@" >"$logfile.jsonl" 2>&1 || rc=$?
+  HARNESS_ROLE=$role setsid timeout -k 30 "${SESSION_TIMEOUT:-45m}" claude -p --dangerously-skip-permissions \
+    --output-format stream-json --verbose "$@" >"$logfile.jsonl" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if grep -q '"type":"result"' "$logfile.jsonl"; then
+      for _ in 1 2 3 4 5 6; do kill -0 "$pid" 2>/dev/null || break; sleep 5; done
+      kill -0 "$pid" 2>/dev/null && killed=1 && kill -TERM -- "-$pid" 2>/dev/null
+      break
+    fi
+    sleep 5
+  done
+  wait "$pid" || rc=$?
+  [ -z "$killed" ] || rc=0
   { jq -rR 'fromjson? | select(.type == "result") | .result // empty' "$logfile.jsonl"
     grep -v '^{' "$logfile.jsonl"; } > "$logfile" || true
   return "$rc"

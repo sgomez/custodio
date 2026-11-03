@@ -53,3 +53,33 @@ fn a_closed_terminal_is_an_error_and_still_restores() {
     drop(master);
     assert!(prompt_on(&mut slave, "Pass: ").is_err());
 }
+
+#[test]
+fn a_question_is_shown_and_one_line_is_read() {
+    let (mut master, mut slave) = pty();
+    let user = std::thread::spawn(move || {
+        let mut seen = [0u8; 5];
+        master.read_exact(&mut seen).unwrap();
+        master.write_all(b"yes\n").unwrap();
+        (master, seen)
+    });
+    let line = question_on(&mut slave, "Sure?").unwrap();
+    let (_master, seen) = user.join().unwrap();
+    assert_eq!(&seen, b"Sure?");
+    assert_eq!(line, "yes\n");
+}
+
+#[test]
+fn a_terminal_without_a_master_cannot_be_asked() {
+    let (master, mut slave) = pty();
+    drop(master);
+    assert!(question_on(&mut slave, "Sure?").is_err());
+}
+
+#[test]
+fn end_of_input_gives_an_empty_answer() {
+    let (mut master, mut slave) = pty();
+    // ^D at the start of a line is the terminal's end of input.
+    master.write_all(b"\x04").unwrap();
+    assert_eq!(question_on(&mut slave, "Sure?").unwrap(), "");
+}

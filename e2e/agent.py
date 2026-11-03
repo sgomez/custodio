@@ -2,7 +2,8 @@
 """Test polkit authentication agent. Registers for the session it runs in and answers every
 BeginAuthentication according to the word in $E2E_DIR/mode: "approve" completes the authentication
 through polkit's agent helper (the PAM stack accepts anyone), "deny" cancels. Each request is
-appended to $E2E_DIR/requests as "<mode> <action>"."""
+appended to $E2E_DIR/requests as "<mode> <action>", and (F95) its polkit subject to $E2E_DIR/subjects as
+"<action> <polkit.subject-pid> <uid of the identity>"."""
 import os
 import socket
 import stat
@@ -61,6 +62,9 @@ def on_call(_conn, _sender, _path, _iface, method, params, invocation):
     decision = mode()
     with open(os.path.join(E2E_DIR, "requests"), "a") as f:
         f.write(f"{decision} {action_id}\n")
+    uids = ",".join(str(ident[1].get("uid")) for ident in _identities if ident[0] == "unix-user") or "-"
+    with open(os.path.join(E2E_DIR, "subjects"), "a") as f:
+        f.write(f"{action_id} {_details.get('polkit.subject-pid', '-')} {uids}\n")
     if decision != "approve":
         invocation.return_dbus_error(ERROR_CANCELLED, "denied by the test agent")
         return

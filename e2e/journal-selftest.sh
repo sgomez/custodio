@@ -28,7 +28,7 @@ TEXT = {"signed": ("signature made", "6"), "denied": ("signature denied", "5"),
 def entry(outcome, key, pid, uid, **over):
     text, prio = TEXT[outcome]
     e = {"_SYSTEMD_UNIT": "custodio.service", "_UID": "990", "MESSAGE_ID": MID, "PRIORITY": prio,
-         "CUSTODIO_UID": uid, "CUSTODIO_PID": pid, "CUSTODIO_KEY_ID": key, "CUSTODIO_OUTCOME": outcome,
+         "CUSTODIO_UID": uid, "CUSTODIO_PID": pid, "CUSTODIO_KEY_ID": key, "CUSTODIO_OPERATION": "sign", "CUSTODIO_OUTCOME": outcome,
          "MESSAGE": f"{text}: uid {uid} pid {pid} key {key}"}
     e.update(over)
     return {k: v for k, v in e.items() if v is not None}
@@ -54,6 +54,8 @@ entries_case("fail", "wrong-uid", [entry("signed", "rsa1", "101", "1001")] + g[1
 entries_case("fail", "wrong-pid", [entry("signed", "rsa1", "999", "1000")] + g[1:])
 entries_case("fail", "wrong-key", [entry("signed", "ec1", "101", "1000")] + g[1:])
 entries_case("fail", "wrong-outcome", [entry("signed", "rsa1", "101", "1000", CUSTODIO_OUTCOME="denied")] + g[1:])
+entries_case("fail", "wrong-operation", [entry("signed", "rsa1", "101", "1000", CUSTODIO_OPERATION="import")] + g[1:])
+entries_case("fail", "no-operation", [entry("signed", "rsa1", "101", "1000", CUSTODIO_OPERATION=None)] + g[1:])
 entries_case("fail", "wrong-priority", [entry("signed", "rsa1", "101", "1000", PRIORITY="5")] + g[1:])
 entries_case("fail", "wrong-message", [entry("signed", "rsa1", "101", "1000", MESSAGE="signature made: uid 1 pid 101 key rsa1")] + g[1:])
 entries_case("fail", "forged-instead-of-real", g[1:] + [entry("signed", "rsa1", "101", "1000", _SYSTEMD_UNIT=None)])

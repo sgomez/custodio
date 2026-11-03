@@ -1,6 +1,11 @@
 # Audit entries
 
-`custodiod` writes one journal entry for every signing request, whatever the result. This page
+`custodiod` writes one journal entry for every request to sign, import a key, delete a key or replace a
+certificate that reaches authorization, whatever the result; `CUSTODIO_OPERATION` says which
+(`sign`, `import`, `delete` or `replace_certificate`). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
+(missing, or another user's: `NoSuchKey`, no polkit call), and, for an import, an id the caller already has
+(`KeyIdTaken`, no polkit call). A request whose caller the bus cannot name gets an
+entry without uid and pid. This page
 is the interface administrators can rely on when they search, alert on or forward these entries.
 
 ## Compatibility rule
@@ -11,9 +16,18 @@ The text of `MESSAGE` is for people; parse the fields instead.
 
 ## Identifier
 
-`MESSAGE_ID` is `29c3d30e6c4242406c6db3f120d36401` for every entry. A journal catalog
-(`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains it in
-`journalctl -x`.
+`MESSAGE_ID` identifies the kind of entry, one per operation:
+
+| Operation | `MESSAGE_ID` |
+|---|---|
+| `sign` | `29c3d30e6c4242406c6db3f120d36401` |
+| `import` | `4c7163ce45d0b9faf8e7c38d098bdb22` |
+| `delete` | `13d1a981ea8f64fc1a6f390bee7fd66c` |
+| `replace_certificate` | `336e0b53720a735afb179ebc7f779ed6` |
+
+A journal catalog (`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains each in
+`journalctl -x`. Entries written before `CUSTODIO_OPERATION` existed are signing entries without it; the
+signing `MESSAGE_ID` never changed.
 
 ## Fields
 
@@ -26,10 +40,48 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller |
 | `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller |
 | `CUSTODIO_KEY_ID` | Id of the key that was asked for | always |
-| `CUSTODIO_OUTCOME` | Result, one of the values below | always |
-| `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | omitted when it was not known |
+| `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete` or `replace_certificate` | always |
+| `CUSTODIO_OUTCOME` | Result, one of the values of the operation below | always |
+| `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
+| `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
+| `CUSTODIO_APP_ID` | The flatpak app-id of the caller, validated | omitted unless `CUSTODIO_APP_ID_STATE` is `read` |
+| `CUSTODIO_KEY_TYPE` | Type of the imported key: `rsa_2048` or `ecdsa_p256` | import entries only; omitted when the file did not get far enough to have one (an unreadable file, a wrong password, a refusal before decoding) |
+
+## Flatpak app-id
+
+Every entry of every operation says in `CUSTODIO_APP_ID_STATE` what Custodio found out about the flatpak
+application the caller runs in. There are three cases, and every entry has exactly one:
+
+| `CUSTODIO_APP_ID_STATE` | `CUSTODIO_APP_ID` | Meaning |
+|---|---|---|
+| `read` | the app-id, e.g. `org.example.App` | The caller's cgroup scope names a flatpak application and the name is a valid flatpak app-id |
+| `none` | omitted | No app-id: the caller is not in a flatpak scope, so it is not sandboxed as far as this check can see |
+| `undetermined` | omitted | The app-id could not be determined: the scope is not readable or its name is not a valid app-id, the lookup failed or took longer than 1 s (the bound, `LOOKUP_DEADLINE`), the caller has no pinned process, the bus named no caller, or no source is configured |
+
+Only an app-id that passed flatpak's naming rules is copied into an entry. Any other text, whatever it
+looks like, is not copied anywhere in the entry: not in a field and not in `MESSAGE`. The app-id is
+recorded and nothing more. It never changes the result of the request, the polkit action or the subject
+polkit is asked about, and it is not used to allow or deny. The lookup runs once per request that leaves an
+entry with a caller, adds at most 1 s to it, and a failing lookup is `undetermined`, never an error.
+
+- **The source is the caller's cgroup scope.** The process the bus pinned for the caller is looked for in the
+  scopes of the caller's `app.slice` (`app-flatpak-<app-id>-<n>.scope`, which flatpak creates), and the name of
+  the scope that lists it gives the app-id. `/.flatpak-info` is not used.
+- **The app-id is not authenticated.** A process outside flatpak that can create a scope of that name in the
+  user's `app.slice` can make its entries say any valid app-id. The field is a record to search by, not an
+  authorization and not proof of who called. `none` is a best-effort finding: it does not prove that the
+  caller is not sandboxed.
+- **The pid of a flatpak caller is the proxy's.** A sandboxed application reaches the bus through
+  `xdg-dbus-proxy`, so for a flatpak caller `CUSTODIO_PID` (and the process the app-id is looked up for) is the
+  pid of the proxy, not of the application. `CUSTODIO_UID` is the user's.
 
 ## Outcomes
+
+Each operation has its own outcomes; an outcome is only written with its operation. The key id of
+`CUSTODIO_KEY_ID` is the one asked for. No entry carries the `.p12` file, a password, certificate bytes,
+data or a signature.
+
+### sign
 
 | Outcome | Priority | Meaning |
 |---|---|---|
@@ -37,6 +89,60 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `denied` | 5 | polkit denied the request |
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown (including a bus reply without a `ProcessFD` that names the `ProcessID`); nothing was signed |
 | `signing_failed` | 3 | Authorized, but signing failed |
+
+### import
+
+| Outcome | Priority | Meaning |
+|---|---|---|
+| `stored` | 6 | Authorized, decoded and stored |
+| `denied` | 5 | polkit denied the request |
+| `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was stored |
+| `wrong_password` | 4 | Authorized, but the password did not open the file; nothing was stored |
+| `unsupported_key` | 4 | Authorized, but the file holds no key of a supported type; nothing was stored |
+| `storage_failure` | 3 | Authorized and decoded, but the key could not be stored |
+
+### delete
+
+| Outcome | Priority | Meaning |
+|---|---|---|
+| `deleted` | 6 | Authorized; the key was made unusable and this entry submitted before any file was removed |
+| `denied` | 5 | polkit denied the request |
+| `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was deleted |
+| `storage_failure` | 3 | Reserved: delete never emits it |
+
+A delete that reaches polkit leaves exactly one entry. After an approval the order is fixed: the key is
+first made unusable (`Sign` then fails as `NoSuchKey`, and `ListKeys` omits it), then the entry is
+submitted, and only then are the files removed. If the entry cannot be submitted, the key is restored
+(listed, signs, both files untouched) and the call fails as `AuditUnavailable`; this holds for every
+outcome. A deleted key therefore never lacks an entry. Delete never emits `storage_failure`: the entry is
+submitted before the removal, so a removal that fails afterwards (`Internal`) cannot change it. The key then
+stays unusable until the service restarts, because an entry already said `deleted`. A crash between the
+entry and the removal leaves the files in place with a `deleted` entry; this is accepted, see "Not
+guaranteed". A call that fails before polkit is asked (invalid id, no such key) leaves no entry. Deletes of
+one key run one at a time.
+
+### replace_certificate
+
+| Outcome | Priority | Meaning |
+|---|---|---|
+| `replaced` | 6 | Authorized and replaced |
+| `denied` | 5 | polkit denied the request |
+| `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing changed |
+| `certificate_mismatch` | 4 | Authorized, but the certificate does not belong to the key; nothing changed |
+| `storage_failure` | 3 | Authorized, but the certificate could not be stored |
+
+A replace that reaches polkit leaves exactly one entry. After an approval the order is fixed: the key is
+read again and its public key compared with the certificate's, the new certificate is stored (atomically),
+then the entry is submitted, still under the lock of that key, and only then does the call reply. If the
+entry cannot be submitted, the old certificate (read before the store) is put back, atomically like the
+replace, and the call fails as `AuditUnavailable`; this holds for every outcome, so a replaced certificate
+never lacks an entry. The outcome `storage_failure` covers every failure after the approval that is not a mismatch:
+the store cannot replace the certificate, the key or its certificate cannot be read, the key is of a type
+the comparison does not support (the reply is `Internal`), and a key or certificate that vanished after the
+lookup (the reply is then `NoSuchKey` or `Internal`, as without the entry). A call that fails before polkit
+is asked (invalid arguments, no such key) leaves no entry. Replaces and deletes of one key run one at a
+time, and a `ListKeys` while the entry is pending may show either certificate. The entry never holds the
+old or the new certificate, only the fields above. Queries by outcome are under "By outcome" below.
 
 ## Mechanisms
 
@@ -50,7 +156,7 @@ The text of `MESSAGE` is for people; parse the fields instead.
 
 ## Message text
 
-The shape is `<what happened>: uid <uid> pid <pid> key <key id>`. Examples:
+The shape is `<what happened>: uid <uid> pid <pid> key <key id>`. Signing examples:
 
 ```text
 signature made: uid 1000 pid 4242 key my-key
@@ -59,6 +165,38 @@ signature denied: uid 1000 pid 4242 key my-key
 authorization unavailable, no signature: uid 1000 pid 4242 key my-key
 authorization unavailable, no signature: uid unknown pid unknown key my-key
 ```
+
+Import:
+
+```text
+key imported: uid 1000 pid 4242 key my-key
+import denied: uid 1000 pid 4242 key my-key
+import authorization unavailable, nothing stored: uid 1000 pid 4242 key my-key
+import failed, wrong password: uid 1000 pid 4242 key my-key
+import failed, unsupported key: uid 1000 pid 4242 key my-key
+import failed after approval, key not stored: uid 1000 pid 4242 key my-key
+```
+
+Delete:
+
+```text
+key deleted: uid 1000 pid 4242 key my-key
+delete denied: uid 1000 pid 4242 key my-key
+delete authorization unavailable, nothing deleted: uid 1000 pid 4242 key my-key
+delete failed after approval, key not removed: uid 1000 pid 4242 key my-key
+```
+
+Replace certificate:
+
+```text
+certificate replaced: uid 1000 pid 4242 key my-key
+certificate replacement denied: uid 1000 pid 4242 key my-key
+certificate replacement authorization unavailable, nothing changed: uid 1000 pid 4242 key my-key
+certificate replacement refused, certificate does not match the key: uid 1000 pid 4242 key my-key
+certificate replacement failed after approval, nothing changed: uid 1000 pid 4242 key my-key
+```
+
+When the bus names no caller, `uid unknown pid unknown` stands for the numbers, as in the last signing example.
 
 ## Queries
 
@@ -69,10 +207,19 @@ by the sender, so any process can write them. A query that must match only entri
 `_UID` is that of the `custodio` system user (declared in `data/sysusers.d/custodio.conf`);
 `id -u custodio` prints it.
 
-All entries of the service:
+All signing entries of the service:
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401
+```
+
+By operation (`sign`, `import`, `delete` or `replace_certificate`):
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=delete
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate
 ```
 
 By the uid of the caller:
@@ -87,16 +234,45 @@ By key:
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_KEY_ID=my-key
 ```
 
+By flatpak app-id (the id is the value of `CUSTODIO_APP_ID`):
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID=org.example.App
+```
+
+By app-id case: the callers whose app-id was read, those that are not in a flatpak scope, and those whose
+app-id could not be determined:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=read
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=none
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_APP_ID_STATE=undetermined
+```
+
 By outcome (add `-o json` for the fields):
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OUTCOME=denied
 ```
 
+A replace that was refused because the certificate belongs to another key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch
+```
+
 ## Not guaranteed
 
+- **A crash during a delete.** The `deleted` entry is submitted before the files are removed. If
+  the service dies between the two, the key is still stored although an entry says `deleted`.
+  Removal after the entry is the choice that keeps a deleted key from ever lacking one.
+- **A failed restore after a replace.** If the entry cannot be submitted and the old certificate cannot
+  be put back either, the call still fails as `AuditUnavailable`, but the new certificate may stay in place
+  without an entry. A crash between the store and the restore has the same effect.
 - **Identity of a person.** `CUSTODIO_UID` and `CUSTODIO_PID` name the calling process only.
   They do not say who sat at the keyboard, and a shared account looks like one user.
+- **A true app-id.** See "Flatpak app-id": the value is read from a cgroup scope name, and a process that
+  can create such a scope can choose it.
 - **Pid reuse.** A process id is reused after the process exits; `CUSTODIO_PID` may no longer
   belong to the process that asked when you read the entry. Use it with the timestamp.
 - **Rate limiting.** journald may drop or delay entries when a service logs too much

@@ -1,27 +1,29 @@
-//! The `com.rfirma.Custodio1` D-Bus service: list keys and certificates, import a `.p12`, sign.
+//! The `com.rfirma.Custodio1` D-Bus service: list keys with their certificates, import a `.p12`, sign.
 //!
-//! Every `Sign` call asks polkit first and never caches the answer. Argument parsing lives in
+//! Every `Sign` call for one of the caller's keys asks polkit and never caches the answer. Argument parsing lives in
 //! plain functions ([`parse_sign_request`], [`parse_import_request`]) so it can be fuzzed.
 
 use std::fmt;
+use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretSlice, SecretString};
+use zbus::interface;
 use zbus::message::Header;
-use zbus::{fdo, interface};
 
+use crate::app_id::AppIdOutcome;
+use crate::app_id_source::{AppIdSource, GuardedSource};
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
-use crate::import::{KeyKind, MAX_P12_LEN, cert_id, import_p12};
+use crate::error::ServiceError;
+use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify};
 use crate::offload::run_on_thread;
-use crate::polkit::{AuthError, Authorizer};
-use crate::sign::{Mechanism, PssHash, SignError, sign};
+use crate::polkit::{ACTION_ID, AuthError, Authorizer};
+use crate::sign::{Mechanism, PssHash, sign};
 use crate::store::{KeyStore, StoreError};
 
-/// Well-known bus name of the service.
-pub const BUS_NAME: &str = "com.rfirma.Custodio1";
-/// Object path of the service.
-pub const OBJECT_PATH: &str = "/com/rfirma/Custodio1";
+pub use custodio_client::{BUS_NAME, OBJECT_PATH};
+pub use replace::parse_replace_request;
 
 /// `CKM_RSA_PKCS`.
 pub const CKM_RSA_PKCS: u32 = 0x0001;
@@ -107,6 +109,14 @@ fn check_id(id: &str) -> Result<(), RequestError> {
     }
 }
 
+/// Check the argument of `DeleteKey`: the id. `delete_call` runs this same check.
+///
+/// # Errors
+/// [`RequestError::BadId`].
+pub fn parse_delete_request(id: &str) -> Result<(), RequestError> {
+    check_id(id)
+}
+
 /// Check the arguments of `Sign`.
 ///
 /// `hash` and `salt_len` are only meaningful for `CKM_RSA_PKCS_PSS`; they must be 0 otherwise.
@@ -169,20 +179,6 @@ pub fn parse_import_request(
     })
 }
 
-fn invalid(e: &RequestError) -> fdo::Error {
-    fdo::Error::InvalidArgs(e.to_string())
-}
-
-/// Store errors go to the caller without paths.
-fn store_error(e: &StoreError) -> fdo::Error {
-    match e {
-        StoreError::InvalidId => fdo::Error::InvalidArgs("invalid key id".into()),
-        StoreError::AlreadyExists => fdo::Error::Failed("key already exists".into()),
-        StoreError::NotFound => fdo::Error::Failed("no such key".into()),
-        _ => fdo::Error::Failed("key store error".into()),
-    }
-}
-
 fn kind_name(kind: KeyKind) -> &'static str {
     match kind {
         KeyKind::Rsa2048 => "rsa2048",
@@ -190,16 +186,17 @@ fn kind_name(kind: KeyKind) -> &'static str {
     }
 }
 
-/// Why a signature was refused without a reason the caller may know.
-fn audit_unavailable() -> fdo::Error {
-    fdo::Error::Failed("audit unavailable".into())
-}
-
 /// The key id and mechanism for the audit entry of a checked request.
-fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), fdo::Error> {
-    let key_id = KeyId::new(id).map_err(|_| audit_unavailable())?;
+fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), ServiceError> {
+    let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
     Ok((key_id, AuditMechanism::from(mechanism)))
 }
+
+/// What a `Sign` call records: the outcome, the caller if known, and the reply.
+type Attempt = (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>);
+
+/// A caller the bus named: the sender, its credentials and the pidfd the bus pinned, if any.
+type Known<'a> = (&'a str, Caller, Option<OwnedFd>);
 
 /// The object served at [`OBJECT_PATH`].
 pub struct Custodio<A, C> {
@@ -207,6 +204,9 @@ pub struct Custodio<A, C> {
     authorizer: A,
     credentials: C,
     sink: Arc<dyn AuditSink>,
+    decoder: Arc<dyn P12Decoder>,
+    app_ids: Option<GuardedSource>,
+    deletes: delete_state::DeleteState,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -222,7 +222,34 @@ impl<A, C> Custodio<A, C> {
             authorizer,
             credentials,
             sink,
+            decoder: Arc::new(RealDecoder),
+            app_ids: None,
+            deletes: delete_state::DeleteState::default(),
         }
+    }
+
+    /// Replaces the `.p12` decoder. Production uses the real parser; tests count the calls.
+    #[must_use]
+    pub fn with_decoder(mut self, decoder: Arc<dyn P12Decoder>) -> Self {
+        self.decoder = decoder;
+        self
+    }
+
+    /// Sets where the flatpak app-id of a caller is read from. Without one every entry says the
+    /// app-id could not be determined. The app-id only goes into the entry: it never changes a reply,
+    /// the polkit request or the store.
+    #[must_use]
+    pub fn with_app_id_source(mut self, source: impl AppIdSource + 'static) -> Self {
+        self.app_ids = Some(GuardedSource::new(source));
+        self
+    }
+
+    /// As [`with_app_id_source`](Self::with_app_id_source), with a source that is already guarded
+    /// (tests choose its deadline).
+    #[must_use]
+    pub fn with_guarded_app_id_source(mut self, source: GuardedSource) -> Self {
+        self.app_ids = Some(source);
+        self
     }
 }
 
@@ -232,7 +259,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// that fails nothing is returned but an error.
     ///
     /// # Errors
-    /// A D-Bus error for a refused or failed call, `Failed("audit unavailable")` if the entry could
+    /// A D-Bus error for a refused or failed call, [`ServiceError::AuditUnavailable`] if the entry could
     /// not be recorded.
     pub async fn sign_call(
         &self,
@@ -242,59 +269,149 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         hash: u32,
         salt_len: u32,
         data: &[u8],
-    ) -> fdo::Result<Vec<u8>> {
-        let request =
-            parse_sign_request(id, mechanism, hash, salt_len, data).map_err(|e| invalid(&e))?;
+    ) -> Result<Vec<u8>, ServiceError> {
+        let request = parse_sign_request(id, mechanism, hash, salt_len, data)
+            .map_err(|e| ServiceError::from(&e))?;
         let (key_id, audit_mechanism) = audit_parts(&request.id, &request.mechanism)?;
-        let (outcome, caller, result) = self.attempt(sender, &request, data).await;
+        // A missing key or another uid's key is refused here: no polkit call and no entry. The
+        // entry would add nothing the caller does not know, and `NoSuchKey` must look the same
+        // for both. See `docs/decisions.md`.
+        let Some(((outcome, caller, result), app_id)) =
+            self.attempt(sender, &request, data).await?
+        else {
+            return Err(ServiceError::NoSuchKey);
+        };
         let entry = match caller {
             Some(caller) => Entry::new(outcome, caller, key_id, Some(audit_mechanism)),
             None => Entry::without_caller(key_id, Some(audit_mechanism)),
-        };
+        }
+        .with_app_id(app_id);
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record(&entry)).await {
             Some(Ok(())) => result,
-            _ => Err(audit_unavailable()),
+            _ => Err(ServiceError::AuditUnavailable),
         }
     }
 
-    /// Credentials, polkit and signing, with the outcome to record.
+    /// The caller of a call, when the bus names one: the sender, its credentials and the pinned pidfd.
+    async fn known_caller<'a>(&self, sender: Option<&'a str>) -> Option<Known<'a>> {
+        let sender = sender?;
+        let (caller, pidfd) = self.credentials.pinned_credentials(sender).await.ok()?;
+        Some((sender, caller, pidfd))
+    }
+
+    /// The app-id case of a caller, asked once per call and never later than the lookup deadline. No
+    /// pinned process or no source is `Undetermined`. It is only recorded, never acted on.
+    async fn app_id_of(&self, pidfd: Option<&OwnedFd>, uid: u32) -> AppIdOutcome {
+        match (&self.app_ids, pidfd) {
+            (Some(source), Some(pidfd)) => source.app_id(pidfd, uid).await,
+            _ => AppIdOutcome::Undetermined,
+        }
+    }
+
+    /// The owner of this call: the uid the bus reports for the sender, never an argument.
+    async fn owner(&self, sender: Option<&str>) -> Result<u32, ServiceError> {
+        let sender = sender.ok_or(ServiceError::AuthorizationUnavailable)?;
+        self.credentials
+            .credentials(sender)
+            .await
+            .map(|c| c.uid)
+            .map_err(|_| ServiceError::AuthorizationUnavailable)
+    }
+
+    /// `ListKeys` after the bus handed over the sender: `(id, key type, DER certificate)` of every
+    /// key of the caller. Asks no polkit.
+    ///
+    /// # Errors
+    /// [`ServiceError::AuthorizationUnavailable`] if the caller is unknown; [`ServiceError::Internal`]
+    /// if the store cannot be read or a key has no readable certificate or a readable type.
+    pub async fn list_keys_call(
+        &self,
+        sender: Option<&str>,
+    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+        let owner = self.owner(sender).await?;
+        let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
+        let mut out = Vec::new();
+        // A key a delete has made unusable is not listed, whatever is still on disk.
+        let listed = ids
+            .iter()
+            .filter(|i| !i.ends_with(CERT_SUFFIX) && !self.deletes.is_unusable(owner, i));
+        for id in listed {
+            let key = self
+                .store
+                .get(owner, id)
+                .map_err(|_| ServiceError::Internal)?;
+            let kind = classify(key.expose_secret()).map_err(|_| ServiceError::Internal)?;
+            let cert = self
+                .store
+                .get(owner, &cert_id(id))
+                .map_err(|_| ServiceError::Internal)?;
+            out.push((
+                id.clone(),
+                kind_name(kind).to_owned(),
+                cert.expose_secret().to_vec(),
+            ));
+        }
+        Ok(out)
+    }
+
+    /// Credentials, the caller's key, polkit and signing, with the outcome to record and the app-id
+    /// case of the caller. `Ok(None)`:
+    /// the caller has no key with this id; nothing is recorded and polkit was not asked.
     async fn attempt(
         &self,
         sender: Option<&str>,
         request: &SignRequest,
         data: &[u8],
-    ) -> (Outcome, Option<Caller>, fdo::Result<Vec<u8>>) {
-        let unavailable = || fdo::Error::AccessDenied("authorization unavailable".into());
-        let Some(sender) = sender else {
-            return (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+    ) -> Result<Option<(Attempt, AppIdOutcome)>, ServiceError> {
+        let unavailable = || ServiceError::AuthorizationUnavailable;
+        let Some((sender, caller, pidfd)) = self.known_caller(sender).await else {
+            let attempt = (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            return Ok(Some((attempt, AppIdOutcome::Undetermined)));
         };
-        let Ok(caller) = self.credentials.credentials(sender).await else {
-            return (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+        // Only the caller's own keys are looked at. Any other store failure is reported after
+        // polkit, as a failed signature, as before.
+        if self.deletes.is_unusable(caller.uid, &request.id) {
+            return Ok(None);
+        }
+        let key = match self.store.get(caller.uid, &request.id) {
+            Err(StoreError::NotFound) => return Ok(None),
+            other => other.map_err(|e| ServiceError::from(&e)),
         };
-        match self.authorizer.authorize(sender).await {
+        let app_id = self.app_id_of(pidfd.as_ref(), caller.uid).await;
+        let attempt = self
+            .authorize_and_sign(sender, caller, key, request, data)
+            .await;
+        Ok(Some((attempt, app_id)))
+    }
+
+    /// Polkit, then the signature with the key already looked up.
+    async fn authorize_and_sign(
+        &self,
+        sender: &str,
+        caller: Caller,
+        key: Result<SecretSlice<u8>, ServiceError>,
+        request: &SignRequest,
+        data: &[u8],
+    ) -> Attempt {
+        let unavailable = || ServiceError::AuthorizationUnavailable;
+        match self.authorizer.authorize(sender, ACTION_ID).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
-                let denied = fdo::Error::AccessDenied("not authorized".into());
-                return (Outcome::Denied, Some(caller), Err(denied));
+                return (
+                    Outcome::Denied,
+                    Some(caller),
+                    Err(ServiceError::PolkitDenied),
+                );
             }
             Err(AuthError::BadSender | AuthError::Unavailable(_)) => {
                 let outcome = Outcome::AuthorizationUnavailable;
                 return (outcome, Some(caller), Err(unavailable()));
             }
         }
-        let signed = self
-            .store
-            .get(&request.id)
-            .map_err(|e| store_error(&e))
-            .and_then(|key| {
-                sign(&key, request.mechanism, data).map_err(|e| match e {
-                    SignError::BadData | SignError::MechanismMismatch => {
-                        fdo::Error::InvalidArgs(e.to_string())
-                    }
-                    SignError::BadKey | SignError::Failed => fdo::Error::Failed(e.to_string()),
-                })
-            });
+        let signed = key.and_then(|key| {
+            sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
+        });
         let outcome = if signed.is_ok() {
             Outcome::Signed
         } else {
@@ -310,35 +427,60 @@ where
     A: Authorizer + Send + Sync + 'static,
     C: CallerCredentials + Send + Sync + 'static,
 {
-    /// Ids of the stored keys.
-    fn list_keys(&self) -> fdo::Result<Vec<String>> {
-        let ids = self.store.list().map_err(|e| store_error(&e))?;
-        Ok(ids
-            .into_iter()
-            .filter(|i| !i.ends_with(CERT_SUFFIX))
-            .collect())
+    /// `(key id, key type, DER certificate)` for every stored key of the caller.
+    async fn list_keys(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+        self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
+            .await
     }
 
-    /// `(key id, DER certificate)` for every key that has a certificate.
-    fn list_certificates(&self) -> fdo::Result<Vec<(String, Vec<u8>)>> {
-        let ids = self.store.list().map_err(|e| store_error(&e))?;
-        let mut out = Vec::new();
-        for id in ids.iter().filter(|i| !i.ends_with(CERT_SUFFIX)) {
-            if let Ok(cert) = self.store.get(&cert_id(id)) {
-                out.push((id.clone(), cert.expose_secret().to_vec()));
-            }
-        }
-        Ok(out)
-    }
-
-    /// Imports a `.p12` as key `id`; returns the key type.
+    /// Imports a `.p12` as key `id` of the caller; returns the key type.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
-    fn import_p12(&self, id: &str, p12: Vec<u8>, password: &str) -> fdo::Result<String> {
-        let request = parse_import_request(id, &p12, password).map_err(|e| invalid(&e))?;
-        let kind = import_p12(&self.store, &request.id, &p12, &request.password)
-            .map_err(|e| fdo::Error::Failed(e.to_string()))?;
-        Ok(kind_name(kind).to_owned())
+    async fn import_p12(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+        p12: Vec<u8>,
+        password: &str,
+    ) -> Result<String, ServiceError> {
+        self.import_call(
+            header.sender().map(zbus::names::UniqueName::as_str),
+            id,
+            &p12,
+            password,
+        )
+        .await
+    }
+
+    /// Deletes key `id` of the caller with its certificate, after polkit approves this one call.
+    async fn delete_key(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+    ) -> Result<(), ServiceError> {
+        self.delete_call(header.sender().map(zbus::names::UniqueName::as_str), id)
+            .await
+    }
+
+    /// Replaces the certificate of key `id` of the caller with one for the same key, after polkit
+    /// approves this one call.
+    // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
+    #[allow(clippy::needless_pass_by_value)]
+    async fn replace_certificate(
+        &self,
+        #[zbus(header)] header: Header<'_>,
+        id: &str,
+        certificate: Vec<u8>,
+    ) -> Result<(), ServiceError> {
+        self.replace_call(
+            header.sender().map(zbus::names::UniqueName::as_str),
+            id,
+            &certificate,
+        )
+        .await
     }
 
     /// Signs `data` with key `id`, after polkit approves this one call.
@@ -350,7 +492,7 @@ where
         hash: u32,
         salt_len: u32,
         data: Vec<u8>,
-    ) -> fdo::Result<Vec<u8>> {
+    ) -> Result<Vec<u8>, ServiceError> {
         self.sign_call(
             header.sender().map(zbus::names::UniqueName::as_str),
             &id,
@@ -363,5 +505,9 @@ where
     }
 }
 
+mod delete;
+mod delete_state;
+mod import;
+mod replace;
 #[cfg(test)]
 mod tests;

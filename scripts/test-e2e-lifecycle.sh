@@ -59,12 +59,10 @@ done
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     d=$ROOT/e2e/targets/$T
     [ ! -f "$d/refusal-only" ] || continue # F50: a refusal-only target installs nothing, so it has no lifecycle
-    { ids_of "$ROOT/e2e/cases.list"; ids_of "$d/cases.list" | grep -v '^upgrade-cargo-deb-' || true; } > "$tmp/ids"
+    { ids_of "$ROOT/e2e/cases.list"; ids_of "$d/cases.list" || true; } > "$tmp/ids"
     cat "$ROOT/e2e/cases.list" > "$tmp/cases"
     [ ! -f "$d/cases.list" ] || cat "$d/cases.list" >> "$tmp/cases"
     sed 's/^/E2E-CASE run /' "$tmp/ids" > "$tmp/out.all"
-    # the cargo-deb ids belong to the second run of debian13
-    { ids_of "$d/cases.list" | grep '^upgrade-cargo-deb-' | sed 's/^/E2E-CASE run /' || true; } >> "$tmp/out.all"
     bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$d/skip.list" "$tmp/out.all" > /dev/null 2>&1 || bad "$T: the complete report was not accepted"
     for id in $removal_ids; do
         grep -vx "E2E-CASE run $id" "$tmp/out.all" > "$tmp/out.omit"

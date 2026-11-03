@@ -43,11 +43,19 @@ Rules:
   it, a feature that adds it comes first.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a
   feature introduces a `just` recipe, say so in the description and use the recipe in `verify`.
-  Never use a command that always succeeds. Use `just check` plus only the slow gates the feature
-  touches (e.g. `just miri` for FFI code, `just mutants-diff <id>` for files in the `mutants`
-  recipe, never the full `just mutants`), never `just check-slow`: the release runs it in full.
+  Never use a command that always succeeds. Start with `just quick` (lints and every Rust test;
+  never `just check` in a build feature) and add only the feature's own slow gates:
+  - `just mutants-diff <id>` for files in the `mutants` recipe, never the full `just mutants`;
+  - `just miri` and `just asan` only for a change to the FFI layer;
+  - `just e2e-cases <target> <cases>` only in a feature that adds or changes those e2e cases.
+  Package gates, the install and lifecycle script tests, `just check` and `just e2e` on every
+  target run only in the checkpoint features, never in a build feature.
   `verify` runs the code the feature adds; a grep or `test -f` alone does not prove it works, and
   must not pass before the feature is built.
+- The full suites run at checkpoints, not in every feature: one feature after each group of
+  related features (for example the service API, the clients, the e2e cases) and one before the
+  manual features, each with `just e2e` on all targets and the package gates in `verify`, and
+  depending on every feature of its group. A failure there is fixed in that checkpoint.
 - An acceptance item that only a person can check (a GUI dialog, hardware, a third-party app) is a
   feature with `"manual": true` and no `verify`.
 - Every `passes` is `false`.

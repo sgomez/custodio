@@ -100,8 +100,8 @@ check() {
     n=$(grep -c 'docs/install.md' packaging/bus-check.sh || true)
     [ "$n" -le "${#phrases[@]}" ] || bad "packaging/bus-check.sh has $n lines pointing to docs/install.md, this test knows ${#phrases[@]} messages"
 
-    # Ubuntu 24.04 stays supported (precondition on the repository), so the switch is documented.
-    if [ ! -d e2e/targets/ubuntu2404 ] || ! grep -q 'Ubuntu 24\.04' SPEC.md; then bad "precondition: Ubuntu 24.04 is no longer in the supported set"; fi
+    # Ubuntu 24.04 stays supported while its e2e target exists (M3 inherits M2's targets), so the switch is documented.
+    [ -d e2e/targets/ubuntu2404 ] || bad "precondition: Ubuntu 24.04 is no longer in the supported set"
     text=$(section "$doc" '^#+ .*Ubuntu 24\.04')
     need "$text" 'dbus-broker' "Ubuntu 24.04 section does not name dbus-broker"
     need "$text" 'reboot' "Ubuntu 24.04 section does not say to reboot"

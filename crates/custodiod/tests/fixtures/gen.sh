@@ -45,3 +45,30 @@ for n in p256 rsa2048; do
     -out "$n-sentinel.p12" 2>/dev/null
 done
 chmod 644 ./*.p12
+
+# Certificates (DER) for the ReplaceCertificate tests (tests/replace.rs). The ones over an existing
+# key are made from that key in the .p12 above, so no existing fixture changes.
+export OLD_PW=test-password
+recert() { # name, extra `openssl req` args...
+  local name=$1 src=$2
+  shift 2
+  openssl pkcs12 -in "$src.p12" -password env:OLD_PW -nodes -nocerts -out "$tmp/$src.pem" 2>/dev/null
+  openssl req -new -x509 -key "$tmp/$src.pem" -subj "/CN=custodio test $name" "$@" -outform DER \
+    -out "cert-$name.der"
+}
+recert p256-recert p256 -days 36500 -set_serial 4242
+recert rsa2048-recert rsa2048 -days 36500 -set_serial 4243
+# A second certificate for the key of p256-other.p12, whose bytes differ from the one in the .p12.
+recert p256-other-recert p256-other -days 36500 -set_serial 4244
+# Expired: valid only in 2020.
+recert p256-expired p256 -not_before 20200101000000Z -not_after 20201231000000Z
+recert rsa2048-expired rsa2048 -not_before 20200101000000Z -not_after 20201231000000Z
+# Certificates of other keys: another RSA 2048 key, and the keys of the other fixtures.
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$tmp/rsa-other.key" 2>/dev/null
+openssl req -new -x509 -key "$tmp/rsa-other.key" -subj "/CN=custodio test rsa other" -days 36500 \
+  -outform DER -out cert-rsa2048-other.der
+for n in p256-other p384 ed25519 rsa3072; do
+  openssl pkcs12 -in "$n.p12" -password env:OLD_PW -nokeys -clcerts -out "$tmp/$n.crt.pem" 2>/dev/null
+  openssl x509 -in "$tmp/$n.crt.pem" -outform DER -out "cert-$n.der"
+done
+chmod 644 ./*.der

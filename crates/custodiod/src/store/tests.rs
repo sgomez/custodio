@@ -3,8 +3,14 @@ use std::error::Error;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
+const OWNER: u32 = 1000;
+
 fn secret(bytes: &[u8]) -> SecretSlice<u8> {
     SecretSlice::from(bytes.to_vec())
+}
+
+fn area(store: &KeyStore) -> PathBuf {
+    store.dir().join(OWNER.to_string())
 }
 
 fn mode(p: &Path) -> io::Result<u32> {
@@ -37,9 +43,9 @@ fn rejects_existing_directory_with_loose_mode() -> TestResult {
 fn files_are_0600_and_roundtrip() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put("k1", &secret(b"hunter2"))?;
-    assert_eq!(mode(&store.dir().join("k1"))?, 0o600);
-    assert_eq!(store.get("k1")?.expose_secret(), b"hunter2");
+    store.put(OWNER, "k1", &secret(b"hunter2"))?;
+    assert_eq!(mode(&store.dir().join("1000").join("k1"))?, 0o600);
+    assert_eq!(store.get(OWNER, "k1")?.expose_secret(), b"hunter2");
     Ok(())
 }
 
@@ -72,7 +78,7 @@ fn umask_child() -> TestResult {
     // A directory created by `open` must also come out exactly 0700.
     let store = KeyStore::open(tmp.path().join("s"))?;
     assert_eq!(mode(store.dir())?, 0o700);
-    store.put("k", &secret(b"x"))?;
+    store.put(OWNER, "k", &secret(b"x"))?;
     println!("umask child ran");
     Ok(())
 }
@@ -81,11 +87,15 @@ fn umask_child() -> TestResult {
 fn rejects_symlinked_key() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "other", &secret(b"o"))?;
     let outside = tmp.path().join("outside");
     fs::write(&outside, b"x")?;
     fs::set_permissions(&outside, fs::Permissions::from_mode(0o600))?;
-    std::os::unix::fs::symlink(&outside, store.dir().join("k"))?;
-    assert!(matches!(store.get("k"), Err(StoreError::BadFileType(_))));
+    std::os::unix::fs::symlink(&outside, area(&store).join("k"))?;
+    assert!(matches!(
+        store.get(OWNER, "k"),
+        Err(StoreError::BadFileType(_))
+    ));
     Ok(())
 }
 
@@ -93,9 +103,12 @@ fn rejects_symlinked_key() -> TestResult {
 fn rejects_foreign_owner() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let mut store = KeyStore::open(tmp.path().join("s"))?;
-    store.put("k", &secret(b"x"))?;
-    store.uid = store.uid.wrapping_add(1);
-    assert!(matches!(store.get("k"), Err(StoreError::BadOwner(_))));
+    store.put(OWNER, "k", &secret(b"x"))?;
+    store.file_uid = Some(store.uid.wrapping_add(1));
+    assert!(matches!(
+        store.get(OWNER, "k"),
+        Err(StoreError::BadOwner(_))
+    ));
     Ok(())
 }
 
@@ -136,14 +149,18 @@ fn open_rejects_symlink_and_regular_file() -> TestResult {
 fn get_rejects_fifo_without_blocking() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "other", &secret(b"o"))?;
     rustix::fs::mknodat(
         rustix::fs::CWD,
-        store.dir().join("k"),
+        area(&store).join("k"),
         rustix::fs::FileType::Fifo,
         rustix::fs::Mode::from_raw_mode(0o600),
         0,
     )?;
-    assert!(matches!(store.get("k"), Err(StoreError::BadFileType(_))));
+    assert!(matches!(
+        store.get(OWNER, "k"),
+        Err(StoreError::BadFileType(_))
+    ));
     Ok(())
 }
 
@@ -163,13 +180,13 @@ fn open_removes_stale_temp_files() -> TestResult {
 fn put_does_not_overwrite_and_leaves_no_temp_files() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put("k", &secret(b"one"))?;
+    store.put(OWNER, "k", &secret(b"one"))?;
     assert!(matches!(
-        store.put("k", &secret(b"two")),
+        store.put(OWNER, "k", &secret(b"two")),
         Err(StoreError::AlreadyExists)
     ));
-    assert_eq!(store.get("k")?.expose_secret(), b"one");
-    let names: Vec<_> = fs::read_dir(store.dir())?
+    assert_eq!(store.get(OWNER, "k")?.expose_secret(), b"one");
+    let names: Vec<_> = fs::read_dir(area(&store))?
         .map(|e| e.map(|e| e.file_name()))
         .collect::<Result<_, _>>()?;
     assert_eq!(names.len(), 1);
@@ -182,10 +199,10 @@ fn rejects_bad_ids() -> TestResult {
     let store = KeyStore::open(tmp.path().join("s"))?;
     for id in ["", "..", "a/b", ".hidden", "a b", &"x".repeat(65)] {
         assert!(matches!(
-            store.put(id, &secret(b"x")),
+            store.put(OWNER, id, &secret(b"x")),
             Err(StoreError::InvalidId)
         ));
-        assert!(matches!(store.get(id), Err(StoreError::InvalidId)));
+        assert!(matches!(store.get(OWNER, id), Err(StoreError::InvalidId)));
     }
     Ok(())
 }
@@ -194,11 +211,17 @@ fn rejects_bad_ids() -> TestResult {
 fn get_rejects_loose_file_mode_and_missing() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    assert!(matches!(store.get("nope"), Err(StoreError::NotFound)));
-    store.put("k", &secret(b"x"))?;
-    let p = store.dir().join("k");
+    assert!(matches!(
+        store.get(OWNER, "nope"),
+        Err(StoreError::NotFound)
+    ));
+    store.put(OWNER, "k", &secret(b"x"))?;
+    let p = area(&store).join("k");
     fs::set_permissions(&p, fs::Permissions::from_mode(0o644))?;
-    assert!(matches!(store.get("k"), Err(StoreError::BadPermissions(_))));
+    assert!(matches!(
+        store.get(OWNER, "k"),
+        Err(StoreError::BadPermissions(_))
+    ));
     Ok(())
 }
 
@@ -206,10 +229,10 @@ fn get_rejects_loose_file_mode_and_missing() -> TestResult {
 fn list_is_sorted_and_skips_temp_files() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put("b", &secret(b"1"))?;
-    store.put("a", &secret(b"2"))?;
-    fs::write(store.dir().join(".tmp-1-1"), b"partial")?;
-    assert_eq!(store.list()?, ["a", "b"]);
+    store.put(OWNER, "b", &secret(b"1"))?;
+    store.put(OWNER, "a", &secret(b"2"))?;
+    fs::write(area(&store).join(".tmp-1-1"), b"partial")?;
+    assert_eq!(store.list(OWNER)?, ["a", "b"]);
     Ok(())
 }
 
@@ -218,8 +241,8 @@ fn debug_never_prints_key_material() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
     let key = secret(b"SUPERSECRET");
-    store.put("k", &key)?;
-    let got = store.get("k")?;
+    store.put(OWNER, "k", &key)?;
+    let got = store.get(OWNER, "k")?;
     for out in [format!("{key:?}"), format!("{got:?}"), format!("{store:?}")] {
         assert!(!out.contains("SUPERSECRET"));
         assert!(!out.contains("83, 85, 80")); // the bytes as a decimal list
@@ -246,12 +269,15 @@ fn key_size_limit_is_exact() -> TestResult {
     let store = KeyStore::open(tmp.path().join("s"))?;
     let max = usize::try_from(MAX_KEY_LEN)?;
     assert_eq!(MAX_KEY_LEN, 65536);
-    store.put("small", &secret(&vec![7; 2000]))?;
-    assert_eq!(store.get("small")?.expose_secret().len(), 2000);
-    store.put("max", &secret(&vec![7; max]))?;
-    assert_eq!(store.get("max")?.expose_secret().len(), max);
-    store.put("over", &secret(&vec![7; max + 1]))?;
-    assert!(matches!(store.get("over"), Err(StoreError::TooLarge)));
+    store.put(OWNER, "small", &secret(&vec![7; 2000]))?;
+    assert_eq!(store.get(OWNER, "small")?.expose_secret().len(), 2000);
+    store.put(OWNER, "max", &secret(&vec![7; max]))?;
+    assert_eq!(store.get(OWNER, "max")?.expose_secret().len(), max);
+    store.put(OWNER, "over", &secret(&vec![7; max + 1]))?;
+    assert!(matches!(
+        store.get(OWNER, "over"),
+        Err(StoreError::TooLarge)
+    ));
     Ok(())
 }
 
@@ -260,11 +286,11 @@ fn open_keeps_keys_and_non_file_temp_entries() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let dir = tmp.path().join("s");
     let store = KeyStore::open(&dir)?;
-    store.put("k", &secret(b"keep"))?;
+    store.put(OWNER, "k", &secret(b"keep"))?;
     fs::create_dir(dir.join(".tmp-dir"))?;
     fs::write(dir.join(".tmp-file"), b"x")?;
     let store = KeyStore::open(&dir)?;
-    assert_eq!(store.get("k")?.expose_secret(), b"keep");
+    assert_eq!(store.get(OWNER, "k")?.expose_secret(), b"keep");
     assert!(dir.join(".tmp-dir").is_dir());
     assert!(!dir.join(".tmp-file").exists());
     Ok(())
@@ -282,10 +308,10 @@ fn open_reports_missing_parent_as_io() -> TestResult {
 fn get_reports_unreadable_file_as_io_not_missing() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put("k", &secret(b"x"))?;
-    fs::set_permissions(store.dir().join("k"), fs::Permissions::from_mode(0o0))?;
+    store.put(OWNER, "k", &secret(b"x"))?;
+    fs::set_permissions(area(&store).join("k"), fs::Permissions::from_mode(0o0))?;
     // As root the open would succeed and report the mode instead; both are not `NotFound`.
-    assert!(!matches!(store.get("k"), Err(StoreError::NotFound)));
+    assert!(!matches!(store.get(OWNER, "k"), Err(StoreError::NotFound)));
     Ok(())
 }
 
@@ -312,4 +338,139 @@ fn errors_display_their_cause() {
     ] {
         assert_eq!(e.to_string(), want);
     }
+}
+
+mod owners;
+mod replace;
+
+#[test]
+fn remove_deletes_only_that_id() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.put(OWNER, "k2", &secret(b"b"))?;
+    store.put(OWNER + 1, "k1", &secret(b"c"))?;
+    store.remove(OWNER, "k1")?;
+    assert_eq!(store.list(OWNER)?, vec!["k2".to_owned()]);
+    assert_eq!(store.list(OWNER + 1)?, vec!["k1".to_owned()]);
+    assert!(matches!(store.get(OWNER, "k1"), Err(StoreError::NotFound)));
+    // The id can be stored again.
+    store.put(OWNER, "k1", &secret(b"d"))?;
+    Ok(())
+}
+
+#[test]
+fn remove_of_a_missing_key_or_area_is_not_an_error() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.remove(OWNER, "nothing")?;
+    assert!(!area(&store).exists(), "remove must not create the area");
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.remove(OWNER, "nothing")?;
+    assert_eq!(store.list(OWNER)?, vec!["k1".to_owned()]);
+    Ok(())
+}
+
+#[test]
+fn remove_rejects_a_bad_id() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    for id in ["", "../k1", "a/b", ".tmp-1"] {
+        assert!(matches!(
+            store.remove(OWNER, id),
+            Err(StoreError::InvalidId)
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn remove_refuses_a_symlink_and_a_foreign_owner() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let mut store = KeyStore::open(tmp.path().join("s"))?;
+    let outside = tmp.path().join("outside");
+    fs::write(&outside, b"x")?;
+    store.put(OWNER, "real", &secret(b"a"))?;
+    std::os::unix::fs::symlink(&outside, area(&store).join("link"))?;
+    assert!(matches!(
+        store.remove(OWNER, "link"),
+        Err(StoreError::BadFileType(_))
+    ));
+    assert!(area(&store).join("link").symlink_metadata().is_ok());
+    assert!(outside.exists());
+    store.file_uid = Some(store.uid.wrapping_add(1));
+    assert!(matches!(
+        store.remove(OWNER, "real"),
+        Err(StoreError::BadOwner(_))
+    ));
+    assert!(area(&store).join("real").exists());
+    Ok(())
+}
+
+#[test]
+fn remove_refuses_a_directory() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    fs::create_dir(area(&store).join("dir"))?;
+    assert!(matches!(
+        store.remove(OWNER, "dir"),
+        Err(StoreError::BadFileType(_))
+    ));
+    Ok(())
+}
+
+#[test]
+fn remove_existing_tells_removed_from_missing() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    // No area: nothing removed, nothing created.
+    assert!(!store.remove_existing(OWNER, "k1")?);
+    assert!(!area(&store).exists());
+    store.put(OWNER, "k1", &secret(b"a"))?;
+    store.put(OWNER, "k1-cert", &secret(b"c"))?;
+    store.put(OWNER + 1, "k1", &secret(b"b"))?;
+    assert!(!store.remove_existing(OWNER, "other")?);
+    assert!(store.remove_existing(OWNER, "k1")?);
+    assert!(!store.remove_existing(OWNER, "k1")?);
+    // The certificate entry is removed by its own name; other owners and ids are untouched.
+    assert_eq!(store.list(OWNER)?, vec!["k1-cert".to_owned()]);
+    assert!(store.remove_existing(OWNER, "k1-cert")?);
+    assert_eq!(store.list(OWNER)?, Vec::<String>::new());
+    assert_eq!(store.list(OWNER + 1)?, vec!["k1".to_owned()]);
+    assert!(matches!(
+        store.remove_existing(OWNER, "../k1"),
+        Err(StoreError::InvalidId)
+    ));
+    Ok(())
+}
+
+#[test]
+fn remove_existing_refuses_what_remove_refuses() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(OWNER, "real", &secret(b"a"))?;
+    let outside = tmp.path().join("outside");
+    fs::write(&outside, b"x")?;
+    std::os::unix::fs::symlink(&outside, area(&store).join("link"))?;
+    fs::create_dir(area(&store).join("dir"))?;
+    for id in ["link", "dir"] {
+        assert!(matches!(
+            store.remove_existing(OWNER, id),
+            Err(StoreError::BadFileType(_))
+        ));
+    }
+    assert!(outside.exists() && area(&store).join("dir").is_dir());
+    assert!(area(&store).join("real").exists());
+    Ok(())
+}
+
+#[test]
+fn a_file_gone_before_its_removal_is_not_ours() {
+    assert!(matches!(removed_by_us(Ok(())), Ok(true)));
+    let gone = io::Error::from(io::ErrorKind::NotFound);
+    assert!(matches!(removed_by_us(Err(gone)), Ok(false)));
+    let denied = io::Error::from(io::ErrorKind::PermissionDenied);
+    assert!(matches!(removed_by_us(Err(denied)), Err(StoreError::Io(_))));
 }

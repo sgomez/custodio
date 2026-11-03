@@ -1,0 +1,223 @@
+//! The module on the documented API: only `ListKeys` and `Sign`, and what a process sees follows
+//! the service (its own uid's keys, a replaced certificate, a deleted key).
+//!
+//! The service is told which uid is calling (`Fixture::set_uid`); the uid lookup and the
+//! `ProcessFD` check of the real source are proven in `custodiod`.
+
+use super::*;
+
+const P256_OTHER_P12: &[u8] = include_bytes!("../fixtures/p256-other.p12");
+const P256_RECERT: &[u8] = include_bytes!("../fixtures/cert-p256-recert.der");
+
+const UID_A: u32 = 70_001;
+const UID_B: u32 = 70_002;
+const UID_C: u32 = 70_003;
+
+/// `label → certificate hex` of the `TOKEN` lines, in order.
+fn tokens_of(stdout: &str) -> Vec<(String, String)> {
+    lines(stdout, "TOKEN")
+        .filter(|l| l.len() == 2)
+        .map(|l| (l[0].to_owned(), l[1].to_owned()))
+        .collect()
+}
+
+fn cert_hex(f: &Fixture, uid: u32, id: &str) -> Result<String, Box<dyn Error>> {
+    let cert = f.store()?.get(uid, &format!("{id}-cert"))?;
+    Ok(hex(secrecy::ExposeSecret::expose_secret(&cert)))
+}
+
+fn labels(tokens: &[(String, String)]) -> Vec<&str> {
+    let mut labels: Vec<&str> = tokens.iter().map(|t| t.0.as_str()).collect();
+    labels.sort_unstable();
+    labels
+}
+
+#[test]
+fn module_calls_only_documented_methods() -> TestResult {
+    let f = Fixture::start(true, true)?;
+    // Listing, finding objects and three signatures.
+    let (ok, _) = f.run("basic")?;
+    assert!(ok);
+    let calls = f.calls(4)?;
+    let mut members: Vec<&str> = calls.iter().map(|c| c.member.as_str()).collect();
+    members.sort_unstable();
+    members.dedup();
+    assert_eq!(members, ["ListKeys", "Sign"], "{calls:?}");
+    // Every call went to the place the client crate names.
+    for call in &calls {
+        assert_eq!(call.destination, BUS_NAME, "{call:?}");
+        assert_eq!(call.path, OBJECT_PATH, "{call:?}");
+        assert_eq!(call.interface, BUS_NAME, "{call:?}");
+    }
+    assert_eq!(calls.iter().filter(|c| c.member == "Sign").count(), 3);
+    Ok(())
+}
+
+#[test]
+fn two_uids_see_only_their_own_keys() -> TestResult {
+    let f = Fixture::start(true, true)?;
+    f.import(UID_A, "a", RSA_P12)?;
+    f.import(UID_A, "shared", EC_P12)?;
+    f.import(UID_B, "b", P256_OTHER_P12)?;
+    f.import(UID_B, "shared", P256_OTHER_P12)?;
+    let (shared_a, shared_b) = (
+        cert_hex(&f, UID_A, "shared")?,
+        cert_hex(&f, UID_B, "shared")?,
+    );
+    assert_ne!(
+        shared_a, shared_b,
+        "the two `shared` certificates must differ"
+    );
+
+    let (ok, out) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    let seen = tokens_of(&out);
+    assert_eq!(labels(&seen), ["a", "shared"], "{out}");
+    assert!(seen.contains(&("a".into(), cert_hex(&f, UID_A, "a")?)));
+    assert!(seen.contains(&("shared".into(), shared_a.clone())));
+
+    let (ok, out) = f.run_as(UID_B, "tokens")?;
+    assert!(ok);
+    let seen = tokens_of(&out);
+    assert_eq!(labels(&seen), ["b", "shared"], "{out}");
+    assert!(seen.contains(&("b".into(), cert_hex(&f, UID_B, "b")?)));
+    assert!(seen.contains(&("shared".into(), shared_b)));
+
+    // A uid with no keys sees no token (the keys of the fixture's owner are not UID_C's).
+    let (ok, out) = f.run_as(UID_C, "tokens")?;
+    assert!(ok);
+    assert!(tokens_of(&out).is_empty(), "{out}");
+    assert!(out.contains("TOKENS 0"), "{out}");
+
+    // Signing with the other uid's id is the same as signing with an id nobody has.
+    let (_, other) = f.run_as(UID_A, "sign:b")?;
+    let (_, nobody) = f.run_as(UID_A, "sign:nobody")?;
+    assert!(other.contains("NOTOKEN b"), "{other}");
+    // Compare only the scenario lines, without the id (the runner's summary has a timing).
+    let scenario = |out: &str| -> Vec<(String, Vec<String>)> {
+        ["NOTOKEN", "SIG", "SIGERR"]
+            .into_iter()
+            .flat_map(|tag| {
+                lines(out, tag).map(move |l| {
+                    let rest = l.iter().skip(1).map(|s| (*s).to_owned()).collect();
+                    (tag.to_owned(), rest)
+                })
+            })
+            .collect()
+    };
+    let (other_lines, nobody_lines) = (scenario(&other), scenario(&nobody));
+    assert_eq!(other_lines, nobody_lines, "{other}\n{nobody}");
+    assert!(other_lines.iter().any(|(t, _)| t == "NOTOKEN"), "{other}");
+    assert!(other_lines.iter().all(|(t, _)| t == "NOTOKEN"), "{other}");
+    // Its own works.
+    let (_, own) = f.run_as(UID_A, "sign:a")?;
+    assert!(own.contains("SIG a "), "{own}");
+    Ok(())
+}
+
+#[test]
+fn a_replaced_certificate_is_exposed_on_the_next_call() -> TestResult {
+    let f = Fixture::start(true, true)?;
+    f.import(UID_A, "ec", EC_P12)?;
+    let (ok, before) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    let first = cert_hex(&f, UID_A, "ec")?;
+    assert_eq!(tokens_of(&before), [("ec".to_owned(), first.clone())]);
+
+    // The second certificate is for the same key (generated by `gen.sh` from `p256.p12`).
+    f.replace_certificate(UID_A, "ec", P256_RECERT)?;
+    let second = hex(P256_RECERT);
+    assert_ne!(first, second);
+
+    // A second run.
+    let (ok, after) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    assert_eq!(tokens_of(&after), [("ec".to_owned(), second.clone())]);
+
+    // A signature made now verifies with the public key in the second certificate.
+    let (ok, signed) = f.run_as(UID_A, "sign:ec")?;
+    assert!(ok, "{signed}");
+    let sig = lines(&signed, "SIG")
+        .find(|l| l.first() == Some(&"ec"))
+        .and_then(|l| l.get(1).copied())
+        .ok_or("no SIG line")?;
+    verify_p256_prehash(P256_RECERT, &[7; 32], &hex_to_bytes(sig)?)?;
+
+    // And a second call inside one loaded module, with no restart in between.
+    f.replace_certificate(UID_A, "ec", &hex_to_bytes(&first)?)?;
+    let mut child = f.spawn("held_tokens")?;
+    let lines = child.until("READY")?;
+    assert_eq!(
+        tokens_of(&lines.join("\n")),
+        [("ec".to_owned(), first.clone())]
+    );
+    f.replace_certificate(UID_A, "ec", P256_RECERT)?;
+    child.go()?;
+    let lines = child.until("DONE")?;
+    assert_eq!(tokens_of(&lines.join("\n")), [("ec".to_owned(), second)]);
+    assert!(child.finish()?);
+    Ok(())
+}
+
+/// Checks an ECDSA signature over a 32-byte prehash with the key of a P-256 certificate.
+fn verify_p256_prehash(cert: &[u8], prehash: &[u8], sig: &[u8]) -> TestResult {
+    use p256::ecdsa::signature::hazmat::PrehashVerifier as _;
+    use x509_cert::der::Decode as _;
+    let point = x509_cert::Certificate::from_der(cert)?
+        .tbs_certificate()
+        .subject_public_key_info()
+        .subject_public_key
+        .raw_bytes()
+        .to_vec();
+    let key = p256::ecdsa::VerifyingKey::from_sec1_bytes(&point)?;
+    key.verify_prehash(prehash, &p256::ecdsa::Signature::from_slice(sig)?)?;
+    Ok(())
+}
+
+fn hex_to_bytes(s: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    (0..s.len())
+        .step_by(2)
+        .map(|i| Ok(u8::from_str_radix(&s[i..i + 2], 16)?))
+        .collect()
+}
+
+#[test]
+fn a_deleted_key_has_no_token() -> TestResult {
+    let f = Fixture::start(true, true)?;
+    f.import(UID_A, "ec", EC_P12)?;
+    f.import(UID_A, "rsa", RSA_P12)?;
+    let (ok, before) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    assert_eq!(labels(&tokens_of(&before)), ["ec", "rsa"]);
+
+    // A handle taken before the delete, used after it.
+    let mut child = f.spawn("held_key")?;
+    child.until("READY")?;
+    f.delete_key(UID_A, "ec")?;
+    child.go()?;
+    let lines = child.until("DONE")?;
+    let text = lines.join("\n");
+    let old = lines
+        .iter()
+        .find(|l| l.starts_with("OLDSIGN"))
+        .ok_or("no OLDSIGN")?;
+    assert!(old.starts_with("OLDSIGN err"), "{old}");
+    assert_eq!(labels(&tokens_of(&text)), ["rsa"], "{text}");
+    assert!(child.finish()?);
+
+    // The next run: no token, no objects, signing by the old id finds nothing.
+    let (ok, after) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    assert_eq!(labels(&tokens_of(&after)), ["rsa"], "{after}");
+    let (_, gone) = f.run_as(UID_A, "sign:ec")?;
+    assert!(gone.contains("NOTOKEN ec"), "{gone}");
+    let (_, other) = f.run_as(UID_A, "sign:rsa")?;
+    assert!(other.contains("SIG rsa "), "{other}");
+
+    // Imported again, it shows again.
+    f.import(UID_A, "ec", EC_P12)?;
+    let (ok, back) = f.run_as(UID_A, "tokens")?;
+    assert!(ok);
+    assert_eq!(labels(&tokens_of(&back)), ["ec", "rsa"], "{back}");
+    Ok(())
+}

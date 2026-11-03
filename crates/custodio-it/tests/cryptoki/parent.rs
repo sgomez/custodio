@@ -1,0 +1,475 @@
+//! The parent: the private bus, the fake polkit and the service.
+
+use std::pin::Pin;
+
+use zbus::export::futures_core::Stream;
+
+use super::*;
+
+/// A credentials source whose uid can be switched between runs: the service is told which uid is
+/// calling. The uid lookup and the `ProcessFD` check of the real source are proven in `custodiod`.
+#[derive(Clone)]
+pub(super) struct SwitchCredentials(Arc<AtomicU32>);
+
+impl CallerCredentials for SwitchCredentials {
+    fn credentials(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send {
+        std::future::ready(Ok(Caller {
+            uid: self.0.load(Ordering::SeqCst),
+            pid: std::process::id(),
+        }))
+    }
+}
+
+struct Bus {
+    child: Child,
+    address: String,
+}
+
+impl Bus {
+    fn start() -> Result<Self, Box<dyn Error>> {
+        let mut child = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut address = String::new();
+        BufReader::new(child.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
+        Ok(Self {
+            child,
+            address: address.trim().to_owned(),
+        })
+    }
+}
+
+impl Drop for Bus {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct FakePolkit {
+    approve: Arc<AtomicBool>,
+    asked: Arc<Mutex<Vec<String>>>,
+}
+
+#[interface(name = "org.freedesktop.PolicyKit1.Authority")]
+impl FakePolkit {
+    // The `interface` macro needs owned argument types to deserialize the D-Bus message.
+    #[allow(clippy::needless_pass_by_value)]
+    fn check_authorization(
+        &self,
+        subject: (String, HashMap<String, OwnedVariant>),
+        action_id: String,
+        details: HashMap<String, String>,
+        flags: u32,
+        cancellation_id: String,
+    ) -> (bool, bool, HashMap<String, String>) {
+        let _ = (details, flags, cancellation_id);
+        if let Ok(mut asked) = self.asked.lock() {
+            asked.push(action_id);
+        }
+        let _ = subject;
+        (self.approve.load(Ordering::SeqCst), false, HashMap::new())
+    }
+}
+
+/// A `Sign` call as the service received it on the bus, seen by the monitor.
+#[derive(Clone)]
+pub(super) struct Recorded {
+    pub(super) id: String,
+    pub(super) mechanism: u32,
+    pub(super) hash: u32,
+    pub(super) salt_len: u32,
+    pub(super) data: Vec<u8>,
+    /// The whole message as it went over the wire.
+    pub(super) raw: Vec<u8>,
+}
+
+/// A method call to the service as the monitor saw it: where it went and which method it was.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Call {
+    pub(super) destination: String,
+    pub(super) path: String,
+    pub(super) interface: String,
+    pub(super) member: String,
+}
+
+fn call_of(msg: &zbus::Message) -> Option<Call> {
+    if !is_service_call(msg) {
+        return None;
+    }
+    let header = msg.header();
+    Some(Call {
+        destination: header.destination()?.to_string(),
+        path: header.path()?.to_string(),
+        interface: header.interface()?.to_string(),
+        member: header.member()?.to_string(),
+    })
+}
+
+/// Whether `msg` is a method call to the service, whatever the method.
+fn is_service_call(msg: &zbus::Message) -> bool {
+    let header = msg.header();
+    header.message_type() == zbus::message::Type::MethodCall
+        && header.destination().is_some_and(|d| d.as_str() == BUS_NAME)
+}
+
+fn record(msg: &zbus::Message) -> Option<Recorded> {
+    let header = msg.header();
+    let to_service = header.destination().is_some_and(|d| d.as_str() == BUS_NAME);
+    let is_sign = header.member().is_some_and(|m| m.as_str() == "Sign");
+    if header.message_type() != zbus::message::Type::MethodCall || !to_service || !is_sign {
+        return None;
+    }
+    let (id, mechanism, hash, salt_len, data): (String, u32, u32, u32, Vec<u8>) =
+        msg.body().deserialize().ok()?;
+    Some(Recorded {
+        id,
+        mechanism,
+        hash,
+        salt_len,
+        data,
+        raw: msg.data().bytes().to_vec(),
+    })
+}
+
+pub(super) struct Fixture {
+    /// Every method call to the service, of any method.
+    service_calls: Arc<AtomicUsize>,
+    signs: Arc<Mutex<Vec<Recorded>>>,
+    calls: Arc<Mutex<Vec<Call>>>,
+    uid: Arc<AtomicU32>,
+    store: Arc<KeyStore>,
+    _bus: Bus,
+    state: tempfile::TempDir,
+    asked: Arc<Mutex<Vec<String>>>,
+    approve: Arc<AtomicBool>,
+    address: String,
+}
+
+impl Fixture {
+    /// A bus with polkit, and, if `service`, the service holding an RSA and a P-256 key. They
+    /// run on their own thread: the connections only make progress while a thread is inside
+    /// `block_on`, and the test thread is busy waiting for the child process.
+    pub(super) fn start(approve: bool, service: bool) -> Result<Self, Box<dyn Error>> {
+        let bus = Bus::start()?;
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let state = tempfile::tempdir()?;
+        let (ready, wait) = std::sync::mpsc::channel::<Result<(), String>>();
+        let signs = Arc::new(Mutex::new(Vec::new()));
+        let service_calls = Arc::new(AtomicUsize::new(0));
+        let counter = service_calls.clone();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let call_log = calls.clone();
+        let owner = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
+        let uid = Arc::new(AtomicU32::new(owner));
+        let credentials = SwitchCredentials(uid.clone());
+        let store = Arc::new(KeyStore::open(state.path().join("keys"))?);
+        let shared = store.clone();
+        let approve = Arc::new(AtomicBool::new(approve));
+        let switch = approve.clone();
+        let (address, log, recorded) = (bus.address.clone(), asked.clone(), signs.clone());
+        std::thread::spawn(move || {
+            let setup = async {
+                let bus = Builder::address(address.as_str());
+                let polkit = bus.build().await?;
+                polkit
+                    .object_server()
+                    .at(
+                        "/org/freedesktop/PolicyKit1/Authority",
+                        FakePolkit {
+                            approve: switch,
+                            asked: log,
+                        },
+                    )
+                    .await?;
+                polkit.request_name("org.freedesktop.PolicyKit1").await?;
+                let mut connections = vec![polkit];
+                if service {
+                    let store = shared;
+                    let password = SecretString::from(PASSWORD);
+                    import_p12(&store, owner, "rsa", RSA_P12, &password)?;
+                    import_p12(&store, owner, "ec", EC_P12, &password)?;
+                    let conn = Builder::address(address.as_str()).build().await?;
+                    conn.object_server()
+                        .at(
+                            OBJECT_PATH,
+                            Custodio::new(
+                                store,
+                                PolkitAuthorizer::new(conn.clone()),
+                                credentials,
+                                Arc::new(MemorySink::default()),
+                            ),
+                        )
+                        .await?;
+                    conn.request_name(BUS_NAME).await?;
+                    connections.push(conn);
+                }
+                // A second connection that sees every message on the bus, so what the service
+                // receives is recorded as it went over the wire. Failing to become a monitor is
+                // an error of the whole fixture.
+                let monitor = Builder::address(address.as_str()).build().await?;
+                let stream = zbus::MessageStream::from(&monitor);
+                zbus::fdo::MonitoringProxy::new(&monitor)
+                    .await?
+                    .become_monitor(&[], 0)
+                    .await?;
+                connections.push(monitor);
+                Ok::<_, Box<dyn Error>>((connections, stream))
+            };
+            block_on(async {
+                match setup.await {
+                    Ok((connections, mut stream)) => {
+                        let _ = ready.send(Ok(()));
+                        while let Some(Ok(msg)) =
+                            std::future::poll_fn(|cx| Pin::new(&mut stream).poll_next(cx)).await
+                        {
+                            if let Some(call) = call_of(&msg) {
+                                counter.fetch_add(1, Ordering::SeqCst);
+                                if let Ok(mut all) = call_log.lock() {
+                                    all.push(call);
+                                }
+                            }
+                            if let (Some(sign), Ok(mut all)) = (record(&msg), recorded.lock()) {
+                                all.push(sign);
+                            }
+                        }
+                        drop(connections);
+                    }
+                    Err(e) => {
+                        let _ = ready.send(Err(e.to_string()));
+                    }
+                }
+            });
+        });
+        wait.recv()??;
+        Ok(Self {
+            address: bus.address.clone(),
+            _bus: bus,
+            signs,
+            calls,
+            uid,
+            store,
+            service_calls,
+            state,
+            asked,
+            approve,
+        })
+    }
+
+    pub(super) fn store(&self) -> Result<KeyStore, Box<dyn Error>> {
+        Ok(KeyStore::open(self.state.path().join("keys"))?)
+    }
+
+    /// The uid the service is told is calling, from now on.
+    pub(super) fn set_uid(&self, uid: u32) {
+        self.uid.store(uid, Ordering::SeqCst);
+    }
+
+    /// Imports a `.p12` for `uid` straight into the service's store.
+    pub(super) fn import(&self, uid: u32, id: &str, p12: &[u8]) -> TestResult {
+        import_p12(&self.store, uid, id, p12, &SecretString::from(PASSWORD))?;
+        Ok(())
+    }
+
+    /// `ReplaceCertificate` of `uid`'s key `id`, called as the "other client" (the module never
+    /// does).
+    pub(super) fn replace_certificate(
+        &self,
+        uid: u32,
+        id: &str,
+        certificate: &[u8],
+    ) -> Result<(), zbus::Error> {
+        self.set_uid(uid);
+        block_on(async {
+            let conn = Builder::address(self.address.as_str()).build().await?;
+            let body = (id, certificate);
+            let call = conn.call_method(
+                Some(BUS_NAME),
+                OBJECT_PATH,
+                Some(BUS_NAME),
+                "ReplaceCertificate",
+                &body,
+            );
+            call.await.map(drop)
+        })
+    }
+
+    /// `DeleteKey` of `uid`'s key `id`, called as the "other client".
+    pub(super) fn delete_key(&self, uid: u32, id: &str) -> Result<(), zbus::Error> {
+        self.set_uid(uid);
+        block_on(async {
+            let conn = Builder::address(self.address.as_str()).build().await?;
+            let body = (id,);
+            let call = conn.call_method(
+                Some(BUS_NAME),
+                OBJECT_PATH,
+                Some(BUS_NAME),
+                "DeleteKey",
+                &body,
+            );
+            call.await.map(drop)
+        })
+    }
+
+    /// The calls the service received, once at least `expected` have been seen, plus a moment
+    /// for any extra one.
+    pub(super) fn calls(&self, expected: usize) -> Result<Vec<Call>, Box<dyn Error>> {
+        let count = || self.calls.lock().map(|c| c.len()).unwrap_or_default();
+        for _ in 0..100 {
+            if count() >= expected {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        Ok(self.calls.lock().map_err(|_| "poisoned")?.clone())
+    }
+
+    /// Starts a child scenario that waits for the parent between its steps (see `held`).
+    pub(super) fn spawn(&self, mode: &str) -> Result<Running, Box<dyn Error>> {
+        let mut child = Command::new(std::env::current_exe()?)
+            .args(["--exact", "client", "--nocapture", "--test-threads=1"])
+            .env(MODE_VAR, mode)
+            .env(MODULE_VAR, module_path()?)
+            .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let out = BufReader::new(child.stdout.take().ok_or("no stdout")?);
+        Ok(Running { child, out })
+    }
+
+    /// Makes polkit approve or refuse from now on.
+    pub(super) fn approve(&self, yes: bool) {
+        self.approve.store(yes, Ordering::SeqCst);
+    }
+
+    pub(super) fn asked(&self) -> usize {
+        self.asked.lock().map(|a| a.len()).unwrap_or_default()
+    }
+
+    /// The number of method calls the service received, once it has stopped changing for 200 ms
+    /// (the monitor runs on its own thread, so the last calls may still be on their way).
+    pub(super) fn settled_service_calls(&self) -> usize {
+        let mut last = self.service_calls.load(Ordering::SeqCst);
+        let mut quiet = 0;
+        while quiet < 2 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let now = self.service_calls.load(Ordering::SeqCst);
+            quiet = if now == last { quiet + 1 } else { 0 };
+            last = now;
+        }
+        last
+    }
+
+    /// The `Sign` calls the service received, once at least `expected` have been seen, plus a
+    /// moment for any extra one; fails if fewer arrive.
+    pub(super) fn signs(&self, expected: usize) -> Result<Vec<Recorded>, Box<dyn Error>> {
+        let count = || self.signs.lock().map(|s| s.len()).unwrap_or_default();
+        for _ in 0..100 {
+            if count() >= expected {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        Ok(self.signs.lock().map_err(|_| "poisoned")?.clone())
+    }
+
+    /// Runs a child scenario while the service is told `uid` is calling.
+    pub(super) fn run_as(&self, uid: u32, mode: &str) -> Result<(bool, String), Box<dyn Error>> {
+        self.set_uid(uid);
+        self.run(mode)
+    }
+
+    /// Runs a child scenario; returns whether it passed and its stdout.
+    pub(super) fn run(&self, mode: &str) -> Result<(bool, String), Box<dyn Error>> {
+        let out = Command::new(std::env::current_exe()?)
+            .args(["--exact", "client", "--nocapture", "--test-threads=1"])
+            .env(MODE_VAR, mode)
+            .env(MODULE_VAR, module_path()?)
+            .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
+            .output()?;
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        if !out.status.success() {
+            eprintln!("{stdout}\n{}", String::from_utf8_lossy(&out.stderr));
+        }
+        Ok((out.status.success(), stdout))
+    }
+}
+
+/// A child scenario in progress: the parent reads what it printed until a tag and lets it go on.
+pub(super) struct Running {
+    child: Child,
+    out: BufReader<std::process::ChildStdout>,
+}
+
+impl Running {
+    /// The lines the child printed up to and including the one starting with `tag`.
+    pub(super) fn until(&mut self, tag: &str) -> Result<Vec<String>, Box<dyn Error>> {
+        let mut lines = Vec::new();
+        loop {
+            let mut line = String::new();
+            if self.out.read_line(&mut line)? == 0 {
+                return Err(format!("child ended before {tag}: {lines:?}").into());
+            }
+            let line = line.trim_end().to_owned();
+            let done = line.starts_with(tag);
+            lines.push(line);
+            if done {
+                return Ok(lines);
+            }
+        }
+    }
+
+    /// Lets the child go on to its next step.
+    pub(super) fn go(&mut self) -> TestResult {
+        use std::io::Write;
+        let stdin = self.child.stdin.as_mut().ok_or("no stdin")?;
+        stdin.write_all(b"\n")?;
+        stdin.flush()?;
+        Ok(())
+    }
+
+    /// Waits for the child; whether it passed.
+    pub(super) fn finish(mut self) -> Result<bool, Box<dyn Error>> {
+        drop(self.child.stdin.take());
+        let mut rest = String::new();
+        std::io::Read::read_to_string(&mut self.out, &mut rest)?;
+        Ok(self.child.wait()?.success())
+    }
+}
+
+/// Builds the module (cargo does not build the `cdylib` of a package for its own tests) and
+/// returns `target/<profile>/libcustodio_pkcs11.so`, next to the `deps` directory of this binary.
+static BUILT: Once = Once::new();
+
+fn module_path() -> Result<PathBuf, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let dir = exe
+        .parent()
+        .and_then(|d| d.parent())
+        .ok_or("no target dir")?
+        .to_path_buf();
+    // Build into the target directory this binary lives in (`cargo llvm-cov` uses its own).
+    let target = dir.parent().ok_or("no target dir")?.to_path_buf();
+    BUILT.call_once(|| {
+        let mut build = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+        build.args(["build", "--quiet", "--locked", "-p", "custodio-pkcs11"]);
+        build.arg("--target-dir").arg(&target);
+        if !cfg!(debug_assertions) {
+            build.arg("--release");
+        }
+        assert!(
+            build.status().is_ok_and(|s| s.success()),
+            "building the module failed"
+        );
+    });
+    let path = dir.join("libcustodio_pkcs11.so");
+    assert!(path.exists(), "{} was not built", path.display());
+    Ok(path)
+}

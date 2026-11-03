@@ -6,7 +6,7 @@ FROM debian:trixie
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential clang lld pkg-config libssl-dev git curl ca-certificates sudo jq procps \
       dbus dbus-daemon polkitd systemd p11-kit opensc libnss3-tools \
-      just shellcheck nodejs npm python3 python3-yaml rpm libarchive-tools zstd \
+      just nodejs npm python3 python3-yaml rpm libarchive-tools zstd xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # lintian for `just package-lint`, at the version of packaging/lint/pins.txt (a test keeps them in step) from the dated snapshot as the only
@@ -29,6 +29,14 @@ ARG NFPM_SHA256=6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750
 RUN curl -fsSLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz \
     && echo "${NFPM_SHA256}  /tmp/nfpm.tgz" | sha256sum -c - \
     && tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm && rm /tmp/nfpm.tgz
+
+# shellcheck at the version of mise.toml and CI: Debian's is older and reports other codes (SC2317 where 0.11 says SC2329).
+ARG SHELLCHECK_VERSION=0.11.0
+ARG SHELLCHECK_SHA256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+RUN curl -fsSLo /tmp/shellcheck.txz https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz \
+    && echo "${SHELLCHECK_SHA256}  /tmp/shellcheck.txz" | sha256sum -c - \
+    && tar -xJf /tmp/shellcheck.txz -C /usr/local/bin --strip-components=1 shellcheck-v${SHELLCHECK_VERSION}/shellcheck \
+    && rm /tmp/shellcheck.txz && test "$(shellcheck --version | sed -n 's/^version: //p')" = "${SHELLCHECK_VERSION}"
 
 RUN npm install -g lefthook
 RUN curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash \

@@ -1,0 +1,19 @@
+# The calls of the journal-ops-* cases (F94), in the order alice makes them: LABEL OPERATION OUTCOME KEY KEYTYPE RESULT.
+# OPERATION and OUTCOME are what the journal entry of the call must say (docs/audit.md), KEYTYPE the CUSTODIO_KEY_TYPE it must hold ("-": the field is
+# absent), RESULT what the caller saw (jo-user.sh): ok / denied / mismatch / wrong-password for the D-Bus client, cli-ok / cli-denied for the CLI,
+# p11-ok / p11-failed for pkcs11-tool.
+import-cli-stored import stored jo-key rsa_2048 cli-ok
+sign-p11-approved sign signed jo-key - p11-ok
+sign-dbus-approved sign signed jo-key - ok
+import-denied-dbus import denied jo-den - denied
+import-denied-cli import denied jo-den2 - cli-denied
+sign-p11-denied sign denied jo-key - p11-failed
+sign-dbus-denied sign denied jo-key - denied
+import-wrong-password import wrong_password jo-wp - wrong-password
+replace-denied replace_certificate denied jo-key - denied
+replace-replaced replace_certificate replaced jo-key - ok
+replace-mismatch replace_certificate certificate_mismatch jo-key - mismatch
+sign-after-replace sign signed jo-key - p11-ok
+delete-denied delete denied jo-key - cli-denied
+sign-after-denied-delete sign signed jo-key - p11-ok
+delete-deleted delete deleted jo-key - cli-ok

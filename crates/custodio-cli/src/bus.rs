@@ -1,10 +1,13 @@
-//! `ImportP12` over D-Bus.
+//! `ImportP12`, `ListKeys` and `DeleteKey` over D-Bus.
 
-use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
+use custodio_client::{BUS_NAME, OBJECT_PATH};
 use secrecy::{ExposeSecret, SecretString};
 use zbus::{Connection, block_on};
 
 use crate::Importer;
+use crate::delete::KeyDeleter;
+use crate::failure::ServiceFailure;
+use crate::list::{KeyEntry, KeyLister};
 
 /// Talks to the service on the given connection (the system bus in `main`).
 pub struct DbusImporter {
@@ -25,7 +28,12 @@ impl DbusImporter {
 }
 
 impl Importer for DbusImporter {
-    fn import_p12(&self, id: &str, p12: &[u8], password: &SecretString) -> Result<String, String> {
+    fn import_p12(
+        &self,
+        id: &str,
+        p12: &[u8],
+        password: &SecretString,
+    ) -> Result<String, ServiceFailure> {
         let reply = block_on(self.connection.call_method(
             Some(BUS_NAME),
             OBJECT_PATH,
@@ -33,14 +41,68 @@ impl Importer for DbusImporter {
             "ImportP12",
             &(id, p12, password.expose_secret()),
         ))
-        .map_err(|e| match e {
-            zbus::Error::MethodError(_, Some(text), _) => text,
-            zbus::Error::MethodError(name, None, _) => name.to_string(),
-            other => other.to_string(),
-        })?;
+        .map_err(|e| failure_of(&e))?;
         reply
             .body()
             .deserialize::<String>()
-            .map_err(|e| e.to_string())
+            .map_err(|_| ServiceFailure::Transport)
     }
 }
+
+impl KeyLister for DbusImporter {
+    fn list_keys(&self) -> Result<Vec<KeyEntry>, ServiceFailure> {
+        let reply = block_on(self.connection.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "ListKeys",
+            &(),
+        ))
+        .map_err(|e| failure_of(&e))?;
+        let keys = reply
+            .body()
+            .deserialize::<Vec<(String, String, Vec<u8>)>>()
+            .map_err(|_| ServiceFailure::Transport)?;
+        Ok(keys
+            .into_iter()
+            .map(|(id, key_type, certificate)| KeyEntry {
+                id,
+                key_type,
+                certificate,
+            })
+            .collect())
+    }
+}
+
+impl KeyDeleter for DbusImporter {
+    fn delete_key(&self, id: &str) -> Result<(), ServiceFailure> {
+        block_on(self.connection.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "DeleteKey",
+            &(id,),
+        ))
+        .map(|_| ())
+        .map_err(|e| failure_of(&e))
+    }
+}
+
+/// The failure for a call that did not return: by error name for method errors, and a transport
+/// failure (or "the service is not there") otherwise.
+#[must_use]
+pub fn failure_of(e: &zbus::Error) -> ServiceFailure {
+    match e {
+        zbus::Error::MethodError(name, _, _) => ServiceFailure::from_name(name.as_str()),
+        zbus::Error::FDO(fdo) => match **fdo {
+            zbus::fdo::Error::ServiceUnknown(_) | zbus::fdo::Error::NameHasNoOwner(_) => {
+                ServiceFailure::ServiceAbsent
+            }
+            _ => ServiceFailure::Transport,
+        },
+        _ => ServiceFailure::Transport,
+    }
+}
+
+#[cfg(test)]
+mod tests;

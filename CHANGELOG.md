@@ -1,3 +1,208 @@
+## [0.5.0] - 2026-11-03
+
+### 🚀 Features
+
+- *(F63)* Run a chosen subset of end-to-end cases on one target
+- *(F64)* Add client crate and the deps-check
+- *(F65)* Give each failure its own d-bus error name
+- *(F66)* Add client api document and the api contract check
+- *(F69)* Add polkit actions for import, delete and replace certificate
+- *(F70)* Store keys per owner uid
+- *(F70)* Tick contract steps and record mutants result
+- *(F71)* Remove the upgrade from the cargo-deb package of m1
+- *(F72)* Scope list, sign and import to the caller's uid
+- *(F73)* Ask polkit before decrypting the .p12 on import
+- *(F74)* Name the operation in every journal entry
+- *(F75)* Leave one journal entry per import and fail closed
+- *(F76)* Delete a key with its certificate after polkit approves
+- *(F77)* Leave one journal entry per delete and fail closed
+- *(F78)* Replace the certificate of a key after polkit approves
+- *(F79)* Leave one journal entry per replace and fail closed
+- *(F80)* Parse and validate the flatpak app-id from a scope name
+- *(F81)* Read the app-id of the pinned process within bounds
+- *(F82)* Name the flatpak app-id in journal entries
+- *(F83)* Add fuzz targets for delete, replace certificate and app id, and fuzz-smoke
+- *(F85)* Test the module on the documented api with two uids, replace and delete
+- *(F86)* Show each import error name as its own message with typed failures and exit status
+- *(F87)* Add custodio list with id, key type, subject and end of validity
+- *(F88)* Add custodio delete with a terminal confirmation
+- *(F89)* Start pkttyagent for the cli process around the polkit call
+- *(F90)* Declare util-linux for setpriv in the rpm and arch packages
+- *(F91)* Add owner-* e2e cases with two real accounts
+- *(F92)* Add ops-polkit e2e cases for import, delete and replace certificate
+- *(F93)* Add replace-* and delete-* e2e cases for certificate replacement and key deletion
+- *(F94)* Add journal-ops e2e cases for sign, import, delete and replace entries
+- *(F95)* Add appid-* e2e cases with fake flatpak callers and hostile scopes
+- *(F96)* Check keys, owners and certificates of two accounts across the upgrade
+- *(F97)* Add cli-* e2e cases for list, delete and pkttyagent on a terminal
+- *(F98)* Add complete client documentation with busctl examples run by a test
+- *(F99)* Add m3 manual acceptance steps, test flatpak manifest and their test
+
+### 🐛 Bug Fixes
+
+- Plan the markdown-only case on a file that still exists
+- *(F63)* Check the ubuntu 24.04 precondition against its e2e target
+- *(F70)* Test the key file owner check and import via dbus in leak test
+- *(harness)* Read the evaluator verdict when it is not on the first line
+- *(F78)* Split the replace integration tests under the file-size gate
+- *(F78)* Check the other uid's area after a replace and loop polkit answers
+- *(F79)* Split the replace audit tests under the file-size gate
+- *(F81)* Find the cgroup tree below the container prefix
+- *(F81)* Take the stuck-thread slot before spawning the worker
+- *(harness)* Include untracked files in the mutants-diff diff
+- *(F82)* Cover the catalog copy, the negative control and secrecy with an id
+- *(F82)* Cover the pending-delete refusal and all operations on the wire
+- *(F85)* Verify a signature after the replace and drop a stale doc comment
+- *(F85)* Compare only the scenario lines in the two-uids signing check
+- *(F88)* Split the delete integration tests into modules
+- *(F88)* Accept '--' before an id and check the store files in delete tests
+- *(F89)* Prove the agent is reaped with a subreaper and tidy the stdin cases
+- *(F90)* Resolve the sleep binary before reading it in the upgrade script test
+- *(F98)* Check each documented error message against its own variant
+- *(F100)* Compare files by checksum in guest scripts, diffutils is not on every image
+- *(F99)* Use gdbus in the test flatpak, its runtime has no busctl
+
+### 📚 Documentation
+
+- Rescope m3 to the client api and settle the tpm pin and pcr questions
+- *(F44)* Accept the rpm-ostree removal deviation
+- Close milestone M2
+- Open milestone M3
+- Add spec drafted by the planner
+- *(F63)* Add contract
+- *(F63)* Amend contract after review
+- *(F63)* Amend contract after second review
+- Answer the blocked question
+- *(F63)* Record the passing verify run
+- *(F64)* Add contract
+- *(F64)* Revise contract after evaluator notes
+- *(F65)* Add contract
+- *(F65)* Revise contract
+- *(F66)* Add contract
+- *(F67)* Add contract
+- *(F67)* Address evaluator findings in contract
+- *(F67)* Research how custodiod can read the caller's app-id
+- *(F67)* Note the pid difference and the unread proxy source
+- *(F68)* Add contract
+- *(F68)* Address evaluator findings in contract
+- *(F68)* Research service detection through xdg-dbus-proxy
+- *(F68)* Fix spawn conflict claim and inline the setup script
+- *(F69)* Add contract
+- *(F69)* Address evaluator notes in contract
+- *(F70)* Add contract
+- *(F70)* Address evaluator notes in contract
+- *(F70)* Require dbus owner tests in contract
+- *(F70)* Add progress entry
+- *(F71)* Add contract
+- *(F71)* Revise contract after review
+- *(F71)* Revise contract after second review
+- *(F71)* Add control id to step 3 and harness readme to docs grep
+- *(F71)* Amend contract to refuse a refusal-only id on ubuntu2604
+- *(F71)* Amend contract to anchor the pkg-old grep
+- *(F71)* Amend contract to anchor the packages_old grep
+- *(F72)* Add contract
+- *(F73)* Add contract
+- *(F73)* Revise contract for the agent session of the imports
+- *(F74)* Add contract
+- *(F74)* Amend contract to add evidence commands and the catalog field decision
+- *(F75)* Add contract
+- *(F75)* Amend contract after evaluator review
+- *(F76)* Add contract
+- *(F77)* Add contract
+- *(F77)* Revise contract after evaluator review
+- *(F77)* Correct leftover certificate wording after failed removal
+- *(F78)* Add contract
+- *(F79)* Add contract
+- *(F80)* Add contract
+- *(F81)* Add contract
+- *(F81)* Address contract review notes
+- *(F82)* Add contract
+- *(F83)* Add contract
+- *(F83)* Amend contract after review
+- *(F85)* Add contract
+- *(F86)* Add contract
+- *(F87)* Add contract
+- *(F87)* Revise contract after review
+- *(F88)* Add contract
+- *(F88)* Revise contract after review
+- *(F89)* Add contract
+- *(F89)* Revise contract after review
+- *(F89)* Revise contract after second review
+- *(F89)* Settle kill mechanism and evidence after review
+- *(F89)* Amend contract to --fallback and setpriv after research
+- *(F90)* Add contract
+- *(F90)* Amend contract after review
+- *(F91)* Add contract
+- *(F91)* Amend contract after review
+- *(F91)* Amend contract to call the service with python3 gio instead of busctl
+- *(F92)* Add contract
+- *(F92)* Amend contract after review
+- *(F93)* Add contract
+- *(F94)* Add contract
+- *(F94)* Revise contract
+- *(F95)* Add contract
+- *(F95)* Revise contract
+- *(F95)* Amend contract to a 256-byte caller and the session facts of the guest
+- *(F96)* Add contract
+- *(F96)* Revise contract
+- *(F96)* State the cross-account signature check in the evidence
+- *(F97)* Add contract
+- *(F97)* Amend contract to the Containerfile path and the evaluator's notes
+- *(F98)* Add contract
+- *(F98)* Amend contract to the runner's error check and the evaluator's notes
+- *(F99)* Add contract
+- *(F99)* Revise contract after evaluator review
+- *(F100)* Add contract
+- *(F100)* Fix skip list path in contract
+- *(F100)* Tick contract steps and record checkpoint results
+- *(F101)* Record the ubuntu2604 client api manual acceptance run
+- *(F101)* Record the repeat of acceptance 14 by a person
+- *(F102)* Record the fedora44 test flatpak manual acceptance run (fail)
+- *(F102)* Record the passing repeat of acceptance 15 with gdbus on fedora44
+- *(F102)* Record the repeat of acceptance 15 by a person
+- *(F103)* Record the fedora44 manual acceptance 16 run (pass)
+- *(F103)* Record the repeat of acceptance 16 by a person
+
+### ⚡ Performance
+
+- Leave progress.md out of the just check stamp
+
+### 🚜 Refactor
+
+- *(F95)* Split the appid judgements into modules under the file size gate
+- *(F103)* Move the bus registration out of run into a tested serve
+
+### 🧪 Testing
+
+- Plan the markdown-only case on a temporary file
+- *(F70)* Cover io errors on a broken root
+- *(F74)* Kill the missed OperationEntry::caller mutant
+- *(F74)* Check the sign operation on the journal datagram
+- *(F100)* Expect the docs and source mounts in the host selection test
+- *(F100)* Make the state-only mutant deterministic, drain stdin instead of a SIGPIPE race
+- *(F20)* Report a worker panic at once in the state lock test
+- *(F103)* Stop grep -q from failing the manual page checks under load
+- *(F103)* Cover wait_for_close and the import error messages
+
+### ⚙️ Miscellaneous Tasks
+
+- Run the jobs on ubuntu 26.04 for a bus with processfd
+- Tell a failing mutants baseline apart from missed mutants
+- Update idea
+- Update spec
+- Add feature list drafted by the initializer
+- Run slow gates only where a feature reaches them, full suites at checkpoints
+- Drop feature list to regenerate it
+- Add feature list drafted by the initializer
+- *(F103)* Ignore the profraw files coverage leaves in the crates
+
+### 💼 Other
+
+- Verify only the custodio unit, not the host's units
+- Pin shellcheck 0.11.0 in the dev container
+- Gate each feature on the changed checks, not the full just check
+- *(harness)* Run light tests per feature and the full suites at checkpoints
+- *(harness)* Allow short sleeps and bounded wait loops in the no-background hook
 ## [0.4.0] - 2026-11-01
 
 ### 🚀 Features

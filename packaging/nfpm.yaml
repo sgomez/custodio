@@ -131,6 +131,8 @@ overrides:
       - polkitd (>= 124)
       - dbus-system-bus
       - p11-kit
+      # No util-linux (setpriv, F89) here: it is Essential on Debian and Ubuntu, and a dependency on an Essential package is a lintian
+      # finding. pkttyagent comes with polkitd above.
     scripts:
       preinstall: packaging/deb/preinst
       postinstall: packaging/deb/postinst
@@ -144,6 +146,7 @@ overrides:
       - systemd
       - dbus
       - p11-kit
+      - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
       preinstall: packaging/rpm/pre
       postinstall: packaging/rpm/post
@@ -157,6 +160,7 @@ overrides:
       - systemd
       - dbus
       - p11-kit
+      - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
       preinstall: packaging/arch/pre_install
       postinstall: packaging/arch/post_install

@@ -24,7 +24,7 @@ type TestResult = Result<(), Box<dyn Error>>;
 
 const P256_P12: &[u8] = include_bytes!("fixtures/p256.p12");
 const PASSWORD: &str = "test-password";
-const ACCESS_DENIED: &str = "org.freedesktop.DBus.Error.AccessDenied";
+use custodio_client::{ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_INVALID_ARGS, ERROR_POLKIT_DENIED};
 
 struct Bus {
     child: Child,
@@ -165,7 +165,22 @@ impl Fixture {
         let reply = self
             .call("ImportP12", &(id, P256_P12.to_vec(), PASSWORD))
             .await?;
-        reply.body().deserialize()
+        let kind = reply.body().deserialize()?;
+        // The import asked polkit under its own action; the tests below count the signatures.
+        let asked = std::mem::take(
+            &mut *self
+                .asked
+                .lock()
+                .map_err(|_| zbus::Error::Failure("poisoned".into()))?,
+        );
+        assert_eq!(
+            asked,
+            vec![format!(
+                "com.rfirma.custodio.import-certificate {}",
+                self.client_name()
+            )]
+        );
+        Ok(kind)
     }
 
     async fn sign(&self, id: &str, mechanism: u32, data: &[u8]) -> zbus::Result<Vec<u8>> {
@@ -215,21 +230,18 @@ fn verify(cert_der: &[u8], digest: &[u8], signature: &[u8]) -> TestResult {
 fn import_list_and_approved_sign() -> TestResult {
     block_on(async {
         let f = Fixture::start(true).await?;
-        let none: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(none, Vec::<String>::new());
+        let none: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        assert_eq!(none.len(), 0);
         assert_eq!(f.import("alice").await?, "ecdsa-p256");
 
-        let keys: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(keys, ["alice"]);
-        let certs: Vec<(String, Vec<u8>)> = f
-            .call("ListCertificates", &())
-            .await?
-            .body()
-            .deserialize()?;
-        let [(cert_id, cert_der)] = certs.as_slice() else {
-            return Err("expected exactly one certificate".into());
+        let keys: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        let [(cert_id, key_type, cert_der)] = keys.as_slice() else {
+            return Err("expected exactly one key".into());
         };
         assert_eq!(cert_id, "alice");
+        assert_eq!(key_type, "ecdsa-p256");
 
         let digest = [7u8; 32];
         let signature = f.sign("alice", CKM_ECDSA, &digest).await?;
@@ -250,7 +262,7 @@ fn denial_returns_an_error_and_no_signature() -> TestResult {
         f.approve.store(false, Ordering::SeqCst);
         let err = f.sign("alice", CKM_ECDSA, &[7u8; 32]).await.err();
         let err = err.ok_or("denied sign returned a signature")?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERROR_POLKIT_DENIED);
         assert_eq!(f.asked().len(), 1);
         Ok(())
     })
@@ -264,7 +276,7 @@ fn polkit_missing_is_a_refusal() -> TestResult {
         f.polkit.release_name("org.freedesktop.PolicyKit1").await?;
         let err = f.sign("alice", CKM_ECDSA, &[7u8; 32]).await.err();
         let err = err.ok_or("sign succeeded without polkit")?;
-        assert_eq!(error_name(&err), ACCESS_DENIED);
+        assert_eq!(error_name(&err), ERROR_AUTHORIZATION_UNAVAILABLE);
         Ok(())
     })
 }
@@ -297,16 +309,13 @@ fn bad_arguments_are_rejected_before_polkit() -> TestResult {
         ] {
             let err = f.sign(id, mechanism, &[7u8; 32]).await.err();
             let err = err.ok_or("bad request succeeded")?;
-            assert_eq!(
-                error_name(&err),
-                "org.freedesktop.DBus.Error.InvalidArgs",
-                "{id}"
-            );
+            assert_eq!(error_name(&err), ERROR_INVALID_ARGS, "{id}");
         }
         // A mechanism that does not fit the key is refused after approval, with no signature.
         assert!(f.sign("alice", CKM_RSA_PKCS, &[7u8; 32]).await.is_err());
+        // A missing key is refused before polkit is asked.
         assert!(f.sign("missing", CKM_ECDSA, &[7u8; 32]).await.is_err());
-        assert_eq!(f.asked().len(), 2);
+        assert_eq!(f.asked().len(), 1);
         Ok(())
     })
 }
@@ -321,8 +330,12 @@ fn import_errors_do_not_leak_the_password_or_store() -> TestResult {
             .err()
             .ok_or("wrong password imported")?;
         assert!(!format!("{err:?}").contains("wrong-password"));
-        let keys: Vec<String> = f.call("ListKeys", &()).await?.body().deserialize()?;
-        assert_eq!(keys, Vec::<String>::new());
+        // polkit was asked before the wrong password was found out.
+        assert_eq!(f.asked().len(), 1);
+        f.asked.lock().map_err(|_| "poisoned")?.clear();
+        let keys: Vec<(String, String, Vec<u8>)> =
+            f.call("ListKeys", &()).await?.body().deserialize()?;
+        assert_eq!(keys.len(), 0);
         f.import("bob").await?;
         assert!(f.import("bob").await.is_err());
         Ok(())
