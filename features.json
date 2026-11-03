@@ -38,7 +38,7 @@
         "F106"
       ],
       "verify": "sec=$(awk '/^## F107/{f=1;next} f && /^## /{exit} f' docs/findings.md) && for w in 'CKM_RSA_PKCS' 'CKM_RSA_PKCS_PSS' 'CKM_ECDSA' 'DigestInfo' 'salt' 'decrypt' 'SHA-384' 'SHA-512' 'lacks' 'profile'; do printf '%s\\n' \"$sec\" | grep -qF -- \"$w\" || exit 1; done && printf '%s\\n' \"$sec\" | grep -qE '^Decision: ' && printf '%s\\n' \"$sec\" | grep -qE '^Decision: [(](a|b)[)]' && just with-swtpm cargo run -q --locked -p custodio-it --example tpm-probe -- mechanisms",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F108",
