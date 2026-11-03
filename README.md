@@ -1,12 +1,23 @@
 # Custodio
 
-A Linux system service that holds signing keys imported from a `.p12` file and asks for polkit
-authorization on every signature. It shows up as a PKCS#11 token, so any program that speaks
-PKCS#11 can use it.
+A Linux system service that keeps your signing keys out of your reach and asks you through
+polkit before every signature.
 
-It stops a process running as the user, such as an AI agent with a shell, from signing by mistake.
-It does not protect against an attacker running as the same uid, against root, or the user's
-intent: the dialog cannot prove what is being signed.
+A key in a `.p12` file or an NSS database can be used by any process running as you, an AI agent
+with a shell included, without you noticing. Custodio imports the `.p12` into a service with its
+own uid, so your processes can ask it to sign but cannot read or copy the key. Every signature,
+import, deletion and certificate replacement needs your approval for that one call, and leaves an
+entry in the journal. Each key belongs to the user who imported it.
+
+Programs use it as a PKCS#11 token: Firefox, LibreOffice and anything else that speaks PKCS#11.
+Keys are RSA 2048 or ECDSA P-256.
+
+It stops a process running as you from signing by mistake. It does not protect against an attacker
+running as the same uid, against root, or your intent: the dialog cannot prove what is being
+signed.
+
+Not ready for use yet: it runs only in test machines until the public release (M5). Roadmap in
+[docs/milestones.md](docs/milestones.md).
 
 ## Names
 
@@ -18,6 +29,20 @@ intent: the dialog cannot prove what is being signed.
 
 Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
 requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
+
+## Using it
+
+```bash
+custodio import [--id <key id>] file.p12   # asks for the file password, then polkit
+custodio list                              # your keys: id, type, subject, end of validity
+custodio delete <key id>                   # asks for confirmation, then polkit
+```
+
+You only see and sign with your own keys. Over SSH or on a console without a graphical polkit
+agent, `import` and `delete` ask for the password on the terminal. Details in `man custodio`.
+
+Programs sign through the PKCS#11 module, which p11-kit loads where the system supports it; Firefox
+sometimes needs it registered by hand ([docs/install.md](docs/install.md), "Firefox").
 
 ## Writing a client
 
