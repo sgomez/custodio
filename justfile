@@ -40,6 +40,12 @@ lint:
     just deps-check
     scripts/check-files.sh
 
+# Runs a command against a fresh software TPM (swtpm, socket mode, state in a new temporary directory, TPM2_Startup done,
+# TPM2TOOLS_TCTI exported); stops it and removes the state whatever the outcome; exits with the command's status.
+[positional-arguments]
+with-swtpm *cmd:
+    scripts/with-swtpm.sh "$@"
+
 # Fails, naming the path, when custodio-cli or custodio-pkcs11 reaches the custodiod crate in any dependency kind (normal, build, dev).
 deps-check:
     scripts/deps_check.py
@@ -134,6 +140,9 @@ test-scripts:
     scripts/check-sysusers-sync.sh
     scripts/test-bus-check-sync.sh
     scripts/test-sysusers-sync.sh
+    scripts/check-tpm-install-sync.sh
+    scripts/test-tpm-install-sync.sh
+    scripts/test-with-swtpm.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
