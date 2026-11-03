@@ -88,3 +88,17 @@ with an empty context.
 - Also: `just quick` was red from attempt 1 (file size over 5000 tokens, inline tests in `tpm_filter.rs`): `mechanisms.rs` split into
   `mechanisms/support/wayb/caps` modules, filter tests moved to `src/tpm_filter/tests.rs`. `just quick` green, probe exit 0, filter tests 3/3.
 - Not verified: the two refusal paths were not run against a TPM that refuses (swtpm accepts both); they are straight error branches.
+
+### 2026-11-03 — F108 — attempt 1
+- Done: `## F108` in `docs/findings.md`, run in the debian13 container under rootless podman (booted `degraded`: only kernel mounts and
+  `systemd-modules-load` fail). `Decision: route 2` (swtpm on a unix socket, test-only drop-in in `/run/systemd/system/custodio.service.d/`).
+- Route 1 (vtpm proxy): no `/dev/vtpmx`, no `tpm_vtpm_proxy` module, no root; needs a host change (load the module, pass the device in).
+  Not needed, so no `BLOCKED.md`; a real `/dev/tpmrm0` stays for F109 (device questions) and F111.
+- Facts for F109: a host AppArmor profile `swtpm (enforce)` confines swtpm in the container: socket and state only under `/tmp` and `/var/tmp`,
+  and it cannot be signalled (stop with `swtpm_ioctl -s`). The unit's `PrivateTmp` is passed with `BindReadOnlyPaths=/tmp/f108-tpm`; the TCTI
+  needs `<sock>.ctrl` next to the socket, both `mode=0666` for the dynamic user. The shipped sandbox let `tpm2_getcap` through (33 algorithms).
+  The F107 filter has no CLI: a scratch wrapper (not committed) ran it; F109 should add an example to `custodio-it`.
+- Evidence in the finding: PCR 16 extend equals the precomputed value, read by the shell and by the unit; restart gives PCR zero (as expected)
+  with a persistent handle and its name unchanged; clear removes it and changes the owner seed; drop-in negative control and `dpkg -L` = 0
+  against the real deb. Other targets are inferred, with the F109 check for each.
+- Not done: other targets, SELinux, hardware. `just quick` green, the `verify` passes.
