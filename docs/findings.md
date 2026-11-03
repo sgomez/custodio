@@ -2141,3 +2141,373 @@ F111 runs the probe on a hardware TPM and confirms the cost and that ECC P-256 i
 the choice is recorded in `docs/decisions.md`. The service never writes persistent state to the TPM.
 
 Decision: a primary recreated on each use from the fixed TCG SRK template, ECC P-256 (no persistent SRK at 0x81000001)
+
+## F107
+
+Mechanism parity on the TPM, and the capabilities each key type needs: the SPEC open questions "Mechanism
+parity on the TPM" and "A TPM that lacks a capability only for some mechanisms", for a person to approve in
+F111. Everything below ran on `swtpm` 0.7.1-1.5 with libtpms 0.9.2-3.2 (TPM 2.0 revision 1.64, firmware
+version raw `0x20191023`, manufacturer IBM), inside `just with-swtpm`, with the probe
+`cargo run -q --locked -p custodio-it --example tpm-probe -- mechanisms [--tcti <tcti>]` and with the tests
+`cargo test -p custodio-it --test tpm_filter -- --nocapture`. Nothing ran on a hardware TPM: that is F111, with the
+same probe command. Each claim is **verified** (a command run here) or **inferred**.
+
+Scope: RSA 2048 and ECC P-256 only, the two kinds M4 ships. RSA 3072/4096 and P-384 are not probed. Import
+(`TPM2_Import`), the real capability query in the service and the parent key (F106) are other features: the probe
+uses transient primaries in the owner hierarchy, because the mechanism behaviour does not depend on the parent.
+
+### Method
+
+- **The two ways.** (a) `TPM2_Sign` only: the probe parses a `DigestInfo` for `CKM_RSA_PKCS`, serves
+  `CKM_RSA_PKCS_PSS` only when the requested salt length is the one the TPM produces, and everything else is
+  `lacks`. (b) The padding is built in the probe (PKCS#1 v1.5 block type 1, EMSA-PSS with MGF1 and a random salt
+  of the requested length) and the TPM does only the raw RSA private operation, `TPM2_RSA_Decrypt` with the null
+  scheme on a key with the `decrypt` attribute. (b) is RSA only: `CKM_ECDSA` has no raw private operation to
+  replace `TPM2_Sign`, so the probe prints `way=b ... outcome=n/a` for it; it is not an unrun case.
+- **The verifier is not the probe.** Every signature is checked by the `openssl` command line (3.5.7), on files in a
+  temporary directory: `pkeyutl -verifyrecover` for `CKM_RSA_PKCS` (the signature must open to exactly the payload;
+  `-verify` refuses inputs over 64 bytes, a SHA-512 `DigestInfo` is 83), `pkeyutl -verify` with `rsa_padding_mode:pss`,
+  `rsa_pss_saltlen:<n>` and `rsa_mgf1_md` for PSS, `pkeyutl -verify` for ECDSA. The probe's padding code is never
+  run backwards. The first run of the probe printed `verified=no` for the SHA-384/512 `DigestInfo` and for the
+  largest salt in (b); both were probe bugs (the 64-byte limit above, and `TPM2_GetRandom` returning at most 64 bytes
+  for a 222-byte salt), found because the verifier was independent, and fixed. The probe exits 1 when a served
+  signature does not verify (it did, for those runs), so a broken probe cannot pass the `verify`.
+- **Table rule for (a).** For `CKM_RSA_PKCS_PSS`, "served" means the requested salt length equals the salt the TPM
+  produces. Every other length is `lacks` by that policy (the cell says `policy:`), not a TPM error: the TPM was
+  asked for the same signature and gave the same one.
+- **Negative controls, all in the output:** the verifier rejects a right signature over a wrong payload
+  (`control: verifier ... wrong_payload=no`); a wrong expected salt (found + 1) does not verify
+  (`wrong_salt_verifies=no`); the rightmost 32 bytes of a SHA-384/512 digest do not verify an ECDSA signature made
+  over the leftmost 32 (`verified_over_rightmost_32=no`); a sign-only key refuses the raw operation (`0x182`).
+
+### The probe output
+
+Pasted from one run (`exit 0`; the lines of the capability section are the list further down).
+
+```
+manufacturer: 0x49424d00 (IBM)
+persistent_handles: none
+nv_indexes: 0
+verifier: OpenSSL 3.5.7 9 Jun 2026 (Library: OpenSSL 3.5.7 9 Jun 2026)
+table_rule_a: CKM_RSA_PKCS_PSS is served under (a) only when salt_requested equals the salt the TPM produces; any other length is lacks by that policy, not a TPM error
+key: rsa2048 sign-only fixedtpm=true fixedparent=true sensitivedataorigin=true restricted=false sign=true decrypt=false
+key: rsa2048 sign|decrypt fixedtpm=true fixedparent=true sensitivedataorigin=true restricted=false sign=true decrypt=true
+key: ecc_p256 sign-only fixedtpm=true fixedparent=true sensitivedataorigin=true restricted=false sign=true decrypt=false
+control: verifier right_payload=yes wrong_payload=no
+case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-1 outcome=served rc=- verified=yes
+case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-256 outcome=served rc=- verified=yes
+case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-384 outcome=served rc=- verified=yes
+case: way=a mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-512 outcome=served rc=- verified=yes
+case: way=a mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 (TLS 1.0/1.1)" outcome=lacks rc=service parser: not a known DigestInfo tpm_if_passed_as_digest=Code: 0x000001D5, Message: Structure is the wrong size (associated with parameter number 1). 
+case: way=a mechanism=CKM_RSA_PKCS payload="DigestInfo with an unknown hash OID" outcome=lacks rc=service parser: not a known DigestInfo tpm_if_passed_as_digest=Code: 0x000001D5, Message: Structure is the wrong size (associated with parameter number 
+salt_found: hash=SHA-256 tpm_salt=32 hash_len=32 equals_hash_len=yes largest_possible=222 wrong_salt_verifies=no
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=32 outcome=served rc=- salt_found=32 verified=yes
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=222 outcome=lacks rc=policy: TPM salt is 32, not 222 salt_found=32 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=0 outcome=lacks rc=policy: TPM salt is 32, not 0 salt_found=32 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=20 outcome=lacks rc=policy: TPM salt is 32, not 20 salt_found=32 verified=n/a
+salt_found: hash=SHA-384 tpm_salt=48 hash_len=48 equals_hash_len=yes largest_possible=206 wrong_salt_verifies=no
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=48 outcome=served rc=- salt_found=48 verified=yes
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=206 outcome=lacks rc=policy: TPM salt is 48, not 206 salt_found=48 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=0 outcome=lacks rc=policy: TPM salt is 48, not 0 salt_found=48 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=20 outcome=lacks rc=policy: TPM salt is 48, not 20 salt_found=48 verified=n/a
+salt_found: hash=SHA-512 tpm_salt=64 hash_len=64 equals_hash_len=yes largest_possible=190 wrong_salt_verifies=no
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=64 outcome=served rc=- salt_found=64 verified=yes
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=190 outcome=lacks rc=policy: TPM salt is 64, not 190 salt_found=64 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=0 outcome=lacks rc=policy: TPM salt is 64, not 0 salt_found=64 verified=n/a
+case: way=a mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=20 outcome=lacks rc=policy: TPM salt is 64, not 20 salt_found=64 verified=n/a
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-256 handover=truncated32+SHA-256 outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-256 handover=full+own-hash outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-384 handover=truncated32+SHA-256 outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-384 handover=full+own-hash outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-512 handover=truncated32+SHA-256 outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=a mechanism=CKM_ECDSA curve=P-256 digest=SHA-512 handover=full+own-hash outcome=served rc=- verified_over_leftmost_32=yes verified_over_full_digest=yes verified_over_rightmost_32=no
+case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-1 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
+case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-256 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
+case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-384 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
+case: way=b mechanism=CKM_RSA_PKCS payload=DigestInfo/SHA-512 outcome=served rc=- verified=yes bytes_equal_way_a_same_key=yes
+case: way=b mechanism=CKM_RSA_PKCS payload="36-byte MD5+SHA-1 (TLS 1.0/1.1)" outcome=served rc=- verified=yes bytes_equal_way_a_same_key=n/a (way a lacks)
+case: way=b mechanism=CKM_RSA_PKCS payload="DigestInfo with an unknown hash OID" outcome=served rc=- verified=yes bytes_equal_way_a_same_key=n/a (way a lacks)
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=32 outcome=served rc=- salt_found=32 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=222 outcome=served rc=- salt_found=222 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=0 outcome=served rc=- salt_found=0 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-256 salt_requested=20 outcome=served rc=- salt_found=20 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=48 outcome=served rc=- salt_found=48 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=206 outcome=served rc=- salt_found=206 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=0 outcome=served rc=- salt_found=0 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-384 salt_requested=20 outcome=served rc=- salt_found=20 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=64 outcome=served rc=- salt_found=64 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=190 outcome=served rc=- salt_found=190 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=0 outcome=served rc=- salt_found=0 verified=yes
+case: way=b mechanism=CKM_RSA_PKCS_PSS hash=SHA-512 salt_requested=20 outcome=served rc=- salt_found=20 verified=yes
+control: way=b key_without_decrypt rsa_decrypt=Code: 0x00000182, Message: Inconsistent attributes (associated with handle number 1).
+case: way=b mechanism=CKM_ECDSA curve=P-256 digest=SHA-256 outcome=n/a rc=RSA only: ECDSA has no raw private operation the TPM offers in place of TPM2_Sign
+case: way=b mechanism=CKM_ECDSA curve=P-256 digest=SHA-384 outcome=n/a rc=RSA only: ECDSA has no raw private operation the TPM offers in place of TPM2_Sign
+case: way=b mechanism=CKM_ECDSA curve=P-256 digest=SHA-512 outcome=n/a rc=RSA only: ECDSA has no raw private operation the TPM offers in place of TPM2_Sign
+capability: call=GetCapability(ALGS) item=algorithm RSA (0x0001) present
+capability: call=GetCapability(ALGS) item=algorithm SHA-1 (0x0004) present
+capability: call=GetCapability(ALGS) item=algorithm SHA-256 (0x000b) present
+capability: call=GetCapability(ALGS) item=algorithm SHA-384 (0x000c) present
+capability: call=GetCapability(ALGS) item=algorithm SHA-512 (0x000d) present
+capability: call=GetCapability(ALGS) item=algorithm RSASSA (0x0014) present
+capability: call=GetCapability(ALGS) item=algorithm RSAES (0x0015) present
+capability: call=GetCapability(ALGS) item=algorithm RSAPSS (0x0016) present
+capability: call=GetCapability(ALGS) item=algorithm ECDSA (0x0018) present
+capability: call=GetCapability(ALGS) item=algorithm ECC (0x0023) present
+capability: call=GetCapability(ALGS) item=algorithm MGF1 (0x0007) present
+capability: call=GetCapability(ECC_CURVES) item=curve NIST P-256 (0x0003) present
+capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-1 supported
+capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-1 supported
+capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-256 supported
+capability: call=TestParms key=rsa2048 scheme=RSAPSS hash=SHA-256 supported
+capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-256 supported
+capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-384 supported
+capability: call=TestParms key=rsa2048 scheme=RSAPSS hash=SHA-384 supported
+capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-384 supported
+capability: call=TestParms key=rsa2048 scheme=RSASSA hash=SHA-512 supported
+capability: call=TestParms key=rsa2048 scheme=RSAPSS hash=SHA-512 supported
+capability: call=TestParms key=ecc_p256 scheme=ECDSA hash=SHA-512 supported
+capability: call=TestParms key=rsa2048 scheme=NULL (for way b, with the decrypt attribute) supported
+decrypt_key: sign-only attributes: fixedtpm=true fixedparent=true sensitivedataorigin=true restricted=false sign=true decrypt=false
+decrypt_key: sign|decrypt attributes: fixedtpm=true fixedparent=true sensitivedataorigin=true restricted=false sign=true decrypt=true
+decrypt_other_caller: key=sign-only rsa_decrypt(RSAES, chosen ciphertext) refused Code: 0x00000182, Message: Inconsistent attributes (associated with handle number 1).
+decrypt_other_caller: key=sign-only sign(RSASSA, SHA-256, chosen digest) served
+decrypt_other_caller: key=sign-only duplicate(no new parent) Code: 0x00000124, Message: Authorization handle is not correct for command.
+decrypt_other_caller: key=sign|decrypt rsa_decrypt(RSAES, chosen ciphertext) plaintext recovered: "secret message"
+decrypt_other_caller: key=sign|decrypt sign(RSASSA, SHA-256, chosen digest) served
+decrypt_other_caller: key=sign|decrypt duplicate(no new parent) Code: 0x00000124, Message: Authorization handle is not correct for command.
+result: every case ran; every served signature verified
+```
+
+### Results per mechanism (verified)
+
+Every "served" cell was verified by `openssl` (above). `lacks` cells give the cause.
+
+| Mechanism | Way (a) `TPM2_Sign` only | Way (b) padding in the service, raw private operation in the TPM |
+|---|---|---|
+| `CKM_RSA_PKCS`, `DigestInfo` SHA-1, SHA-256, SHA-384, SHA-512 | served, verified (the probe parses the `DigestInfo` and passes the digest with `RSASSA` and the hash) | served, verified, and the bytes equal (a)'s on the same key (PKCS#1 v1.5 is deterministic) |
+| `CKM_RSA_PKCS`, payload that is not a `DigestInfo`: the 36-byte MD5+SHA-1 of TLS 1.0/1.1, and a `DigestInfo` with a hash OID no table knows | `lacks`: the parser refuses; handed to the TPM as a digest it answers `0x1D5` (wrong size) | served, verified |
+| `CKM_RSA_PKCS_PSS`, SHA-256/384/512, salt = hash length (32/48/64) | served, verified (this is what the TPM produces) | served, verified |
+| `CKM_RSA_PKCS_PSS`, salt largest that fits (222/206/190) | `lacks` (policy: the TPM's salt is the hash length) | served, verified at that salt |
+| `CKM_RSA_PKCS_PSS`, salt 0 and salt 20 | `lacks` (policy) | served, verified at that salt |
+| `CKM_ECDSA`, P-256, SHA-256/384/512 digest, the service's truncation | served, verified (see "Hashes a P-256 key needs") | n/a: RSA only |
+
+The composed mechanisms (`CKM_SHA256_RSA_PKCS`, `CKM_SHA384_RSA_PKCS`, `CKM_SHA512_RSA_PKCS`,
+`CKM_SHA256_RSA_PKCS_PSS` and the other hashes, `CKM_ECDSA_SHA256/384/512`) hash in the module or the service and
+then call the base case, so they reduce to the rows above and need nothing further from the TPM.
+
+`CKM_RSA_PKCS` with a payload that is not a `DigestInfo` is the one row where the two ways differ in kind: (a) cannot
+serve it at all (TLS 1.0/1.1 client authentication signs the 36-byte MD5+SHA-1 concatenation, and any PKCS#11
+client may hand `CKM_RSA_PKCS` any payload that fits), (b) serves it and the result verifies. The SHA-1
+`DigestInfo` is served by this `swtpm` under (a); a TPM or firmware policy that disables SHA-1 would turn it into
+`lacks` (inferred; F111 repeats the probe).
+
+### PSS salt length per hash (verified)
+
+The salt is found by verifying with each length 0 to the largest that fits and taking the one that verifies; the
+`salt_found` lines:
+
+| Hash | Salt the TPM produces | Hash length | Equal? | Largest that fits in 2048 bits |
+|---|---|---|---|---|
+| SHA-256 | 32 | 32 | yes | 222 |
+| SHA-384 | 48 | 48 | yes | 206 |
+| SHA-512 | 64 | 64 | yes | 190 |
+
+libtpms 0.9.2 uses the hash length, as SPEC section 4 says. So TLS 1.3 (salt = hash length) works under (a) on this
+`swtpm`, and the other lengths do not. Whether a hardware TPM does the same is not known (inferred from SPEC's
+remark that firmware differs; the TPM 2.0 structures text has said "the largest salt that fits"): F111 must read the
+`salt_found` lines on the hardware. Under (b) the salt is whatever the service builds, so this does not matter.
+
+### Hashes a P-256 key needs from the TPM (verified)
+
+`CKM_ECDSA` takes a digest. The service truncates a SHA-384/512 digest to its leftmost 32 bytes
+(`docs/decisions.md`, 2026-10-28). Two ways to hand it to `TPM2_Sign` were run:
+
+- `truncated32+SHA-256`: the 32 bytes with the scheme `ECDSA` and hash SHA-256. Served for all three digests; the
+  signature verifies over the leftmost 32 bytes and not over the rightmost 32.
+- `full+own-hash`: the whole 48 or 64-byte digest with the scheme hash SHA-384 or SHA-512. Also served here, and it
+  verifies over the leftmost 32 bytes, so this TPM truncates by itself. It needs SHA-384/SHA-512 from the TPM.
+
+(OpenSSL's ECDSA verification also truncates a long digest, so `verified_over_full_digest=yes` is expected; the
+rightmost-32 control is what shows the truncation is to the leftmost bytes.) A P-256 key therefore needs **SHA-256
+only** from the TPM when the service hands over the 32 truncated bytes, which it already computes. That is the
+recommended hand-over: it keeps the truncation in one place and does not make a TPM without SHA-384/512 lack
+`CKM_ECDSA`.
+
+### The `decrypt` attribute against the threat model
+
+What was run (`decrypt_*` lines): a sign-only and a sign|decrypt RSA key were created under a primary, their blobs
+kept, the first connection closed, and **a second connection** recreated the primary and loaded the blobs, as another
+holder of the TPM and of the state directory could.
+
+- The sign|decrypt key (`sign=true decrypt=true`; the TPM accepts both on an unrestricted key with the null scheme; the spec
+  rejects them together only on restricted keys, which was not run) decrypted a PKCS#1 v1.5 ciphertext that `openssl` made to its public
+  key: `plaintext recovered: "secret message"`. The sign-only key refused: `0x182`, attributes.
+- Both keys signed a digest of the caller's choosing (`RSASSA`, SHA-256): so signing is possible for any holder with
+  or without `decrypt`. That is the "Root can use a TPM key" row of the SPEC threat model, accepted by design.
+- Neither key could be duplicated: `TPM2_Duplicate` answered `0x124` (an authorization of the wrong kind: the key's
+  empty `authPolicy` needs a policy session that cannot be built). `decrypt` does not change that: the key stays
+  `fixedTPM|fixedParent`, nothing leaves the TPM. The in-scope threat "take a key out of the TPM" is not affected.
+
+What the attribute adds, then, is **decryption of chosen ciphertexts** (anything encrypted to the certificate's
+public key: S/MIME or CMS messages, a recorded TLS-RSA key exchange) and **signing of arbitrary padding** (the raw
+operation signs any block, so also formats the service does not offer). Both are *use* of the key by someone who
+controls the running machine and can reach the TPM. SPEC "Out of scope" lists exactly that: "root *using* a key
+while it controls the running machine". The in-scope items (root reading the state directory, a stolen disk,
+`TPM2_Duplicate`) are unchanged. What does change is the content of "Root can use a TPM key": root could already
+sign in the name of the certificate; with `decrypt` root could also read past mail encrypted to it. For the
+encrypted kinds root can do both and also copy the key, so a TPM key with `decrypt` is still strictly stronger than
+the fallback. The service itself never exposes decryption (no `C_Decrypt` path), and under (b) it never passes a
+client-chosen block to the raw operation: it always builds the padding itself. SPEC "Attributes of the imported
+key" asks for "no more usages than" the mechanisms need, and says whether that includes `decrypt` "is an open
+question": under (b) it does.
+
+### The TPM capabilities each key type needs (the list the service will query)
+
+Written once. Calls: `GetCapability(ALGS)` (`TPM2_GetCapability` with `TPM_CAP_ALGS`), `GetCapability(ECC_CURVES)`
+(`TPM_CAP_ECC_CURVES`), `GetCapability(COMMANDS)` (`TPM_CAP_COMMANDS`), `TestParms` (`TPM2_TestParms`, the
+exact check for a combination of type, size, scheme and hash). On `swtpm` every item answered "present" or
+"supported" (the `capability:` lines above; the commands: `tpm2_getcap commands` lists `TPM2_CC_Import`,
+`TPM2_CC_Load`, `TPM2_CC_Sign`, `TPM2_CC_RSA_Decrypt`, `TPM2_CC_TestParms`, `TPM2_CC_GetCapability`).
+
+**RSA 2048, way (b)** (the recommended one):
+
+| Item | Answered by |
+|---|---|
+| algorithm RSA (`0x0001`) | `GetCapability(ALGS)` |
+| key size 2048, exponent 65537, scheme null | `TestParms` rsa2048 null scheme |
+| name algorithm SHA-256 (`0x000b`) | `GetCapability(ALGS)` |
+| the `decrypt` attribute on a signing key: the command `TPM2_RSA_Decrypt` is implemented | `GetCapability(COMMANDS)`; the attribute itself is only proven by the import succeeding and `tpm2_readpublic` showing it (it cannot be queried) |
+| no hash, no signature scheme: the service hashes and pads | nothing to query |
+
+**RSA 2048, way (a)** (not recommended; listed so the choice is complete): the rows above except the `decrypt`
+attribute, plus scheme `RSASSA` (`0x0014`) with each of SHA-1, SHA-256, SHA-384, SHA-512 (`TestParms` for each),
+scheme `RSAPSS` (`0x0016`) with each of SHA-256, SHA-384, SHA-512 (`TestParms` for each), and the salt the TPM
+produces (not queryable: found by signing, as the probe does).
+
+**ECC P-256:**
+
+| Item | Answered by |
+|---|---|
+| algorithm ECC (`0x0023`) | `GetCapability(ALGS)` |
+| curve NIST P-256 (`0x0003`) | `GetCapability(ECC_CURVES)` |
+| scheme ECDSA (`0x0018`) with hash SHA-256 | `TestParms` ecc P-256 ECDSA SHA-256 |
+| name algorithm SHA-256 | `GetCapability(ALGS)` |
+| SHA-384 and SHA-512: **not needed** with the truncated hand-over | nothing to query |
+
+An item the TPM answers "absent" or "unsupported" is "lacks" (SPEC section 2); any other failure of a query is not,
+and fails the import.
+
+### Simulating a TPM that lacks one of them
+
+- **A profile does not exist here (verified).** Neither `swtpm` 0.7.1 nor libtpms 0.9.2 has one:
+  ```
+  $ swtpm socket --tpm2 --print-capabilities
+  { "type": "swtpm", "features": [ "tpm-1.2", "tpm-2.0", "tpm-send-command-header", "flags-opt-startup", "cmdarg-seccomp", "cmdarg-key-fd", "cmdarg-pwd-fd", "cmdarg-print-states", "nvram-backend-dir", "nvram-backend-file", "rsa-keysize-1024", "rsa-keysize-2048", "rsa-keysize-3072" ], "version": "0.7.1" }
+  $ swtpm_setup --help | grep -i -E "profile|algorithms"      # no output
+  $ swtpm socket --help | grep -i profile
+                 : Choose the action of the seccomp profile when a      # the seccomp profile, not a TPM profile
+  $ nm -D /usr/lib/x86_64-linux-gnu/libtpms.so.0 | grep -i profile      # no output; no TPMLIB_SetProfile
+  ```
+  So there is no `swtpm`/libtpms profile that disables an algorithm, and `swtpm` implements every scheme, hash and
+  curve of the spec (its curve list is `0001 0002 0003 0004 0005 0010 0011 0020`). Nothing real can be removed.
+- **The replacement (built): `custodio_it::tpm_filter::TpmFilter`** (`crates/custodio-it/src/tpm_filter.rs`, std only, no
+  `unsafe`, unit tests in the file, integration tests in `tests/tpm_filter.rs`). It sits on a unix socket in front of
+  the `swtpm` socket, speaks the bare TPM framing of the `swtpm` TCTI on both sides, passes `<path>.ctrl` through,
+  and changes what the client sees: `GetCapability` for algorithms and curves loses the lacking entries;
+  `TestParms` with a lacking type, symmetric, scheme, hash or curve, and `Sign` / `RSA_Decrypt` with a lacking scheme
+  or hash, get the format-one response code of the spec (`TPM_RC_TYPE`, `TPM_RC_SCHEME`, `TPM_RC_HASH`,
+  `TPM_RC_CURVE`, parameter 1, or 2 for `Sign`). F108 onward reuse it: `TpmFilter::start(upstream_socket,
+  filter_socket, Lacks { algorithms, curves })` and `filter.tcti()`.
+- **It fails one capability while plain `swtpm` passes (verified):**
+  ```
+plain swtpm:
+  TestParms rsa2048 RSAPSS SHA-256: supported
+  Sign RSAPSS SHA-256: served
+through the filter (lacks RSAPSS 0x0016):
+  GetCapability(ALGS): RSAPSS absent, RSASSA present
+  TestParms rsa2048 RSAPSS SHA-256: TSS Layer: TPM, Code: 0x000001D2, Message: Unsupported or incompatible scheme (assoc. with parameter number 1).
+  TestParms rsa2048 RSASSA SHA-256: supported
+  Sign RSAPSS SHA-256: TSS Layer: TPM, Code: 0x000002D2, Message: Unsupported or incompatible scheme (assoc. with parameter number 2).
+  Sign RSASSA SHA-256: served
+  TestParms rsa2048 RSASSA SHA-384: supported
+  TestParms ecc_p256 ECDSA SHA-256: supported
+through the filter (lacks SHA-384 0x000c and curve P-256 0x0003):
+  GetCapability(ALGS): SHA-384 absent, SHA-256 present; GetCapability(ECC_CURVES): P-256 absent
+  TestParms rsa2048 RSASSA SHA-384: TSS Layer: TPM, Code: 0x000001C3, Message: Hash algorithm not supported or not appropriate (assoc. with parameter number 1).
+  TestParms rsa2048 RSASSA SHA-256: supported
+  TestParms ecc_p256 ECDSA SHA-256: TSS Layer: TPM, Code: 0x000001E6, Message: Curve not supported (assoc. with parameter number 1).
+  GetCapability(ECC_CURVES): [0001, 0002, 0003, 0004, 0005, 0010, 0011, 0020]
+  TestParms rsa2048 RSASSA SM3_256: TSS Layer: TPM, Code: 0x000001C3, Message: Hash algorithm not supported or not appropriate (assoc. with parameter number 1).
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+  ```
+  The first block is a partial lack: the TPM lacks `RSAPSS` and keeps `RSASSA`, so `CKM_RSA_PKCS_PSS` is lost under
+  (a) and nothing else. The hash code `0x1C3` is also what the real `swtpm` answers for SM3_256, which it does not
+  implement (last two lines), so at least that code is measured, not only specified.
+- **What it cannot simulate.** It only rewrites the answers to the commands above. It does not make `Create`,
+  `Load`, `Import` or `CreatePrimary` refuse (they reach the real TPM), so a TPM that accepts a query and then fails an
+  import is not simulated (that is the "TPM error during import" case of SPEC section 2, which is not "lacks" and
+  needs a different fault). The scheme and curve response codes come from the TPM 2.0 Part 2 table
+  and are **inferred**: `swtpm` implements every scheme and curve, so there is no real answer to compare with (only the
+  hash code is measured). A hardware TPM may answer a different code for the same lack, or lack by returning
+  `TPM_RC_COMMAND_CODE`. It does not model hardware timing, the salt a hardware TPM produces, or `GetCapability`
+  paging (`moreData` is passed through).
+
+### Partial lack: recommendation
+
+SPEC section 4: "If a mechanism cannot be served by the TPM for a key type on a given TPM, that key type on that TPM
+falls under 'lacks a capability' and is stored encrypted, TPM-bound. A mechanism is never silently dropped or
+changed for a TPM key." The open question asks whether a key whose TPM lacks one mechanism should go to the TPM and lose it.
+
+**Recommendation: keep the SPEC answer. The key type goes encrypted, TPM-bound, and `custodio import` says why.**
+Reasons: (1) a TPM key that silently refuses `CKM_RSA_PKCS_PSS` with salt 20 gives a different error than the
+encrypted kind for the same call, which is "dropped or changed for a TPM key"; (2) the person importing cannot know
+which client will need which mechanism, and a key that works in Firefox but fails in LibreOffice is the worst
+outcome of the two; (3) with way (b) the question mostly disappears for RSA: the list of what an RSA key needs
+from the TPM is one algorithm, one size, the null scheme, the name hash and one command, with no per-mechanism
+item, so a TPM either has all of it or lacks the key type, and a missing `RSAPSS` or SHA-384 changes nothing (the
+first block of the filter run shows `RSAPSS` lacking while the capabilities in the (b) table are untouched;
+that the raw operation then still works on that TPM is **inferred**, the filter run did not do a null-scheme
+decrypt). A person who prefers TPM-with-loss would need an explicit, visible per-kind opt-in, which is the
+administrator override SPEC already defers to M5; no departure from SPEC is needed for M4.
+
+### Departures and points for the person in F111
+
+- Way (b) puts the `decrypt` attribute on every TPM RSA key: SPEC's "no more usages than those" resolves to "includes
+  `decrypt`". The "Not guaranteed" list of the threat model should say that root can also decrypt with a TPM RSA key.
+- Under (b) the service must verify each signature with the public key before returning it (cheap), because the
+  TPM returns a bare private-key exponentiation and a fault would otherwise leave the service as a signature.
+- Under (b) the salt is drawn by the service (`TPM2_GetRandom` returns 64 bytes at most per call, as the first probe
+  run showed) or by its own RNG; and the service's `CKM_RSA_PKCS_PSS` bound checks (data length, salt length)
+  stay as they are, which is what gives "the same bounds and the same errors".
+- Run the same probe on the hardware TPM: the `salt_found` lines (relevant only to (a)), the `capability:` lines, and
+  whether `decrypt` plus `sign` is accepted on an unrestricted RSA key.
+
+### The probe is read-only, and its exit codes (verified)
+
+```
+$ just with-swtpm bash -c 'listings; tpm-probe mechanisms; listings'     # one TPM, listings before and after
+probe exit=0
+listings identical
+$ tpm2_getcap handles-persistent
+$ tpm2_getcap handles-nv-index
+TPM2_PT_HR_NV_INDEX: 0x0
+TPM2_PT_HR_PERSISTENT: 0x0
+TPM2_PT_HR_PERSISTENT_AVAIL: 0x41
+TPM2_PT_NV_COUNTERS: 0x0
+TPM2_PT_NV_COUNTERS_AVAIL: 0x19
+$ tpm-probe bogus                                      ->  usage, exit 2
+$ tpm-probe mechanisms --tcti swtpm:path=/nonexistent  ->  "tpm-probe: cannot connect to the TPM: ... IO failure.", exit 1
+$ tpm-probe mechanisms --tcti notatcti                 ->  "tpm-probe: malformed --tcti", exit 1
+```
+
+The probe creates transient keys and flushes them; it calls no `EvictControl`, sets no auth value and does not clear.
+
+### Decision
+
+Way (a) loses `CKM_RSA_PKCS` with a payload that is not a `DigestInfo` and every `CKM_RSA_PKCS_PSS` salt length but
+the hash length, so every RSA key would "lack" by SPEC section 4 or be served with fewer mechanisms than the
+encrypted kind. Way (b) serves every mechanism, with bytes equal to (a) where (a) serves, for the cost of the
+`decrypt` attribute, which adds use of the key that SPEC already leaves out of scope for root. ECC keys use
+`TPM2_Sign` with the truncated digest and need SHA-256 only. Recommended for approval:
+
+Decision: (b)

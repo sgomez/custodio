@@ -5,6 +5,8 @@
 //! persistent object. It creates transient primaries only and flushes each. Without `--tcti` the environment decides
 //! (`TPM2TOOLS_TCTI`, `TCTI`, `TEST_TCTI`, as `just with-swtpm` sets).
 //!
+//! `mechanisms` (F107) is in `tpm_probe/mechanisms.rs`.
+//!
 //! Exit status: 0 when the TPM answered and the owner hierarchy accepts an empty auth; 1 when the TPM cannot be reached
 //! or the owner hierarchy is unusable (every fact that could still be read is printed first, the persistent SRK among
 //! them: a persisted SRK works without the owner auth, only provisioning does not); 2 on a usage error.
@@ -29,6 +31,9 @@ use tss_esapi::structures::{
 };
 use tss_esapi::tcti_ldr::TctiNameConf;
 use tss_esapi::traits::Marshall;
+
+#[path = "tpm_probe/mechanisms.rs"]
+mod mechanisms;
 
 /// The persistent handle the TCG provisioning guidance reserves for the storage root key.
 const SRK_HANDLE: u32 = 0x8100_0001;
@@ -189,13 +194,17 @@ fn print_header(ctx: &mut Context) -> Result<(), Fail> {
     Ok(())
 }
 
-fn parent(tcti: Option<&str>) -> Result<bool, Fail> {
-    let conf = match tcti {
+fn connect(tcti: Option<&str>) -> Result<TctiNameConf, Fail> {
+    Ok(match tcti {
         Some(s) => TctiNameConf::from_str(s).map_err(|e| format!("malformed --tcti {s:?}: {e}"))?,
         None => TctiNameConf::from_environment_variable().map_err(|e| {
             format!("no TCTI: pass --tcti or set TPM2TOOLS_TCTI/TCTI/TEST_TCTI: {e}")
         })?,
-    };
+    })
+}
+
+fn parent(tcti: Option<&str>) -> Result<bool, Fail> {
+    let conf = connect(tcti)?;
     let mut ctx = Context::new(conf).map_err(|e| format!("cannot connect to the TPM: {e}"))?;
     print_header(&mut ctx)?;
 
@@ -255,16 +264,23 @@ fn parent(tcti: Option<&str>) -> Result<bool, Fail> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let usage = "usage: tpm-probe parent [--tcti <tcti>]";
-    let tcti = match args.as_slice() {
-        [cmd] if cmd == "parent" => None,
-        [cmd, flag, value] if cmd == "parent" && flag == "--tcti" => Some(value.as_str()),
+    let usage = "usage: tpm-probe parent|mechanisms [--tcti <tcti>]";
+    let (command, tcti) = match args.as_slice() {
+        [cmd] if cmd == "parent" || cmd == "mechanisms" => (cmd.as_str(), None),
+        [cmd, flag, value] if (cmd == "parent" || cmd == "mechanisms") && flag == "--tcti" => {
+            (cmd.as_str(), Some(value.as_str()))
+        }
         _ => {
             eprintln!("{usage}");
             return ExitCode::from(2);
         }
     };
-    match parent(tcti) {
+    let result = if command == "parent" {
+        parent(tcti)
+    } else {
+        mechanisms::run(tcti)
+    };
+    match result {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(e) => {
