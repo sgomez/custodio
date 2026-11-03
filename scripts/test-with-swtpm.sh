@@ -55,6 +55,9 @@ bash "$RUN" sh -c "$probe; exit 7" || rc=$?
 gone "failing command"
 bash "$RUN" sh -c "$probe; tpm2_getcap algorithms > /dev/null" || bad "succeeding command failed"
 gone "succeeding command"
+# The caller's stdin reaches the command.
+out=$(echo hello | bash "$RUN" cat) || bad "stdin case: status $?"
+[ "$out" = hello ] || bad "stdin is not passed to the command: got '$out'"
 
 # Job control (set -m) so the background job does not start with SIGINT ignored, as it would in a plain script.
 set -m

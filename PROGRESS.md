@@ -37,3 +37,10 @@ with an empty context.
 - Verified: `WITH_SWTPM_REQUIRE=1 scripts/test-with-swtpm.sh` passes, sync check passes, the three `with-swtpm` verify commands
   behave, `pkg-config --exists tss2-esys` ok, `just quick` green. The TCTI needed no extra package.
 - Next session: nothing left; the loop runs the verify.
+
+### 2026-11-03 — F104 — attempt 3 (findings fix)
+- Done: NEXT_FINDINGS 1: `with-swtpm.sh` keeps the caller's stdin (`exec 3<&0`, `"$@" <&3 3<&- &`); new test case
+  `echo hello | with-swtpm cat` (failed before the fix). Finding 2: the wait for swtpm after the signal fallback is bounded
+  (5 s), warns, and the state is removed anyway. Finding 3: stray swtpm from the earlier run is not from current code.
+- Verified: `WITH_SWTPM_REQUIRE=1 scripts/test-with-swtpm.sh` passes, `just quick` green.
+- Next session: nothing left; the loop runs the verify.

@@ -37,7 +37,16 @@ cleanup() {
             timeout 10 swtpm_ioctl --unix "$state/swtpm.sock.ctrl" -s > /dev/null 2>&1 || true
         fi
         kill -TERM "$swtpm_pid" 2> /dev/null || true
-        wait "$swtpm_pid" 2> /dev/null || true
+        # Bounded wait: if swtpm can be neither told to stop nor signalled, report it and still remove the state.
+        for _ in $(seq 1 50); do
+            kill -0 "$swtpm_pid" 2> /dev/null || break
+            sleep 0.1
+        done
+        if kill -0 "$swtpm_pid" 2> /dev/null; then
+            echo "with-swtpm: warning: swtpm (pid $swtpm_pid) did not stop" >&2
+        else
+            wait "$swtpm_pid" 2> /dev/null || true
+        fi
     fi
     rm -rf "$state"
 }
@@ -62,7 +71,9 @@ export TPM2TOOLS_TCTI="swtpm:path=$sock"
 tpm2_startup -c || { echo "with-swtpm: TPM2_Startup failed" >&2; exit 1; }
 
 # In the background and waited for, so a signal runs the traps at once instead of after the command.
-"$@" &
+# The caller's stdin is kept on fd 3, because a background job of a script gets /dev/null.
+exec 3<&0
+"$@" <&3 3<&- &
 cmd_pid=$!
 rc=0
 wait "$cmd_pid" || rc=$?
