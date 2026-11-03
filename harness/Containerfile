@@ -53,6 +53,8 @@ RUN mkdir -p /home/dev/.config/containers \
     && printf '[storage]\ndriver = "vfs"\n[storage.options]\nignore_chown_errors = "true"\n' > /home/dev/.config/containers/storage.conf \
     && printf '[containers]\ndefault_sysctls = []\nnetns = "host"\nutsns = "host"\n' > /home/dev/.config/containers/containers.conf
 ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:$PATH
+# /tmp is a 16G tmpfs under --systemd=always: cargo-mutants build copies fill it.
+ENV TMPDIR=/var/tmp
 
 # run.sh passes the pins from rust-toolchain.toml and the justfile's nightly_toolchain.
 ARG STABLE=stable

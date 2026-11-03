@@ -60,6 +60,11 @@ claude_session() {
   [ -z "$killed" ] || rc=0
   { jq -rR 'fromjson? | select(.type == "result") | .result // empty' "$logfile.jsonl"
     grep -v '^{' "$logfile.jsonl"; } > "$logfile" || true
+  # A session cut before its result: its last steps instead, so the log is not empty.
+  if [ ! -s "$logfile" ]; then
+    { echo "(no result: the session was cut; its last steps follow, the full events are in $logfile.jsonl)"
+      jq -rR "$transcript_format" "$logfile.jsonl" | tail -n 80; } > "$logfile" || true
+  fi
   return "$rc"
 }
 

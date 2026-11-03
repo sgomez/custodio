@@ -14,8 +14,9 @@ Follow "Every session" in CLAUDE.md:
    (`cargo test -p <crate> <filter>`), never `just check`, `just e2e`, the package gates or the
    `verify`.
 3. When every step is ticked, run `just quick` once, the contract's evidence, and
-   `just mutants-diff <id>` if the `verify` has it (narrow it with `--re <regex>` while killing
-   survivors). Do not run the whole `verify`: the loop runs it as the gate. The package, install
+   `just mutants-diff <id>` if the `verify` has it. A full run can take 10-20 minutes: run it
+   once, with `timeout 1700`. While killing survivors, rerun only them, narrowed to their tests:
+   `--re <regex> -- --lib <filter>`. Run the full diff again only at the end. Do not run the whole `verify`: the loop runs it as the gate. The package, install
    and e2e suites run at the checkpoint features and the release, and failures there are fixed
    there. Run every command in the foreground with `timeout`; background tasks and polling loops
    are blocked.

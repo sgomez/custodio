@@ -279,6 +279,12 @@ mutants *args:
     status=0
     cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/error.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
+    # A build that ran out of disk counts as "unviable", which passes: void the run instead.
+    for out in target/mutants target/mutants-pkcs11; do
+        if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
+            echo "$out: a mutant ran out of disk space; free space and run again" >&2; status=1
+        fi
+    done
     exit "$status"
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
@@ -296,7 +302,8 @@ mutants-diff id *args:
     git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do
         git diff --no-index -- /dev/null "$f" >> "target/mutants-$id.diff" || [ $? = 1 ]
     done
-    just mutants --in-diff "target/mutants-$id.diff" "$@"
+    # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
+    just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
