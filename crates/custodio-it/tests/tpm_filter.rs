@@ -5,7 +5,7 @@
 use std::str::FromStr;
 
 use custodio_it::swtpm::Swtpm;
-use custodio_it::tpm_filter::{Lacks, TpmFilter, alg};
+use custodio_it::tpm_filter::{CommandFault, FaultAction, Lacks, TpmFilter, alg, cc};
 use tss_esapi::Context;
 use tss_esapi::attributes::ObjectAttributesBuilder;
 use tss_esapi::constants::CapabilityType;
@@ -156,6 +156,7 @@ fn lacking_pss_is_a_partial_lack() {
         Lacks {
             algorithms: vec![alg::RSAPSS],
             curves: vec![],
+            ..Lacks::default()
         },
     )
     .expect("filter");
@@ -237,6 +238,7 @@ fn lacking_sha384_and_a_curve() {
         Lacks {
             algorithms: vec![alg::SHA384],
             curves: vec![alg::CURVE_P256],
+            ..Lacks::default()
         },
     )
     .expect("filter");
@@ -307,4 +309,120 @@ fn real_unsupported_hash_matches_the_filter() {
     .expect_err("libtpms has no SM3");
     assert!(e.contains("0x000001C3"), "hash: {e}");
     // libtpms 0.9.2 implements every curve the TPM spec lists, so no real answer for a missing curve exists to compare with.
+}
+
+/// Every command code the TPM lists (`TPM2_GetCapability(TPM_CAP_COMMANDS)`, page after page).
+fn commands(ctx: &mut Context) -> Result<Vec<u32>, String> {
+    let mut out = Vec::new();
+    let mut property = 0u32;
+    for _ in 0..16 {
+        let (data, more) = ctx
+            .get_capability(CapabilityType::Command, property, 64)
+            .map_err(|e| e.to_string())?;
+        let CapabilityData::Commands(list) = data else {
+            return Err("not commands".into());
+        };
+        let page: Vec<u32> = list.iter().map(|a| u32::from(a.command_index())).collect();
+        out.extend(&page);
+        match page.last() {
+            Some(end) if more => property = end + 1,
+            _ => return Ok(out),
+        }
+    }
+    Err("too many pages".into())
+}
+
+fn filter_with(tpm: &Swtpm, lacks: Lacks) -> TpmFilter {
+    TpmFilter::start(
+        &socket_of(&tpm.tcti()),
+        &tpm.state_dir().join("filter.sock"),
+        lacks,
+    )
+    .expect("filter")
+}
+
+#[test]
+fn lacking_commands_are_removed_from_the_command_list() {
+    let tpm = Swtpm::start().expect("swtpm");
+    let wanted = [cc::RSA_DECRYPT, cc::IMPORT, cc::LOAD];
+    let plain = commands(&mut context(&tpm.tcti())).expect("plain commands");
+    for c in wanted.into_iter().chain([cc::SIGN, cc::CREATE_PRIMARY]) {
+        assert!(plain.contains(&c), "plain swtpm lists {c:#x}");
+    }
+    let filter = filter_with(
+        &tpm,
+        Lacks {
+            commands: wanted.to_vec(),
+            ..Lacks::default()
+        },
+    );
+    let filtered = commands(&mut context(&filter.tcti())).expect("filtered commands");
+    let removed: Vec<u32> = plain
+        .iter()
+        .copied()
+        .filter(|c| !filtered.contains(c))
+        .collect();
+    assert_eq!(removed, vec![cc::IMPORT, cc::LOAD, cc::RSA_DECRYPT]);
+    assert!(filtered.len() > 10, "the rest of the list stays");
+    println!(
+        "  GetCapability(COMMANDS): {} plain, {} through the filter, removed {removed:#x?}",
+        plain.len(),
+        filtered.len()
+    );
+}
+
+#[test]
+fn a_fault_rule_answers_the_chosen_code_for_that_command_only() {
+    let tpm = Swtpm::start().expect("swtpm");
+    for (faulty, other_works) in [
+        (cc::GET_CAPABILITY, cc::TEST_PARMS),
+        (cc::TEST_PARMS, cc::GET_CAPABILITY),
+    ] {
+        let filter = filter_with(
+            &tpm,
+            Lacks {
+                faults: vec![CommandFault {
+                    command: faulty,
+                    action: FaultAction::Respond(0x101),
+                }],
+                ..Lacks::default()
+            },
+        );
+        let mut ctx = context(&filter.tcti());
+        let run = |ctx: &mut Context, command: u32| -> Result<(), String> {
+            if command == cc::GET_CAPABILITY {
+                commands(ctx).map(drop)
+            } else {
+                parms(ctx, "rsa2048 null", rsa(RsaScheme::Null))
+            }
+        };
+        let e = run(&mut ctx, faulty).expect_err("the rule answers");
+        assert!(e.contains("0x00000101"), "{e}");
+        run(&mut ctx, other_works).expect("a command without a rule succeeds");
+        println!("  fault rule on {faulty:#x}: {e}");
+    }
+    // Without the rule the same commands succeed.
+    let mut ctx = context(&tpm.tcti());
+    commands(&mut ctx).expect("plain");
+    parms(&mut ctx, "rsa2048 null", rsa(RsaScheme::Null)).expect("plain");
+}
+
+#[test]
+fn a_fault_rule_can_drop_the_connection_in_the_middle_of_the_reply() {
+    let tpm = Swtpm::start().expect("swtpm");
+    let filter = filter_with(
+        &tpm,
+        Lacks {
+            faults: vec![CommandFault {
+                command: cc::GET_CAPABILITY,
+                action: FaultAction::DropMidReply,
+            }],
+            ..Lacks::default()
+        },
+    );
+    let e = commands(&mut context(&filter.tcti())).expect_err("the connection drops");
+    assert!(!e.contains("0x00000101"), "no TPM response code in {e}");
+    println!("  dropped connection: {e}");
+    // The filter serves the next client, and the TPM is unharmed.
+    commands(&mut context(&tpm.tcti())).expect("plain swtpm still answers");
 }

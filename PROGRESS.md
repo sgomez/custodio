@@ -137,3 +137,13 @@ with an empty context.
   not edited by agents).
 - Next session should: F112 queries no SHA-512 (the STM TPM lacks it). F119 states the decrypt point in the client
   documentation, next to "root can use a TPM key".
+
+### 2026-11-04 — F112 — attempt 2
+- Done: `tpm` module in custodiod (`classify`, `list`, `open`, `esys`), capability table in `docs/api.md`, decisions recorded, `custodio-it` filter extended
+  (commands removed from `TPM_CAP_COMMANDS`, fault rules), integration target `tpm_access` (16 tests), five files in the `mutants` recipe.
+- Fixed the NEXT_FINDINGS hang: the filter served clients serially with no timeouts, so a lingering client blocked its thread (and `Drop`'s join) and held
+  the one swtpm connection. Now `serve` polls with a 100 ms read timeout that checks the stop flag, 10 s limits mid-message, and connects upstream lazily.
+  `Swtpm::tool` runs under `timeout`, and `swtpm` starts under `setpriv --pdeathsig KILL`.
+- Paging is tested (`EsysSession::open_paged`, page size 1) which also removed the `listed` survivors; ENOTDIR/non-socket tests killed the `open.rs` ones.
+- Evidence: `just quick` green; `tpm_access` 16/16, repeated; `just mutants-diff F112`: 105 mutants, 82 caught, 23 unviable, 0 missed.
+- Note: pdeathsig fires when the spawning thread exits; fine here (each test owns its `Swtpm`). One run of `tpm_access` took 13 s instead of 3 s once; not reproduced.

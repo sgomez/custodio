@@ -13,6 +13,7 @@ mod offload;
 pub mod polkit;
 pub mod sign;
 pub mod store;
+pub mod tpm;
 
 /// Name of the service, used in logs and on the bus.
 pub const SERVICE_NAME: &str = "custodiod";

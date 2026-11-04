@@ -436,6 +436,7 @@ dependencies = [
  "secrecy",
  "sha2",
  "tempfile",
+ "tss-esapi",
  "x509-cert",
  "zbus",
  "zeroize",

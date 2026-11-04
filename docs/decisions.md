@@ -290,3 +290,16 @@ Format: a title and three short bullets, a couple of lines each:
   salt and no non-`DigestInfo` payload, and the STM TPM of F111 lacks SHA-512, which this way does not need.
 - Rejected: `TPM2_Sign` only (way (a): fewer mechanisms, RSA would lack on TPMs without SHA-512); serving a TPM key with
   fewer mechanisms than the encrypted kind. Accepted: root controlling the machine can also decrypt with a TPM RSA key.
+
+## 2026-11-03 — The test-only TPM socket variable
+- Decision: the shipped `custodiod` reads one variable, `CUSTODIOD_TEST_SWTPM_TCTI`, and only to reach an `swtpm` socket: the
+  value must be `swtpm:path=<absolute path>` (no comma). Unset, it opens `/dev/tpmrm0` and nothing else. A missing socket under
+  it is *absent* (the e2e "no TPM" case of F108: the drop-in stays, `swtpm` is not started); every other value is an *error*,
+  never a fallback to `/dev/tpmrm0` and never absent: a malformed value, `device:`/`mssim:`/`tabrmd:`, a relative path, a path
+  that exists and is not a socket, a socket that refuses the connection. `TPM2TOOLS_TCTI`, `TSS2_TCTI`, `TPM20TEST_TCTI` and
+  `TCTI` are not read. No packaged unit or file sets the variable (a check counts it in `data/` and `packaging/`).
+- Why: F108 route 2 runs the real package against a software TPM through a drop-in that is not shipped, and the SPEC says no
+  configuration of the shipped unit can substitute a TPM. One variable of its own that takes one narrow form is the smallest
+  surface that keeps the e2e route; it cannot name a device, a network address or another daemon.
+- Rejected: reading `TPM2TOOLS_TCTI`/`TSS2_TCTI` (every `tpm2-tools` session sets them, so the service would silently use
+  them); a compile-time test feature (the e2e cases run the packaged binary); `device:` values (the raw node).

@@ -41,6 +41,7 @@ zbus = { version = "6", default-features = false, features = [
   "default-rt",
   "service",
 ] }
+tss-esapi = { version = "=8.0.0-alpha.4", default-features = false }
 zeroize = "1.9.1"
 
 [dev-dependencies]

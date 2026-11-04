@@ -294,6 +294,40 @@ PKCS#11. `Sign` takes at most 1024 bytes.
 - `CKM_RSA_PKCS_PSS`: `data` is the digest, `hash` names the hash that made it (its length must match) and `salt_len` is
   the salt length. MGF1 uses the same hash. The service does the PSS padding and never hashes the message.
 
+## TPM capabilities
+
+The service keeps a key in the TPM only when the TPM has everything the key type needs. It asks the TPM once, with
+`TPM2_GetCapability` and `TPM2_TestParms` (nothing is created in the TPM), and sorts it into one of four results: *absent*
+(the platform exposes no TPM device), *lacks* (the TPM answered and these items are absent, each named), *ready*, or an
+*error* (a device that cannot be opened, a TPM error with its response code, or an owner hierarchy the service cannot use:
+an authorization value is set, or the hierarchy is disabled). An error is never read as absent or as lacking, and it
+wins when both apply. The list comes from `## F107` of `docs/findings.md`, as the decisions "TPM parent" and "the service
+pads" in `docs/decisions.md` narrow it: the parent of every TPM key is an ECC P-256 primary with AES-128-CFB and a SHA-256
+name, RSA keys carry `sign|decrypt` and the service pads, P-256 keys sign with `TPM2_Sign`. SHA-384 and SHA-512 are on no
+list: a TPM without SHA-512 (the hardware TPM of F111) is *ready*.
+
+| Item | Query | Why | RSA 2048 | ECC P-256 |
+|---|---|---|---|---|
+| `algorithm ECC` | `GetCapability(ALGS)`, `0x0023` | the parent | yes | yes |
+| `curve NIST P-256` | `GetCapability(ECC_CURVES)`, `0x0003` | the parent | yes | yes |
+| `name algorithm SHA-256` | `GetCapability(ALGS)`, `0x000b` | the parent's name | yes | yes |
+| `algorithm AES` | `GetCapability(ALGS)`, `0x0006` | the parent's symmetric | yes | yes |
+| `parent template ECC P-256 AES-128-CFB` | `TestParms` | the parent | yes | yes |
+| `command CreatePrimary` | `GetCapability(COMMANDS)` | the parent | yes | yes |
+| `command Import` | `GetCapability(COMMANDS)` | importing a key | yes | yes |
+| `command Load` | `GetCapability(COMMANDS)` | loading a key | yes | yes |
+| `algorithm RSA` | `GetCapability(ALGS)`, `0x0001` | the key | yes | no |
+| `rsa2048 null scheme` | `TestParms` | the key | yes | no |
+| `command RSA_Decrypt` | `GetCapability(COMMANDS)` | the raw operation | yes | no |
+| `ECDSA with SHA-256 on P-256` | `TestParms` | the key | no | yes |
+| `command Sign` | `GetCapability(COMMANDS)` | the signature | no | yes |
+
+An item made of another is not asked and not named when that one is absent: the curve is folded into `algorithm ECC`;
+the parent template is folded into `algorithm ECC`, `curve NIST P-256` and `algorithm AES`; `rsa2048 null scheme` into
+`algorithm RSA`; `ECDSA with SHA-256 on P-256` into `algorithm ECC`, `curve NIST P-256` and `name algorithm SHA-256`.
+`TestParms` counts a combination as absent only for the response codes "type", "scheme", "hash" and "curve" (the
+parameter number and the `P` bit are ignored, so `0x1C3` is a hash); any other code is an error.
+
 ## Compatibility rule
 
 What `docs/audit.md` fixes for the journal, see [its compatibility rule](audit.md#compatibility-rule): documented names

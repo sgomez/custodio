@@ -24,8 +24,10 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 /// Tools the fixture runs. Checked up front so a missing one is reported by name.
-const REQUIRED_TOOLS: [(&str, &str); 6] = [
+const REQUIRED_TOOLS: [(&str, &str); 8] = [
     ("swtpm", "swtpm"),
+    ("setpriv", "util-linux"),
+    ("timeout", "coreutils"),
     ("swtpm_ioctl", "swtpm-tools"),
     ("tpm2_startup", "tpm2-tools"),
     ("tpm2_getcap", "tpm2-tools"),
@@ -108,8 +110,17 @@ impl Swtpm {
             }
         }
         let log = fs::File::create(self.dir.join("swtpm.log"))?;
-        let mut child = Command::new("swtpm")
-            .args(["socket", "--tpm2", "--flags", "not-need-init"])
+        // `setpriv` execs `swtpm` with a parent-death signal, so a killed test binary leaves no `swtpm` behind.
+        let mut child = Command::new("setpriv")
+            .args([
+                "--pdeathsig",
+                "KILL",
+                "swtpm",
+                "socket",
+                "--tpm2",
+                "--flags",
+                "not-need-init",
+            ])
             .arg("--tpmstate")
             .arg(format!("dir={}", self.dir.display()))
             .arg("--server")
@@ -216,7 +227,9 @@ impl Swtpm {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        Command::new(name)
+        // Bounded: a tool that hangs fails the test instead of the run.
+        Command::new("timeout")
+            .args(["--kill-after=5", "60", name])
             .args(args)
             .env("TPM2TOOLS_TCTI", self.tcti())
             .current_dir(&self.dir)

@@ -16,6 +16,7 @@ fn test_parms_codes() {
     let lacks = Lacks {
         algorithms: vec![alg::RSAPSS, alg::SHA384],
         curves: vec![3],
+        ..Lacks::default()
     };
     let rsa = |scheme: &[u8]| test_parms(1, ALG_NULL, scheme, &[0x08, 0x00, 0, 0, 0, 0]);
     assert_eq!(
@@ -48,6 +49,7 @@ fn capability_entries_are_removed() {
     let lacks = Lacks {
         algorithms: vec![alg::RSAPSS],
         curves: vec![],
+        ..Lacks::default()
     };
     let command = [
         0x80, 1, 0, 0, 0, 22, 0, 0, 1, 0x7a, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80,

@@ -9,6 +9,9 @@
 //! - `TPM2_TestParms`: a lacking algorithm (key type, symmetric, scheme or hash) or curve gets the format-one response code
 //!   the TPM spec gives that kind of fault (`TPM_RC_TYPE`, `TPM_RC_SCHEME`, `TPM_RC_HASH`, `TPM_RC_CURVE`) for parameter 1.
 //! - `TPM2_Sign` and `TPM2_RSA_Decrypt`: a lacking scheme or hash in the `inScheme` argument (parameter 2) gets the same codes.
+//! - `TPM2_GetCapability` for commands: the lacking command codes are removed from the answer (F112), so a client that
+//!   asks "is `TPM2_Import` implemented" hears no. The commands themselves still reach the real TPM.
+//! - A fault rule makes one command answer a chosen response code, or drop the connection in the middle of the reply (F112).
 //!
 //! Everything else is passed through untouched, so key creation, loading and import still reach the real TPM. Std only, no `unsafe`.
 
@@ -25,6 +28,7 @@ const CC_GET_CAPABILITY: u32 = 0x17a;
 const CC_SIGN: u32 = 0x15d;
 const CC_RSA_DECRYPT: u32 = 0x159;
 const CAP_ALGS: u32 = 0;
+const CAP_COMMANDS: u32 = 2;
 const CAP_ECC_CURVES: u32 = 8;
 const ALG_ECC: u16 = 0x0023;
 const ALG_NULL: u16 = 0x0010;
@@ -44,6 +48,37 @@ pub struct Lacks {
     pub algorithms: Vec<u16>,
     /// `TPM_ECC_CURVE` values.
     pub curves: Vec<u16>,
+    /// `TPM_CC` command codes removed from the answer to `TPM2_GetCapability(TPM_CAP_COMMANDS)`.
+    pub commands: Vec<u32>,
+    /// Commands that fail on purpose.
+    pub faults: Vec<CommandFault>,
+}
+
+/// What a command with a fault rule gets instead of the TPM's answer. The command does not reach the TPM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaultAction {
+    /// A response with this response code.
+    Respond(u32),
+    /// The beginning of a response, then the connection closes.
+    DropMidReply,
+}
+
+/// A fault for one command code (`TPM_CC`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandFault {
+    pub command: u32,
+    pub action: FaultAction,
+}
+
+/// `TPM_CC` values of the commands the tests name.
+pub mod cc {
+    pub const CREATE_PRIMARY: u32 = 0x131;
+    pub const IMPORT: u32 = 0x156;
+    pub const LOAD: u32 = 0x157;
+    pub const RSA_DECRYPT: u32 = 0x159;
+    pub const SIGN: u32 = 0x15d;
+    pub const GET_CAPABILITY: u32 = 0x17a;
+    pub const TEST_PARMS: u32 = 0x18a;
 }
 
 /// `TPM_ALG_RSAPSS`, `TPM_ALG_SHA384` and the other identifiers the tests name.
@@ -106,7 +141,7 @@ impl TpmFilter {
                     Ok((client, _)) => {
                         let _ = client.set_nonblocking(false);
                         // A failed connection ends that client only.
-                        let _ = serve(&client, &up, &lacks);
+                        let _ = serve(&client, &up, &lacks, &flag);
                     }
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                         thread::sleep(Duration::from_millis(10));
@@ -171,21 +206,84 @@ fn read_message(s: &mut impl Read) -> io::Result<Vec<u8>> {
     Ok(message)
 }
 
-fn serve(client: &UnixStream, upstream: &Path, lacks: &Lacks) -> io::Result<()> {
-    let mut up = UnixStream::connect(upstream)?;
+/// Longest a peer may stay silent in the middle of a message before the connection is dropped.
+const IO_LIMIT: Duration = Duration::from_secs(10);
+
+/// Waits for the first byte of the next command. `None` when the client closed or the filter is stopping.
+fn wait_for_command(mut client: &UnixStream, stop: &AtomicBool) -> Option<u8> {
+    let _ = client.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut byte = [0u8; 1];
+    loop {
+        if stop.load(Ordering::SeqCst) {
+            return None;
+        }
+        match client.read(&mut byte) {
+            Ok(0) => return None,
+            Ok(_) => break,
+            Err(e) if is_timeout(&e) => {}
+            Err(_) => return None,
+        }
+    }
+    let _ = client.set_read_timeout(Some(IO_LIMIT));
+    Some(byte[0])
+}
+
+fn is_timeout(e: &io::Error) -> bool {
+    matches!(
+        e.kind(),
+        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+    )
+}
+
+fn serve(client: &UnixStream, upstream: &Path, lacks: &Lacks, stop: &AtomicBool) -> io::Result<()> {
+    // Connected on the first command that needs the TPM: swtpm serves one client at a time.
+    let mut up: Option<UnixStream> = None;
+    let _ = client.set_write_timeout(Some(IO_LIMIT));
     let (mut c_in, mut c_out) = (client, client);
     loop {
-        let Ok(command) = read_message(&mut c_in) else {
+        let Some(first) = wait_for_command(client, stop) else {
             return Ok(());
         };
-        let response = if let Some(rc) = refuse(&command, lacks) {
+        let Ok(command) = read_message(&mut (&[first][..]).chain(&mut c_in)) else {
+            return Ok(());
+        };
+        let response = if let Some(action) = fault_for(&command, lacks) {
+            match action {
+                FaultAction::Respond(rc) => error_response(rc),
+                FaultAction::DropMidReply => {
+                    // The tag and half of the size, then the connection closes when the caller drops it.
+                    let _ = c_out.write_all(&error_response(0)[..4]);
+                    return Ok(());
+                }
+            }
+        } else if let Some(rc) = refuse(&command, lacks) {
             error_response(rc)
         } else {
+            if up.is_none() {
+                let conn = UnixStream::connect(upstream)?;
+                conn.set_read_timeout(Some(IO_LIMIT))?;
+                conn.set_write_timeout(Some(IO_LIMIT))?;
+                up = Some(conn);
+            }
+            let up = up.as_mut().ok_or_else(|| io::Error::other("no upstream"))?;
             up.write_all(&command)?;
-            rewrite(&command, read_message(&mut up)?, lacks)
+            rewrite(&command, read_message(up)?, lacks)
         };
         c_out.write_all(&response)?;
     }
+}
+
+fn fault_for(command: &[u8], lacks: &Lacks) -> Option<FaultAction> {
+    let code = Cursor {
+        data: command,
+        pos: 6,
+    }
+    .u32()?;
+    lacks
+        .faults
+        .iter()
+        .find(|f| f.command == code)
+        .map(|f| f.action)
 }
 
 fn error_response(rc: u32) -> Vec<u8> {
@@ -294,16 +392,23 @@ fn rewrite(command: &[u8], response: Vec<u8>, lacks: &Lacks) -> Vec<u8> {
     if rc != [0, 0, 0, 0] || response.len() < 19 {
         return response;
     }
-    let (entry, lacking): (usize, &[u16]) = match cap {
-        CAP_ALGS => (6, &lacks.algorithms),
-        CAP_ECC_CURVES => (2, &lacks.curves),
+    // Entry size, the offset of the identifier in an entry (a command's index is the low 16 bits of its `TPMA_CC`) and
+    // the identifiers to drop.
+    let (entry, at, lacking): (usize, usize, Vec<u32>) = match cap {
+        CAP_ALGS => (
+            6,
+            0,
+            lacks.algorithms.iter().map(|a| u32::from(*a)).collect(),
+        ),
+        CAP_ECC_CURVES => (2, 0, lacks.curves.iter().map(|a| u32::from(*a)).collect()),
+        CAP_COMMANDS => (4, 2, lacks.commands.iter().map(|c| c & 0xffff).collect()),
         _ => return response,
     };
     // header 10, moreData 1, capability 4, count 4, then the entries.
     let body = &response[19..];
     let kept: Vec<u8> = body
         .chunks_exact(entry)
-        .filter(|e| !lacking.contains(&u16::from_be_bytes([e[0], e[1]])))
+        .filter(|e| !lacking.contains(&u32::from(u16::from_be_bytes([e[at], e[at + 1]]))))
         .flatten()
         .copied()
         .collect();
