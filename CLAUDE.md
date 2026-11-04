@@ -19,7 +19,9 @@ Everything in this repository is in English: code, comments, docs, commit messag
    next one, even if you have context left. Tick contract steps as they are done. Change the
    rest of the contract only by an amendment the evaluator approves (`harness/builder-prompt.md`).
    A feature may take several sessions.
-3. **Tests first.** Write the failing test, then the code. Between steps run only that test and
+3. **Tests first.** Write the failing test, then the code. A test checks what the product does;
+   a document is tested only against the code or by running what it says, never by grepping its
+   wording, headings or citations, nor those of decisions, findings or contracts. Between steps run only that test and
    the tests of the code you touched (`cargo test -p <crate> <filter>`). When every step is ticked,
    run `just quick` once and the contract's evidence (and `just mutants-diff <id>` if the `verify`
    has it) until they pass; the loop runs the `verify`. Never run `just check`, `just e2e`

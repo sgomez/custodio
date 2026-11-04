@@ -21,7 +21,8 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - Every point in the feature description, and every SPEC.md requirement it touches, maps to a
   step and to concrete evidence (a named test, a command and its expected result).
 - The evidence would fail if the feature were wrong. "Tests pass" or "`just check` passes" alone
-  is not evidence.
+  is not evidence. Nor is a grep of a document's wording, headings or citations: a document is
+  proven against the code or by running what it says.
 - Each step fits in one session, and nothing outside the feature is planned.
 - Evidence that depends on the environment (a container engine, privileges, network, a device, a
   tool not pinned in mise.toml) has under Scope a command run in the dev container and its result,
@@ -78,7 +79,8 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    - Every step and every piece of evidence in the contract is delivered, and nothing outside it
      was started. Do not ask for evidence the contract does not list.
    - The tests exercise the behaviour: they fail if the code is wrong, they are not skipped or
-     `#[ignore]`d, and they do not just assert what the code returns.
+     `#[ignore]`d, and they do not just assert what the code returns, nor the wording of a
+     document, decision, finding or contract.
    - No gate was weakened: deleted tests, lowered thresholds, unjustified `#[allow]`, no-op
      `just` recipes, lints removed from the workspace.
    - The security invariants hold: every signature asks polkit, no `_keep`, key material and
