@@ -208,3 +208,7 @@ with an empty context.
 ### 2026-11-04 — F114 — attempt 2
 - Fixed NEXT_FINDINGS: `unused mut` in `custodio-it/src/tpm_filter/tests.rs`. Also `tests/sign.rs` was over 5000 tokens (size gate in `just quick`): the second half moved to `tests/sign/later.rs` (child module, `use super::*`).
 - Evidence: `just quick` green; `tpm_sign` 10/10; `just mutants-diff F114`: 92 mutants, 81 caught, 11 unviable, 0 missed.
+
+### 2026-11-04 — F114 — attempt 3
+- Fixed NEXT_FINDINGS: (1) the `tpm2_flushcontext -t` step in `nothing_left_loaded` is now an approved-pending amendment in `contracts/F114.md` (3 transient slots, a faulted flush leaves parent and key loaded; the test is unchanged); (2) the `allow` in `tpm/tests/sign/later.rs` carries its justification.
+- Evidence: `tpm::tests::sign` 15/15. No production or integration test code changed, so the `tpm_sign` and mutants results of attempt 2 stand (`just mutants-diff F114`: 92 mutants, 0 missed).
