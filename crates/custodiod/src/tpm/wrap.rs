@@ -36,6 +36,9 @@ const HASH_BITS: usize = 256;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Where a test collects the seed and the two keys derived from it. Nothing in the shipped binary sets one.
+pub type Tap = std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>;
+
 /// What `TPM2_Import` is given besides the parent.
 pub struct Wrapped {
     pub public: Public,
@@ -210,6 +213,7 @@ pub(super) fn sensitive(key: &ImportKey) -> Result<Zeroizing<Vec<u8>>, ImportErr
 }
 
 /// Wraps `key` to the parent whose public point is `parent_x`, `parent_y`, with `ephemeral` as the sender's key.
+/// `tap`, for tests, receives the seed, `symKey` and `hmacKey`.
 ///
 /// # Errors
 /// [`ImportError::Internal`] when a value does not fit its field or the parent point is not on the curve.
@@ -218,6 +222,7 @@ pub fn wrap(
     parent_x: &[u8],
     parent_y: &[u8],
     ephemeral: &SecretKey,
+    tap: Option<&Tap>,
 ) -> Result<Wrapped, ImportError> {
     let public = template(key)?;
     let marshalled = {
@@ -231,7 +236,10 @@ pub fn wrap(
     sec1.extend_from_slice(parent_y);
     let parent = p256::PublicKey::from_sec1_bytes(&sec1).map_err(|_| ImportError::Internal)?;
     let shared = (parent.to_projective() * *ephemeral.to_nonzero_scalar()).to_affine();
-    let z = Zeroizing::new(shared.x().to_vec());
+    // The shared point is public-key arithmetic output: `p256::AffinePoint` has no zeroizing drop, so only the copies
+    // this function makes are wiped (`x`, then `z`); the point itself lives on the stack until the frame is reused.
+    let x = Zeroizing::new(shared.x());
+    let z = Zeroizing::new(x.to_vec());
     let eph = ephemeral.public_key().to_sec1_point(false);
     let (ex, ey) = match (eph.x(), eph.y()) {
         (Some(x), Some(y)) => (x.to_vec(), y.to_vec()),
@@ -241,6 +249,12 @@ pub fn wrap(
     let seed = kdfe(&z, "DUPLICATE", &ex, parent_x, HASH_BITS);
     let sym_key = kdfa(&seed, "STORAGE", &name, &[], SYM_BITS)?;
     let hmac_key = kdfa(&seed, "INTEGRITY", &[], &[], HASH_BITS)?;
+
+    if let Some(tap) = tap
+        && let Ok(mut seen) = tap.lock()
+    {
+        seen.extend([seed.to_vec(), sym_key.to_vec(), hmac_key.to_vec()]);
+    }
 
     let mut encrypted = sensitive(key)?;
     cfb_encrypt(&sym_key, &mut encrypted)?;

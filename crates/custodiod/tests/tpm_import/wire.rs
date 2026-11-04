@@ -10,6 +10,7 @@
 use custodio_it::tpm_filter::Lacks;
 use custodiod::tpm::import::import_pkcs8;
 use custodiod::tpm::open::TestTcti;
+use custodiod::tpm::wrap::Tap;
 
 use super::support::{BOTH, Kind, Rig, SRK_ATTRS, TestKey, TestResult, contains};
 
@@ -19,10 +20,31 @@ fn private_key_not_on_the_wire() -> TestResult {
         let rig = Rig::new()?;
         let key = TestKey::new(kind);
         let (filter, record) = rig.filter(Lacks::default())?;
-        import_pkcs8(&TestTcti::new(&filter.tcti()), &key.pkcs8)?;
+        let tap = Tap::default();
+        import_pkcs8(
+            &TestTcti::new(&filter.tcti()).with_tap(tap.clone()),
+            &key.pkcs8,
+        )?;
         let sent = record.bytes();
         assert!(sent.len() > 300, "the import did go through the filter");
         assert_eq!(key.found_in(&sent), Vec::<&str>::new(), "{kind:?}");
+        // The outer wrap: neither the seed nor the keys derived from it cross the TCTI.
+        let derived = tap.lock().map_err(|_| "tap poisoned")?.clone();
+        assert_eq!(
+            derived.iter().map(Vec::len).collect::<Vec<_>>(),
+            [32, 16, 32],
+            "seed, symKey, hmacKey"
+        );
+        for (i, secret) in derived.iter().enumerate() {
+            assert!(
+                !contains(&sent, secret),
+                "{kind:?}: derived secret {i} on the wire"
+            );
+            // Control: the same search finds it where the test plants it.
+            let mut planted = sent.clone();
+            planted.extend_from_slice(secret);
+            assert!(contains(&planted, secret), "{kind:?}: control {i}");
+        }
         drop(filter);
 
         // Control: `tpm2_loadexternal` of the same private key sends the sensitive area in the clear, so the same

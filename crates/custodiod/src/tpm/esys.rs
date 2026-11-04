@@ -36,6 +36,7 @@ const SH_ENABLE: u32 = 1 << 1;
 pub struct EsysSession {
     context: Context,
     page: u32,
+    tap: Option<super::wrap::Tap>,
 }
 
 impl EsysSession {
@@ -56,7 +57,15 @@ impl EsysSession {
         Ok(Self {
             context: Context::new(conf)?,
             page,
+            tap: None,
         })
+    }
+
+    /// Test seam: the import hands its seed and derived keys to `tap`.
+    #[must_use]
+    pub fn with_tap(mut self, tap: super::wrap::Tap) -> Self {
+        self.tap = Some(tap);
+        self
     }
 }
 

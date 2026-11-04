@@ -124,7 +124,7 @@ impl EsysSession {
     pub(super) fn import_under_parent(&mut self, key: &ImportKey) -> Result<Imported, ImportError> {
         self.with_parent(|session, parent| {
             let ephemeral = p256::SecretKey::generate_from_rng(&mut rand::rng());
-            let wrapped = wrap(key, &parent.x, &parent.y, &ephemeral)?;
+            let wrapped = wrap(key, &parent.x, &parent.y, &ephemeral, session.tap.as_ref())?;
             let public_area = wrapped
                 .public
                 .marshall()

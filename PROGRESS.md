@@ -169,3 +169,11 @@ with an empty context.
 - Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 124 mutants, 93 caught, 31 unviable, 0 missed.
 - Deviation from the contract text: the commands of an import are CreatePrimary, Import, Flush (no session, no read-public), so `nothing_left_loaded` faults those. Test files carry a justified `allow` for unwrap/expect/indexing.
 - Known: `cargo deny check bans` fails on duplicate `getrandom` (0.2 via tss-esapi, 0.4); it fails the same without my changes (not caused by F113).
+
+### 2026-11-04 — F113 — attempt 2
+- Fixed NEXT_FINDINGS: (1) wire test now searches the seed, `symKey` and `hmacKey` (test seam `wrap::Tap`, `TestTcti::with_tap`, `EsysSession::with_tap`; nothing in production sets it),
+  with a planted-buffer control per secret; (2) RSA prime, (3) P-256 scalar copies and (4) the ECDH shared x are now `Zeroizing` (the `p256` affine point has no zeroizing drop; commented).
+- Notes taken: unit `Debug` check also covers upper-case hex, raw-as-text and decimal. `authorization policy` is not printed by `tpm2_readpublic`/`tpm2_print` when empty (checked), so
+  `Some("")` fails; the test now also asserts the authPolicy size bytes (10..12) of the stored TPM2B_PUBLIC are zero.
+- Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 129 mutants, 93 caught, 36 unviable, 0 missed.
+- Known, not F113: `cargo deny check bans` fails on duplicate `getrandom` (0.2 via tss-esapi, 0.4) with or without these changes; the checkpoint will hit it.

@@ -120,6 +120,7 @@ impl TpmAccess for Refused {
 pub struct TestTcti {
     tcti: String,
     page: Option<u32>,
+    tap: Option<super::wrap::Tap>,
 }
 
 impl TestTcti {
@@ -128,7 +129,15 @@ impl TestTcti {
         Self {
             tcti: tcti.to_owned(),
             page: None,
+            tap: None,
         }
+    }
+
+    /// Collects the seed and the keys derived from it during an import.
+    #[must_use]
+    pub fn with_tap(mut self, tap: super::wrap::Tap) -> Self {
+        self.tap = Some(tap);
+        self
     }
 
     /// Asks the TPM for at most `page` entries per capability answer, to exercise paging.
@@ -141,6 +150,11 @@ impl TestTcti {
 
 impl TpmAccess for TestTcti {
     fn open(&self) -> Result<Box<dyn Session>, OpenError> {
+        if let Some(tap) = &self.tap {
+            return EsysSession::open(&self.tcti)
+                .map(|s| Box::new(s.with_tap(tap.clone())) as Box<dyn Session>)
+                .map_err(|_| OpenError::Failed(TpmError::OpenFailed));
+        }
         match self.page {
             None => open_tcti(&self.tcti),
             Some(page) => EsysSession::open_paged(&self.tcti, page)

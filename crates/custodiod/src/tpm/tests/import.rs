@@ -103,6 +103,10 @@ fn debug_and_display_hold_no_key_bytes() {
             !shown.contains("5a") && !shown.contains("90") && !shown.contains("c3"),
             "{shown}"
         );
+        // Other encodings of the secret: upper-case hex, the raw bytes as text, decimal.
+        for form in ["5A", "ZZ", "90", "C3", "\u{c3}", "[90", "0x5a"] {
+            assert!(!shown.contains(form), "{form} in {shown}");
+        }
     }
     let imported = Imported {
         blob: blob(),

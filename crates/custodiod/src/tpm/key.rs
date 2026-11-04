@@ -100,9 +100,9 @@ impl ImportKey {
                 let modulus = padded(key.n().as_ref().to_be_bytes().as_ref(), RSA_MODULUS_LEN)
                     .ok_or(KeyRefusal::Malformed)?;
                 let prime = key.primes().first().ok_or(KeyRefusal::Malformed)?;
+                let raw = Zeroizing::new(prime.to_be_bytes());
                 let prime = Zeroizing::new(
-                    padded(prime.to_be_bytes().as_ref(), RSA_PRIME_LEN)
-                        .ok_or(KeyRefusal::Malformed)?,
+                    padded(raw.as_ref(), RSA_PRIME_LEN).ok_or(KeyRefusal::Malformed)?,
                 );
                 Material::Rsa {
                     modulus,
@@ -120,7 +120,8 @@ impl ImportKey {
                     .y()
                     .and_then(|y| <[u8; P256_LEN]>::try_from(y.as_slice()).ok())
                     .ok_or(KeyRefusal::Malformed)?;
-                let scalar = Zeroizing::new(key.to_bytes().to_vec());
+                let raw = Zeroizing::new(key.to_bytes());
+                let scalar = Zeroizing::new(raw.to_vec());
                 Material::P256 {
                     scalar: SecretSlice::from(scalar.to_vec()),
                     x,

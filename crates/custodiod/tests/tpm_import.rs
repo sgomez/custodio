@@ -107,6 +107,13 @@ fn attributes_per_key_type() -> TestResult {
         let shown = rig.tool("tpm2_readpublic", &["-c", &rig.path("k.ctx")])?;
         // The stored public area, read from the bytes: the same facts.
         let stored = rig.write("stored.pub", imported.blob.public_bytes())?;
+        // The tools omit an empty policy line, so also read its size straight from the stored TPM2B_PUBLIC:
+        // size(2) type(2) nameAlg(2) attributes(4) authPolicy size(2).
+        assert_eq!(
+            imported.blob.public_bytes().get(10..12),
+            Some(&[0u8, 0][..]),
+            "{kind:?}: authPolicy length"
+        );
         let printed = rig.tool("tpm2_print", &["-t", "TPM2B_PUBLIC", &stored])?;
         for text in [&shown, &printed] {
             assert_eq!(
