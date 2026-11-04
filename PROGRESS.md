@@ -204,3 +204,7 @@ with an empty context.
 - Deviation from the contract text: with `FLUSH_CONTEXT` faulted both parent and key leak and `swtpm` has 3 slots, so the test clears the leak with `tpm2_flushcontext -t` (what the kernel RM does on close) before the later signature.
   `openssl pkeyutl -verify` caps raw input at 64 bytes, so payloads >64 bytes use `-verifyrecover`; ECDSA digests >64 are verified over their leftmost 32 bytes.
 - Evidence: `just quick` green; `tpm_sign` 10/10; `just mutants-diff F114`: 92 mutants, 81 caught, 11 unviable, 0 missed.
+
+### 2026-11-04 — F114 — attempt 2
+- Fixed NEXT_FINDINGS: `unused mut` in `custodio-it/src/tpm_filter/tests.rs`. Also `tests/sign.rs` was over 5000 tokens (size gate in `just quick`): the second half moved to `tests/sign/later.rs` (child module, `use super::*`).
+- Evidence: `just quick` green; `tpm_sign` 10/10; `just mutants-diff F114`: 92 mutants, 81 caught, 11 unviable, 0 missed.

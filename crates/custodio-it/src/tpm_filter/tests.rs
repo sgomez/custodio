@@ -97,7 +97,7 @@ fn flips_change_one_bit_of_a_successful_answer_only() {
         }],
         ..Lacks::default()
     };
-    let mut ok = vec![0x80, 1, 0, 0, 0, 14, 0, 0, 0, 0, 7, 7];
+    let ok = vec![0x80, 1, 0, 0, 0, 14, 0, 0, 0, 0, 7, 7];
     let out = flipped(&command, ok.clone(), &lacks);
     assert_eq!(out, ok);
     let long = vec![0x80, 1, 0, 0, 0, 14, 0, 0, 0, 0, 7, 7, 8, 9];
