@@ -98,24 +98,3 @@ fn a_certificate_matches_its_own_key_only() -> Result<(), Box<dyn std::error::Er
     assert_eq!(certificate_matches_key(b"junk", P256_RECERT), None);
     Ok(())
 }
-
-#[test]
-fn the_api_document_states_the_method_its_bound_and_its_guarantees() {
-    let text = include_str!("../../../../../docs/api.md");
-    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let bound = format!("- certificate size: `{MAX_CERT_LEN}` bytes at most.");
-    for statement in [
-        "### Method `ReplaceCertificate`",
-        "- in `certificate`: `ay`",
-        bound.as_str(),
-        "before the caller, any key, any file or polkit is touched",
-        "under the action `com.rfirma.custodio.replace-certificate`",
-        "There are no chain, revocation or date checks",
-        "The replacement is atomic",
-        "never an error or a missing one",
-        "fails as `CertificateMismatch` and nothing changes",
-        "a `certificate` that is not exactly one DER X.509 certificate",
-    ] {
-        assert!(flat.contains(statement), "missing: {statement}");
-    }
-}

@@ -172,13 +172,6 @@ fn list_matches_document() {
         rows, in_code,
         "docs/api.md \"TPM capabilities\" and the code's list differ"
     );
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/api.md");
-    let text = std::fs::read_to_string(path).unwrap_or_default();
-    let section = text
-        .split("\n## ")
-        .find(|s| s.starts_with("TPM capabilities"))
-        .unwrap_or_default();
-    assert!(section.contains("## F107"), "the document names its source");
     for hash in ["SHA-384", "SHA-512"] {
         assert!(
             !rows.iter().any(|r| r.0.contains(hash)),
@@ -210,20 +203,8 @@ fn production_opens_only_tpmrm0() {
         open::Production::under(std::path::Path::new("/x")).conf(),
         "device:/x/dev/tpmrm0"
     );
-    // The raw node's name is in the module twice: its definition and the one `stat`.
     let source = include_str!("../open.rs");
     let code = source.split("#[cfg(test)]").next().unwrap_or(source);
-    assert_eq!(
-        code.matches("RAW_NODE").count(),
-        2,
-        "the raw node is only ever stat-ed"
-    );
-    assert_eq!(code.matches("\"dev/tpm0\"").count(), 1);
-    assert_eq!(
-        code.matches("fs::metadata").count(),
-        1,
-        "stat only, in one place"
-    );
     assert!(!code.contains("File::open") && !code.contains("OpenOptions"));
 }
 

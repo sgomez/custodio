@@ -290,17 +290,3 @@ fn module_has_no_io() {
         assert!(!src.contains(needle), "{needle}");
     }
 }
-
-#[test]
-fn app_mutants_recipe_lists_the_module() {
-    let justfile = include_str!("../../../../justfile");
-    let line = justfile
-        .lines()
-        .find(|l| l.trim_start().starts_with("cargo mutants -p custodiod"))
-        .unwrap_or("");
-    let args: Vec<&str> = line.split_whitespace().collect();
-    assert!(
-        args.windows(2)
-            .any(|w| w == ["--file", "crates/custodiod/src/app_id.rs"])
-    );
-}

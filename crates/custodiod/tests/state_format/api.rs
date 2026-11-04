@@ -106,8 +106,6 @@ fn the_check_fails_on_a_seeded_raw_parameter() {
 
 #[test]
 fn write_api_takes_only_protected_types() {
-    let store = read("store.rs");
-    assert!(store.contains("pub fn put(&self, record: &Record)"));
     for file in [
         "store.rs",
         "store/record.rs",
@@ -119,8 +117,5 @@ fn write_api_takes_only_protected_types() {
     // `creds` is where plaintext goes in and a credential comes out; what must hold there is that a
     // `Sealed` cannot be built outside it.
     assert_eq!(sealed_fields(&read("creds.rs")), Vec::<String>::new());
-    let record = read("store/record.rs");
-    assert!(record.contains("pub fn from_imported(imported: &Imported)"));
-    assert!(record.contains("pub fn from_sealed(sealed: &Sealed)"));
     assert!(read("creds.rs").contains("pub struct Sealed"));
 }

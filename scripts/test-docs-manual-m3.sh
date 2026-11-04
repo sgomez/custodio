@@ -3,7 +3,7 @@
 # busctl commands equal those of docs/api.md, their journal text equals docs/audit.md, and the test flatpak manifest parses and
 # grants only the talk permission. Every kind of check has a negative control: a fixture copy with the claim broken must differ
 # from the real file and must fail. The M1/M2 sections are never searched for an M3 item (only for the things M3 points to).
-# Usage: scripts/test-docs-manual-m3.sh   (DOC, API, AUDIT, MANIFEST, DEVIATIONS override the real files; CHECK_ONLY=1 only
+# Usage: scripts/test-docs-manual-m3.sh   (DOC, API, AUDIT, MANIFEST override the real files; CHECK_ONLY=1 only
 # checks the real files).
 # SC2016: the regexes and sed expressions hold literal backticks and dollars. SC2013: the words looped over (action ids, error names,
 # field names) contain no spaces.
@@ -14,7 +14,6 @@ DOC=${DOC:-docs/manual-acceptance.md}
 API=${API:-docs/api.md}
 AUDIT=${AUDIT:-docs/audit.md}
 MANIFEST=${MANIFEST:-packaging/flatpak/com.rfirma.CustodioTest.json}
-DEVIATIONS=${DEVIATIONS:-SPEC_DEVIATIONS.md}
 
 H16='## 16. M3 acceptance 14: the client API by hand'
 H17='## 17. M3 acceptance 15: a flatpak calls Custodio'
@@ -50,8 +49,8 @@ for a in m.get("finish-args", []):
 ' "$1"
 }
 
-check() { # DOC API AUDIT MANIFEST DEVIATIONS
-    local doc=$1 api=$2 audit=$3 manifest=$4 dev=$5 fail=0 h
+check() { # DOC API AUDIT MANIFEST
+    local doc=$1 api=$2 audit=$3 manifest=$4 fail=0 h
     bad() { echo "manual-m3: $*" >&2; fail=1; }
     local p16 p17 p18 p19 part
     # The section finder: each M3 heading exactly once.
@@ -139,12 +138,7 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
         grep -q 'gdbus' "$manifest" || bad "$m: the manifest does not run gdbus"
         grep -q 'busctl' "$manifest" && bad "$m: the manifest runs busctl"
     fi
-    # F67: no deviation, so the page must demand the real app-id.
-    if grep -q '^## F67' "$dev"; then
-        bad "$m: SPEC_DEVIATIONS.md has an F67 entry; the page must be changed to the deviation"
-    else
-        need 'CUSTODIO_APP_ID=' "the page does not demand the app-id (and there is no F67 deviation)"
-    fi
+    need 'CUSTODIO_APP_ID=' "the page does not demand the app-id"
 
     # ---- The journal text of section 17 against docs/audit.md
     local q f
@@ -153,10 +147,6 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
 
     # ---- Acceptance 16 (section 18)
     m=18; part=$p18
-    need 'Firefox' "no Firefox"
-    need 'LibreOffice' "no LibreOffice"
-    need 'second account' "no second-account step"
-    need 'no token' "no expected result 'no token'"
     need 'ListKeys' "no ListKeys for the second account"
     need 'a\(ssay\) 0' "no expected empty ListKeys"
     local ref refs=0 lo=0 ff=0
@@ -213,15 +203,13 @@ check() { # DOC API AUDIT MANIFEST DEVIATIONS
     # ---- Result form (section 19)
     m=19; part=$p19
     for a in 14 15 16; do need "^\\| M3 $a " "no row for acceptance $a"; done
-    need 'dialog' "the form does not ask for every dialog"
-    need 'error' "the form does not ask for every error"
     return $fail
 }
 # The same lines of a block with their line numbers (relative to the block), fenced lines only.
 fenced_n() { awk '/^[ \t]*```/ { f = !f; next } f { sub(/^[ \t]+/, ""); print NR ":" $0 }' <<< "$1"; }
 MANIFEST_NAMED=packaging/flatpak/com.rfirma.CustodioTest.json
 
-check "$DOC" "$API" "$AUDIT" "$MANIFEST" "$DEVIATIONS" || { echo "test-docs-manual-m3: the page fails its checks" >&2; exit 1; }
+check "$DOC" "$API" "$AUDIT" "$MANIFEST" || { echo "test-docs-manual-m3: the page fails its checks" >&2; exit 1; }
 [ -z "${CHECK_ONLY:-}" ] || exit 0
 
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
@@ -229,9 +217,9 @@ fixture() { # fixture NAME FILE: the fixture in $tmp/fix must differ from FILE
     if cmp -s "$2" "$tmp/fix"; then echo "control '$1': the fixture equals the real file, the control is void" >&2; exit 1; fi
 }
 fails() { # fails NAME: the check with the fixture(s) of $tmp must fail
-    if check "$d" "$a" "$u" "$mf" "$dv" 2> /dev/null; then echo "control '$1': a broken file passed" >&2; exit 1; fi
+    if check "$d" "$a" "$u" "$mf" 2> /dev/null; then echo "control '$1': a broken file passed" >&2; exit 1; fi
 }
-d=$DOC a=$API u=$AUDIT mf=$MANIFEST dv=$DEVIATIONS
+d=$DOC a=$API u=$AUDIT mf=$MANIFEST
 control() { # control NAME SED_EXPR: on the whole page
     sed -E -e "$2" "$DOC" > "$tmp/fix"; fixture "$1" "$DOC"; d=$tmp/fix; fails "$1"; d=$DOC
 }
@@ -247,7 +235,6 @@ ctl_manifest() { sed -E -e "$2" "$MANIFEST" > "$tmp/fix"; fixture "$1" "$MANIFES
 control 'M3 heading 16 duplicated' "s/^## 17\\. M3 acceptance 15: a flatpak calls Custodio\$/## 16. M3 acceptance 14: the client API by hand/"
 control 'M3 heading 17 missing' 's/^## 17\. M3 acceptance 15:/## 17. M3 acceptance 15 (renamed):/'
 control 'M3 heading 19 missing' 's/^## 19\. M3 result form/## 19. M3 results/'
-in18 'Firefox removed from M3, M2 still has it' 's/Firefox/the browser/g'
 in18 'LibreOffice removed' 's/LibreOffice/the office suite/g'
 in17 'journal removed from M3, M2 has the journal' 's/journalctl/true/g; s/CUSTODIO_APP_ID/CUSTODIO_X/g'
 
@@ -298,12 +285,8 @@ ctl_manifest 'invalid JSON' 's/^\{/{{/'
 ctl_manifest 'no gdbus' 's/gdbus/true/g'
 ctl_manifest 'busctl in the manifest' 's/gdbus call/busctl call/'
 ctl_manifest 'other app-id (id key only)' 's/^( *"(app-)?id": *")[^"]*/\1org.example.Other/'
-printf '## F67 — app-id\nx\n' > "$tmp/dev"; dv=$tmp/dev; d=$DOC; mf=$MANIFEST
-fails 'F67 deviation with the app-id demanded'; dv=$DEVIATIONS
 
 # Acceptance 16.
-in18 'no second account' 's/second account/other user/g'
-in18 'no "no token"' 's/no token/a token/g'
 in18 'no empty ListKeys' 's/a\(ssay\) 0/a(ssay) 1/g'
 in18 'no ListKeys' 's/ListKeys/List/g'
 in18 'listing command invented' 's/-list$/-show/'

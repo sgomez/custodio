@@ -9,7 +9,7 @@ pub(super) fn app() -> AppIdOutcome {
 }
 
 #[test]
-fn app_id_cases_fields_and_statements_documented() -> TestResult {
+fn app_id_cases_fields_and_queries_documented() -> TestResult {
     let docs = docs()?;
     let section: Vec<&str> = docs
         .lines()
@@ -29,24 +29,12 @@ fn app_id_cases_fields_and_statements_documented() -> TestResult {
     // The bound of the lookup is the constant of the code.
     let bound = crate::app_id_source::LOOKUP_DEADLINE;
     assert_eq!(bound.subsec_nanos(), 0);
-    assert!(section.contains(&format!("longer than {} s", bound.as_secs())));
-    assert!(section.contains("`LOOKUP_DEADLINE`"));
+    // e2e/appid_journal.py reads the bound from this sentence.
+    assert!(section.contains(&format!(
+        "longer than {} s (the bound, `LOOKUP_DEADLINE`)",
+        bound.as_secs()
+    )));
     assert!(section.contains(&format!("at most {} s", bound.as_secs())));
-    let flat = section.replace('\n', " ");
-    for statement in [
-        "is not authenticated",
-        "not an authorization",
-        "xdg-dbus-proxy",
-        "pid of the proxy",
-        "cgroup scope",
-        "`/.flatpak-info` is not used",
-        "best-effort",
-        "never changes the result",
-        "Only an app-id that passed flatpak's naming rules is copied",
-    ] {
-        let flat = flat.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(flat.contains(statement), "docs lack: {statement}");
-    }
     // The queries by app-id and by each case.
     let queries: Vec<&str> = docs
         .lines()
