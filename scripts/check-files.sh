@@ -5,7 +5,7 @@ set -euo pipefail
 
 MAX_TOKENS=5000
 
-# Not code: lockfiles, the license, vendored skills and docs.
+# Generated, vendored or archived, or written or approved by a person rather than read whole by every session.
 EXCLUDE_PATTERNS=(
   "Cargo.lock"
   "*/Cargo.lock"
@@ -15,8 +15,17 @@ EXCLUDE_PATTERNS=(
   "LICENSE"
   ".agents/skills/*"
   ".claude/skills/*"
-  "docs/*"
-  "*.md"
+  "docs/milestones/*"
+  "CHANGELOG.md"
+  "SPEC.md"
+  "IDEA.md"
+  "PROGRESS.md"
+  "README*"
+  "docs/api.md"
+  "docs/audit.md"
+  "docs/install.md"
+  "docs/manual-acceptance.md"
+  "docs/reports/*"
   "features.json"
   "justfile"
 )
@@ -60,7 +69,8 @@ These files exceed ${MAX_TOKENS} tokens (bytes / 4):
 $(printf '%s\n' "${over[@]}")
 
 Split each into smaller modules by responsibility, re-exporting with pub use so callers
-do not change.
+do not change. A document is condensed instead: conclusions and the lines that prove them,
+not whole outputs.
 EOF
 fi
 if [ ${#inline[@]} -gt 0 ]; then
