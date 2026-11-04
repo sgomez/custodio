@@ -248,3 +248,7 @@ with an empty context.
 - Fixed NEXT_FINDINGS: the three `#[allow(dead_code, unused_imports)]` in `tests/storage_choice.rs` now carry a justifying comment. Contract amended (separate commit) to strike control (c), as the contract review advised.
 - Open risk kept for F118/e2e: `systemd-creds`, spawned with a plain `Command`, may inherit the TCTI descriptor with the device TCTI (inferred in `docs/findings.md`, not run).
 - Evidence: `just quick` green; `storage_choice` 19/19. No production code changed, so the mutants result (19 mutants, 0 missed) stands.
+
+### 2026-11-04 — F117 — attempt 4
+- NEXT_FINDINGS was already addressed by attempt 3 (`c3342d0`: the three `allow`s in `tests/storage_choice.rs` carry the justifying comment; `bbf45c8`: control (c) struck from the contract). Checked again, no code change.
+- Evidence: `just quick` green; `storage_choice` 19/19. Mutants result of attempt 1 stands (19 mutants, 0 missed).
