@@ -3194,3 +3194,15 @@ Research for `TPM2_Import` under the ECC P-256 parent of F111. The sensitive are
 | `swtpm` slots | Three transient objects at a time, and no resource manager: a tool or client that leaves an object loaded blocks the next. | verified |
 
 Decision: outer wrap to the parent's ECDH key. The commands of an import are `CreatePrimary`, `Import`, `FlushContext`; a parent check is `CreatePrimary`, `FlushContext`.
+
+## Test children and `swtpm` (F117)
+
+Why `storage_choice` hung under `cargo test` and passed under nextest. Status: **verified** (run in the dev container) or **inferred**.
+
+| Question | Answer | Status |
+|---|---|---|
+| What held the TPM | Private `dbus-daemon`s of other tests held client ends of their `TpmFilter` sockets (`ss -xp` in the container's network namespace, `/proc/*/fd`). Each `swtpm` serves one client, so the next connection waited forever. | verified |
+| Where the descriptor comes from | The TSS `swtpm` TCTI keeps no connection open between commands (a test process with a live `Context` holds no socket); it opens one per command without close-on-exec, so a child forked by another thread during a command inherits it. Only binaries that run TPM and D-Bus tests in one process (`cargo test`, not nextest) are affected. | verified for the open sockets; the missing `SOCK_CLOEXEC` is inferred from the leak |
+| Fix | `custodio_it::spawn::closed_fds` closes every descriptor above 2 before exec; `swtpm` and the private bus of `audit/bus.rs` start through it. | verified (`closed_fds`, 6 `storage_choice` runs) |
+| Killed test binaries | The host's AppArmor profile `usr.bin.swtpm` has no `signal` rule: `kill -9` and the parent-death signal never reach `swtpm`. A guardian shell gets the parent-death signal and stops it over the control socket. | verified (`a_killed_test_binary_leaves_no_swtpm`) |
+| The service | `creds/systemd.rs` spawns `systemd-creds` with a plain `Command`. If a TPM command runs on another thread at that moment, the child would inherit the TCTI descriptor (`/dev/tpmrm0` with the device TCTI). | inferred, not run: to check before the TPM path ships |

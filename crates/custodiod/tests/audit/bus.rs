@@ -5,7 +5,7 @@ use std::error::Error;
 use std::future::Future;
 use std::io::{BufRead, BufReader};
 use std::pin::Pin;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll};
@@ -29,7 +29,8 @@ pub struct Bus {
 
 impl Bus {
     pub fn start() -> Result<Self, Box<dyn Error>> {
-        let mut child = Command::new("dbus-daemon")
+        // Not a plain `Command`: the daemon would inherit other tests' TPM connections (`custodio_it::spawn`).
+        let mut child = custodio_it::spawn::closed_fds("dbus-daemon")
             .args(["--session", "--nofork", "--print-address=1"])
             .stdout(Stdio::piped())
             .spawn()?;
