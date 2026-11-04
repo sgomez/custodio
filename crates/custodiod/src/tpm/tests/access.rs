@@ -34,6 +34,15 @@ impl Session for ScriptedSession {
             .push(parms);
         Ok(())
     }
+    fn parent_name(&mut self) -> Result<Vec<u8>, crate::tpm::import::ImportError> {
+        Err(crate::tpm::import::ImportError::Internal)
+    }
+    fn import_key(
+        &mut self,
+        _key: &crate::tpm::key::ImportKey,
+    ) -> Result<crate::tpm::blob::Imported, crate::tpm::import::ImportError> {
+        Err(crate::tpm::import::ImportError::Internal)
+    }
 }
 
 impl TpmAccess for Scripted {

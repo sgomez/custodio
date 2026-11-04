@@ -3175,3 +3175,22 @@ exit=0
 - 0x1C10104
 - 0x1C101C0
 ```
+
+## F113
+
+Research for `TPM2_Import` under the ECC P-256 parent of F111. The sensitive area must not cross the TCTI in the clear. Status: **verified** (run on
+`swtpm` through `tpm_import`) or **inferred** (TCG text, not run here).
+
+| Question | Answer | Status |
+|---|---|---|
+| Which wrap | Outer wrap to the parent's public key (TCG TPM 2.0 Part 1, "Duplication"): ephemeral P-256 key, `Z = x(ephemeral * parentPub)`, `seed = KDFe(SHA-256, Z, "DUPLICATE", ephX, parentX, 256)`, `symKey = KDFa(seed, "STORAGE", name, 128)`, `hmacKey = KDFa(seed, "INTEGRITY", 256)`, AES-128-CFB with a zero IV over `TPM2B_SENSITIVE`, `TPM2B_DIGEST(HMAC(hmacKey, encrypted \|\| name)) \|\| encrypted` as `duplicate`, the ephemeral point as `inSymSeed`, null `symmetricAlg`, no `encryptionKey`. | verified: `tpm2_load` loads the result for RSA 2048 and P-256 and the TPM's integrity check passes only with this exact construction |
+| Why not an inner wrap in an encrypted session | The inner key is a command parameter and would need a salted session (more commands, a session to flush); the outer wrap needs no session and only `aes`, `hmac` and `sha2`, already in `Cargo.lock`, plus the `p256` arithmetic the crate already enables. No new crate, no `unsafe`. | verified (`cargo build`) |
+| Seed on the wire | Only the ephemeral public point is sent; the seed, `symKey` and `hmacKey` exist in `Zeroizing` buffers inside `wrap`. | verified by reading; the wire test searches the key encodings, not the seed |
+| `adminWithPolicy` with an empty `authPolicy` | `TPM2_Import` accepts it; the loaded key has `userwithauth\|adminwithpolicy\|decrypt\|sign` (RSA) or `userwithauth\|adminwithpolicy\|sign` (P-256); `sensitiveDataOrigin` is clear. `tpm2_duplicate` on it fails with `TPM_RC_AUTH_TYPE` (0x124): the duplication role needs a policy session, and an empty policy offers none. | verified |
+| `fixedTPM` / `fixedParent` | `TPM2_Import` requires both clear (Part 3, `TPM2_Import`: `TPM_RC_ATTRIBUTES`). The imported key has both clear and is never duplicated, see above. | inferred (not run with them set) |
+| What the TPM checks between the areas | The integrity HMAC over the encrypted area and the name (computed from the public area, so a changed public area fails `TPM_RC_INTEGRITY`); for an RSA key the prime must divide the modulus; for ECC the scalar must give the public point. | inferred (not run with a mismatch) |
+| Parent identity | The parent is deterministic: the same template gives the same name on the same owner seed; `Swtpm::restart` keeps it, `Swtpm::clear` and another `swtpm` change it. A blob loaded under another parent fails `TPM_RC_INTEGRITY`. | verified |
+| Parent template for the `tpm2-tools` oracle | `tpm2_createprimary -G ecc256:aes128cfb` needs `-a fixedtpm\|fixedparent\|sensitivedataorigin\|userwithauth\|noda\|restricted\|decrypt` to equal the template; the default attributes lack `noda` and give another primary. | verified |
+| `swtpm` slots | Three transient objects at a time, and no resource manager: a tool or client that leaves an object loaded blocks the next. | verified |
+
+Decision: outer wrap to the parent's ECDH key. The commands of an import are `CreatePrimary`, `Import`, `FlushContext`; a parent check is `CreatePrimary`, `FlushContext`.

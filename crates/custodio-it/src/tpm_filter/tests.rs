@@ -67,3 +67,22 @@ fn capability_entries_are_removed() {
     assert_eq!(&out[19..21], &alg::RSASSA.to_be_bytes());
     assert_eq!(&out[2..6], &25u32.to_be_bytes());
 }
+
+#[test]
+fn recorder_keeps_commands_in_order() {
+    let rec = Recorder::new();
+    rec.push(&[0x80, 1, 0, 0, 0, 10, 0, 0, 1, 0x44]);
+    rec.push(&[0x80, 1, 0, 0, 0, 11, 0, 0, 1, 0x57, 9]);
+    assert_eq!(rec.codes(), vec![0x144, 0x157]);
+    assert_eq!(rec.bytes().len(), 21);
+    assert_eq!(rec.clone().commands().len(), 2, "clones share the record");
+    assert_eq!(Recorder::new().codes(), Vec::<u32>::new());
+    assert_eq!(Recorder::new().push_short().codes(), Vec::<u32>::new());
+}
+
+impl Recorder {
+    fn push_short(self) -> Self {
+        self.push(&[1, 2]);
+        self
+    }
+}

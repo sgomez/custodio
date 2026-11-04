@@ -16,8 +16,13 @@ use tss_esapi::structures::{
 use tss_esapi::tcti_ldr::TctiNameConf;
 
 use super::Session;
+use super::blob::Imported;
 use super::classify::{Fault, Owner, ResponseCode};
+use super::import::ImportError;
+use super::key::ImportKey;
 use super::list::Parms;
+
+mod primary;
 
 /// `get_capability` pages: far more than any TPM lists, so a TPM that never stops saying "more" is an error.
 const MAX_PAGES: usize = 4096;
@@ -186,5 +191,13 @@ impl Session for EsysSession {
     fn test_parms(&mut self, parms: Parms) -> Result<(), Fault> {
         let parameters = parameters(parms).map_err(|_| Fault::Transport)?;
         self.context.test_parms(parameters).map_err(fault)
+    }
+
+    fn parent_name(&mut self) -> Result<Vec<u8>, ImportError> {
+        self.parent_name_of()
+    }
+
+    fn import_key(&mut self, key: &ImportKey) -> Result<Imported, ImportError> {
+        self.import_under_parent(key)
     }
 }

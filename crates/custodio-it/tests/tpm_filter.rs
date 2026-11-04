@@ -426,3 +426,34 @@ fn a_fault_rule_can_drop_the_connection_in_the_middle_of_the_reply() {
     // The filter serves the next client, and the TPM is unharmed.
     commands(&mut context(&tpm.tcti())).expect("plain swtpm still answers");
 }
+
+#[test]
+fn the_recorder_keeps_what_the_client_sent_and_a_fault_does_not_hide_it() {
+    let tpm = Swtpm::start().expect("swtpm");
+    let record = custodio_it::tpm_filter::Recorder::new();
+    let filter = filter_with(
+        &tpm,
+        Lacks {
+            faults: vec![CommandFault {
+                command: cc::TEST_PARMS,
+                action: FaultAction::Respond(0x101),
+            }],
+            record: Some(record.clone()),
+            ..Lacks::default()
+        },
+    );
+    let mut ctx = context(&filter.tcti());
+    assert!(commands(&mut ctx).is_ok());
+    let before = record.codes();
+    assert!(before.contains(&cc::GET_CAPABILITY));
+    assert!(!before.contains(&cc::TEST_PARMS));
+    let _ = ctx.test_parms(rsa(RsaScheme::Null));
+    let after = record.codes();
+    assert_eq!(after.len(), before.len() + 1, "one command more");
+    assert_eq!(
+        after.last(),
+        Some(&cc::TEST_PARMS),
+        "the faulted command is recorded"
+    );
+    assert!(record.bytes().len() >= 10 * after.len());
+}

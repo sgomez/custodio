@@ -18,8 +18,8 @@
 use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -52,6 +52,48 @@ pub struct Lacks {
     pub commands: Vec<u32>,
     /// Commands that fail on purpose.
     pub faults: Vec<CommandFault>,
+    /// Where to keep every command the client sends (F113). `None`: nothing is kept.
+    pub record: Option<Recorder>,
+}
+
+/// The commands a client sent through the filter, in order, whole (header included). Clones share the record.
+#[derive(Debug, Clone, Default)]
+pub struct Recorder {
+    commands: Arc<Mutex<Vec<Vec<u8>>>>,
+}
+
+impl Recorder {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn push(&self, command: &[u8]) {
+        if let Ok(mut all) = self.commands.lock() {
+            all.push(command.to_vec());
+        }
+    }
+
+    /// Every command recorded so far.
+    #[must_use]
+    pub fn commands(&self) -> Vec<Vec<u8>> {
+        self.commands.lock().map(|c| c.clone()).unwrap_or_default()
+    }
+
+    /// The `TPM_CC` of every command recorded so far.
+    #[must_use]
+    pub fn codes(&self) -> Vec<u32> {
+        self.commands()
+            .iter()
+            .filter_map(|c| Some(u32::from_be_bytes(c.get(6..10)?.try_into().ok()?)))
+            .collect()
+    }
+
+    /// All recorded bytes, one command after the other.
+    #[must_use]
+    pub fn bytes(&self) -> Vec<u8> {
+        self.commands().concat()
+    }
 }
 
 /// What a command with a fault rule gets instead of the TPM's answer. The command does not reach the TPM.
@@ -75,6 +117,7 @@ pub mod cc {
     pub const CREATE_PRIMARY: u32 = 0x131;
     pub const IMPORT: u32 = 0x156;
     pub const LOAD: u32 = 0x157;
+    pub const FLUSH_CONTEXT: u32 = 0x165;
     pub const RSA_DECRYPT: u32 = 0x159;
     pub const SIGN: u32 = 0x15d;
     pub const GET_CAPABILITY: u32 = 0x17a;
@@ -272,6 +315,9 @@ fn serve(client: &UnixStream, upstream: &Path, lacks: &Lacks, stop: &AtomicBool)
         let Ok(command) = read_message(&mut (&[first][..]).chain(&mut c_in)) else {
             return Ok(());
         };
+        if let Some(recorder) = &lacks.record {
+            recorder.push(&command);
+        }
         let response = if let Some(action) = fault_for(&command, lacks) {
             match action {
                 FaultAction::Respond(rc) => error_response(rc),

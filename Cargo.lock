@@ -424,8 +424,10 @@ dependencies = [
 name = "custodiod"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "custodio-client",
  "custodio-it",
+ "hmac",
  "p12-keystore",
  "p256",
  "pkcs8",

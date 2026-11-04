@@ -8,10 +8,14 @@
 //! Nothing here creates a TPM object, so nothing has to be flushed. The capability list is documented in `docs/api.md`
 //! ("TPM capabilities").
 
+pub mod blob;
 pub mod classify;
 pub mod esys;
+pub mod import;
+pub mod key;
 pub mod list;
 pub mod open;
+pub mod wrap;
 
 pub use classify::{Answers, Classification, Fault, Opened, Owner, ResponseCode, TpmError};
 pub use list::{Item, KeyType, Parms, Query};
@@ -43,6 +47,16 @@ pub trait Session {
     /// # Errors
     /// The TPM refused or did not answer.
     fn test_parms(&mut self, parms: Parms) -> Result<(), Fault>;
+    /// The name of the parent of every TPM key (F113): the primary is created, named and flushed.
+    ///
+    /// # Errors
+    /// The TPM refused or did not answer.
+    fn parent_name(&mut self) -> Result<Vec<u8>, import::ImportError>;
+    /// Wraps `key` to the parent and imports it (`TPM2_Import`); every object created is flushed before it returns.
+    ///
+    /// # Errors
+    /// The TPM refused or did not answer.
+    fn import_key(&mut self, key: &key::ImportKey) -> Result<blob::Imported, import::ImportError>;
 }
 
 /// Why no session was opened.

@@ -157,3 +157,15 @@ with an empty context.
   channel; `tool_ok` errors now show the arguments.
 - Evidence: 36 parallel runs of `tpm_access` (6 at a time), all 16/16 in under 3.5 s (before: about 1 in 9 hung); `custodio-it` tests green; `just quick` green;
   `just mutants-diff F112`: 105 mutants, 82 caught, 23 unviable, 0 missed.
+
+### 2026-11-04 — F113 — attempt 1
+- Done: `tpm` module gains `key` (PKCS#8 → RSA 2048 / P-256 only, secrets in `SecretSlice`), `wrap` (outer wrap to the parent by ECDH, KDFe/KDFa, AES-128-CFB, HMAC),
+  `blob` (`Blob`, `Imported` = blob + parent name only, bounded parsing), `import` (`import_pkcs8`, `import`, `check_parent`, `ImportError`), `esys/primary.rs`
+  (SRK-template parent created and flushed per call, `TPM2_Import`). `Session` got `parent_name` and `import_key`. Wrap choice: outer wrap, no session, new deps `aes`, `hmac`
+  (already in `Cargo.lock`, so deny/machete see no new crate); research in `docs/findings.md` `## F113`. `custodio-it` filter got `Recorder` (`Lacks::record`) and `cc::FLUSH_CONTEXT`.
+  Parent check sends CreatePrimary + FlushContext only, never `TPM2_Load`. Five files added to the `mutants` recipe.
+- Decisions: `adminWithPolicy` set with empty policy (TPM accepts; duplicate fails `TPM_RC_AUTH_TYPE`), `sensitiveDataOrigin` clear, P-256 scheme pinned to ECDSA/SHA-256, RSA scheme null.
+- Unit tests (run in `just quick`): `tpm::tests::import::{result_fields, key_path_types, name_comparison, blob_parsing_bounds, refusal_before_any_tpm_call, debug_and_display_hold_no_key_bytes, limits_and_messages, kdfs_follow_the_construction, aes_cfb_with_a_zero_iv, the_public_area_follows_the_decisions}`.
+- Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 124 mutants, 93 caught, 31 unviable, 0 missed.
+- Deviation from the contract text: the commands of an import are CreatePrimary, Import, Flush (no session, no read-public), so `nothing_left_loaded` faults those. Test files carry a justified `allow` for unwrap/expect/indexing.
+- Known: `cargo deny check bans` fails on duplicate `getrandom` (0.2 via tss-esapi, 0.4); it fails the same without my changes (not caused by F113).

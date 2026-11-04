@@ -15,6 +15,8 @@ panic = "deny"
 indexing_slicing = "deny"
 
 [dependencies]
+aes = "0.9.3"
+hmac = "0.13.0"
 custodio-client = { path = "../custodio-client", version = "0.1.0" }
 p12-keystore = "0.4.1"
 p256 = { version = "0.14.0", default-features = false, features = [
