@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use secrecy::SecretString;
+
 use super::{Custodio, ImportRequest, kind_name, parse_import_request};
 use crate::audit::{AuditKeyType, ImportOutcome, KeyId, OperationEntry};
 use crate::credentials::CallerCredentials;
@@ -66,27 +68,27 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         p12: &[u8],
         password: &str,
     ) -> Result<String, ServiceError> {
-        let request =
+        let ImportRequest { id, password } =
             parse_import_request(id, p12, password).map_err(|e| ServiceError::from(&e))?;
-        let key_id = KeyId::new(&request.id).map_err(|_| ServiceError::AuditUnavailable)?;
+        let key_id = KeyId::new(&id).map_err(|_| ServiceError::AuditUnavailable)?;
         let known = self.known_caller(sender).await;
         let Some((sender, caller, pidfd)) = known else {
             let entry =
                 OperationEntry::import(ImportOutcome::AuthorizationUnavailable, None, key_id, None);
             let result = Err(ServiceError::AuthorizationUnavailable);
-            return self.finish_import(entry, 0, &request.id, result).await;
+            return self.finish_import(entry, 0, &id, result).await;
         };
         let owner = caller.uid;
-        if id_taken(&self.store, owner, &request.id).map_err(|e| ServiceError::from(&e))? {
+        if id_taken(&self.store, owner, &id).map_err(|e| ServiceError::from(&e))? {
             return Err(ServiceError::KeyIdTaken);
         }
         let app_id = self.app_id_of(pidfd.as_ref(), owner).await;
         let (outcome, key_type, result) = self
-            .authorize_and_import(sender, owner, &request, p12)
+            .authorize_and_import(sender, owner, &id, password, p12)
             .await;
         let entry =
             OperationEntry::import(outcome, Some(caller), key_id, key_type).with_app_id(app_id);
-        self.finish_import(entry, owner, &request.id, result).await
+        self.finish_import(entry, owner, &id, result).await
     }
 
     /// Records the entry of an import, then returns its reply. If the entry cannot be recorded, a
@@ -111,11 +113,16 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     }
 
     /// Polkit, the decoder and the store of an import, with the outcome to record.
+    ///
+    /// The password is taken by value and dropped (zeroized) as soon as the decoder has used it,
+    /// before the storage kind is chosen. The `.p12` bytes are borrowed from the bus message,
+    /// which the service cannot free early; the decoded key is consumed by `store_parsed`.
     async fn authorize_and_import(
         &self,
         sender: &str,
         owner: u32,
-        request: &ImportRequest,
+        id: &str,
+        password: SecretString,
         p12: &[u8],
     ) -> ImportAttempt {
         match self.authorizer.authorize(sender, IMPORT_ACTION_ID).await {
@@ -130,7 +137,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 return (outcome, None, Err(ServiceError::from(&e)));
             }
         }
-        let parsed = match self.decoder.decode(p12, &request.password) {
+        let decoded = self.decoder.decode(p12, &password);
+        drop(password);
+        let parsed = match decoded {
             Ok(parsed) => parsed,
             Err(e) => return (import_outcome(&e), None, Err(ServiceError::from(&e))),
         };
@@ -142,7 +151,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 Err(ServiceError::Internal),
             );
         };
-        match store_parsed(&self.store, creds, &*self.tpm, owner, &request.id, parsed) {
+        match store_parsed(&self.store, creds, &*self.tpm, owner, id, parsed) {
             Ok(kind) => (ImportOutcome::Stored, key_type, Ok(kind)),
             Err(e) => (import_outcome(&e), key_type, Err(ServiceError::from(&e))),
         }

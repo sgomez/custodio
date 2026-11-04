@@ -252,3 +252,8 @@ with an empty context.
 ### 2026-11-04 — F117 — attempt 4
 - NEXT_FINDINGS was already addressed by attempt 3 (`c3342d0`: the three `allow`s in `tests/storage_choice.rs` carry the justifying comment; `bbf45c8`: control (c) struck from the contract). Checked again, no code change.
 - Evidence: `just quick` green; `storage_choice` 19/19. Mutants result of attempt 1 stands (19 mutants, 0 missed).
+
+### 2026-11-04 — F117 — attempt 5
+- Fixed NEXT_FINDINGS: `import_call` destructures `ImportRequest`; `authorize_and_import` takes the `SecretString` by value and drops it right after
+  `decoder.decode`, before the choice. The `.p12` stays borrowed from the bus message (doc comment says so).
+- Evidence: `just quick` green; `storage_choice` 19/19; `just mutants-diff F117`: 21 mutants, 9 caught, 12 unviable, 0 missed.
