@@ -92,7 +92,7 @@
         "F111"
       ],
       "verify": "just quick && cargo test -p custodiod --test tpm_access --locked && just mutants-diff F112",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F113",
