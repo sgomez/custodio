@@ -1,4 +1,5 @@
 //! Unit tests of the TPM signature front end, second half: messages, the result check and the access point (F114).
+// A test fails by panicking: unwrap, expect and indexing on data the test itself built are the intended failure mode.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
