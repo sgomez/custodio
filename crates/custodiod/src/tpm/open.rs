@@ -133,7 +133,7 @@ impl TestTcti {
         }
     }
 
-    /// Collects the seed and the keys derived from it during an import.
+    /// Collects the seed and the keys derived from it during an import. Test seam: never wire this into the daemon.
     #[must_use]
     pub fn with_tap(mut self, tap: super::wrap::Tap) -> Self {
         self.tap = Some(tap);

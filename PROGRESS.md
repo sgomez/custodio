@@ -177,3 +177,10 @@ with an empty context.
   `Some("")` fails; the test now also asserts the authPolicy size bytes (10..12) of the stored TPM2B_PUBLIC are zero.
 - Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 129 mutants, 93 caught, 36 unviable, 0 missed.
 - Known, not F113: `cargo deny check bans` fails on duplicate `getrandom` (0.2 via tss-esapi, 0.4) with or without these changes; the checkpoint will hit it.
+
+### 2026-11-04 — F113 — attempt 3
+- Fixed NEXT_FINDINGS: `wrap::sensitive` no longer builds the secret through `sized` (a plain `Vec`); the size prefixes are written straight into two
+  `Zeroizing` buffers reserved at full capacity. `cfb_encrypt` wipes its feedback block. `with_tap` (esys.rs, open.rs) docs say never to wire it into the daemon.
+- Not done: the `hmac`/`kdfa` internal state wiping (depends on the crates; the keys passed in are `Zeroizing` in our code).
+- Unit tests in `just quick`: `tpm::tests::import::{result_fields, key_path_types, name_comparison, blob_parsing_bounds, ...}`.
+- Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 135 mutants, 98 caught, 37 unviable, 0 missed.

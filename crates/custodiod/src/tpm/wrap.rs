@@ -22,7 +22,7 @@ use tss_esapi::structures::{
     PublicBuilder, PublicEccParametersBuilder, PublicKeyRsa, PublicRsaParametersBuilder,
     RsaExponent, RsaScheme,
 };
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::import::ImportError;
 use super::key::{ImportKey, Material};
@@ -126,6 +126,7 @@ pub fn cfb_encrypt(key: &[u8], data: &mut [u8]) -> Result<(), ImportError> {
             feedback = Array::from(next);
         }
     }
+    feedback.zeroize();
     Ok(())
 }
 
@@ -206,10 +207,20 @@ pub(super) fn sensitive(key: &ImportKey) -> Result<Zeroizing<Vec<u8>>, ImportErr
         Material::Rsa { .. } => ALG_RSA,
         Material::P256 { .. } => ALG_ECC,
     };
-    let mut inner = Zeroizing::new(kind.to_be_bytes().to_vec());
+    let secret = key.secret();
+    let secret_len = u16::try_from(secret.len()).map_err(|_| ImportError::Internal)?;
+    // Both buffers are reserved in full up front, so no reallocation frees a buffer that already holds key bytes,
+    // and no plain `Vec` ever holds the secret: the size prefixes are written straight into the zeroizing buffers.
+    let inner_len = u16::try_from(2 + 4 + 2 + secret.len()).map_err(|_| ImportError::Internal)?;
+    let mut inner = Zeroizing::new(Vec::with_capacity(usize::from(inner_len)));
+    inner.extend_from_slice(&kind.to_be_bytes());
     inner.extend_from_slice(&[0, 0, 0, 0]);
-    inner.extend_from_slice(&sized(key.secret())?);
-    Ok(Zeroizing::new(sized(&inner)?))
+    inner.extend_from_slice(&secret_len.to_be_bytes());
+    inner.extend_from_slice(secret);
+    let mut out = Zeroizing::new(Vec::with_capacity(usize::from(inner_len) + 2));
+    out.extend_from_slice(&inner_len.to_be_bytes());
+    out.extend_from_slice(&inner);
+    Ok(out)
 }
 
 /// Wraps `key` to the parent whose public point is `parent_x`, `parent_y`, with `ephemeral` as the sender's key.

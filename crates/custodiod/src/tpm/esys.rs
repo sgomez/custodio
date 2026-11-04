@@ -61,7 +61,7 @@ impl EsysSession {
         })
     }
 
-    /// Test seam: the import hands its seed and derived keys to `tap`.
+    /// Test seam: the import hands its seed and derived keys to `tap`. Never wire this into the daemon.
     #[must_use]
     pub fn with_tap(mut self, tap: super::wrap::Tap) -> Self {
         self.tap = Some(tap);
