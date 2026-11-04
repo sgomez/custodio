@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # lintian for `just package-lint`, at the version of packaging/lint/pins.txt (a test keeps them in step) from the dated snapshot as the only
 # apt source of this install, so a point release cannot remove it. rpmlint is not installed: Debian's is not the pinned Fedora one, so the
 # gate runs rpmlint, and namcap (not packaged for Debian), in containers. podman (rootless, the host socket is never mounted) and uidmap run
-# them; the storage driver is vfs (see docs/findings.md, F38).
+# them; the storage driver is vfs (see docs/findings/F38.md).
 ARG LINTIAN=2.122.0
 ARG DEBIAN_SNAPSHOT=20261020T000000Z
 RUN echo "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}/ trixie main" > /etc/apt/snapshot.list \

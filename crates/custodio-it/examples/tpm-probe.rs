@@ -1,5 +1,5 @@
 //! Read-only TPM probe (F106). `tpm-probe parent [--tcti <tcti>]` prints, one `key: value` line each, the facts the
-//! "which parent" finding in `docs/findings.md` (section F106) relies on, so a person can repeat them on a hardware TPM.
+//! "which parent" finding in `docs/findings/F106.md` relies on, so a person can repeat them on a hardware TPM.
 //!
 //! It never calls `EvictControl`, never sets an auth value and never clears: it writes no NV storage and changes no
 //! persistent object. It creates transient primaries only and flushes each. Without `--tcti` the environment decides

@@ -50,7 +50,7 @@ whole contract, the feature's entry in `features.json`, the parts of `SPEC.md` i
 findings the amendment cites. Approve only if all of these hold:
 
 - The reason is a fact found while building (a tool's behaviour, a test, a research finding in
-  `docs/findings.md`), not convenience.
+  `docs/findings/`), not convenience.
 - Every point of the feature and of `SPEC.md` still has evidence that would fail if the feature
   were wrong, and every ticked step is still true.
 - No gate gets weaker: no dropped flag or check, no exception or glob wider than the finding
@@ -85,6 +85,8 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
      passwords never reach `Debug`, logs or errors, `unsafe` only in the PKCS#11 FFI layer.
    - New or changed entries in `docs/decisions.md` follow the rules at the top of that file; an
      entry that only describes what was built belongs in the commit instead.
+   - New or changed files in `docs/findings/` follow the rules at the top of `docs/findings.md`:
+     conclusions and the lines that prove them, no pasted whole outputs, an index line.
 
 Reply: first line exactly `PASS` or `NEEDS_WORK`, then up to 30 lines of findings, most important
 first, each with `file:line` and what to change.

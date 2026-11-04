@@ -1,6 +1,6 @@
 //! The real client: the Varlink interface `io.systemd.Credentials` of `systemd-creds` for the
 //! host-bound credential, the `systemd-creds` command with an explicit TPM device for the TPM-bound
-//! one. Both as `## F110` of `docs/findings.md` decided: scope `user`, no `withKey`.
+//! one. Both as `docs/findings/F110.md` decided: scope `user`, no `withKey`.
 //!
 //! The TPM is chosen from one input, the configured TPM device: none means host-bound. The
 //! plaintext goes to the daemon in the Varlink request or to the child's standard input, never in

@@ -13,7 +13,7 @@
 #             scripts of the old package do not run on an upgrade; the hook of the NEW package does, since pacman reads PostTransaction hooks again.
 #   refusing  a bus without ProcessFD: pacman goes on, the account is created before the policy is unpacked, the message shows.
 #   nosysusers / failsysusers / failsysusers-upgrade: the status of the failing pre script is recorded: pacman prints "command failed to execute
-#             correctly" and goes on (docs/findings.md, F42).
+#             correctly" and goes on (docs/findings/F42.md).
 #   mutants   packages whose scripts were changed (account in post_install, reloads repeated in post_*, an unconditional restart, a restart hook that
 #             sorts before dbus-reload, a restart in post_upgrade, no stop in pre_remove, a deleted state directory): the checks of `flow` fail for each.
 # What this does not prove: a real running systemd (restart semantics, F45), and the separation of stdout from stderr: libalpm merges the output of a

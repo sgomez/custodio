@@ -1,4 +1,4 @@
-# Pins for `just package-lint` (F38). Researched 2026-10-30; see docs/findings.md "F38". KEY = VALUE.
+# Pins for `just package-lint` (F38). Researched 2026-10-30; see docs/findings/F38.md. KEY = VALUE.
 debian_snapshot = 20261020T000000Z
 lintian = 2.122.0
 lintian_profile = 2.122.0

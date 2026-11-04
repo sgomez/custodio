@@ -1,7 +1,7 @@
 //! The capability list per key type: what a TPM must have for the service to store a key of that type on it.
 //!
 //! Written once in `docs/api.md` ("TPM capabilities"); `tpm::tests::list_matches_document` ties this file to it. The
-//! items come from `## F107` of `docs/findings.md` as `docs/decisions.md` narrows them (the parent is an ECC P-256
+//! items come from `docs/findings/F107.md` as `docs/decisions.md` narrows them (the parent is an ECC P-256
 //! primary with an AES-128-CFB symmetric and a SHA-256 name; the service pads RSA, so no RSA scheme is needed).
 //! SHA-384 and SHA-512 are on no list: the hardware TPM of F111 lacks SHA-512 and must be `Ready`.
 

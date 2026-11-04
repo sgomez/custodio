@@ -27,7 +27,7 @@
 # under the state directory; the account is never removed (no userdel, groupdel). Where the deb does the same, the calls are the deb's
 # with deb-systemd-invoke read as systemctl (the parity cases below compare them and the notice text).
 # Offline (rpm-ostree, chroot, image build): no bus socket, systemctl failing, /run and /var read-only (the "run" and "var" switches of
-# lc_run_offline) change no exit status, and the F42 "no bus" notice appears. rpm-ostree runs no erase scriptlet (docs/findings.md), so
+# lc_run_offline) change no exit status, and the F42 "no bus" notice appears. rpm-ostree runs no erase scriptlet (docs/findings/F44.md), so
 # %preun and %postun are offline-tested for dnf in a chroot only.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

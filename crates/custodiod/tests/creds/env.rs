@@ -1,5 +1,5 @@
 //! The environment of the `creds` tests: the real `systemd-creds` daemon without root or PID 1, and the
-//! command with an explicit TPM device. `docs/findings.md` `## F110` ("Dev container") has the recipe.
+//! command with an explicit TPM device. `docs/findings/F110.md` ("Dev container") has the recipe.
 //!
 //! The daemon runs as root of a user namespace (`unshare --map-root-user`, the uids 1-998 mapped from
 //! `/etc/subuid`), socket activated (`systemd-socket-activate --fdname=varlink`) on a socket in the

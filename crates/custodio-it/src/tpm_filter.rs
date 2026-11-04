@@ -1,6 +1,6 @@
 //! A TPM that lacks an algorithm or a curve, simulated (F107).
 //!
-//! The installed `swtpm` 0.7.1 (libtpms 0.9.2) has no profile or algorithm switch (`docs/findings.md`, `## F107`), so a test
+//! The installed `swtpm` 0.7.1 (libtpms 0.9.2) has no profile or algorithm switch (`docs/findings/F107.md`), so a test
 //! that needs "the TPM answered a capability query and the capability is absent" puts this filter between the client and
 //! `swtpm`. It listens on a unix socket, speaks the framing of the `swtpm` TCTI on both sides (command `8`, locality, length,
 //! TPM command; reply length, TPM response, acknowledgement) and changes what the client sees:

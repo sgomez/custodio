@@ -74,7 +74,7 @@ flatpak, tell the person both causes and name the permission as the one to check
 
 ## Calling with gdbus
 
-The `org.freedesktop.Platform` flatpak runtime ships `gdbus` and `dbus-send`, not `busctl` (`docs/findings.md`, F102). With
+The `org.freedesktop.Platform` flatpak runtime ships `gdbus` and `dbus-send`, not `busctl` (`docs/findings/F102.md`). With
 `gdbus` the detection and a `Sign` are (`gdbus` reads the argument types from introspection; `$digest` is the GVariant
 text of the bytes, such as `[byte 0x00, byte 0x00, …]`):
 
@@ -303,7 +303,7 @@ The service keeps a key in the TPM only when the TPM has everything the key type
 (the platform exposes no TPM device), *lacks* (the TPM answered and these items are absent, each named), *ready*, or an
 *error* (a device that cannot be opened, a TPM error with its response code, or an owner hierarchy the service cannot use:
 an authorization value is set, or the hierarchy is disabled). An error is never read as absent or as lacking, and it
-wins when both apply. The list comes from `## F107` of `docs/findings.md`, as the decisions "TPM parent" and "the service
+wins when both apply. The list comes from `docs/findings/F107.md`, as the decisions "TPM parent" and "the service
 pads" in `docs/decisions.md` narrow it: the parent of every TPM key is an ECC P-256 primary with AES-128-CFB and a SHA-256
 name, RSA keys carry `sign|decrypt` and the service pads, P-256 keys sign with `TPM2_Sign`. SHA-384 and SHA-512 are on no
 list: a TPM without SHA-512 (the hardware TPM of F111) is *ready*.

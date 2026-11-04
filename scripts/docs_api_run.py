@@ -125,7 +125,7 @@ def doc_error_message(msg_by_name, name):
 def static(doc_path):
     doc, bad = read(doc_path), []
     audit = read("docs/audit.md")
-    findings = read("docs/findings.md")
+    findings = read("docs/findings/F68.md")
     f68 = section(findings, r"^## F68")
     errs = error_items(doc)
     msgs = messages(doc)
@@ -149,10 +149,10 @@ def static(doc_path):
     if det and not re.search(r"(?i)(absent|not installed)[^.]*blocked[^.]*(look the same|indistinguishable)", det):
         bad.append("detection section lacks the sentence: absent and blocked look the same through the proxy")
     if not f68 or "Detection:" not in f68:
-        bad.append("docs/findings.md has no F68 Detection line")
+        bad.append("docs/findings/F68.md has no Detection line")
     for tok in set(re.findall(r"`([A-Za-z0-9_.]+)`", det)):
         if re.search(r"[A-Z]", tok) and tok not in f68:  # error names, methods and bus names must be the ones of F68
-            bad.append(f"detection section quotes `{tok}`, which docs/findings.md F68 does not")
+            bad.append(f"detection section quotes `{tok}`, which docs/findings/F68.md does not")
     detection_line = next((l for l in f68.split("\n") if l.startswith("Detection:")), "")
     for tok in ("NameHasOwner", "ListActivatableNames", "StartServiceByName"):
         if tok not in detection_line:

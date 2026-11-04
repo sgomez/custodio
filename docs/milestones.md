@@ -13,7 +13,7 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
   `CKM_SHA512_RSA_PKCS`, `CKM_ECDSA_SHA256` and peers. The module hashes and builds the
   `DigestInfo`; the service still receives only the hash.
 - `C_Login` accepted as a no-op instead of `CKR_FUNCTION_NOT_SUPPORTED`.
-- rFirma signs without the two workarounds recorded in `docs/findings.md`.
+- rFirma signs without the two workarounds recorded in `docs/findings/M01-acceptance.md`.
 - LibreOffice signs a document through the module.
 - One journal entry per signature: caller uid and pid, key, approved or denied. No key material and
   no hash contents.
@@ -92,7 +92,7 @@ What any client needs from the service, rFirma included. The rFirma side waits f
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
   `flatpak override`) or a documented limitation.
 - **Firefox without p11-kit:** Mozilla's builds bundle their own NSS, and Arch's and Debian's NSS
-  load no p11-kit proxy (`docs/findings.md`, F56), so Firefox ignores `.module` files there. M2
+  load no p11-kit proxy (`docs/findings/F56.md`), so Firefox ignores `.module` files there. M2
   documents registration by hand (`docs/install.md`, "Firefox"). An enterprise policy is one file and
   would override the administrator's. Candidate: a `custodio` command that registers the module in
   the user's NSS profiles, for Firefox and its derivatives (each with its own profile root).

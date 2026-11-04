@@ -35,6 +35,8 @@ yourself and go on. When a finding proves a SPEC.md requirement impossible for a
 project ships, record a deviation as CLAUDE.md says and amend the contract in the same commit;
 do not block. Write BLOCKED.md only for what needs a person: credentials, a change to the dev
 container or the host, a contradiction with SPEC.md or features.json that is a choice rather than
-an impossibility, or a hard-to-undo decision SPEC.md does not cover. Check every claim about the environment by running it before you write it.
+an impossibility, or a hard-to-undo decision SPEC.md does not cover. Research goes in
+`docs/findings/<id>.md` under the rules at the top of `docs/findings.md`: the conclusion and the
+lines that prove it, never a whole output. Check every claim about the environment by running it before you write it.
 
 Do not edit features.json or SPEC.md. If you need a human, write BLOCKED.md, commit, and stop.

@@ -16,7 +16,7 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 
 # Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
 # The e2e targets run systemd containers in a nested rootless podman (F45), which needs no more than: SYS_ADMIN for
-# newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings.md, F45).
+# newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings/F45.md).
 userns=() target_opts=
 if [[ $engine == *podman ]]; then userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U; fi
 hc_status=0

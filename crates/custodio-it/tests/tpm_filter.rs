@@ -1,6 +1,6 @@
 //! The TPM that lacks something (F107): the filter in front of `swtpm` makes one capability fail with the TPM's response code
 //! while the unfiltered `swtpm` answers it. The tests print every answer (`cargo test -p custodio-it --test tpm_filter -- --nocapture`);
-//! the lines are pasted into `docs/findings.md`.
+//! `docs/findings/F107.md` records the results.
 
 use std::str::FromStr;
 

@@ -3,7 +3,7 @@
 Usage: owner-call.py sign ID [SIGNATURE-FILE] | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD
 Prints one line: "ok" or "error <D-Bus error name>". Exit 0 when that line was printed, 2 on anything else.
 
-Why not busctl: `busctl call` prints "Call failed: <message>" and drops the error name (finding "F91" in docs/findings.md); GLib's D-Bus
+Why not busctl: `busctl call` prints "Call failed: <message>" and drops the error name (docs/findings/F91.md); GLib's D-Bus
 (the one agent.py uses, from python3-gi) keeps it. The calls, each with the signature of docs/api.md; none sets the interactive-
 authorization flag (Gio.DBusCallFlags.NONE), because the service asks polkit itself, with AllowUserInteraction, and the flag only matters to
 the bus-level policy:

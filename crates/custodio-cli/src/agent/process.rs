@@ -1,6 +1,6 @@
 //! The real spawner: `setpriv --pdeathsig=KILL -- pkttyagent ...`.
 //!
-//! `pkttyagent` does not watch its parent (`docs/findings.md`, F89), and `custodio-cli` forbids
+//! `pkttyagent` does not watch its parent (`docs/findings/F89.md`), and `custodio-cli` forbids
 //! `unsafe`, so `CommandExt::pre_exec` is out. `setpriv` sets the parent-death signal and execs
 //! `pkttyagent`, which keeps the pid and its own argv. The signal fires when the parent *thread*
 //! exits, so this is called from the main thread. If `setpriv` is missing, no agent is started.

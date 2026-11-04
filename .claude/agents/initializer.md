@@ -39,6 +39,7 @@ Rules:
   one e2e target, one gate). Split anything bigger.
 - An open question whose answer changes what another feature builds is its own research feature,
   before that feature. Never leave it to a build feature to settle or report in `BLOCKED.md`.
+  It writes `docs/findings/<id>.md`, and its `verify` reads that file.
 - Check `harness/Containerfile` before requiring a tool or capability; if the dev container lacks
   it, a feature that adds it comes first.
 - `verify` is deterministic and runs in the dev container (`harness/Containerfile`). When a

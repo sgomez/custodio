@@ -104,7 +104,7 @@ module is unverified here. If a polkit dialog appears for a listing, write it do
 ## 4. The rFirma build
 
 Acceptance 11 needs a build of rFirma without the two workarounds of the M0 run
-(`docs/findings.md`, section 4 "Manual acceptance run (M01)"):
+(`docs/findings/M01-acceptance.md`):
 
 1. a fallback from `CKM_SHA256_RSA_PKCS` to raw `CKM_RSA_PKCS` over a `DigestInfo` (Custodio offers
    only raw mechanisms for RSA);
@@ -368,7 +368,7 @@ are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** u
    still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). The `stat` and `ls -Z` lines need root (`/var/lib/private` is `0700 root`;
    run them under `sudo sh -c '…'` so the glob expands as root). dnf's file trigger already restored the label, so the boot path is shown on bazzite (next section).
 4. Sign with the dialog and cancel it (acceptance 12, steps 5 and 6 of the section above): the dialog appears, approving signs, cancelling fails.
-5. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+5. Record in `docs/findings/F61.md`: the date, the machine, and for each command above its result with the lines that show it.
 
 ## 12. bazzite, the .rpm layered (acceptance 13)
 
@@ -444,7 +444,7 @@ The same proof on the image-based system, where `%post` runs in a build root and
    Expected: the file exists; `unconfined_service_t`; **after the reboot** `var_lib_t` for the key files (the boot ran `systemd-tmpfiles-setup`), with the same
    mode, owner and size as before the upgrade (take the `stat` line before step 2 too and compare).
 3. The same keys still list and sign with the dialog, and a cancel fails (acceptance 12; sections 11 and 12 above): sign twice with the dialog open each time, cancel once.
-4. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+4. Record in `docs/findings/F61.md`: the date, the machine, and for each command above its result with the lines that show it.
 
 ## 13. omarchy (acceptance 14)
 

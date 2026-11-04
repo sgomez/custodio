@@ -4,7 +4,7 @@
 //! takes the mask from its own command line), and the default of the mask differs between versions of
 //! systemd. So the service does not trust the call: it reads the stored policy from the header and
 //! refuses a credential that is bound to any PCR, or that is not encrypted at all (the null key).
-//! The layout is the one `## F110` of `docs/findings.md` measured: a 16-byte key id first, and, for a
+//! The layout is the one `docs/findings/F110.md` measured: a 16-byte key id first, and, for a
 //! TPM-bound credential, the PCR mask as a little-endian `u64` at byte 48.
 
 use std::fmt;

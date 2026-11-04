@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The gate of `just unit-hardening`: custodio.service keeps the three settings the pidfd cross-check
-# relies on (docs/findings.md M1.2), each exactly once, and the security-score threshold in the justfile
+# relies on (docs/findings/F30.md, M1.2), each exactly once, and the security-score threshold in the justfile
 # is still 10. Arguments: UNIT (default data/custodio.service) and JUSTFILE (default justfile).
 set -euo pipefail
 

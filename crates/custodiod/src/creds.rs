@@ -4,7 +4,7 @@
 //! A private key is encrypted by [`Credentials::encrypt`], and the encrypted credential is the only
 //! form that is returned or stored. [`Credentials::decrypt`] gives the key back in `secrecy` memory
 //! for one signature. The client sits behind the [`Credentials`] trait so tests can inject both
-//! failures; [`systemd::SystemdCreds`] is the real one. What `## F110` of `docs/findings.md` decided
+//! failures; [`systemd::SystemdCreds`] is the real one. What `docs/findings/F110.md` decided
 //! (scope `user`, no `withKey`, the explicit-device form for a TPM, the read-back of the header)
 //! is implemented in [`systemd`] and [`header`].
 
