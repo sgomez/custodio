@@ -1,9 +1,12 @@
 //! Tests of the `swtpm` fixture itself (F105): start, TCTI for `tss-esapi` and `tpm2-tools`, PCR extend,
-//! restart on the same state, clear, independent instances, cleanup on drop (panics included).
+//! restart on the same state, clear, independent instances, cleanup on drop (panics included) and after a SIGKILL.
 
 use std::fs;
-use std::path::Path;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 
 use custodio_it::swtpm::{Swtpm, process_exists};
 use sha2::{Digest, Sha256};
@@ -260,5 +263,48 @@ fn drop_during_a_panic_cleans_up() {
     });
     let (pid, dir) = rx.recv().expect("pid and dir");
     assert!(handle.join().is_err(), "the thread panicked");
+    assert_gone(pid, &dir);
+}
+
+/// Set in the child process of `a_killed_test_binary_leaves_no_swtpm`.
+const KILLED_CHILD: &str = "CUSTODIO_SWTPM_KILLED_CHILD";
+
+#[test]
+fn a_killed_test_binary_leaves_no_swtpm() {
+    if std::env::var_os(KILLED_CHILD).is_some() {
+        let tpm = start();
+        println!("fixture {} {}", tpm.pid(), tpm.state_dir().display());
+        std::io::stdout().flush().expect("flush");
+        loop {
+            std::thread::sleep(Duration::from_secs(60));
+        }
+    }
+    let mut child = Command::new(std::env::current_exe().expect("test binary"))
+        .args([
+            "--exact",
+            "a_killed_test_binary_leaves_no_swtpm",
+            "--nocapture",
+        ])
+        .env(KILLED_CHILD, "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn the child");
+    let line = BufReader::new(child.stdout.take().expect("stdout"))
+        .lines()
+        .map_while(Result::ok)
+        .find(|l| l.starts_with("fixture "))
+        .expect("the child reports its swtpm");
+    let mut parts = line.split(' ').skip(1);
+    let pid: u32 = parts.next().and_then(|p| p.parse().ok()).expect("pid");
+    let dir = PathBuf::from(parts.next().expect("dir"));
+    // Negative control: the child's swtpm is up before the kill.
+    assert_alive(pid, &dir);
+    child.kill().expect("SIGKILL the child, so no Drop runs");
+    child.wait().expect("reap the child");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while (process_exists(pid) || dir.exists()) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+    }
     assert_gone(pid, &dir);
 }

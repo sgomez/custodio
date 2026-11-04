@@ -8,7 +8,9 @@
 //! `swtpm` cannot be signalled in the dev container (`kill` fails with EPERM, even SIGKILL), so it
 //! is stopped over its control socket with `swtpm_ioctl -s`, as `scripts/with-swtpm.sh` does; the
 //! signal is the fallback, and the wait is bounded. Dropping an instance stops it and removes its
-//! state, also while a panic unwinds.
+//! state, also while a panic unwinds. A test binary killed without unwinding (`timeout`, nextest's
+//! fail-fast) runs no `Drop`: a guardian shell between it and `swtpm` gets the parent-death signal,
+//! which the confined `swtpm` would refuse, and stops it the same way.
 //!
 //! Starting fails with an error that names the missing tool when `swtpm` or `tpm2-tools` are not
 //! installed; tests unwrap it, so they fail instead of skipping.
@@ -36,6 +38,13 @@ const REQUIRED_TOOLS: [(&str, &str); 9] = [
     ("tpm2_clear", "tpm2-tools"),
 ];
 
+/// Runs `swtpm` (`$3...`), writes its pid to the state directory (`$2`) and waits for it. On SIGTERM, the
+/// parent-death signal, it stops `swtpm` over the control socket (`$1`) and removes the state directory.
+const GUARDIAN: &str = r#"ctrl=$1 dir=$2; shift 2
+"$@" & swtpm=$!
+echo "$swtpm" > "$dir/swtpm.pid"
+trap 'timeout 10 swtpm_ioctl --unix "$ctrl" -s >/dev/null 2>&1; wait "$swtpm"; rm -rf "$dir"; exit 0' TERM
+wait "$swtpm""#;
 const STOP_GRACE: Duration = Duration::from_secs(2);
 const STOP_WAIT: Duration = Duration::from_secs(5);
 const START_WAIT: Duration = Duration::from_secs(10);
@@ -114,7 +123,7 @@ impl Swtpm {
         // The shell closes every inherited descriptor above stderr first: the TSS libraries open their sockets
         // without close-on-exec, so a `swtpm` forked while another test holds a TCTI connection would keep the
         // client end open for its whole life, and the single-client `swtpm` of that test would never see it close.
-        // `setpriv` then execs `swtpm` with a parent-death signal, so a killed test binary leaves no `swtpm` behind.
+        // `setpriv` then execs the guardian with a parent-death signal; the guardian starts `swtpm`.
         let mut child = Command::new("bash")
             .args([
                 "-c",
@@ -122,7 +131,15 @@ impl Swtpm {
                 "close-fds",
                 "setpriv",
                 "--pdeathsig",
-                "KILL",
+                "TERM",
+                "bash",
+                "-c",
+                GUARDIAN,
+                "guardian",
+            ])
+            .arg(&ctrl)
+            .arg(&self.dir)
+            .args([
                 "swtpm",
                 "socket",
                 "--tpm2",
@@ -139,10 +156,16 @@ impl Swtpm {
             .stdout(log.try_clone()?)
             .stderr(log)
             .spawn()?;
-        self.pid = child.id();
+        let pid_file = self.dir.join("swtpm.pid");
         let deadline = Instant::now() + START_WAIT;
         loop {
-            if sock.exists() && ctrl.exists() {
+            if sock.exists()
+                && ctrl.exists()
+                && let Some(pid) = fs::read_to_string(&pid_file)
+                    .ok()
+                    .and_then(|p| p.trim().parse().ok())
+            {
+                self.pid = pid;
                 break;
             }
             if let Some(status) = child.try_wait()? {
