@@ -1,4 +1,6 @@
 use super::*;
+use crate::creds::seal;
+use crate::store::Protected;
 
 #[test]
 fn rollback_import_removes_the_record_and_nothing_else() -> Result<(), Box<dyn std::error::Error>> {

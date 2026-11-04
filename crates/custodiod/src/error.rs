@@ -11,8 +11,9 @@ use std::fmt;
 
 use custodio_client::{
     ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_CERTIFICATE_MISMATCH,
-    ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED,
-    ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_CREDENTIALS_UNAVAILABLE, ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN,
+    ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_TPM_FAILED, ERROR_UNSUPPORTED_KEY_TYPE,
+    ERROR_WRONG_PASSWORD_OR_BAD_P12,
 };
 use zbus::message::{Header, Message};
 use zbus::names::ErrorName;
@@ -35,12 +36,16 @@ pub enum ServiceError {
     UnsupportedKeyType,
     CertificateMismatch,
     AuditUnavailable,
+    /// The TPM failed or cannot be used for an import.
+    TpmFailed,
+    /// The credential service is unavailable or refused an import.
+    CredentialsUnavailable,
     Internal,
 }
 
 impl ServiceError {
     /// Every variant.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::InvalidArgs,
         Self::NoSuchKey,
         Self::KeyIdTaken,
@@ -50,6 +55,8 @@ impl ServiceError {
         Self::UnsupportedKeyType,
         Self::CertificateMismatch,
         Self::AuditUnavailable,
+        Self::TpmFailed,
+        Self::CredentialsUnavailable,
         Self::Internal,
     ];
 
@@ -66,6 +73,8 @@ impl ServiceError {
             Self::UnsupportedKeyType => ERROR_UNSUPPORTED_KEY_TYPE,
             Self::CertificateMismatch => ERROR_CERTIFICATE_MISMATCH,
             Self::AuditUnavailable => ERROR_AUDIT_UNAVAILABLE,
+            Self::TpmFailed => ERROR_TPM_FAILED,
+            Self::CredentialsUnavailable => ERROR_CREDENTIALS_UNAVAILABLE,
             Self::Internal => ERROR_INTERNAL,
         }
     }
@@ -83,6 +92,8 @@ impl ServiceError {
             Self::UnsupportedKeyType => "unsupported key type",
             Self::CertificateMismatch => "certificate does not match the key",
             Self::AuditUnavailable => "audit unavailable",
+            Self::TpmFailed => "the TPM failed or cannot be used",
+            Self::CredentialsUnavailable => "the credential service is unavailable",
             Self::Internal => "internal error",
         }
     }
@@ -137,7 +148,8 @@ impl From<&ImportError> for ServiceError {
             | ImportError::NoCertificate => Self::WrongPasswordOrBadP12,
             ImportError::CertificateMismatch => Self::CertificateMismatch,
             ImportError::UnsupportedKey(_) => Self::UnsupportedKeyType,
-            ImportError::Protect(_) => Self::Internal,
+            ImportError::Tpm(_) => Self::TpmFailed,
+            ImportError::Protect(_) | ImportError::BindingMismatch => Self::CredentialsUnavailable,
             ImportError::Store(e) => Self::from(e),
         }
     }

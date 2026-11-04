@@ -34,9 +34,11 @@ pub(super) const fn import_outcome(e: &ImportError) -> ImportOutcome {
         ImportError::UnsupportedKey(_) | ImportError::CertificateMismatch => {
             ImportOutcome::UnsupportedKey
         }
-        ImportError::Protect(_) | ImportError::Store(_) | ImportError::TooLarge => {
-            ImportOutcome::StorageFailure
-        }
+        ImportError::Protect(_)
+        | ImportError::Tpm(_)
+        | ImportError::BindingMismatch
+        | ImportError::Store(_)
+        | ImportError::TooLarge => ImportOutcome::StorageFailure,
     }
 }
 
@@ -140,7 +142,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 Err(ServiceError::Internal),
             );
         };
-        match store_parsed(&self.store, creds, owner, &request.id, parsed) {
+        match store_parsed(&self.store, creds, &*self.tpm, owner, &request.id, parsed) {
             Ok(kind) => (ImportOutcome::Stored, key_type, Ok(kind)),
             Err(e) => (import_outcome(&e), key_type, Err(ServiceError::from(&e))),
         }

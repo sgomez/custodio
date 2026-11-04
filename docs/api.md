@@ -232,6 +232,8 @@ otherwise, the call changed nothing.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256. Message `unsupported key type`.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key (`ImportP12`, `ReplaceCertificate`). Message `certificate does not match the key`.
 - error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored; a replaced certificate is put back). Message `audit unavailable`.
+- error `com.rfirma.Custodio1.Error.TpmFailed`: `ImportP12` only: the TPM is present but failed or cannot be used (it could not be opened, answered with an error, or its owner hierarchy is unusable). Nothing was stored, and the key was not stored in a weaker form instead. Message `the TPM failed or cannot be used`.
+- error `com.rfirma.Custodio1.Error.CredentialsUnavailable`: `ImportP12` only: the credential service is down or refused to encrypt the key, so it was not stored. Message `the credential service is unavailable`.
 - error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate). Message `internal error`.
 
 ## Polkit actions

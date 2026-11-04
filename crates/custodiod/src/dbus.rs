@@ -24,6 +24,8 @@ use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash, sign};
 use crate::store::{KeyStore, Record, StoreError};
+use crate::tpm::TpmAccess;
+use crate::tpm::open::NoTpm;
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 pub use replace::parse_replace_request;
@@ -209,6 +211,8 @@ pub struct Custodio<A, C> {
     sink: Arc<dyn AuditSink>,
     /// The credential service that encrypts and decrypts stored keys (not the bus `credentials`).
     key_creds: Option<Arc<dyn Credentials>>,
+    /// How the TPM is reached for an import. Without a call to [`Custodio::with_tpm`] the machine has none.
+    tpm: Arc<dyn TpmAccess>,
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
@@ -228,6 +232,7 @@ impl<A, C> Custodio<A, C> {
             credentials,
             sink,
             key_creds: None,
+            tpm: Arc::new(NoTpm),
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
@@ -239,6 +244,14 @@ impl<A, C> Custodio<A, C> {
     #[must_use]
     pub fn with_key_credentials(mut self, creds: Arc<dyn Credentials>) -> Self {
         self.key_creds = Some(creds);
+        self
+    }
+
+    /// Sets how the TPM is reached. The daemon passes the production access point; tests pass a software TPM or a
+    /// faulty one.
+    #[must_use]
+    pub fn with_tpm(mut self, tpm: Arc<dyn TpmAccess>) -> Self {
+        self.tpm = tpm;
         self
     }
 

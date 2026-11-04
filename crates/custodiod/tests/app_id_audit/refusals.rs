@@ -19,6 +19,7 @@ fn app_id_not_asked_for_refusals() -> TestResult {
             custodiod::import::import_p12(
                 &f.store,
                 &custodiod::creds::memory::MemoryCreds::host(),
+                &custodiod::tpm::open::NoTpm,
                 uid() + 1,
                 "foreign",
                 RSA_P12,

@@ -75,6 +75,7 @@ fn an_approved_delete_removes_the_record_of_the_caller_only() -> R {
     crate::import::import_p12(
         &r.store,
         &crate::creds::memory::MemoryCreds::host(),
+        &crate::tpm::open::NoTpm,
         12,
         "k",
         super::sign_call::P12,

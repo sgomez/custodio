@@ -175,6 +175,7 @@ fn import_stores_key_and_certificate() -> TestResult {
     let kind = import_p12(
         &store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "fnmt",
         &fixture("p256")?,
@@ -205,6 +206,7 @@ fn rejected_import_stores_nothing() -> TestResult {
     err_of(import_p12(
         &store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("rsa3072")?,
@@ -221,6 +223,7 @@ fn import_does_not_overwrite() -> TestResult {
     import_p12(
         &store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("p256")?,
@@ -229,6 +232,7 @@ fn import_does_not_overwrite() -> TestResult {
     let err = err_of(import_p12(
         &store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("rsa2048")?,
@@ -359,6 +363,7 @@ fn failed_key_write_leaves_the_existing_record_alone() -> TestResult {
     let err = err_of(import_p12(
         &store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("p256")?,

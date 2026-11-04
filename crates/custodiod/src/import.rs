@@ -1,8 +1,8 @@
 //! `.p12` import: parse a PKCS#12 file with its password, accept only RSA 2048 and ECDSA P-256
 //! keys that come with a certificate, and hand the result to the key store.
 //!
-//! The private key is encrypted with the credential service and stored with the leaf certificate in
-//! one record under `<id>`; the PKCS#8 DER never reaches the store.
+//! The key is protected in the form [`choice`] names (TPM, encrypted TPM-bound or encrypted host-bound) by
+//! [`protect`] and stored with the leaf certificate in one record under `<id>`; the PKCS#8 DER never reaches the store.
 
 use std::fmt;
 
@@ -15,8 +15,13 @@ use pkcs8::der::{
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use x509_cert::Certificate as X509;
 
-use crate::creds::{Credentials, CredsError, seal};
-use crate::store::{KeyStore, Protected, Record, StoreError};
+use crate::creds::{Credentials, CredsError};
+use crate::store::{KeyStore, Record, StoreError};
+use crate::tpm::TpmAccess;
+use crate::tpm::import::ImportError as TpmImportError;
+
+pub mod choice;
+pub mod protect;
 
 /// `rsaEncryption` (RFC 8017).
 const OID_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
@@ -56,6 +61,10 @@ pub enum ImportError {
     UnsupportedKey(String),
     /// The key could not be encrypted, or the credential was refused.
     Protect(CredsError),
+    /// The TPM cannot be judged, or its import failed. Nothing is stored in a weaker form.
+    Tpm(TpmImportError),
+    /// The credential is bound to something else than the storage kind chosen.
+    BindingMismatch,
     /// The key store refused the key or certificate.
     Store(StoreError),
 }
@@ -79,12 +88,22 @@ impl fmt::Display for ImportError {
                 "unsupported key: {why}; only RSA 2048 and ECDSA P-256 are accepted"
             ),
             Self::Protect(e) => write!(f, "cannot protect the key: {e}"),
+            Self::Tpm(e) => write!(f, "cannot import the key into the TPM: {e}"),
+            Self::BindingMismatch => {
+                f.write_str("the credential is bound to something else than the storage chosen")
+            }
             Self::Store(e) => write!(f, "cannot store the key: {e}"),
         }
     }
 }
 
 impl std::error::Error for ImportError {}
+
+impl From<TpmImportError> for ImportError {
+    fn from(e: TpmImportError) -> Self {
+        Self::Tpm(e)
+    }
+}
 
 impl From<StoreError> for ImportError {
     fn from(e: StoreError) -> Self {
@@ -187,17 +206,16 @@ pub fn credential_name(owner: u32, id: &str) -> String {
     format!("custodio-{owner}-{id}")
 }
 
-/// Encrypt the key of `parsed` with `creds` and store, for `owner`, one record under `id` with the
-/// credential and the certificate. The plaintext key goes to the credential service and nowhere else.
-///
-/// The kind is the one the credential's header names: until the TPM path is wired (F117) the key is
-/// always encrypted, also on a machine with a TPM.
+/// Choose the storage kind (see [`choice`]), protect the key of `parsed` in it and store, for `owner`, one record
+/// under `id` with the protected key and the certificate. The plaintext key goes to the TPM or to the credential
+/// service and nowhere else; it is dropped before the record is written. Every failure stores nothing.
 ///
 /// # Errors
 /// See [`ImportError`].
 pub fn store_parsed(
     store: &KeyStore,
     creds: &dyn Credentials,
+    tpm: &dyn TpmAccess,
     owner: u32,
     id: &str,
     parsed: ParsedP12,
@@ -206,19 +224,17 @@ pub fn store_parsed(
     if id_taken(store, owner, id)? {
         return Err(StoreError::AlreadyExists.into());
     }
-    let ParsedP12 {
-        kind: key_kind,
-        key,
-        certificate,
-    } = parsed;
-    let sealed = seal(creds, &credential_name(owner, id), &key).map_err(ImportError::Protect)?;
-    // The plaintext key is not needed any more.
-    drop(key);
-    let protected = Protected::from_sealed(&sealed);
-    let record = Record::new(owner, id, protected.natural_kind(), &certificate, protected)
-        .map_err(StoreError::Record)?;
+    let protection = protect::protect(tpm, creds, &credential_name(owner, id), parsed)?;
+    let record = Record::new(
+        owner,
+        id,
+        protection.kind,
+        &protection.certificate,
+        protection.protected,
+    )
+    .map_err(StoreError::Record)?;
     store.put(&record)?;
-    Ok(key_kind)
+    Ok(protection.key_type)
 }
 
 /// Undo [`store_parsed`] for `id`: remove the record.
@@ -236,12 +252,13 @@ pub fn rollback_import(store: &KeyStore, owner: u32, id: &str) -> Result<(), Sto
 pub fn import_p12(
     store: &KeyStore,
     creds: &dyn Credentials,
+    tpm: &dyn TpmAccess,
     owner: u32,
     id: &str,
     data: &[u8],
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
-    store_parsed(store, creds, owner, id, parse_p12(data, password)?)
+    store_parsed(store, creds, tpm, owner, id, parse_p12(data, password)?)
 }
 
 fn unsupported(why: &str) -> ImportError {

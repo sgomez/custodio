@@ -243,6 +243,7 @@ fn put_rsa(f: &Fixture, id: &str) -> TestResult {
     custodiod::import::import_p12(
         &f.store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         uid(),
         id,
         RSA_P12,
@@ -464,6 +465,7 @@ fn replace_refusals_leave_no_entry() -> TestResult {
         custodiod::import::import_p12(
             &f.store,
             &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
             uid() + 1,
             "other",
             RSA_P12,

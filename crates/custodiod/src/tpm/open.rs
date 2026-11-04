@@ -186,3 +186,14 @@ pub fn from_value(value: Option<&OsStr>) -> Box<dyn TpmAccess> {
 pub fn from_environment() -> Box<dyn TpmAccess> {
     from_value(std::env::var_os(TEST_SOCKET_VARIABLE).as_deref())
 }
+
+/// A machine without a TPM: every open answers "no device". The default of a service built without a TPM access point,
+/// and what tests that only need a stored key use; the daemon passes [`from_environment`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoTpm;
+
+impl TpmAccess for NoTpm {
+    fn open(&self) -> Result<Box<dyn Session>, OpenError> {
+        Err(OpenError::NoDevice)
+    }
+}

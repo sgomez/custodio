@@ -193,8 +193,24 @@ impl Fixture {
                 if service {
                     let password = SecretString::from(PASSWORD);
                     let creds = Arc::new(MemoryCreds::host());
-                    import_p12(&shared, &*creds, owner, "rsa", RSA_P12, &password)?;
-                    import_p12(&shared, &*creds, owner, "ec", EC_P12, &password)?;
+                    import_p12(
+                        &shared,
+                        &*creds,
+                        &custodiod::tpm::open::NoTpm,
+                        owner,
+                        "rsa",
+                        RSA_P12,
+                        &password,
+                    )?;
+                    import_p12(
+                        &shared,
+                        &*creds,
+                        &custodiod::tpm::open::NoTpm,
+                        owner,
+                        "ec",
+                        EC_P12,
+                        &password,
+                    )?;
                     let conn = Builder::address(address.as_str()).build().await?;
                     conn.object_server()
                         .at(
@@ -277,6 +293,7 @@ impl Fixture {
         import_p12(
             &self.store,
             &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
             uid,
             id,
             p12,

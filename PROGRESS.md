@@ -225,3 +225,17 @@ with an empty context.
 - Not done / notes: the `compile_fail` doctest is not added (not counted as proof). The rename negative control for `concurrent_put_one_id` was dropped (the evaluator called it redundant). `creds/memory.rs` is test support and not in the `mutants` list.
 - Lint fixes for `just quick`: `store/error.rs` and `store/files.rs` split out of `store.rs` for the size gate; one justified `allow(too_many_lines)` on the cryptoki fixture.
 - Evidence (session 4): `just quick` green; `cargo test -p custodiod --locked` and `-p custodio-it --locked` green; `state_format` 25/25; `just mutants-diff F116`: 208 mutants, 171 caught, 37 unviable, 0 missed. Store files added to the `mutants` list.
+
+### 2026-11-04 — F117 — attempt 1
+- Done: `import/choice.rs` (pure `choose`: Ready→Tpm, Lacks→EncryptedTpm, Absent→EncryptedHost, Error→refusal) and `import/protect.rs`
+  (`protect` takes `ParsedP12` by value, assesses, imports to the TPM or seals, checks the credential binding against the kind, drops the key before it returns;
+  the record's kind is the chosen one, never re-labelled). `store_parsed`/`import_p12` take a `&dyn TpmAccess`; `Custodio::with_tpm`; `main` passes `open::from_environment()`
+  (F108's seam unchanged). New `ImportError::{Tpm, BindingMismatch}`. New D-Bus errors `TpmFailed` and `CredentialsUnavailable` (client constants, `ServiceError`, `docs/api.md`):
+  F119 only needs to explain them, not add them. Both map to journal outcome `storage_failure`.
+- Decisions: a `Custodio` built without `with_tpm` has `open::NoTpm` (no device), so tests that only need a host-bound key stay unchanged; the daemon always passes its access point.
+  Test seeding via `import_p12` passes `&NoTpm`. Control (c) of the contract (wrong chooser stub) dropped as the evaluator advised; the key-by-value property is the signature of `protect`.
+- Tests: unit `import::choice::tests`; integration `storage_choice` (19): kinds (ready/lacks/absent/unserved mechanism), `fails_closed::*` (9 rows, both key types, with heal-and-reimport, `encrypt` counts,
+  one `storage_failure` entry, empty store), order (polkit denied / wrong password: TPM never opened), `tpm_is_clean_after_faulted_import` (CreatePrimary seen before the fault, leak control),
+  `no_plaintext_in_store_after_any_outcome`, `controls`.
+- Evidence: `just quick` green; `storage_choice` 19/19; `just mutants-diff F117`: 19 mutants, 7 caught, 12 unviable, 0 missed. `src/import.rs`, `import/choice.rs`, `import/protect.rs` joined the `mutants` list.
+- Not done: TPM records still answer `Internal` on sign (F118); kind in the API/list (F119); causes in the journal (F120). `just api-contract` removal check not repeated by hand beyond the test running green in `just quick`.

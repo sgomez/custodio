@@ -15,6 +15,7 @@ use custodiod::creds::systemd::SystemdCreds;
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
 use custodiod::polkit::PolkitAuthorizer;
 use custodiod::store::KeyStore;
+use custodiod::tpm::{TpmAccess, open::from_environment};
 use zbus::{Connection, block_on};
 
 /// State directory: systemd's `STATE_DIRECTORY` (`StateDirectory=custodio`).
@@ -30,6 +31,7 @@ fn build_service(
     connection: &Connection,
     journal: JournalSink,
     key_credentials: Arc<dyn Credentials>,
+    tpm: Arc<dyn TpmAccess>,
 ) -> Custodio<PolkitAuthorizer, BusCredentials> {
     Custodio::new(
         store,
@@ -39,6 +41,7 @@ fn build_service(
     )
     .with_app_id_source(CgroupAppIdSource::new())
     .with_key_credentials(key_credentials)
+    .with_tpm(tpm)
 }
 
 /// Serves the object on `connection` and takes the bus name.
@@ -47,8 +50,9 @@ async fn serve(
     connection: &Connection,
     journal: JournalSink,
     key_credentials: Arc<dyn Credentials>,
+    tpm: Arc<dyn TpmAccess>,
 ) -> zbus::Result<()> {
-    let service = build_service(store, connection, journal, key_credentials);
+    let service = build_service(store, connection, journal, key_credentials, tpm);
     connection.object_server().at(OBJECT_PATH, service).await?;
     connection.request_name(BUS_NAME).await
 }
@@ -56,11 +60,18 @@ async fn serve(
 fn run() -> Result<(), Box<dyn Error>> {
     let store = Arc::new(KeyStore::open(state_dir(env::var_os("STATE_DIRECTORY")))?);
     block_on(async {
-        // Until the TPM path (F117) every key is encrypted by the credential service, which binds it
-        // to a TPM or to the host key as the machine allows.
+        // An import chooses TPM, encrypted TPM-bound or encrypted host-bound from what this access point finds.
+        let tpm: Arc<dyn TpmAccess> = Arc::from(from_environment());
         let key_credentials = Arc::new(SystemdCreds::system(None));
         let connection = Connection::system().await?;
-        serve(store, &connection, JournalSink::default(), key_credentials).await?;
+        serve(
+            store,
+            &connection,
+            JournalSink::default(),
+            key_credentials,
+            tpm,
+        )
+        .await?;
         std::future::pending::<()>().await;
         Ok(())
     })

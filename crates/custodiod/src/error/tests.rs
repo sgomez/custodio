@@ -19,6 +19,11 @@ fn every_variant_has_its_name() {
         (ServiceError::UnsupportedKeyType, "UnsupportedKeyType"),
         (ServiceError::CertificateMismatch, "CertificateMismatch"),
         (ServiceError::AuditUnavailable, "AuditUnavailable"),
+        (ServiceError::TpmFailed, "TpmFailed"),
+        (
+            ServiceError::CredentialsUnavailable,
+            "CredentialsUnavailable",
+        ),
         (ServiceError::Internal, "Internal"),
     ];
     assert_eq!(want.len(), ServiceError::ALL.len());

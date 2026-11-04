@@ -85,6 +85,7 @@ mod wiring {
         import_p12(
             &store,
             &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
             rustix::process::geteuid().as_raw(),
             "ec",
             include_bytes!("../tests/fixtures/p256.p12"),
@@ -102,6 +103,7 @@ mod wiring {
                 &conn,
                 JournalSink::new(&journal),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
+                Arc::new(custodiod::tpm::open::NoTpm),
             )
             .await?;
             let client = Builder::address(address.as_str()).build().await?;

@@ -79,6 +79,7 @@ pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> T
     custodiod::import::import_p12(
         &f.store,
         &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         uid(),
         id,
         p12,

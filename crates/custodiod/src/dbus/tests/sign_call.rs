@@ -176,6 +176,7 @@ pub(super) fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> 
     import_p12(
         &r.store,
         &crate::creds::memory::MemoryCreds::host(),
+        &crate::tpm::open::NoTpm,
         11,
         id,
         P12,
@@ -270,6 +271,7 @@ fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>>
     import_p12(
         &store,
         &crate::creds::memory::MemoryCreds::host(),
+        &crate::tpm::open::NoTpm,
         11,
         "k",
         P12,

@@ -35,6 +35,10 @@ pub const ERROR_UNSUPPORTED_KEY_TYPE: &str = "com.rfirma.Custodio1.Error.Unsuppo
 pub const ERROR_CERTIFICATE_MISMATCH: &str = "com.rfirma.Custodio1.Error.CertificateMismatch";
 /// The audit entry could not be recorded, so the call was refused.
 pub const ERROR_AUDIT_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.AuditUnavailable";
+/// The TPM failed or cannot be used for an import: the key was not stored, and no weaker storage was tried.
+pub const ERROR_TPM_FAILED: &str = "com.rfirma.Custodio1.Error.TpmFailed";
+/// The credential service is unavailable or refused an import: the key was not stored.
+pub const ERROR_CREDENTIALS_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.CredentialsUnavailable";
 /// The key store, a stored key or the signing operation failed.
 pub const ERROR_INTERNAL: &str = "com.rfirma.Custodio1.Error.Internal";
 
