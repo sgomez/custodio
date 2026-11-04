@@ -136,7 +136,7 @@
         "F111"
       ],
       "verify": "just quick && cargo test -p custodiod --test state_format --locked && just mutants-diff F116",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F117",
