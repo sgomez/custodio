@@ -18,6 +18,11 @@ publish = false
 [profile.release]
 strip = "symbols"
 
+# `just mutants` (.cargo/mutants.toml): each mutant relinks every test binary; without debuginfo that is faster.
+[profile.mutants]
+inherits = "dev"
+debug = false
+
 [workspace.lints.rust]
 # `fuzzing` is set by cargo-fuzz.
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
