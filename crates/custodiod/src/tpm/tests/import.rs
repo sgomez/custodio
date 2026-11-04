@@ -68,6 +68,8 @@ fn result_fields() {
 
 fn zeroing<T: ZeroizeOnDrop>(_: &T) {}
 
+fn zeroing_type<T: ZeroizeOnDrop>() {}
+
 #[test]
 fn key_path_types() {
     zeroing(&p256_key());
@@ -79,6 +81,12 @@ fn key_path_types() {
     zeroing(&wrap::kdfa(&[1; 32], "STORAGE", &[], &[], 128).unwrap());
     zeroing(&wrap::kdfe(&[1; 32], "DUPLICATE", &[], &[], 256));
     zeroing(&wrap::sensitive(&p256_key()).unwrap());
+    zeroing(&<aes::Aes128 as aes::cipher::KeyInit>::new(&[1; 16].into()));
+    // `Hmac` in hmac 0.13 has no `ZeroizeOnDrop`; its keyed state is two of these cores, which wipe on drop.
+    zeroing_type::<<sha2::Sha256 as sha2::digest::block_api::CoreProxy>::Core>();
+    zeroing(&sha2::Sha256::default());
+    zeroing(&Zeroizing::new(p256::AffinePoint::GENERATOR));
+    zeroing(&Zeroizing::new(p256::ProjectivePoint::GENERATOR));
     let mut z = Zeroizing::new(vec![3u8; 4]);
     z.zeroize();
     assert!(z.is_empty());

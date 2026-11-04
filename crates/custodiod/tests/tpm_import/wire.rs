@@ -31,7 +31,7 @@ fn private_key_not_on_the_wire() -> TestResult {
         // The outer wrap: neither the seed nor the keys derived from it cross the TCTI.
         let derived = tap.lock().map_err(|_| "tap poisoned")?.clone();
         assert_eq!(
-            derived.iter().map(Vec::len).collect::<Vec<_>>(),
+            derived.iter().map(|d| d.len()).collect::<Vec<_>>(),
             [32, 16, 32],
             "seed, symKey, hmacKey"
         );

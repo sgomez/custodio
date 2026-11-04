@@ -15,8 +15,8 @@ panic = "deny"
 indexing_slicing = "deny"
 
 [dependencies]
-aes = "0.9.3"
-hmac = "0.13.0"
+aes = { version = "0.9.3", features = ["zeroize"] }
+hmac = { version = "0.13.0", features = ["zeroize"] }
 custodio-client = { path = "../custodio-client", version = "0.1.0" }
 p12-keystore = "0.4.1"
 p256 = { version = "0.14.0", default-features = false, features = [
@@ -35,7 +35,7 @@ rsa = { version = "=0.10.0-rc.19", default-features = false, features = [
 rustix = { version = "1.1.6", features = ["fs", "process"] }
 sec1 = { version = "0.8.1", default-features = false, features = ["der"] }
 secrecy = "0.10.3"
-sha2 = "0.11.1"
+sha2 = { version = "0.11.1", features = ["zeroize"] }
 x509-cert = { version = "0.3.0", default-features = false }
 zbus = { version = "6", default-features = false, features = [
   "comms",

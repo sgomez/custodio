@@ -184,3 +184,11 @@ with an empty context.
 - Not done: the `hmac`/`kdfa` internal state wiping (depends on the crates; the keys passed in are `Zeroizing` in our code).
 - Unit tests in `just quick`: `tpm::tests::import::{result_fields, key_path_types, name_comparison, blob_parsing_bounds, ...}`.
 - Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 135 mutants, 98 caught, 37 unviable, 0 missed.
+
+### 2026-11-04 — F113 — attempt 4 (human-supervised fix of the 3rd rejection)
+- Fixed NEXT_FINDINGS: the ECDH product (`ProjectivePoint`) and the shared `AffinePoint` are `Zeroizing`. Enabled `aes/zeroize` (key schedule), `hmac/zeroize` and
+  `sha2/zeroize`. `Hmac` in hmac 0.13.0 never implements `ZeroizeOnDrop`, even with its feature; its keyed state is two SHA-256 cores, which wipe on drop only with
+  `sha2/zeroize` (that also covers the `kdfe` hasher over `Z`). `key_path_types` asserts `Aes128`, the SHA-256 core, `Sha256` and both `Zeroizing` points.
+- Note taken: `wrap::Tap` stores `Zeroizing<Vec<u8>>`.
+- Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 135 mutants, 98 caught, 37 unviable, 0 missed.
+- Builds need the `custodio-dev` container (the host has no tss2 libs).

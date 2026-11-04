@@ -37,7 +37,7 @@ const HASH_BITS: usize = 256;
 type HmacSha256 = Hmac<Sha256>;
 
 /// Where a test collects the seed and the two keys derived from it. Nothing in the shipped binary sets one.
-pub type Tap = std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>>;
+pub type Tap = std::sync::Arc<std::sync::Mutex<Vec<Zeroizing<Vec<u8>>>>>;
 
 /// What `TPM2_Import` is given besides the parent.
 pub struct Wrapped {
@@ -246,9 +246,8 @@ pub fn wrap(
     sec1.extend_from_slice(parent_x);
     sec1.extend_from_slice(parent_y);
     let parent = p256::PublicKey::from_sec1_bytes(&sec1).map_err(|_| ImportError::Internal)?;
-    let shared = (parent.to_projective() * *ephemeral.to_nonzero_scalar()).to_affine();
-    // The shared point is public-key arithmetic output: `p256::AffinePoint` has no zeroizing drop, so only the copies
-    // this function makes are wiped (`x`, then `z`); the point itself lives on the stack until the frame is reused.
+    let product = Zeroizing::new(parent.to_projective() * *ephemeral.to_nonzero_scalar());
+    let shared = Zeroizing::new(product.to_affine());
     let x = Zeroizing::new(shared.x());
     let z = Zeroizing::new(x.to_vec());
     let eph = ephemeral.public_key().to_sec1_point(false);
@@ -264,7 +263,7 @@ pub fn wrap(
     if let Some(tap) = tap
         && let Ok(mut seen) = tap.lock()
     {
-        seen.extend([seed.to_vec(), sym_key.to_vec(), hmac_key.to_vec()]);
+        seen.extend([seed.clone(), sym_key.clone(), hmac_key.clone()]);
     }
 
     let mut encrypted = sensitive(key)?;
