@@ -239,3 +239,7 @@ with an empty context.
   `no_plaintext_in_store_after_any_outcome`, `controls`.
 - Evidence: `just quick` green; `storage_choice` 19/19; `just mutants-diff F117`: 19 mutants, 7 caught, 12 unviable, 0 missed. `src/import.rs`, `import/choice.rs`, `import/protect.rs` joined the `mutants` list.
 - Not done: TPM records still answer `Internal` on sign (F118); kind in the API/list (F119); causes in the journal (F120). `just api-contract` removal check not repeated by hand beyond the test running green in `just quick`.
+
+### 2026-11-04 — F117 — attempt 2
+- Fixed NEXT_FINDINGS: the inline test module in `import/choice.rs` moved to `import/choice/tests.rs` (check-files gate).
+- Evidence: `just quick` green; `storage_choice` 19/19; `just mutants-diff F117`: 19 mutants, 7 caught, 12 unviable, 0 missed.
