@@ -3,7 +3,6 @@ use std::sync::atomic::Ordering;
 use super::sign_call::{Counting, Creds, rig, seed};
 use super::*;
 use crate::audit::FailingSink;
-use crate::import::cert_id;
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
@@ -53,7 +52,7 @@ fn polkit_outcomes_map_to_their_errors_and_keep_the_key() -> R {
         seed(&r, "k")?;
         assert_eq!(delete(&r, Some(":1.1"), "k"), Err(want));
         assert_eq!(r.auth_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(r.store.list(11)?, ["k", "k-cert"]);
+        assert_eq!(r.store.list(11)?, ["k"]);
         assert_eq!(r.sink.entries().len(), 0);
         // One entry, whatever polkit said, and it says why the key was kept.
         let entries = r.sink.operation_entries();
@@ -68,13 +67,14 @@ fn polkit_outcomes_map_to_their_errors_and_keep_the_key() -> R {
 }
 
 #[test]
-fn an_approved_delete_removes_both_files_of_the_caller_only() -> R {
+fn an_approved_delete_removes_the_record_of_the_caller_only() -> R {
     let r = rig(|| Ok(()))?;
     seed(&r, "k")?;
     seed(&r, "keep")?;
     // The same id under another uid.
     crate::import::import_p12(
         &r.store,
+        &crate::creds::memory::MemoryCreds::host(),
         12,
         "k",
         super::sign_call::P12,
@@ -82,8 +82,8 @@ fn an_approved_delete_removes_both_files_of_the_caller_only() -> R {
     )?;
     assert_eq!(delete(&r, Some(":1.1"), "k"), Ok(()));
     assert_eq!(r.auth_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(r.store.list(11)?, ["keep", "keep-cert"]);
-    assert_eq!(r.store.list(12)?, ["k", "k-cert"]);
+    assert_eq!(r.store.list(11)?, ["keep"]);
+    assert_eq!(r.store.list(12)?, ["k"]);
     assert_eq!(delete(&r, Some(":1.1"), "k"), Err(ServiceError::NoSuchKey));
     assert_eq!(r.auth_calls.load(Ordering::SeqCst), 1);
     Ok(())
@@ -105,7 +105,7 @@ fn refusals_before_polkit_ask_nothing() -> R {
     assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
     // Only the missing id reaches the credentials: no sender has none, a bad id is refused first.
     assert_eq!(r.cred_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(r.store.list(11)?, ["k", "k-cert"]);
+    assert_eq!(r.store.list(11)?, ["k"]);
     Ok(())
 }
 
@@ -117,7 +117,8 @@ fn a_key_that_cannot_be_read_is_internal_before_polkit() -> R {
     std::fs::create_dir(r.store.dir().join("11").join("k"))?;
     assert_eq!(delete(&r, Some(":1.1"), "k"), Err(ServiceError::Internal));
     assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
-    assert!(r.store.dir().join("11").join(cert_id("k")).exists());
+    // The directory that took the place of the record is untouched.
+    assert!(r.store.dir().join("11").join("k").is_dir());
     Ok(())
 }
 
@@ -164,7 +165,10 @@ fn a_sink_that_fails_restores_the_key_and_the_lock_is_free_again() -> R {
         },
         Creds(r.cred_calls.clone()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     seed(&r, "k")?;
     let before = r.store.list(11)?;
     for _ in 0..2 {
@@ -183,26 +187,48 @@ fn a_sink_that_fails_restores_the_key_and_the_lock_is_free_again() -> R {
     Ok(())
 }
 
+/// A sink that records nothing but makes the removal that follows fail: it loosens the record's mode.
+struct LoosenSink(std::path::PathBuf);
+
+impl crate::audit::AuditSink for LoosenSink {
+    fn record(&self, _: &crate::audit::Entry) -> Result<(), crate::audit::AuditError> {
+        Ok(())
+    }
+
+    fn record_operation(
+        &self,
+        _: &crate::audit::OperationEntry,
+    ) -> Result<(), crate::audit::AuditError> {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644))
+            .map_err(|e| crate::audit::AuditError::Io(e.kind()))
+    }
+}
+
 #[test]
 fn a_removal_that_fails_leaves_the_key_unusable_for_sign_and_list() -> R {
     let r = rig(|| Ok(()))?;
     seed(&r, "k")?;
-    // The certificate is a directory: the key file goes, the certificate cannot.
-    let cert = r.store.dir().join("11").join(cert_id("k"));
-    std::fs::remove_file(&cert)?;
-    std::fs::create_dir(&cert)?;
-    let got = delete(&r, Some(":1.1"), "k");
+    // The record passes the lookup, and its mode is loosened once the entry went out: the removal fails.
+    let service = Custodio::new(
+        r.store.clone(),
+        Counting {
+            result: || Ok(()),
+            calls: r.auth_calls.clone(),
+        },
+        Creds(r.cred_calls.clone()),
+        Arc::new(LoosenSink(r.store.dir().join("11").join("k"))),
+    )
+    .with_key_credentials(Arc::new(crate::creds::memory::MemoryCreds::host()));
+    let got = guarded(service.delete_call(Some(":1.1"), "k"));
     assert_eq!(got, Err(ServiceError::Internal));
-    assert!(r.service.deletes.is_unusable(11, "k"));
-    assert_eq!(r.service.deletes.locked(), 0);
+    assert!(service.deletes.is_unusable(11, "k"));
+    assert_eq!(service.deletes.locked(), 0);
     assert_eq!(
-        zbus::block_on(r.service.list_keys_call(Some(":1.1")))?.len(),
+        zbus::block_on(service.list_keys_call(Some(":1.1")))?.len(),
         0
     );
-    let signed = zbus::block_on(
-        r.service
-            .sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"),
-    );
+    let signed = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
     assert_eq!(signed, Err(ServiceError::NoSuchKey));
     assert_eq!(r.sink.entries().len(), 0);
     Ok(())

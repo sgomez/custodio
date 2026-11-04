@@ -19,13 +19,17 @@ fn fresh() -> Result<(tempfile::TempDir, KeyStore), Box<dyn Error>> {
 #[test]
 fn owner_is_recorded_in_the_path_and_found_again() -> TestResult {
     let (tmp, store) = fresh()?;
-    store.put(7, "k", &secret(b"seven"))?;
-    assert_eq!(fs::read(store.dir().join("7").join("k"))?, b"seven");
-    assert_eq!(store.get(7, "k")?.expose_secret(), b"seven");
+    store.put(&rec(7, "k", b"seven"))?;
+    assert_eq!(file_cert(&store.dir().join("7").join("k"))?, b"seven");
+    assert_eq!(
+        Record::decode(&fs::read(store.dir().join("7").join("k"))?)?.owner(),
+        7
+    );
+    assert_eq!(store.get(7, "k")?.certificate(), b"seven");
     assert!(matches!(store.get(8, "k"), Err(StoreError::NotFound)));
     drop(store);
     let reopened = KeyStore::open(tmp.path().join("s"))?;
-    assert_eq!(reopened.get(7, "k")?.expose_secret(), b"seven");
+    assert_eq!(reopened.get(7, "k")?.certificate(), b"seven");
     assert!(matches!(reopened.get(8, "k"), Err(StoreError::NotFound)));
     Ok(())
 }
@@ -33,8 +37,8 @@ fn owner_is_recorded_in_the_path_and_found_again() -> TestResult {
 #[test]
 fn owners_are_kept_apart_and_reads_create_nothing() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(1, "a-only", &secret(b"a"))?;
-    store.put(2, "b-only", &secret(b"b"))?;
+    store.put(&rec(1, "a-only", b"a"))?;
+    store.put(&rec(2, "b-only", b"b"))?;
     assert_eq!(store.list(1)?, ["a-only"]);
     assert_eq!(store.list(2)?, ["b-only"]);
     assert!(matches!(store.get(2, "a-only"), Err(StoreError::NotFound)));
@@ -56,15 +60,15 @@ fn owners_are_kept_apart_and_reads_create_nothing() -> TestResult {
 #[test]
 fn two_owners_may_store_the_same_id() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(1, "my-key", &secret(b"one"))?;
-    store.put(2, "my-key", &secret(b"two"))?;
-    assert_eq!(store.get(1, "my-key")?.expose_secret(), b"one");
-    assert_eq!(store.get(2, "my-key")?.expose_secret(), b"two");
+    store.put(&rec(1, "my-key", b"one"))?;
+    store.put(&rec(2, "my-key", b"two"))?;
+    assert_eq!(store.get(1, "my-key")?.certificate(), b"one");
+    assert_eq!(store.get(2, "my-key")?.certificate(), b"two");
     assert!(matches!(
-        store.put(1, "my-key", &secret(b"again")),
+        store.put(&rec(1, "my-key", b"again")),
         Err(StoreError::AlreadyExists)
     ));
-    assert_eq!(store.get(1, "my-key")?.expose_secret(), b"one");
+    assert_eq!(store.get(1, "my-key")?.certificate(), b"one");
     Ok(())
 }
 
@@ -76,21 +80,21 @@ fn numeric_ids_stay_valid_and_pairs_never_collide() -> TestResult {
     }
     for id in ["", ".", "..", "a/b", &"x".repeat(65)] {
         assert!(matches!(
-            store.put(1, id, &secret(b"x")),
+            store.put(&rec_unchecked(1, id, b"x")),
             Err(StoreError::InvalidId)
         ));
     }
-    store.put(1, "00-x", &secret(b"owner1"))?;
-    store.put(10, "0-x", &secret(b"owner10"))?;
+    store.put(&rec(1, "00-x", b"owner1"))?;
+    store.put(&rec(10, "0-x", b"owner10"))?;
     assert_eq!(store.list(1)?, ["00-x"]);
     assert_eq!(store.list(10)?, ["0-x"]);
     assert!(matches!(store.get(1, "0-x"), Err(StoreError::NotFound)));
     assert!(matches!(store.get(10, "00-x"), Err(StoreError::NotFound)));
     // An id equal to another owner's uid is just an id.
-    store.put(1, "10", &secret(b"id ten"))?;
+    store.put(&rec(1, "10", b"id ten"))?;
     assert_eq!(store.list(1)?, ["00-x", "10"]);
     assert_eq!(store.list(10)?, ["0-x"]);
-    assert_eq!(store.get(1, "10")?.expose_secret(), b"id ten");
+    assert_eq!(store.get(1, "10")?.certificate(), b"id ten");
     Ok(())
 }
 
@@ -102,7 +106,7 @@ fn umask_child_areas() -> TestResult {
     let tmp = tempfile::tempdir()?;
     rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o277));
     let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put(5, "k", &secret(b"x"))?;
+    store.put(&rec(5, "k", b"x"))?;
     assert_eq!(mode(&store.dir().join("5"))?, 0o700);
     assert_eq!(mode(&store.dir().join("5").join("k"))?, 0o600);
     println!("umask areas ran");
@@ -127,7 +131,7 @@ fn area_and_key_modes_are_exact_under_restrictive_umask() -> TestResult {
 #[test]
 fn loose_area_is_refused_and_left_alone() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(4, "k", &secret(b"x"))?;
+    store.put(&rec(4, "k", b"x"))?;
     let area = store.dir().join("4");
     fs::set_permissions(&area, fs::Permissions::from_mode(0o755))?;
     assert!(matches!(
@@ -136,13 +140,13 @@ fn loose_area_is_refused_and_left_alone() -> TestResult {
     ));
     assert!(matches!(store.list(4), Err(StoreError::BadPermissions(_))));
     assert!(matches!(
-        store.put(4, "k2", &secret(b"y")),
+        store.put(&rec(4, "k2", b"y")),
         Err(StoreError::BadPermissions(_))
     ));
     assert_eq!(mode(&area)?, 0o755);
     assert_eq!(names(&area)?, ["k"]);
     // Other owners are unaffected.
-    store.put(5, "k", &secret(b"z"))?;
+    store.put(&rec(5, "k", b"z"))?;
     // Reopening neither repairs it nor fails.
     let dir = store.dir().to_owned();
     drop(store);
@@ -154,13 +158,13 @@ fn loose_area_is_refused_and_left_alone() -> TestResult {
 #[test]
 fn foreign_owned_area_and_key_are_refused() -> TestResult {
     let (_tmp, mut store) = fresh()?;
-    store.put(4, "k", &secret(b"x"))?;
+    store.put(&rec(4, "k", b"x"))?;
     let real = store.uid;
     store.uid = real.wrapping_add(1);
     assert!(matches!(store.get(4, "k"), Err(StoreError::BadOwner(_))));
     assert!(matches!(store.list(4), Err(StoreError::BadOwner(_))));
     assert!(matches!(
-        store.put(4, "k2", &secret(b"y")),
+        store.put(&rec(4, "k2", b"y")),
         Err(StoreError::BadOwner(_))
     ));
     assert_eq!(names(&store.dir().join("4"))?, ["k"]);
@@ -184,7 +188,7 @@ fn symlinked_area_is_refused_and_target_untouched() -> TestResult {
     assert!(matches!(store.get(9, "k"), Err(StoreError::BadFileType(_))));
     assert!(matches!(store.list(9), Err(StoreError::BadFileType(_))));
     assert!(matches!(
-        store.put(9, "new", &secret(b"y")),
+        store.put(&rec(9, "new", b"y")),
         Err(StoreError::BadFileType(_))
     ));
     assert_eq!(names(&target)?, ["k"]);
@@ -204,7 +208,7 @@ fn non_directory_in_place_of_area_is_refused_and_kept() -> TestResult {
     ));
     assert!(matches!(store.list(1000), Err(StoreError::BadFileType(_))));
     assert!(matches!(
-        store.put(1000, "k", &secret(b"y")),
+        store.put(&rec(1000, "k", b"y")),
         Err(StoreError::BadFileType(_))
     ));
     assert_eq!(fs::read(&p)?, b"flat");
@@ -254,7 +258,7 @@ fn old_layout_flat_files_are_ignored_and_untouched() -> TestResult {
         assert_eq!(fs::read(root.join(name))?, b"flat");
         assert_eq!(mode(&root.join(name))?, 0o600);
     }
-    store.put(1000, "flatkey", &secret(b"new"))?;
+    store.put(&rec(1000, "flatkey", b"new"))?;
     assert_eq!(fs::read(root.join("flatkey"))?, b"flat");
     drop(tmp);
     Ok(())
@@ -277,8 +281,8 @@ fn fifo_as_area_does_not_hang() -> TestResult {
 #[test]
 fn open_removes_stale_temp_files_in_root_and_areas_only() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(3, "k", &secret(b"x"))?;
-    store.put(4, "k", &secret(b"x"))?;
+    store.put(&rec(3, "k", b"x"))?;
+    store.put(&rec(4, "k", b"x"))?;
     let root = store.dir().to_owned();
     fs::write(root.join(".tmp-1-1"), b"p")?;
     fs::write(root.join("3").join(".tmp-2-2"), b"p")?;
@@ -296,7 +300,7 @@ fn open_removes_stale_temp_files_in_root_and_areas_only() -> TestResult {
 #[test]
 fn list_skips_temp_files_and_other_entries() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(3, "b", &secret(b"1"))?;
+    store.put(&rec(3, "b", b"1"))?;
     fs::write(store.dir().join("3").join(".tmp-9-9"), b"p")?;
     fs::write(store.dir().join("3").join("bad name"), b"p")?;
     assert_eq!(store.list(3)?, ["b"]);
@@ -306,13 +310,13 @@ fn list_skips_temp_files_and_other_entries() -> TestResult {
 #[test]
 fn put_leaves_no_temp_file_on_conflict() -> TestResult {
     let (_tmp, store) = fresh()?;
-    store.put(3, "k", &secret(b"one"))?;
+    store.put(&rec(3, "k", b"one"))?;
     assert!(matches!(
-        store.put(3, "k", &secret(b"two")),
+        store.put(&rec(3, "k", b"two")),
         Err(StoreError::AlreadyExists)
     ));
     assert_eq!(names(&store.dir().join("3"))?, ["k"]);
-    assert_eq!(store.get(3, "k")?.expose_secret(), b"one");
+    assert_eq!(store.get(3, "k")?.certificate(), b"one");
     Ok(())
 }
 
@@ -330,10 +334,7 @@ fn concurrent_inserts_of_one_owner_and_id_leave_one_key() -> TestResult {
                 std::thread::spawn(move || {
                     barrier.wait();
                     let body = format!("writer-{n}");
-                    (
-                        body.clone(),
-                        store.put(42, "same", &secret(body.as_bytes())),
-                    )
+                    (body.clone(), store.put(&rec(42, "same", body.as_bytes())))
                 })
             })
             .collect();
@@ -350,7 +351,7 @@ fn concurrent_inserts_of_one_owner_and_id_leave_one_key() -> TestResult {
             return Err("not exactly one winner".into());
         };
         assert_eq!(store.list(42)?, ["same"]);
-        assert_eq!(store.get(42, "same")?.expose_secret(), winner.as_bytes());
+        assert_eq!(store.get(42, "same")?.certificate(), winner.as_bytes());
         assert_eq!(names(&store.dir().join("42"))?, ["same"]);
     }
     Ok(())
@@ -366,7 +367,7 @@ fn concurrent_inserts_of_different_owners_all_succeed() -> TestResult {
             let (store, barrier) = (store.clone(), barrier.clone());
             std::thread::spawn(move || {
                 barrier.wait();
-                store.put(owner, "my-key", &secret(&owner.to_le_bytes()))
+                store.put(&rec(owner, "my-key", &owner.to_le_bytes()))
             })
         })
         .collect();
@@ -375,7 +376,7 @@ fn concurrent_inserts_of_different_owners_all_succeed() -> TestResult {
     }
     for owner in 0..8_u32 {
         assert_eq!(
-            store.get(owner, "my-key")?.expose_secret(),
+            store.get(owner, "my-key")?.certificate(),
             owner.to_le_bytes()
         );
     }
@@ -392,7 +393,7 @@ fn a_root_that_stopped_being_a_directory_is_an_io_error_not_an_empty_store() -> 
     assert!(matches!(store.get(1, "k"), Err(StoreError::Io(_))));
     assert!(matches!(store.list(1), Err(StoreError::Io(_))));
     assert!(matches!(
-        store.put(1, "k", &secret(b"x")),
+        store.put(&rec(1, "k", b"x")),
         Err(StoreError::Io(_))
     ));
     Ok(())

@@ -212,3 +212,16 @@ with an empty context.
 ### 2026-11-04 — F114 — attempt 3
 - Fixed NEXT_FINDINGS: (1) the `tpm2_flushcontext -t` step in `nothing_left_loaded` is now an approved-pending amendment in `contracts/F114.md` (3 transient slots, a faulted flush leaves parent and key loaded; the test is unchanged); (2) the `allow` in `tpm/tests/sign/later.rs` carries its justification.
 - Evidence: `tpm::tests::sign` 15/15. No production or integration test code changed, so the `tpm_sign` and mutants results of attempt 2 stand (`just mutants-diff F114`: 92 mutants, 0 missed).
+
+### 2026-11-04 — F116 — attempt 1 (sessions 1-3)
+- Inventory / transition plan: callers of the store were `import.rs`, `dbus.rs` (list, sign), `dbus/{delete,replace}.rs`, `main.rs`, and the rigs in
+  `crates/custodiod/{src,tests}` and `crates/custodio-it/{tests,examples}`. All moved to the new API in this one change (the old byte API is gone, not kept `pub(crate)`).
+  M3 id rules: a key id may end in `-cert`, so `a` + `a-cert` is ambiguous by name; `store/legacy.rs` groups by the fixed rule in its module doc (a name is a certificate when its stem is a non-certificate file; an orphan certificate stands for its stem).
+- Done: `store/{kind,record,legacy,error,files}.rs` (kind with pinned wire strings `tpm`, `encrypted-tpm`, `encrypted-host` and tags 1-3; `Protected` with only `from_imported`/`from_sealed`;
+  `Record` with bounded `encode`/`decode`; `Sealed`'s fields private with accessors; `creds::memory::MemoryCreds` as the fake credential service for tests/examples).
+  `put` re-checks the framing (credential header vs kind, blob parse + public area) before it writes. `Custodio::with_key_credentials` carries the `Credentials` access point; sign decrypts through it; a TPM record answers `Internal` until F118.
+- Interim wiring (until F117): production import encrypts in every case (encrypted TPM-bound or host-bound via `creds::seal`), never TPM kind. This is a gap before F117, not the final behaviour.
+- Tests: unit `store::tests::{record_round_trip, kind_wire_strings_are_pinned, put_refuses_plaintext_as_*, kind_binding_mismatch, framing::*, legacy_files::*, rules::*, ...}`; integration target `state_format` (25 tests: api grep with a seeded negative control, no_plaintext_anywhere with planted-key control, framing readers on a real swtpm blob, modes under umask 0/077/022, symlinks, FIFO, loose modes, concurrent put/remove, replace atomicity and race, legacy).
+- Not done / notes: the `compile_fail` doctest is not added (not counted as proof). The rename negative control for `concurrent_put_one_id` was dropped (the evaluator called it redundant). `creds/memory.rs` is test support and not in the `mutants` list.
+- Lint fixes for `just quick`: `store/error.rs` and `store/files.rs` split out of `store.rs` for the size gate; one justified `allow(too_many_lines)` on the cryptoki fixture.
+- Evidence (session 4): `just quick` green; `cargo test -p custodiod --locked` and `-p custodio-it --locked` green; `state_format` 25/25; `just mutants-diff F116`: 208 mutants, 171 caught, 37 unviable, 0 missed. Store files added to the `mutants` list.

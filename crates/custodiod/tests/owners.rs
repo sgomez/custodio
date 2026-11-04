@@ -193,7 +193,7 @@ fn list_fails_closed_without_credentials() -> TestResult {
             let f = failing(which).await?;
             // Keys exist for the caller's own uid, so an empty or unfiltered list would show.
             import_with(&f, "e", EC_P12, PASSWORD).await?;
-            assert_eq!(f.store.list(uid())?.len(), 2);
+            assert_eq!(f.store.list(uid())?.len(), 1);
             let err = error_of(call(&f.client, "ListKeys", &()).await)?;
             assert_eq!(err, ERROR_AUTHORIZATION_UNAVAILABLE, "case {which}");
             assert_eq!(f.asked().len(), 0);
@@ -220,14 +220,17 @@ fn import_fails_closed_without_credentials() -> TestResult {
 }
 
 #[test]
-fn list_reports_a_key_without_readable_certificate() -> TestResult {
+fn list_reports_a_record_that_cannot_be_read() -> TestResult {
     block_on(async {
         let t = Two::start(Answer::Yes, 1000, 1001).await?;
         import(t.a(), "e", EC_P12).await?;
         import(t.a(), "r", RSA_P12).await?;
         assert_eq!(list(t.a()).await?.len(), 2);
         let area = t.f.store_dir().join("1000");
-        std::fs::remove_file(area.join("e-cert"))?;
+        // The record is cut short (its mode is kept).
+        let mut bytes = std::fs::read(area.join("e"))?;
+        bytes.truncate(24);
+        std::fs::write(area.join("e"), bytes)?;
         // An error, not a shorter list.
         assert_eq!(
             error_of(call(t.a(), "ListKeys", &()).await)?,

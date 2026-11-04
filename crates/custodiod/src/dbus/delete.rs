@@ -1,4 +1,5 @@
-//! The `DeleteKey` call: a key and its certificate leave the caller's area, after polkit approves.
+//! The `DeleteKey` call: a key record (key and certificate in one file) leaves the caller's area, after
+//! polkit approves.
 
 use std::sync::Arc;
 
@@ -6,19 +7,9 @@ use super::{Custodio, parse_delete_request};
 use crate::audit::{DeleteOutcome, KeyId, OperationEntry};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
-use crate::import::cert_id;
 use crate::offload::run_on_thread;
 use crate::polkit::{AuthError, Authorizer, DELETE_ACTION_ID};
 use crate::store::StoreError;
-
-/// What the lookup found among the caller's files for an id.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Found {
-    /// The key file (and normally its certificate).
-    Key,
-    /// Only the certificate: what a delete that stopped half-way leaves. Deleting again clears it.
-    OrphanCertificate,
-}
 
 impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// `DeleteKey` after the bus handed over the sender: the id against its bound, the caller, the
@@ -51,7 +42,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         if self.deletes.is_unusable(owner, id) {
             return Err(ServiceError::NoSuchKey);
         }
-        let found = self.find_for_delete(owner, id)?;
+        self.find_for_delete(owner, id)?;
         let app_id = self.app_id_of(pidfd.as_ref(), owner).await;
         let approved = match self.authorizer.authorize(sender, DELETE_ACTION_ID).await {
             Ok(()) => true,
@@ -80,7 +71,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             self.deletes.restore(owner, id);
             return Err(e);
         }
-        self.remove_key_and_certificate(owner, id, found)?;
+        self.remove_record(owner, id)?;
         // The files are gone, so the id is free: a later import must not find it marked.
         self.deletes.restore(owner, id);
         Ok(())
@@ -95,40 +86,24 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         }
     }
 
-    fn find_for_delete(&self, owner: u32, id: &str) -> Result<Found, ServiceError> {
-        match self.store.get(owner, id) {
-            Ok(_) => return Ok(Found::Key),
-            Err(StoreError::NotFound) => {}
-            Err(_) => return Err(ServiceError::Internal),
-        }
-        match self.store.get(owner, &cert_id(id)) {
-            Ok(_) => Ok(Found::OrphanCertificate),
-            Err(StoreError::NotFound) => Err(ServiceError::NoSuchKey),
+    /// The caller's record must be there (as a file the store rules accept; it is not parsed, so a
+    /// record that no longer parses can still be deleted).
+    fn find_for_delete(&self, owner: u32, id: &str) -> Result<(), ServiceError> {
+        match self.store.contains(owner, id) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(ServiceError::NoSuchKey),
             Err(_) => Err(ServiceError::Internal),
         }
     }
 
-    /// The key first, so a failure never leaves a key without its certificate. Of two deletes of
-    /// one id only the one that removes the key (or, for an orphan certificate, the certificate)
-    /// succeeds; the other is `NoSuchKey`.
-    fn remove_key_and_certificate(
-        &self,
-        owner: u32,
-        id: &str,
-        found: Found,
-    ) -> Result<(), ServiceError> {
+    /// One file holds the key and its certificate, so one removal is the whole delete. Of two deletes
+    /// of one id only the one that removes the file succeeds; the other is `NoSuchKey`.
+    fn remove_record(&self, owner: u32, id: &str) -> Result<(), ServiceError> {
         let internal = |_: StoreError| ServiceError::Internal;
-        let key_removed = self.store.remove_existing(owner, id).map_err(internal)?;
-        if found == Found::Key && !key_removed {
-            return Err(ServiceError::NoSuchKey);
+        if self.store.remove_existing(owner, id).map_err(internal)? {
+            Ok(())
+        } else {
+            Err(ServiceError::NoSuchKey)
         }
-        let cert_removed = self
-            .store
-            .remove_existing(owner, &cert_id(id))
-            .map_err(internal)?;
-        if found == Found::OrphanCertificate && !cert_removed {
-            return Err(ServiceError::NoSuchKey);
-        }
-        Ok(())
     }
 }

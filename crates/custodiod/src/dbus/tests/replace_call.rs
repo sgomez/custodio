@@ -36,7 +36,7 @@ fn cert_on_disk(
     r: &super::sign_call::Rig,
     id: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    Ok(std::fs::read(r.store.dir().join("11").join(cert_id(id)))?)
+    Ok(r.store.get(11, id)?.certificate().to_vec())
 }
 
 #[test]
@@ -153,8 +153,20 @@ fn unreadable_keys_and_missing_certificates_are_internal_or_no_such_key() -> R {
     // A key that is not a supported private key: `Internal`, after polkit.
     let key = r.store.dir().join("11").join("k");
     std::fs::remove_file(&key)?;
-    std::fs::write(&key, b"junk")?;
-    std::fs::set_permissions(&key, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+    let creds = crate::creds::memory::MemoryCreds::host();
+    let junk = crate::creds::seal(
+        &creds,
+        &crate::import::credential_name(11, "k"),
+        &secrecy::SecretSlice::from(b"junk".to_vec()),
+    )?;
+    let protected = crate::store::Protected::from_sealed(&junk);
+    r.store.put(&crate::store::Record::new(
+        11,
+        "k",
+        protected.natural_kind(),
+        b"cert",
+        protected,
+    )?)?;
     assert_eq!(
         replace(&r, Some(":1.1"), "k", RECERT),
         Err(ServiceError::Internal)
@@ -173,19 +185,20 @@ fn unreadable_keys_and_missing_certificates_are_internal_or_no_such_key() -> R {
         Err(ServiceError::Internal)
     );
     assert_eq!(r.auth_calls.load(Ordering::SeqCst), 1);
-    // A key without its certificate: the replace never creates one.
+    // A key still in the earlier format is not read: `Internal` before polkit, and nothing is changed.
     let r = rig(|| Ok(()))?;
     seed(&r, "k")?;
-    std::fs::remove_file(r.store.dir().join("11").join("k-cert"))?;
+    let path = r.store.dir().join("11").join("k");
+    std::fs::remove_file(&path)?;
+    std::fs::write(&path, [0x30_u8, 0x82, 0x01, 0x00])?;
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
     assert_eq!(
         replace(&r, Some(":1.1"), "k", RECERT),
         Err(ServiceError::Internal)
     );
-    assert!(!r.store.dir().join("11").join("k-cert").exists());
-    assert_eq!(
-        recorded(&r),
-        [("storage_failure", Some(Caller { uid: 11, pid: 22 }))]
-    );
+    assert_eq!(r.auth_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(std::fs::read(&path)?, [0x30_u8, 0x82, 0x01, 0x00]);
+    assert_eq!(recorded(&r), []);
     Ok(())
 }
 
@@ -234,7 +247,10 @@ fn a_sink_that_fails_puts_the_old_certificate_back_for_every_outcome() -> R {
             },
             Creds(r.cred_calls.clone()),
             Arc::new(FailingSink),
-        );
+        )
+        .with_key_credentials(std::sync::Arc::new(
+            crate::creds::memory::MemoryCreds::host(),
+        ));
         seed(&r, "k")?;
         let before = std::fs::read_dir(r.store.dir().join("11"))?.count();
         let old = cert_on_disk(&r, "k")?;
@@ -257,10 +273,58 @@ fn a_sink_that_fails_puts_the_old_certificate_back_for_every_outcome() -> R {
         },
         Creds(r.cred_calls.clone()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     assert_eq!(
         guarded(failing.replace_call(None, "k", RECERT)),
         Err(ServiceError::AuditUnavailable)
     );
+    Ok(())
+}
+
+/// A record of the TPM kind holding the public area of the P12 fixture's key. The private area is a
+/// stand-in: the comparison only looks at the public area, and makes no TPM call.
+fn seed_tpm(r: &super::sign_call::Rig, id: &str) -> R {
+    use crate::store::{Kind, Protected, Record};
+    use crate::tpm::blob::{Blob, Imported};
+    use secrecy::ExposeSecret;
+    use tss_esapi::traits::Marshall;
+    let parsed = crate::import::parse_p12(
+        super::sign_call::P12,
+        &SecretString::from("test-password".to_owned()),
+    )?;
+    let key = crate::tpm::key::ImportKey::from_pkcs8(parsed.key.expose_secret())?;
+    let public = crate::tpm::wrap::template(&key)?.marshall()?;
+    let mut private = vec![0, 32];
+    private.extend([9_u8; 32]);
+    private.extend([7_u8; 40]);
+    let imported = Imported {
+        blob: Blob::from_parts(&public, &private)?,
+        parent_name: [vec![0, 0x0b], vec![0x42; 32]].concat(),
+    };
+    let record = Record::new(
+        11,
+        id,
+        Kind::Tpm,
+        &parsed.certificate,
+        Protected::from_imported(&imported)?,
+    )?;
+    r.store.put(&record)?;
+    Ok(())
+}
+
+#[test]
+fn a_tpm_record_is_matched_against_the_public_area_of_its_blob() -> R {
+    let r = rig(|| Ok(()))?;
+    seed_tpm(&r, "t")?;
+    assert_eq!(
+        replace(&r, Some(":1.1"), "t", OTHER),
+        Err(ServiceError::CertificateMismatch)
+    );
+    assert_ne!(cert_on_disk(&r, "t")?, OTHER);
+    assert_eq!(replace(&r, Some(":1.1"), "t", RECERT), Ok(()));
+    assert_eq!(cert_on_disk(&r, "t")?, RECERT);
     Ok(())
 }

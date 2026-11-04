@@ -126,7 +126,10 @@ impl AuditSink for TestSink {
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
         if let Some(path) = path {
-            let bytes = fs::read(path).ok();
+            let bytes = fs::read(path)
+                .ok()
+                .and_then(|b| custodiod::store::Record::decode(&b).ok())
+                .map(|r| r.certificate().to_vec());
             self.watched
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -202,8 +205,14 @@ fn area(f: &Fixture) -> PathBuf {
     f.store_dir().join(uid().to_string())
 }
 
-fn cert_path(f: &Fixture, id: &str) -> PathBuf {
-    area(f).join(format!("{id}-cert"))
+fn record_path(f: &Fixture, id: &str) -> PathBuf {
+    area(f).join(id)
+}
+
+/// The certificate in the record of `id`.
+fn cert_of(f: &Fixture, id: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let record = custodiod::store::Record::decode(&fs::read(record_path(f, id))?)?;
+    Ok(record.certificate().to_vec())
 }
 
 /// Every file of `dir` with its bytes, sorted by name.
@@ -233,6 +242,7 @@ fn me() -> Caller {
 fn put_rsa(f: &Fixture, id: &str) -> TestResult {
     custodiod::import::import_p12(
         &f.store,
+        &custodiod::creds::memory::MemoryCreds::host(),
         uid(),
         id,
         RSA_P12,
@@ -306,22 +316,22 @@ enum Make {
     Plain,
     /// The area is made unwritable while polkit answers (after the lookup).
     UnwritableArea,
-    /// `<id>-cert` becomes a directory while polkit answers.
-    CertIsDirectory,
+    /// The record becomes a directory while polkit answers.
+    RecordIsDirectory,
 }
 
 impl Make {
     fn arm(&self, f: &Fixture) {
         let dir = area(f);
-        let cert = cert_path(f, "k");
+        let record = record_path(f, "k");
         match self {
             Self::Plain => {}
             Self::UnwritableArea => f.on_request(move || {
                 let _ = set_mode(&dir, 0o500);
             }),
-            Self::CertIsDirectory => f.on_request(move || {
-                let _ = fs::remove_file(&cert);
-                let _ = fs::create_dir(&cert);
+            Self::RecordIsDirectory => f.on_request(move || {
+                let _ = fs::remove_file(&record);
+                let _ = fs::create_dir(&record);
             }),
         }
     }
@@ -377,7 +387,7 @@ fn cases() -> Vec<Case> {
         (
             Answer::Yes,
             NEW,
-            Make::CertIsDirectory,
+            Make::RecordIsDirectory,
             Err(ERROR_INTERNAL),
             "storage_failure",
         ),
@@ -394,7 +404,7 @@ fn replace_entry_per_outcome() -> TestResult {
             }
             let (f, sink) = start(answer).await?;
             put_rsa(&f, "k")?;
-            let before = fs::read(cert_path(&f, "k"))?;
+            let before = cert_of(&f, "k")?;
             make.arm(&f);
             let got = replace(&f.client, "k", cert).await;
             set_mode(&area(&f), 0o700)?;
@@ -407,9 +417,9 @@ fn replace_entry_per_outcome() -> TestResult {
             assert_eq!(replace_asks(&f), 1, "{outcome}");
             assert_eq!(sink.attempts(), 1, "{outcome}");
             if outcome == "replaced" {
-                assert_eq!(fs::read(cert_path(&f, "k"))?, cert);
-            } else if !matches!(make, Make::CertIsDirectory) {
-                assert_eq!(fs::read(cert_path(&f, "k"))?, before, "{outcome}");
+                assert_eq!(cert_of(&f, "k")?, cert);
+            } else if !matches!(make, Make::RecordIsDirectory) {
+                assert_eq!(cert_of(&f, "k")?, before, "{outcome}");
             }
         }
         Ok(())
@@ -453,6 +463,7 @@ fn replace_refusals_leave_no_entry() -> TestResult {
         // Another uid's key with the id `other`.
         custodiod::import::import_p12(
             &f.store,
+            &custodiod::creds::memory::MemoryCreds::host(),
             uid() + 1,
             "other",
             RSA_P12,
@@ -517,13 +528,7 @@ fn replace_refusals_leave_no_entry() -> TestResult {
             .count();
         assert_eq!(replaced, 0);
         let after = snapshot(&area(&f))?;
-        assert_eq!(
-            after
-                .iter()
-                .filter(|e| e.0 == "k" || e.0 == "k-cert")
-                .count(),
-            2
-        );
+        assert_eq!(after.iter().filter(|e| e.0 == "k").count(), 1);
         assert_eq!(
             after
                 .into_iter()

@@ -8,7 +8,7 @@ use custodio_client::{ERROR_AUDIT_UNAVAILABLE, ERROR_NO_SUCH_KEY};
 use zbus::block_on;
 
 use super::bus::{Answer, Fixture, TestResult};
-use super::{NEW, NEWER, area, cert_path, delete, put_rsa, replace, replace_asks, snapshot, start};
+use super::{NEW, NEWER, area, cert_of, delete, put_rsa, replace, replace_asks, snapshot, start};
 
 fn wait_for_asks(f: &Fixture, n: usize) -> TestResult {
     let start = Instant::now();
@@ -37,7 +37,7 @@ fn replace_entry_is_submitted_under_the_key_lock() -> TestResult {
     entered.recv_timeout(Duration::from_secs(10))?;
     // The first replace is stored and waits for its entry. A second replace and a delete of the
     // same id wait for the lock and have not reached polkit.
-    assert_eq!(std::fs::read(cert_path(&f, "k"))?, NEW);
+    assert_eq!(cert_of(&f, "k")?, NEW);
     let c2 = other.clone();
     let second = thread::spawn(move || block_on(replace(&c2, "k", NEWER)));
     let c3 = other.clone();
@@ -116,7 +116,7 @@ fn concurrent_replaces_one_entry_each() -> TestResult {
         assert_eq!(sink.inner.operation_entries().len(), f.asked().len());
         assert_eq!(sink.replaced(), f.asked().len());
         // The one that ran last won, whole: never a mix.
-        assert_eq!(std::fs::read(cert_path(&f, &id))?, NEWER, "round {round}");
+        assert_eq!(cert_of(&f, &id)?, NEWER, "round {round}");
     }
     Ok(())
 }

@@ -27,6 +27,7 @@ use custodio_client::{
 use custodiod::audit::{Caller, MemorySink};
 use custodiod::credentials::{CallerCredentials, CredentialsError};
 use custodiod::polkit::{ACTION_ID, REPLACE_ACTION_ID};
+use custodiod::store::Record;
 use zbus::{Connection, block_on};
 
 use bus::{Answer, Fixture, TestResult, call, error_name, sign};
@@ -286,7 +287,7 @@ fn replace_missing_equals_foreign() -> TestResult {
             assert_eq!(snapshot(&r.area(ua))?, before);
             assert_eq!(
                 certificate_of(r.a(), "k").await?,
-                std::fs::read(r.area(ua).join("k-cert"))?
+                cert_in(&r.area(ua).join("k"))?
             );
         }
         Ok(())
@@ -398,11 +399,10 @@ fn replace_with_matching_certificate() -> TestResult {
             // byte-identical certificate again.
             for cert in [certs[0], certs[1], &original, certs[0]] {
                 let key_path = r.area(1000).join(id);
-                let (key_bytes, key_meta) =
-                    (std::fs::read(&key_path)?, std::fs::metadata(&key_path)?);
+                let before_record = Record::decode(&std::fs::read(&key_path)?)?;
                 let others = snapshot(&r.area(1000))?
                     .into_iter()
-                    .filter(|e| e.0 != format!("{id}-cert") && e.0 != id)
+                    .filter(|e| e.0 != id)
                     .collect::<Vec<_>>();
                 replace(r.a(), id, cert).await?;
                 let listed: Vec<_> = list(r.a())
@@ -411,19 +411,19 @@ fn replace_with_matching_certificate() -> TestResult {
                     .filter(|k| k.0 == id)
                     .collect();
                 assert_eq!(listed, [(id.to_owned(), kind.to_owned(), cert.to_vec())]);
-                assert_eq!(std::fs::read(&key_path)?, key_bytes);
-                let after = std::fs::metadata(&key_path)?;
-                assert_eq!(after.modified()?, key_meta.modified()?);
-                assert_eq!(after.ino(), key_meta.ino());
+                // One record: the certificate is the new one; owner, id, kind and the protected key are
+                // those of before, byte for byte.
+                let after_record = Record::decode(&std::fs::read(&key_path)?)?;
+                assert_eq!(after_record.certificate(), cert);
+                assert_eq!(after_record.protected(), before_record.protected());
+                assert_eq!(after_record.kind(), before_record.kind());
+                assert_eq!(after_record.owner(), before_record.owner());
+                assert_eq!(after_record.id(), before_record.id());
                 let rest = snapshot(&r.area(1000))?
                     .into_iter()
-                    .filter(|e| e.0 != format!("{id}-cert") && e.0 != id)
+                    .filter(|e| e.0 != id)
                     .collect::<Vec<_>>();
                 assert_eq!(rest, others);
-                assert_eq!(
-                    std::fs::read(r.area(1000).join(format!("{id}-cert")))?,
-                    cert
-                );
                 for entry in std::fs::read_dir(r.area(1000))? {
                     let m = std::fs::metadata(entry?.path())?;
                     assert_eq!(m.mode() & 0o777, 0o600);
@@ -431,10 +431,17 @@ fn replace_with_matching_certificate() -> TestResult {
                 assert_eq!(std::fs::metadata(r.area(1000))?.mode() & 0o777, 0o700);
             }
         }
-        // Both keys and certificates, and no temporary file.
-        assert_eq!(names(&r.area(1000))?, ["ec", "ec-cert", "rsa", "rsa-cert"]);
+        // Both records, and no temporary file.
+        assert_eq!(names(&r.area(1000))?, ["ec", "rsa"]);
         Ok(())
     })
+}
+
+/// The certificate in the record file at `path`, read and decoded without the store.
+fn cert_in(path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    Ok(Record::decode(&std::fs::read(path)?)?
+        .certificate()
+        .to_vec())
 }
 
 #[path = "replace/outcomes.rs"]

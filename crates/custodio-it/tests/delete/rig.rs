@@ -200,7 +200,10 @@ impl Rig {
             connections.push(block_on(async {
                 let conn = Builder::address(address.as_str()).build().await?;
                 let object =
-                    Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()));
+                    Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()))
+                        .with_key_credentials(std::sync::Arc::new(
+                            custodiod::creds::memory::MemoryCreds::host(),
+                        ));
                 conn.object_server().at(OBJECT_PATH, object).await?;
                 conn.request_name(BUS_NAME).await?;
                 Ok::<_, zbus::Error>(conn)

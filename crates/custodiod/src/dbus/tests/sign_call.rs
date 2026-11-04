@@ -5,7 +5,7 @@ use super::*;
 use crate::audit::{FailingSink, MemorySink};
 use crate::credentials::CredentialsError;
 use crate::import::import_p12;
-use crate::store::StoreError;
+use crate::store::{Record, StoreError};
 
 pub(super) struct Counting {
     pub(super) result: fn() -> Result<(), AuthError>,
@@ -56,7 +56,10 @@ pub(super) fn rig(
         },
         Creds(cred_calls.clone()),
         sink.clone(),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     Ok(Rig {
         service,
         sink,
@@ -170,7 +173,14 @@ fn other_uid() -> u32 {
 /// Puts the key straight into the store, for tests whose authorizer refuses.
 pub(super) fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let password = SecretString::from("test-password".to_owned());
-    import_p12(&r.store, 11, id, P12, &password)?;
+    import_p12(
+        &r.store,
+        &crate::creds::memory::MemoryCreds::host(),
+        11,
+        id,
+        P12,
+        &password,
+    )?;
     Ok(())
 }
 
@@ -184,15 +194,13 @@ fn import_stores_key_and_certificate_under_the_bus_uid() -> Result<(), Box<dyn s
     let euid = rustix::process::geteuid().as_raw();
     assert_ne!(euid, 11);
     assert_eq!(import(&r, "mine")?, "ecdsa-p256");
-    assert_ne!(r.store.get(11, "mine")?.expose_secret().len(), 0);
-    assert_ne!(r.store.get(11, &cert_id("mine"))?.expose_secret().len(), 0);
+    // One record holds the key and its certificate; the key in it is a credential, not PKCS#8.
+    let record = r.store.get(11, "mine")?;
+    assert_ne!(record.certificate().len(), 0);
+    assert!(record.protected().credential().is_some());
     for uid in [euid, 0, other_uid()] {
         assert!(matches!(
             r.store.get(uid, "mine"),
-            Err(StoreError::NotFound)
-        ));
-        assert!(matches!(
-            r.store.get(uid, &cert_id("mine")),
             Err(StoreError::NotFound)
         ));
     }
@@ -204,17 +212,21 @@ fn list_reads_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>
     let r = rig(|| Ok(()))?;
     assert_eq!(import(&r, "mine")?, "ecdsa-p256");
     // Another owner's key with a certificate, which must not show.
-    let key = r.store.get(11, "mine")?;
-    r.store.put(other_uid(), "theirs", &key)?;
-    r.store.put(other_uid(), &cert_id("theirs"), &key)?;
-    let cert = r.store.get(11, &cert_id("mine"))?;
+    let mine = r.store.get(11, "mine")?;
+    r.store.put(&Record::new(
+        other_uid(),
+        "theirs",
+        mine.kind(),
+        mine.certificate(),
+        mine.protected().clone(),
+    )?)?;
     let got = zbus::block_on(r.service.list_keys_call(SENDER))?;
     assert_eq!(
         got,
         [(
             "mine".to_owned(),
             "ecdsa-p256".to_owned(),
-            cert.expose_secret().to_vec()
+            mine.certificate().to_vec()
         )]
     );
     Ok(())
@@ -227,8 +239,14 @@ fn sign_uses_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>>
     let got = zbus::block_on(r.service.sign_call(SENDER, "mine", CKM_ECDSA, 0, 0, b"x"));
     assert!(got.is_ok(), "{got:?}");
     // The same key stored only under another uid is not found.
-    let key = r.store.get(11, "mine")?;
-    r.store.put(other_uid(), "theirs", &key)?;
+    let mine = r.store.get(11, "mine")?;
+    r.store.put(&Record::new(
+        other_uid(),
+        "theirs",
+        mine.kind(),
+        mine.certificate(),
+        mine.protected().clone(),
+    )?)?;
     let got = zbus::block_on(r.service.sign_call(SENDER, "theirs", CKM_ECDSA, 0, 0, b"x"));
     assert_eq!(got, Err(ServiceError::from(&StoreError::NotFound)));
     Ok(())
@@ -249,7 +267,14 @@ fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>>
     let dir = tempfile::tempdir()?;
     let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
     let password = SecretString::from("test-password".to_owned());
-    import_p12(&store, 11, "k", P12, &password)?;
+    import_p12(
+        &store,
+        &crate::creds::memory::MemoryCreds::host(),
+        11,
+        "k",
+        P12,
+        &password,
+    )?;
     let service = Custodio::new(
         store,
         Counting {
@@ -258,7 +283,10 @@ fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>>
         },
         Creds(Arc::default()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     let got = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
     assert_eq!(got, Err(ServiceError::AuditUnavailable));
     Ok(())
@@ -410,7 +438,10 @@ fn import_without_sender_fails_closed_with_a_failing_sink() -> Result<(), Box<dy
         },
         Creds(Arc::default()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     let got = zbus::block_on(service.import_call(None, "k", P12, "test-password"));
     assert_eq!(got, Err(ServiceError::AuditUnavailable));
     Ok(())

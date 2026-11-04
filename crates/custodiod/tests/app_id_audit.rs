@@ -219,6 +219,7 @@ pub enum Fail {
 pub(crate) fn put_rsa(f: &Fixture, id: &str) -> TestResult {
     custodiod::import::import_p12(
         &f.store,
+        &custodiod::creds::memory::MemoryCreds::host(),
         uid(),
         id,
         RSA_P12,

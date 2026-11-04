@@ -410,7 +410,7 @@ fn a_rolled_back_id_can_be_imported_again_on_the_same_store() -> TestResult {
             import(&f, "k", EC_P12, PASSWORD).await,
             Ok("ecdsa-p256".to_owned())
         );
-        assert_eq!(stored(&f)?, ["k", "k-cert"]);
+        assert_eq!(stored(&f)?, ["k"]);
         let entries = sink.inner.operation_entries();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries.first().map(seen).map(|s| s.outcome), Some("stored"));
@@ -509,7 +509,7 @@ fn rollback_failure_still_reports_audit_unavailable() -> TestResult {
         set_mode(&area, 0o700)?;
         // The removal failed, so the files are still there, but the call did not succeed.
         assert_eq!(got, Err(ERROR_AUDIT_UNAVAILABLE.to_owned()));
-        assert_eq!(stored(&f)?, ["k", "k-cert"]);
+        assert_eq!(stored(&f)?, ["k"]);
         assert_eq!(sink.inner.operation_entries().len(), 1);
         Ok(())
     })

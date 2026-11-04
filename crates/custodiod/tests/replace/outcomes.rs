@@ -121,17 +121,11 @@ fn replace_leaves_other_uids_alone() -> TestResult {
             assert_eq!(snapshot(&r.area(ua))?, before_a, "{ua} {ub}");
             assert_eq!(certificate_of(r.a(), "my-key").await?, old_a);
             assert_eq!(certificate_of(&r.b, "my-key").await?, OTHER_EC_RECERT);
-            assert_eq!(
-                std::fs::read(r.area(ub).join("my-key-cert"))?,
-                OTHER_EC_RECERT
-            );
+            assert_eq!(cert_in(&r.area(ub).join("my-key"))?, OTHER_EC_RECERT);
             replace(r.a(), "my-key", P256_RECERT).await?;
             assert_eq!(certificate_of(r.a(), "my-key").await?, P256_RECERT);
             assert_ne!(snapshot(&r.area(ua))?, before_a);
-            assert_eq!(
-                std::fs::read(r.area(ub).join("my-key-cert"))?,
-                OTHER_EC_RECERT
-            );
+            assert_eq!(cert_in(&r.area(ub).join("my-key"))?, OTHER_EC_RECERT);
             assert_eq!(sign_err(&r.b, "my-key").await, "ok");
         }
         Ok(())
@@ -162,39 +156,43 @@ fn replace_store_failures() -> TestResult {
             assert_eq!(snapshot(&area)?, before);
             assert_eq!(sign_err(r.a(), "k").await, "ok");
             std::fs::remove_file(area.join("k"))?;
-            std::fs::remove_file(area.join("k-cert"))?;
         }
-        // The certificate entry is a directory, or a symlink to a file elsewhere.
+        // The record becomes a directory, or a symlink to a file elsewhere, while polkit answers.
         for kind in ["directory", "symlink"] {
             let id = format!("m-{kind}");
             r.import(r.a(), &id, EC_P12, Answer::Yes).await?;
-            let cert = area.join(format!("{id}-cert"));
+            let record = area.join(&id);
             let outside = r.f.store_dir().join("outside");
             std::fs::write(&outside, b"outside")?;
             std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600))?;
-            std::fs::remove_file(&cert)?;
-            if kind == "directory" {
-                std::fs::create_dir(&cert)?;
-            } else {
-                std::os::unix::fs::symlink(&outside, &cert)?;
-            }
+            let (swapped, target) = (record.clone(), outside.clone());
+            r.f.on_request(move || {
+                let _ = std::fs::remove_file(&swapped);
+                let _ = if kind == "directory" {
+                    std::fs::create_dir(&swapped)
+                } else {
+                    std::os::unix::fs::symlink(&target, &swapped)
+                };
+            });
             r.forget_asks();
             assert_eq!(
                 replace(r.a(), &id, P256_RECERT).await,
                 Err(ERROR_INTERNAL.to_owned())
             );
+            *r.f.hook.lock().unwrap_or_else(PoisonError::into_inner) = None;
             assert_eq!(r.f.asked().len(), 1, "{kind}");
             assert_eq!(std::fs::read(&outside)?, b"outside");
             assert_eq!(
-                std::fs::symlink_metadata(&cert)?.is_dir(),
+                std::fs::symlink_metadata(&record)?.is_dir(),
                 kind == "directory"
             );
             assert_eq!(
-                std::fs::symlink_metadata(&cert)?.is_symlink(),
+                std::fs::symlink_metadata(&record)?.is_symlink(),
                 kind == "symlink"
             );
             assert!(!names(&area)?.iter().any(|n| n.starts_with(".tmp")));
-            assert_eq!(sign_err(r.a(), &id).await, "ok");
+            // Nothing is signed with what is not a plain record.
+            assert_ne!(sign_err(r.a(), &id).await, "ok");
         }
         Ok(())
     })

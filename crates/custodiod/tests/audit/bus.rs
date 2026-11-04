@@ -253,7 +253,10 @@ impl Fixture {
             PolkitAuthorizer::new(service.clone()),
             credentials(&service),
             sink,
-        );
+        )
+        .with_key_credentials(std::sync::Arc::new(
+            custodiod::creds::memory::MemoryCreds::host(),
+        ));
         if let Some(decoder) = decoder {
             object = object.with_decoder(decoder);
         }

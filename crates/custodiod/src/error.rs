@@ -137,6 +137,7 @@ impl From<&ImportError> for ServiceError {
             | ImportError::NoCertificate => Self::WrongPasswordOrBadP12,
             ImportError::CertificateMismatch => Self::CertificateMismatch,
             ImportError::UnsupportedKey(_) => Self::UnsupportedKeyType,
+            ImportError::Protect(_) => Self::Internal,
             ImportError::Store(e) => Self::from(e),
         }
     }

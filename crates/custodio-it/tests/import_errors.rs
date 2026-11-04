@@ -138,7 +138,10 @@ impl Rig {
                 polkit,
                 BusCredentials::new(conn.clone()),
                 sink,
-            );
+            )
+            .with_key_credentials(std::sync::Arc::new(
+                custodiod::creds::memory::MemoryCreds::host(),
+            ));
             if let Some(d) = decoder {
                 object = object.with_decoder(d);
             }
@@ -272,7 +275,7 @@ fn approval_imports_and_polkit_is_asked_once() -> TestResult {
     assert_eq!(run.status, 0);
     let out = String::from_utf8(run.stdout)?;
     assert!(out.contains("Imported key 'k' (ecdsa-p256)."), "{out}");
-    assert_eq!(rig.keys()?, ["k".to_owned(), "k-cert".to_owned()]);
+    assert_eq!(rig.keys()?, ["k".to_owned()]);
     assert_eq!(rig.polkit_asked(), [IMPORT_ACTION_ID.to_owned()]);
     drop(rig.bus);
     Ok(())

@@ -275,7 +275,10 @@ fn serve(bus: &Bus, store: Arc<KeyStore>) -> Result<zbus::Connection, Box<dyn Er
                     Approve,
                     BusCredentials::new(conn.clone()),
                     Arc::new(MemorySink::default()),
-                ),
+                )
+                .with_key_credentials(std::sync::Arc::new(
+                    custodiod::creds::memory::MemoryCreds::host(),
+                )),
             )
             .await?;
         conn.request_name(BUS_NAME).await?;

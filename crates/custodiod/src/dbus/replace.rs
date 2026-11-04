@@ -9,8 +9,11 @@ use super::{Custodio, check_id};
 use crate::audit::{KeyId, OperationEntry, ReplaceOutcome};
 use crate::credentials::CallerCredentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, cert_id, cert_public_key, classify, public_key_of};
+use crate::import::{
+    KeyKind, blob_public_key, cert_public_key, classify, credential_name, public_key_of,
+};
 use crate::polkit::{AuthError, Authorizer, REPLACE_ACTION_ID};
+use crate::store::Record;
 use crate::store::StoreError;
 
 pub use custodio_client::MAX_CERT_LEN;
@@ -52,11 +55,7 @@ pub(super) fn certificate_matches_key(key_der: &[u8], cert_der: &[u8]) -> Option
 
 /// What the part after the approval gives: the outcome to record, the reply, and the old certificate
 /// if the new one was stored.
-type Stored = (
-    ReplaceOutcome,
-    Result<(), ServiceError>,
-    Option<secrecy::SecretSlice<u8>>,
-);
+type Stored = (ReplaceOutcome, Result<(), ServiceError>, Option<Vec<u8>>);
 
 impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// `ReplaceCertificate` after the bus handed over the sender: the id and the certificate against
@@ -122,9 +121,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         if let Err(e) = self.submit(entry).await {
             if let Some(old) = old {
                 // Nothing more can be done if this fails: the reply is the same error either way.
-                let _ = self
-                    .store
-                    .replace_existing(owner, &cert_id(id), old.expose_secret());
+                let _ = self.store.replace_certificate(owner, id, &old);
             }
             return Err(e);
         }
@@ -136,11 +133,11 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     /// if the new certificate was stored, the old one for the restore.
     fn store_certificate(&self, owner: u32, id: &str, certificate: &[u8]) -> Stored {
         let failed = |e| (ReplaceOutcome::StorageFailure, Err(e), None);
-        let key = match self.key_of(owner, id) {
-            Ok(key) => key,
+        let record = match self.key_of(owner, id) {
+            Ok(record) => record,
             Err(e) => return failed(e),
         };
-        match certificate_matches_key(key.expose_secret(), certificate) {
+        match self.certificate_matches(&record, certificate) {
             None => return failed(ServiceError::Internal),
             Some(false) => {
                 return (
@@ -151,18 +148,28 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             }
             Some(true) => {}
         }
-        let name = cert_id(id);
-        let Ok(old) = self.store.get(owner, &name) else {
-            return failed(ServiceError::Internal);
-        };
-        match self.store.replace_existing(owner, &name, certificate) {
-            Ok(()) => (ReplaceOutcome::Replaced, Ok(()), Some(old)),
+        match self.store.replace_certificate(owner, id, certificate) {
+            Ok(old) => (ReplaceOutcome::Replaced, Ok(()), Some(old)),
             Err(_) => failed(ServiceError::Internal),
         }
     }
 
-    /// The caller's key `id`: `NoSuchKey` if there is none, `Internal` if it cannot be read.
-    fn key_of(&self, owner: u32, id: &str) -> Result<secrecy::SecretSlice<u8>, ServiceError> {
+    /// Whether `certificate` carries the public key of the key in `record`. An encrypted key is
+    /// decrypted for the comparison and zeroized after; a TPM key is compared with the public area of
+    /// its blob, with no TPM call. `None` if that cannot be decided.
+    fn certificate_matches(&self, record: &Record, certificate: &[u8]) -> Option<bool> {
+        if let Some((blob, _)) = record.protected().blob() {
+            let (kind, wanted) = blob_public_key(blob)?;
+            return Some(cert_public_key(kind, certificate).is_some_and(|pk| pk == wanted));
+        }
+        let credential = record.protected().credential()?;
+        let name = credential_name(record.owner(), record.id());
+        let key = self.key_creds.as_deref()?.decrypt(&name, credential).ok()?;
+        certificate_matches_key(key.expose_secret(), certificate)
+    }
+
+    /// The caller's record `id`: `NoSuchKey` if there is none, `Internal` if it cannot be read.
+    fn key_of(&self, owner: u32, id: &str) -> Result<Record, ServiceError> {
         self.store.get(owner, id).map_err(|e| match e {
             StoreError::NotFound => ServiceError::NoSuchKey,
             _ => ServiceError::Internal,

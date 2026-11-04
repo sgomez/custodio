@@ -129,7 +129,10 @@ impl Fixture {
                     PolkitAuthorizer::new(service.clone()),
                     BusCredentials::new(service.clone()),
                     Arc::new(MemorySink::default()),
-                ),
+                )
+                .with_key_credentials(std::sync::Arc::new(
+                    custodiod::creds::memory::MemoryCreds::host(),
+                )),
             )
             .await?;
         service.request_name(BUS_NAME).await?;

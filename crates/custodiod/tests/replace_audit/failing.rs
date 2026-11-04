@@ -67,7 +67,7 @@ fn replace_restore_failure_still_reports_audit_unavailable() -> TestResult {
         for sabotage in [false, true] {
             let (f, sink) = start(Answer::Yes).await?;
             put_rsa(&f, "k")?;
-            let old = fs::read(cert_path(&f, "k"))?;
+            let old = cert_of(&f, "k")?;
             let dir = area(&f);
             if sabotage {
                 sink.on_fail(move || {
@@ -81,7 +81,7 @@ fn replace_restore_failure_still_reports_audit_unavailable() -> TestResult {
                 "sabotage={sabotage}"
             );
             set_mode(&area(&f), 0o700)?;
-            let on_disk = fs::read(cert_path(&f, "k"))?;
+            let on_disk = cert_of(&f, "k")?;
             if sabotage {
                 assert_eq!(on_disk, NEW, "the store refused the restore");
             } else {
@@ -100,18 +100,18 @@ fn replace_stores_before_it_submits() -> TestResult {
     block_on(async {
         let (f, sink) = start(Answer::Yes).await?;
         put_rsa(&f, "k")?;
-        sink.watch(cert_path(&f, "k"));
+        sink.watch(record_path(&f, "k"));
         replace(&f.client, "k", NEW).await?;
         assert_eq!(sink.watched(), [Some(NEW.to_vec())]);
         // The same when the entry is refused: the sink saw the new certificate, then it was undone.
         sink.failing(true);
-        let old = fs::read(cert_path(&f, "k"))?;
+        let old = cert_of(&f, "k")?;
         assert_eq!(
             replace(&f.client, "k", NEWER).await,
             Err(ERROR_AUDIT_UNAVAILABLE.to_owned())
         );
         assert_eq!(sink.watched().last(), Some(&Some(NEWER.to_vec())));
-        assert_eq!(fs::read(cert_path(&f, "k"))?, old);
+        assert_eq!(cert_of(&f, "k")?, old);
         Ok(())
     })
 }

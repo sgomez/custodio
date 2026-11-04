@@ -22,8 +22,8 @@ fn tokens_of(stdout: &str) -> Vec<(String, String)> {
 }
 
 fn cert_hex(f: &Fixture, uid: u32, id: &str) -> Result<String, Box<dyn Error>> {
-    let cert = f.store()?.get(uid, &format!("{id}-cert"))?;
-    Ok(hex(secrecy::ExposeSecret::expose_secret(&cert)))
+    let record = f.store()?.get(uid, id)?;
+    Ok(hex(record.certificate()))
 }
 
 fn labels(tokens: &[(String, String)]) -> Vec<&str> {

@@ -82,19 +82,19 @@ fn host_bound_round_trip() -> TestResult {
     let daemon = Daemon::start()?;
     let client = host_client(&daemon);
     let sealed = seal(&client, "k", &secret(KEY))?;
-    assert_eq!(sealed.binding, Binding::Host);
+    assert_eq!(sealed.binding(), Binding::Host);
     assert_eq!(
-        id_of(&sealed.credential),
+        id_of(sealed.credential()),
         HOST_SCOPED_ID,
         "the scoped host id"
     );
     assert_eq!(
-        client.decrypt("k", &sealed.credential)?.expose_secret(),
+        client.decrypt("k", sealed.credential())?.expose_secret(),
         KEY
     );
     // The same bytes under another name do not open (the name is part of the credential).
     assert_eq!(
-        client.decrypt("other", &sealed.credential).err(),
+        client.decrypt("other", sealed.credential()).err(),
         Some(CredsError::CannotDecrypt)
     );
     // Another uid of the namespace: the control opens its own, not the service's.
@@ -125,7 +125,7 @@ fn base64_of(bytes: &[u8]) -> TestResult<String> {
 fn raw_blob_json(sealed: &Sealed) -> TestResult<String> {
     Ok(format!(
         r#"{{"name":"k","blob":"{}","scope":"user"}}"#,
-        base64_of(&sealed.credential)?
+        base64_of(sealed.credential())?
     ))
 }
 
@@ -135,20 +135,20 @@ fn tpm_bound_round_trip() -> TestResult {
     let tpm = Swtpm::start()?;
     let client = tpm_client(&daemon, &tpm);
     let sealed = seal(&client, "k", &secret(KEY))?;
-    assert_eq!(sealed.binding, Binding::Tpm);
+    assert_eq!(sealed.binding(), Binding::Tpm);
     assert_ne!(
-        id_of(&sealed.credential),
+        id_of(sealed.credential()),
         HOST_SCOPED_ID,
         "the TPM id differs from the host one"
     );
     assert_eq!(
-        client.decrypt("k", &sealed.credential)?.expose_secret(),
+        client.decrypt("k", sealed.credential())?.expose_secret(),
         KEY
     );
     // The decision is the configured path: the same setup with none is host-bound.
     let host = seal(&host_client(&daemon), "k", &secret(KEY))?;
-    assert_eq!(host.binding, Binding::Host);
-    assert_eq!(id_of(&host.credential), HOST_SCOPED_ID);
+    assert_eq!(host.binding(), Binding::Host);
+    assert_eq!(id_of(host.credential()), HOST_SCOPED_ID);
     Ok(())
 }
 
@@ -157,10 +157,10 @@ fn credential_names_no_pcr() -> TestResult {
     let daemon = Daemon::start()?;
     let tpm = Swtpm::start()?;
     let on_tpm = seal(&tpm_client(&daemon, &tpm), "k", &secret(KEY))?;
-    assert_eq!(mask_at_48(&on_tpm.credential)?, 0);
-    assert_eq!(header::inspect(&on_tpm.credential), Ok(Binding::Tpm));
+    assert_eq!(mask_at_48(on_tpm.credential())?, 0);
+    assert_eq!(header::inspect(on_tpm.credential()), Ok(Binding::Tpm));
     let on_host = seal(&host_client(&daemon), "k", &secret(KEY))?;
-    assert_eq!(header::inspect(&on_host.credential), Ok(Binding::Host));
+    assert_eq!(header::inspect(on_host.credential()), Ok(Binding::Host));
     Ok(())
 }
 
@@ -257,7 +257,12 @@ fn no_plaintext_outside_memory() -> TestResult {
     std::fs::write(daemon.dir.path().join("control"), marker)?;
     assert_eq!(files_holding(&[daemon.dir.path()], &[marker]).len(), 1);
     for sealed in [&on_tpm, &on_host] {
-        assert!(!sealed.credential.windows(marker.len()).any(|w| w == marker));
+        assert!(
+            !sealed
+                .credential()
+                .windows(marker.len())
+                .any(|w| w == marker)
+        );
     }
     Ok(())
 }
@@ -268,11 +273,11 @@ fn decrypt_returns_secret() -> TestResult {
     let daemon = Daemon::start()?;
     let client = host_client(&daemon);
     let sealed = seal(&client, "k", &secret(KEY))?;
-    let key = client.decrypt("k", &sealed.credential)?;
+    let key = client.decrypt("k", sealed.credential())?;
     zeroizes(&key);
     assert!(!format!("{key:?}").contains("CREDS-TEST"));
     assert_eq!(
-        with_key(&client, "k", &sealed.credential, <[u8]>::to_vec)?,
+        with_key(&client, "k", sealed.credential(), <[u8]>::to_vec)?,
         KEY
     );
     Ok(())
@@ -285,13 +290,13 @@ fn cleared_tpm_cannot_decrypt() -> TestResult {
     let client = tpm_client(&daemon, &tpm);
     let sealed = seal(&client, "k", &secret(KEY))?;
     assert_eq!(
-        client.decrypt("k", &sealed.credential)?.expose_secret(),
+        client.decrypt("k", sealed.credential())?.expose_secret(),
         KEY,
         "control: before the clear"
     );
     tpm.clear()?;
     assert_eq!(
-        client.decrypt("k", &sealed.credential).err(),
+        client.decrypt("k", sealed.credential()).err(),
         Some(CredsError::CannotDecrypt)
     );
     Ok(())
@@ -303,12 +308,12 @@ fn host_key_changed_cannot_decrypt() -> TestResult {
     let client = host_client(&daemon);
     let sealed = seal(&client, "k", &secret(KEY))?;
     assert_eq!(
-        client.decrypt("k", &sealed.credential)?.expose_secret(),
+        client.decrypt("k", sealed.credential())?.expose_secret(),
         KEY
     );
     daemon.replace_host_secret()?;
     assert_eq!(
-        client.decrypt("k", &sealed.credential).err(),
+        client.decrypt("k", sealed.credential()).err(),
         Some(CredsError::CannotDecrypt)
     );
     Ok(())
@@ -320,15 +325,15 @@ fn unavailable_vs_cannot_decrypt() -> TestResult {
     let client = host_client(&daemon);
     let sealed = seal(&client, "k", &secret(KEY))?;
     // (d) a corrupted credential, header kept: the daemon says BadFormat.
-    let mut corrupted = sealed.credential.clone();
+    let mut corrupted = sealed.credential().to_vec();
     *corrupted.last_mut().ok_or("empty")? ^= 0xFF;
     assert_eq!(
         client.decrypt("k", &corrupted).err(),
         Some(CredsError::CannotDecrypt)
     );
     let truncated = sealed
-        .credential
-        .get(..sealed.credential.len() - 20)
+        .credential()
+        .get(..sealed.credential().len() - 20)
         .ok_or("short")?;
     assert_eq!(
         client.decrypt("k", truncated).err(),
@@ -358,7 +363,7 @@ fn unavailable_vs_cannot_decrypt() -> TestResult {
         Some(CredsError::Unavailable)
     );
     assert_eq!(
-        client.decrypt("k", &sealed.credential).err(),
+        client.decrypt("k", sealed.credential()).err(),
         Some(CredsError::Unavailable)
     );
     assert_ne!(CredsError::Unavailable, CredsError::CannotDecrypt);

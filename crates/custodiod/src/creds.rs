@@ -9,6 +9,7 @@
 //! is implemented in [`systemd`] and [`header`].
 
 pub mod header;
+pub mod memory;
 pub mod systemd;
 
 use std::fmt;
@@ -67,9 +68,24 @@ pub trait Credentials: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sealed {
     /// The encrypted credential, raw bytes: the only form of the key to store.
-    pub credential: Vec<u8>,
+    credential: Vec<u8>,
     /// TPM or host, from the header.
-    pub binding: Binding,
+    binding: Binding,
+}
+
+impl Sealed {
+    /// The credential, raw bytes. A `Sealed` is only built by [`seal`], which read its header, so
+    /// plaintext cannot be dressed as one.
+    #[must_use]
+    pub fn credential(&self) -> &[u8] {
+        &self.credential
+    }
+
+    /// What the header says the credential is bound to.
+    #[must_use]
+    pub fn binding(&self) -> Binding {
+        self.binding
+    }
 }
 
 /// Encrypts `plaintext` and checks the header of what came back: a credential that names a PCR, or

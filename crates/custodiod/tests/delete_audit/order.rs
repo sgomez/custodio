@@ -45,7 +45,7 @@ fn delete_sign_during_entry_fails_no_such_key() -> TestResult {
     );
     // No polkit ask for the refusals, and the files are still there: removal comes after.
     assert_eq!(f.asked().len(), asked);
-    assert_eq!(snapshot(&area(&f))?.len(), 2);
+    assert_eq!(snapshot(&area(&f))?.len(), 1);
     assert_eq!(sink.attempts(), 1);
     assert_eq!(sink.sign_attempts.load(Ordering::SeqCst), 0);
     release.send(())?;

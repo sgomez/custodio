@@ -87,7 +87,7 @@ fn concurrent_list_sees_old_or_new() -> TestResult {
         let (w, l) = join2(writer, reader, || ()).await;
         w?;
         assert!(l? > 0);
-        assert_eq!(names(&r.area(1000))?, ["k", "k-cert"]);
+        assert_eq!(names(&r.area(1000))?, ["k"]);
         Ok(())
     })
 }
@@ -123,8 +123,8 @@ fn concurrent_replace_and_delete() -> TestResult {
                 (p, d)
             };
             r.f.hold.store(0, Ordering::SeqCst);
-            // The delete always succeeds, so neither file is left: never a certificate without its
-            // key. A replace that came after the delete saw `NoSuchKey`.
+            // The delete always succeeds, so nothing is left of the key.
+            // A replace that came after the delete saw `NoSuchKey`.
             assert_eq!(del, Ok(()), "round {round}");
             assert_eq!(names(&r.area(1000))?, NONE, "round {round}");
             if rep == Ok(()) {
@@ -135,7 +135,7 @@ fn concurrent_replace_and_delete() -> TestResult {
             }
             // The id can be imported again, with a certificate of its own.
             r.import(r.a(), &id, EC_P12, Answer::Yes).await?;
-            assert_eq!(names(&r.area(1000))?, [id.clone(), format!("{id}-cert")]);
+            assert_eq!(names(&r.area(1000))?, std::slice::from_ref(&id));
             r.f.set_answer(Answer::Yes);
             call(&r.a2, "DeleteKey", &(id.as_str(),)).await?;
         }

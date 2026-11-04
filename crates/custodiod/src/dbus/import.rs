@@ -34,7 +34,9 @@ pub(super) const fn import_outcome(e: &ImportError) -> ImportOutcome {
         ImportError::UnsupportedKey(_) | ImportError::CertificateMismatch => {
             ImportOutcome::UnsupportedKey
         }
-        ImportError::Store(_) | ImportError::TooLarge => ImportOutcome::StorageFailure,
+        ImportError::Protect(_) | ImportError::Store(_) | ImportError::TooLarge => {
+            ImportOutcome::StorageFailure
+        }
     }
 }
 
@@ -131,7 +133,14 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             Err(e) => return (import_outcome(&e), None, Err(ServiceError::from(&e))),
         };
         let key_type = Some(audit_key_type(parsed.kind));
-        match store_parsed(&self.store, owner, &request.id, parsed) {
+        let Some(creds) = self.key_creds.as_deref() else {
+            return (
+                ImportOutcome::StorageFailure,
+                key_type,
+                Err(ServiceError::Internal),
+            );
+        };
+        match store_parsed(&self.store, creds, owner, &request.id, parsed) {
             Ok(kind) => (ImportOutcome::Stored, key_type, Ok(kind)),
             Err(e) => (import_outcome(&e), key_type, Err(ServiceError::from(&e))),
         }

@@ -7,7 +7,7 @@ use std::fmt;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
-use secrecy::{ExposeSecret, SecretSlice, SecretString};
+use secrecy::SecretString;
 use zbus::interface;
 use zbus::message::Header;
 
@@ -15,12 +15,15 @@ use crate::app_id::AppIdOutcome;
 use crate::app_id_source::{AppIdSource, GuardedSource};
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
+use crate::creds::Credentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify};
+use crate::import::{
+    KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_kind, credential_name,
+};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash, sign};
-use crate::store::{KeyStore, StoreError};
+use crate::store::{KeyStore, Record, StoreError};
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 pub use replace::parse_replace_request;
@@ -204,6 +207,8 @@ pub struct Custodio<A, C> {
     authorizer: A,
     credentials: C,
     sink: Arc<dyn AuditSink>,
+    /// The credential service that encrypts and decrypts stored keys (not the bus `credentials`).
+    key_creds: Option<Arc<dyn Credentials>>,
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
@@ -222,10 +227,19 @@ impl<A, C> Custodio<A, C> {
             authorizer,
             credentials,
             sink,
+            key_creds: None,
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
         }
+    }
+
+    /// Sets the credential service that protects stored keys. Without one, an import or a signature
+    /// fails with an internal error: a key is never stored or read in the clear.
+    #[must_use]
+    pub fn with_key_credentials(mut self, creds: Arc<dyn Credentials>) -> Self {
+        self.key_creds = Some(creds);
+        self
     }
 
     /// Replaces the `.p12` decoder. Production uses the real parser; tests count the calls.
@@ -333,23 +347,21 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
         // A key a delete has made unusable is not listed, whatever is still on disk.
-        let listed = ids
-            .iter()
-            .filter(|i| !i.ends_with(CERT_SUFFIX) && !self.deletes.is_unusable(owner, i));
+        let listed = ids.iter().filter(|i| !self.deletes.is_unusable(owner, i));
         for id in listed {
-            let key = self
-                .store
-                .get(owner, id)
-                .map_err(|_| ServiceError::Internal)?;
-            let kind = classify(key.expose_secret()).map_err(|_| ServiceError::Internal)?;
-            let cert = self
-                .store
-                .get(owner, &cert_id(id))
-                .map_err(|_| ServiceError::Internal)?;
+            let record = match self.store.get(owner, id) {
+                Ok(record) => record,
+                // A key of the earlier format is not usable and not listed (the purge is F121).
+                Err(StoreError::Legacy) => continue,
+                Err(_) => return Err(ServiceError::Internal),
+            };
+            // The certificate was checked against the key when it was stored or replaced, so its
+            // key type is the key's, and listing never decrypts or touches the TPM.
+            let kind = certificate_kind(record.certificate()).ok_or(ServiceError::Internal)?;
             out.push((
                 id.clone(),
                 kind_name(kind).to_owned(),
-                cert.expose_secret().to_vec(),
+                record.certificate().to_vec(),
             ));
         }
         Ok(out)
@@ -385,12 +397,31 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(Some((attempt, app_id)))
     }
 
+    /// Signs with the key of `record`. An encrypted key is decrypted for this one signature and
+    /// zeroized when it is dropped. A TPM key is signed in the TPM (F118); until then it is refused.
+    fn sign_record(
+        &self,
+        record: &Record,
+        mechanism: Mechanism,
+        data: &[u8],
+    ) -> Result<Vec<u8>, ServiceError> {
+        let credential = record.protected().credential();
+        let (Some(creds), Some(credential)) = (self.key_creds.as_deref(), credential) else {
+            return Err(ServiceError::Internal);
+        };
+        let name = credential_name(record.owner(), record.id());
+        let key = creds
+            .decrypt(&name, credential)
+            .map_err(|_| ServiceError::Internal)?;
+        sign(&key, mechanism, data).map_err(|e| ServiceError::from(&e))
+    }
+
     /// Polkit, then the signature with the key already looked up.
     async fn authorize_and_sign(
         &self,
         sender: &str,
         caller: Caller,
-        key: Result<SecretSlice<u8>, ServiceError>,
+        key: Result<Record, ServiceError>,
         request: &SignRequest,
         data: &[u8],
     ) -> Attempt {
@@ -409,9 +440,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
                 return (outcome, Some(caller), Err(unavailable()));
             }
         }
-        let signed = key.and_then(|key| {
-            sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
-        });
+        let signed = key.and_then(|record| self.sign_record(&record, request.mechanism, data));
         let outcome = if signed.is_ok() {
             Outcome::Signed
         } else {
