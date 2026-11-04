@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fails on any tracked file over MAX_TOKENS (bytes / 4) and on any Rust file with an inline
-# `#[cfg(test)] mod … { … }`: tests live in their own file, so they never count against the code.
+# Fails on any tracked or new (not ignored) file over MAX_TOKENS (bytes / 4) and on any Rust file with
+# an inline `#[cfg(test)] mod … { … }`: tests live in their own file, so they never count against the code.
 set -euo pipefail
 
 MAX_TOKENS=5000
@@ -49,7 +49,7 @@ while IFS= read -r file; do
   if [[ "$file" == *.rs ]] && line=$(inline_tests "$file") && [ -n "$line" ]; then
     inline+=("  $file:$line")
   fi
-done < <(git ls-files)
+done < <(git ls-files --cached --others --exclude-standard) # new files too: `just quick` runs before the commit
 
 status=0
 if [ ${#over[@]} -gt 0 ]; then
