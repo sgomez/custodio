@@ -43,6 +43,13 @@ impl Session for ScriptedSession {
     ) -> Result<crate::tpm::blob::Imported, crate::tpm::import::ImportError> {
         Err(crate::tpm::import::ImportError::Internal)
     }
+    fn sign(
+        &mut self,
+        _imported: &crate::tpm::blob::Imported,
+        _prepared: &crate::tpm::sign::Prepared,
+    ) -> Result<Vec<u8>, crate::tpm::sign::TpmSignError> {
+        Err(crate::tpm::sign::TpmSignError::Internal)
+    }
 }
 
 impl TpmAccess for Scripted {

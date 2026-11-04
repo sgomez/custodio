@@ -54,6 +54,16 @@ pub struct Lacks {
     pub faults: Vec<CommandFault>,
     /// Where to keep every command the client sends (F113). `None`: nothing is kept.
     pub record: Option<Recorder>,
+    /// Successful answers to these commands get one bit flipped (F114): the TPM "returns a wrong result".
+    pub flips: Vec<Flip>,
+}
+
+/// Flip the low bit of the byte at `offset` of the successful response to `command` (offset 0 is the response tag; the
+/// first parameter byte of a command with a session is at 16). A response that is shorter or an error is left alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Flip {
+    pub command: u32,
+    pub offset: usize,
 }
 
 /// The commands a client sent through the filter, in order, whole (header included). Clones share the record.
@@ -338,10 +348,28 @@ fn serve(client: &UnixStream, upstream: &Path, lacks: &Lacks, stop: &AtomicBool)
             }
             let up = up.as_mut().ok_or_else(|| io::Error::other("no upstream"))?;
             up.write_all(&command)?;
-            rewrite(&command, read_message(up)?, lacks)
+            flipped(&command, rewrite(&command, read_message(up)?, lacks), lacks)
         };
         c_out.write_all(&response)?;
     }
+}
+
+/// Applies the `flips` of `lacks` to a successful response.
+fn flipped(command: &[u8], mut response: Vec<u8>, lacks: &Lacks) -> Vec<u8> {
+    let code = Cursor {
+        data: command,
+        pos: 6,
+    }
+    .u32();
+    if response.get(6..10) != Some(&[0, 0, 0, 0][..]) {
+        return response;
+    }
+    for flip in lacks.flips.iter().filter(|f| Some(f.command) == code) {
+        if let Some(byte) = response.get_mut(flip.offset) {
+            *byte ^= 1;
+        }
+    }
+    response
 }
 
 fn fault_for(command: &[u8], lacks: &Lacks) -> Option<FaultAction> {

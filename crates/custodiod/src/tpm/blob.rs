@@ -109,6 +109,15 @@ impl Blob {
         &self.public
     }
 
+    /// The public area, parsed. A blob always holds a parseable one (`from_parts` checked it).
+    ///
+    /// # Errors
+    /// [`BlobError::Inconsistent`] when the stored area does not parse.
+    pub fn public_area(&self) -> Result<tss_esapi::structures::Public, BlobError> {
+        let content = self.public.get(2..).ok_or(BlobError::Truncated)?;
+        tss_esapi::structures::Public::unmarshall(content).map_err(|_| BlobError::Inconsistent)
+    }
+
     /// The `TPM2B_PRIVATE`, size field included (the file `tpm2_load -r` reads).
     #[must_use]
     pub fn private_bytes(&self) -> &[u8] {

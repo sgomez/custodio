@@ -61,11 +61,11 @@ fn parent_template() -> Result<Public, tss_esapi::Error> {
 }
 
 /// A created parent: its handle and what the wrap needs from its public area.
-struct Parent {
-    handle: KeyHandle,
+pub(super) struct Parent {
+    pub(super) handle: KeyHandle,
     x: Vec<u8>,
     y: Vec<u8>,
-    name: Vec<u8>,
+    pub(super) name: Vec<u8>,
 }
 
 impl EsysSession {
@@ -97,22 +97,23 @@ impl EsysSession {
         Err(ImportError::Tpm(TpmError::Transport))
     }
 
-    fn flush(&mut self, handle: KeyHandle) -> Result<(), ImportError> {
+    pub(super) fn flush(&mut self, handle: KeyHandle) -> Result<(), ImportError> {
         self.context
             .flush_context(ObjectHandle::from(handle))
             .map_err(|e| ImportError::Tpm(fault(e).into()))
     }
 
     /// Runs `f` with a parent and flushes it afterwards. The first error wins; a flush that fails after success is reported.
-    fn with_parent<T>(
+    pub(super) fn with_parent<T, E: From<ImportError>>(
         &mut self,
-        f: impl FnOnce(&mut Self, &Parent) -> Result<T, ImportError>,
-    ) -> Result<T, ImportError> {
+        f: impl FnOnce(&mut Self, &Parent) -> Result<T, E>,
+    ) -> Result<T, E> {
         let parent = self.create_parent()?;
         let result = f(self, &parent);
         let flushed = self.flush(parent.handle);
         match (result, flushed) {
-            (Err(e), _) | (Ok(_), Err(e)) => Err(e),
+            (Err(e), _) => Err(e),
+            (Ok(_), Err(e)) => Err(e.into()),
             (Ok(value), Ok(())) => Ok(value),
         }
     }

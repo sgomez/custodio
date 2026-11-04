@@ -5,7 +5,7 @@
 //! the items), ready, or an error. The production access point ([`open::Production`]) opens only the kernel resource
 //! manager `/dev/tpmrm0`; tests use a TCTI string ([`open::TestTcti`]).
 //!
-//! Nothing here creates a TPM object, so nothing has to be flushed. The capability list is documented in `docs/api.md`
+//! Queries create no TPM object; import and signing create a parent (and a key) and flush them before they return. The capability list is documented in `docs/api.md`
 //! ("TPM capabilities").
 
 pub mod blob;
@@ -15,6 +15,7 @@ pub mod import;
 pub mod key;
 pub mod list;
 pub mod open;
+pub mod sign;
 pub mod wrap;
 
 pub use classify::{Answers, Classification, Fault, Opened, Owner, ResponseCode, TpmError};
@@ -57,6 +58,16 @@ pub trait Session {
     /// # Errors
     /// The TPM refused or did not answer.
     fn import_key(&mut self, key: &key::ImportKey) -> Result<blob::Imported, import::ImportError>;
+    /// Signs the prepared block or digest with the stored key (F114): the parent is created and its name compared with
+    /// the recorded one, the key is loaded, used and flushed, and the parent flushed, whatever the outcome.
+    ///
+    /// # Errors
+    /// [`sign::TpmSignError`].
+    fn sign(
+        &mut self,
+        imported: &blob::Imported,
+        prepared: &sign::Prepared,
+    ) -> Result<Vec<u8>, sign::TpmSignError>;
 }
 
 /// Why no session was opened.

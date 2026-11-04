@@ -55,7 +55,7 @@ impl From<OpenError> for ImportError {
 }
 
 /// Opens the TPM and refuses an owner hierarchy the service cannot use.
-fn open_ready(access: &dyn TpmAccess) -> Result<Box<dyn Session>, ImportError> {
+pub(super) fn open_ready(access: &dyn TpmAccess) -> Result<Box<dyn Session>, ImportError> {
     let mut session = access.open()?;
     let owner = session.owner()?;
     if owner.auth_set {

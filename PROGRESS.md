@@ -192,3 +192,15 @@ with an empty context.
 - Note taken: `wrap::Tap` stores `Zeroizing<Vec<u8>>`.
 - Evidence: `just quick` green; `tpm_import` 10/10; `just mutants-diff F113`: 135 mutants, 98 caught, 37 unviable, 0 missed.
 - Builds need the `custodio-dev` container (the host has no tss2 libs).
+
+### 2026-11-04 — F114 — attempt 1
+- Done: `tpm::sign` (request/errors/`sign`), `sign/block.rs` (key type from the blob, validation with the bounds of `sign::sign`, PKCS#1 v1.5 and EMSA-PSS blocks,
+  ECDSA left-pad/truncate), `sign/check.rs` (the RSA result is checked with the blob's public key: canonical and `s^e mod n == block`), `esys/signing.rs`
+  (one parent per call, name compared before `TPM2_Load`, load, `RSA_Decrypt` null scheme / `Sign` ECDSA-SHA256, flush key then parent on every path).
+  `Session::sign` added. Lacks = `TPM_RC_COMMAND_CODE` (0x143) on Load/RSA_Decrypt/Sign, or a scheme/hash/type refusal on Sign; any other code stays a TPM error; Load refusals
+  other than 0x143 are `LoadFailed(rc)`. `rsa` gets the `hazmat` feature (public op for the check). `SignError` derives `Clone, Copy`. Filter (`custodio-it`) gained `Lacks.flips`.
+- Finding: `sign::sign` accepts any non-empty ECDSA digest (the 16-byte minimum in the evaluator notes does not exist in ecdsa 0.17); parity is kept, so 1..=15 bytes are signed (left-padded) and tested with `openssl`.
+- Tests: unit `tpm::tests::sign::*` (15); `tpm_sign` 10 tests (note 2: `a_wrong_rsa_result_is_not_returned` via a filter flip -> `BadResult`).
+- Deviation from the contract text: with `FLUSH_CONTEXT` faulted both parent and key leak and `swtpm` has 3 slots, so the test clears the leak with `tpm2_flushcontext -t` (what the kernel RM does on close) before the later signature.
+  `openssl pkeyutl -verify` caps raw input at 64 bytes, so payloads >64 bytes use `-verifyrecover`; ECDSA digests >64 are verified over their leftmost 32 bytes.
+- Evidence: `just quick` green; `tpm_sign` 10/10; `just mutants-diff F114`: 92 mutants, 81 caught, 11 unviable, 0 missed.

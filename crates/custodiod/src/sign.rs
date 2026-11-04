@@ -60,7 +60,7 @@ pub enum Mechanism {
 }
 
 /// Why a signature was not produced.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignError {
     /// The stored key is not a PKCS#8 RSA 2048 or P-256 key.
     BadKey,

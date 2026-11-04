@@ -21,8 +21,10 @@ use super::classify::{Fault, Owner, ResponseCode};
 use super::import::ImportError;
 use super::key::ImportKey;
 use super::list::Parms;
+use super::sign::{Prepared, TpmSignError};
 
 mod primary;
+mod signing;
 
 /// `get_capability` pages: far more than any TPM lists, so a TPM that never stops saying "more" is an error.
 const MAX_PAGES: usize = 4096;
@@ -208,5 +210,9 @@ impl Session for EsysSession {
 
     fn import_key(&mut self, key: &ImportKey) -> Result<Imported, ImportError> {
         self.import_under_parent(key)
+    }
+
+    fn sign(&mut self, imported: &Imported, prepared: &Prepared) -> Result<Vec<u8>, TpmSignError> {
+        self.sign_under_parent(imported, prepared)
     }
 }

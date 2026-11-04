@@ -86,3 +86,31 @@ impl Recorder {
         self
     }
 }
+
+#[test]
+fn flips_change_one_bit_of_a_successful_answer_only() {
+    let command = [0x80, 2, 0, 0, 0, 10, 0, 0, 1, 0x59];
+    let lacks = Lacks {
+        flips: vec![Flip {
+            command: 0x159,
+            offset: 12,
+        }],
+        ..Lacks::default()
+    };
+    let mut ok = vec![0x80, 1, 0, 0, 0, 14, 0, 0, 0, 0, 7, 7];
+    let out = flipped(&command, ok.clone(), &lacks);
+    assert_eq!(out, ok);
+    let long = vec![0x80, 1, 0, 0, 0, 14, 0, 0, 0, 0, 7, 7, 8, 9];
+    let out = flipped(&command, long.clone(), &lacks);
+    assert_eq!(out[12], 9, "offset 12 flipped");
+    assert_eq!(out[..12], long[..12]);
+    assert_eq!(out[13], 9);
+    // An error response and another command are not touched.
+    let mut failed = long.clone();
+    failed[9] = 1;
+    assert_eq!(flipped(&command, failed.clone(), &lacks), failed);
+    assert_eq!(
+        flipped(&[0x80, 2, 0, 0, 0, 10, 0, 0, 1, 0x5d], long.clone(), &lacks),
+        long
+    );
+}

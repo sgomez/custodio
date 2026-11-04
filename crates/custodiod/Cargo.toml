@@ -31,6 +31,7 @@ rsa = { version = "=0.10.0-rc.19", default-features = false, features = [
   "std",
   "encoding",
   "sha2",
+  "hazmat",
 ] }
 rustix = { version = "1.1.6", features = ["fs", "process"] }
 sec1 = { version = "0.8.1", default-features = false, features = ["der"] }
