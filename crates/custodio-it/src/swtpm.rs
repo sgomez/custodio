@@ -24,10 +24,11 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 /// Tools the fixture runs. Checked up front so a missing one is reported by name.
-const REQUIRED_TOOLS: [(&str, &str); 8] = [
+const REQUIRED_TOOLS: [(&str, &str); 9] = [
     ("swtpm", "swtpm"),
     ("setpriv", "util-linux"),
     ("timeout", "coreutils"),
+    ("bash", "bash"),
     ("swtpm_ioctl", "swtpm-tools"),
     ("tpm2_startup", "tpm2-tools"),
     ("tpm2_getcap", "tpm2-tools"),
@@ -110,9 +111,16 @@ impl Swtpm {
             }
         }
         let log = fs::File::create(self.dir.join("swtpm.log"))?;
-        // `setpriv` execs `swtpm` with a parent-death signal, so a killed test binary leaves no `swtpm` behind.
-        let mut child = Command::new("setpriv")
+        // The shell closes every inherited descriptor above stderr first: the TSS libraries open their sockets
+        // without close-on-exec, so a `swtpm` forked while another test holds a TCTI connection would keep the
+        // client end open for its whole life, and the single-client `swtpm` of that test would never see it close.
+        // `setpriv` then execs `swtpm` with a parent-death signal, so a killed test binary leaves no `swtpm` behind.
+        let mut child = Command::new("bash")
             .args([
+                "-c",
+                "for f in /proc/self/fd/*; do n=${f##*/}; [ \"$n\" -gt 2 ] && eval \"exec $n>&-\"; done 2>/dev/null; exec \"$@\"",
+                "close-fds",
+                "setpriv",
                 "--pdeathsig",
                 "KILL",
                 "swtpm",
@@ -246,12 +254,18 @@ impl Swtpm {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
+        let args: Vec<S> = args.into_iter().collect();
+        let shown = args
+            .iter()
+            .map(|a| a.as_ref().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
         let out = self.tool(name, args)?;
         if out.status.success() {
             Ok(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {
             Err(io::Error::other(format!(
-                "{name} failed ({}): {}",
+                "{name} {shown} failed ({}): {}",
                 out.status,
                 String::from_utf8_lossy(&out.stderr)
             )))

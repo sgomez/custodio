@@ -147,3 +147,13 @@ with an empty context.
 - Paging is tested (`EsysSession::open_paged`, page size 1) which also removed the `listed` survivors; ENOTDIR/non-socket tests killed the `open.rs` ones.
 - Evidence: `just quick` green; `tpm_access` 16/16, repeated; `just mutants-diff F112`: 105 mutants, 82 caught, 23 unviable, 0 missed.
 - Note: pdeathsig fires when the spawning thread exits; fine here (each test owns its `Swtpm`). One run of `tpm_access` took 13 s instead of 3 s once; not reproduced.
+
+### 2026-11-04 — F112 — attempt 3
+- Fixed the verify failure (`tpm2_changeauth` timing out after 60 s in `tpm_access`, `nothing_left_loaded` and others). Cause, found by reproducing under load (several
+  test binaries at once) and mapping socket peers in `/proc`: libtss2 opens its TCTI sockets without close-on-exec, so a `swtpm` that another test forked while
+  its connection was open kept the client end alive; the single-client `swtpm` of that test never saw the connection close and the next tool waited forever
+  (the 10-13 s runs were the filter's 10 s limit on the same stall). `Swtpm::spawn` now starts `swtpm` through `bash`, which closes every descriptor above stderr first.
+- Also: the filter's control-channel pump connects upstream on the client's first bytes (not on accept), so a TCTI that only connects no longer holds `swtpm`'s control
+  channel; `tool_ok` errors now show the arguments.
+- Evidence: 36 parallel runs of `tpm_access` (6 at a time), all 16/16 in under 3.5 s (before: about 1 in 9 hung); `custodio-it` tests green; `just quick` green;
+  `just mutants-diff F112`: 105 mutants, 82 caught, 23 unviable, 0 missed.

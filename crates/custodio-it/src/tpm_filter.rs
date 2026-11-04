@@ -183,15 +183,40 @@ fn ctrl_of(socket: &Path) -> PathBuf {
 }
 
 /// Copies both directions between a client and the upstream control socket until either side closes.
+///
+/// The upstream connection is made on the client's first bytes, not on accept: `swtpm` serves one control client at a
+/// time, so a client that only connects (as the TCTI does) must not hold the control channel of the real TPM.
 fn pump(client: UnixStream, upstream: &Path) -> io::Result<()> {
     client.set_nonblocking(false)?;
-    let up = UnixStream::connect(upstream)?;
-    for (mut from, mut to) in [(client.try_clone()?, up.try_clone()?), (up, client)] {
-        thread::spawn(move || {
-            let _ = io::copy(&mut from, &mut to);
-            let _ = to.shutdown(std::net::Shutdown::Both);
-        });
-    }
+    let upstream = upstream.to_owned();
+    thread::spawn(move || {
+        let mut first = [0u8; 4096];
+        let Ok(n) = (&client).read(&mut first) else {
+            return;
+        };
+        if n == 0 {
+            return;
+        }
+        let Ok(mut up) = UnixStream::connect(&upstream) else {
+            return;
+        };
+        if up.write_all(&first[..n]).is_err() {
+            return;
+        }
+        let Ok(pairs) = client
+            .try_clone()
+            .and_then(|c| up.try_clone().map(|u| (c, u)))
+        else {
+            return;
+        };
+        let (from, to) = pairs;
+        for (mut from, mut to) in [(from, to), (up, client)] {
+            thread::spawn(move || {
+                let _ = io::copy(&mut from, &mut to);
+                let _ = to.shutdown(std::net::Shutdown::Both);
+            });
+        }
+    });
     Ok(())
 }
 
