@@ -243,3 +243,8 @@ with an empty context.
 ### 2026-11-04 — F117 — attempt 2
 - Fixed NEXT_FINDINGS: the inline test module in `import/choice.rs` moved to `import/choice/tests.rs` (check-files gate).
 - Evidence: `just quick` green; `storage_choice` 19/19; `just mutants-diff F117`: 19 mutants, 7 caught, 12 unviable, 0 missed.
+
+### 2026-11-04 — F117 — attempt 3
+- Fixed NEXT_FINDINGS: the three `#[allow(dead_code, unused_imports)]` in `tests/storage_choice.rs` now carry a justifying comment. Contract amended (separate commit) to strike control (c), as the contract review advised.
+- Open risk kept for F118/e2e: `systemd-creds`, spawned with a plain `Command`, may inherit the TCTI descriptor with the device TCTI (inferred in `docs/findings.md`, not run).
+- Evidence: `just quick` green; `storage_choice` 19/19. No production code changed, so the mutants result (19 mutants, 0 missed) stands.
