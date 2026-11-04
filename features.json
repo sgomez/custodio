@@ -154,7 +154,7 @@
     {
       "id": "F118",
       "title": "Sign, delete and replace certificate for every storage kind",
-      "description": "Sign dispatches on the stored kind: a TPM key signs inside the TPM (F114); an encrypted key is decrypted for that one signature and dropped. Every signature still calls polkit, with no cached authorization. A TPM blob that does not load or a credential that cannot be decrypted makes sign fail with a documented error name (existing or new under the compatibility rule) and a journal entry; the service does not fall back, does not delete the key, and keeps listing it so it can be deleted. Delete and replace certificate work for every kind. Tests: the integration test target `sign_kinds` in custodiod, on the private bus with fake polkit, for each kind and both key types, including a cleared `swtpm`.",
+      "description": "Sign dispatches on the stored kind: a TPM key signs inside the TPM (F114); an encrypted key is decrypted for that one signature and dropped. Every signature still calls polkit, with no cached authorization. A TPM blob that does not load or a credential that cannot be decrypted makes sign fail with a documented error name (existing or new under the compatibility rule) and a journal entry; the service does not fall back, does not delete the key, and keeps listing it so it can be deleted. Delete and replace certificate work for every kind. A `systemd-creds` child inherits no descriptor of the service, so a TPM context open on another thread never reaches it (docs/findings/F117.md). Tests: the integration test target `sign_kinds` in custodiod, on the private bus with fake polkit, for each kind and both key types, including a cleared `swtpm`.",
       "depends_on": [
         "F114",
         "F115",
