@@ -46,8 +46,8 @@ Everything in this repository is in English: code, comments, docs, commit messag
 
 ## Rules
 
-- Never edit `SPEC.md`, `features.json` or `APPROVALS`. A person approves the spec and the feature
-  list; only the loop marks a feature as passing.
+- Never edit `SPEC.md`, `features.json`, `budgets.tsv` or `APPROVALS`. A person approves the spec,
+  the feature list and the time budgets; only the loop marks a feature as passing.
 - Never weaken a gate to get green: no deleting or `#[ignore]`-ing tests, no lowering thresholds,
   no `#[allow(...)]` without a comment that justifies it, no turning a `just` recipe into a no-op.
 - Key material and passwords live in `secrecy` / `zeroize` types and never reach `Debug`, logs or

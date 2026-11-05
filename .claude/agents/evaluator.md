@@ -30,10 +30,11 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - The evidence is proportionate: each behaviour is proven once, at the cheapest level that would
   catch it being wrong. Evidence that another feature's description or `verify` names belongs to
   that feature.
+- Each new test or suite states what it costs in time and how it runs alongside the others.
 
 Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
-with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, or scope outside the
-feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
+with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, a new test or
+suite with no stated cost, or scope outside the feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
 list it; the builder reads it. A note asks for more evidence only to close a way a wrong feature
 could pass, never for a second proof of the same behaviour; note evidence that is redundant, so the
 builder can drop it.
@@ -82,7 +83,11 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
      `#[ignore]`d, and they do not just assert what the code returns, nor the wording of a
      document, decision, finding or contract.
    - No gate was weakened: deleted tests, lowered thresholds, unjustified `#[allow]`, no-op
-     `just` recipes, lints removed from the workspace.
+     `just` recipes, lints removed from the workspace, `budgets.tsv` edited.
+   - The new tests cost what the contract says. Each is NEEDS_WORK: a loop that runs independent
+     units (targets, modes, files, cases) one after another, a fixed `sleep` where a condition can
+     be waited on, a test at a slower level (e2e, a container, a package) for what a unit test or
+     a script test with a stub would catch.
    - The security invariants hold: every signature asks polkit, no `_keep`, key material and
      passwords never reach `Debug`, logs or errors, `unsafe` only in the PKCS#11 FFI layer.
    - New or changed entries in `docs/decisions.md` follow the rules at the top of that file; an
