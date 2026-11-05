@@ -375,3 +375,16 @@ with an empty context.
 - The F131 host tests moved to `scripts/test-e2e-tpm-host.sh` (the old file hit the 5000-token limit).
 - (same attempt, end) Step 3b: every other target ran `pkcs11-tool-approve-rsa tpm-installed-unit-clean` with `swtpm` and `none` (ubuntu2404, refusal-only, ran its own case): all pass; table in `docs/findings/F131.md`. Fedora ships `/usr/lib/systemd/system/service.d/10-timeout-abort.conf` for every service, so `tpm_unit_problems` ignores that directory only. SELinux could not be exercised here (no `/sys/fs/selinux`); recorded as inferred, no deviation.
 - Step 6: manual controls (misspelt `CUSTODIOD_TEST_SWTPM_TCT`, wrong bind path in the drop-in) make the swtpm run fail at the unit-sandbox check; reverted. The `verify` ran: `just quick` green, and `pkcs11-tool-approve-rsa` passes on debian13 with `swtpm`, `none` and `lacking` (1 case accounted, record `tpm=<mode>`). Not run: the CI job on a real runner, the full `just e2e`, `lacking` on other targets.
+
+### 2026-11-05 — F132 — attempt 1 (sessions 1-5, written by the operator; every session was cut)
+- Done: steps 1-2. Fixes committed: `40cb0b9` (getrandom pair skipped in `deny.toml`, the new journal fields in
+  `e2e/jo.py`, catalog text), `b1bf7fa` (upgrade accounts check reads the one-record-per-key store). `just check`,
+  `api-contract`, `fuzz-smoke` (and its negative control) green on `b1bf7fa`.
+- e2e seen passing on `b1bf7fa`: swtpm on all six targets (session 4, one record per target); none on alma10, arch,
+  debian13 (session 3). Not yet run on `b1bf7fa`: none on fedora44, ubuntu2404, ubuntu2604. `package-gates` not run.
+- Why it stalled: each session reran the baseline, then `just e2e` (about 60 minutes) and was cut at 45 minutes, before
+  writing here or ticking steps. Contract amended: one target and mode per command, the loop runs the `verify`.
+- Known issue: rootless podman lost its pause process twice (`podman info` fails, script tests fail); `timeout 120 podman
+  system migrate` fixes it.
+- Next session should: not rerun steps 1-2; run `E2E_TPM=none` on fedora44, ubuntu2404, ubuntu2604, then
+  `just package-gates`, then step 5. Commit and update this entry after each run.
