@@ -38,8 +38,9 @@ propose a split; do not edit features.json.
 Tests cost time on every later run of the loop, so say what each costs. For each new test or
 suite, Scope states how long it takes, measured or estimated from a similar one, and how it runs
 alongside the others: a unit test is parallel by default; a script test runs in parallel with the
-other script tests; an e2e case adds to every target and TPM mode, so it is the costliest level
-and only for what a cheaper level cannot catch. Independent units (targets, modes, files) run at
+other script tests; an e2e case is the costliest level and only for what a cheaper level cannot
+catch. It goes in `e2e/cases.list` (every target) only when what it checks depends on the
+distribution; otherwise in `e2e/targets/debian13/cases.list` (SPEC, end-to-end scope). Independent units (targets, modes, files) run at
 once, never in a loop one after another; waits are on a condition, never a fixed `sleep`. The
 loop checks the measured times against `budgets.tsv`, which a person sets: a feature that cannot
 fit says so under Scope, and the builder asks for a bigger budget in BLOCKED.md.

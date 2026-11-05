@@ -368,7 +368,7 @@
     {
       "id": "F134",
       "title": "End-to-end cases: every mechanism signs under each kind",
-      "description": "Acceptances 2 and 6 (signing). Each key type signs through the PKCS#11 module with every mechanism the service offers, PSS with each supported hash and salt length, and every signature verifies with the key's certificate using `openssl`. Cases `sign-*`, run with a TPM, without one and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptances 2 and 6 (signing). Each key type signs through the PKCS#11 module with every mechanism the service offers, PSS with each supported hash and salt length, and every signature verifies with the key's certificate using `openssl`. Cases `sign-*`, run with a TPM, without one and with a lacking TPM. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F131"
       ],
@@ -378,7 +378,7 @@
     {
       "id": "F135",
       "title": "End-to-end cases: no plaintext key in the state directory",
-      "description": "Acceptance 3. After every import, under each kind, `scripts/check-no-plaintext.sh` finds none of the encodings of the private key in the state directory, and no unencrypted key file exists. Cases `noplain-*`, in all three modes. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 3. After every import, under each kind, `scripts/check-no-plaintext.sh` finds none of the encodings of the private key in the state directory, and no unencrypted key file exists. Cases `noplain-*`, in all three modes. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F127",
         "F131"
@@ -389,7 +389,7 @@
     {
       "id": "F136",
       "title": "End-to-end cases: TPM keys cannot be duplicated",
-      "description": "Acceptance 4. For each TPM key, `tpm2_readpublic` on the stored public area shows an empty `authPolicy`, `tpm2_duplicate` on the loaded key fails, and the blob does not load in a second `swtpm`. Cases `tpm-dup-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 4. For each TPM key, `tpm2_readpublic` on the stored public area shows an empty `authPolicy`, `tpm2_duplicate` on the loaded key fails, and the blob does not load in a second `swtpm`. Cases `tpm-dup-*`. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F128",
         "F131"
@@ -400,7 +400,7 @@
     {
       "id": "F137",
       "title": "End-to-end cases: keys survive a PCR change and restarts",
-      "description": "Acceptance 5 (first part). After extending PCR 7 and restarting `swtpm` and the service, every TPM and TPM-bound key still signs. Cases `pcr-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 5 (first part). After extending PCR 7 and restarting `swtpm` and the service, every TPM and TPM-bound key still signs. Cases `pcr-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F129",
         "F131"
@@ -411,7 +411,7 @@
     {
       "id": "F138",
       "title": "End-to-end cases: the fallback kinds and what the CLI says",
-      "description": "Acceptance 6. With no TPM, import gives kind 'encrypted, host-bound'; with a lacking TPM, 'encrypted, TPM-bound'; in both, `custodio import` says the key is weaker and why, and `custodio list` shows the kind. Cases `fallback-*`, without a TPM and with a lacking one. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 6. With no TPM, import gives kind 'encrypted, host-bound'; with a lacking TPM, 'encrypted, TPM-bound'; in both, `custodio import` says the key is weaker and why, and `custodio list` shows the kind. Cases `fallback-*`, without a TPM and with a lacking one. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F123",
         "F131"
@@ -422,7 +422,7 @@
     {
       "id": "F139",
       "title": "End-to-end cases: injected TPM and credential failures",
-      "description": "Acceptance 7. With a TPM device present but failing in each injected way of SPEC Harnesses (device unopenable, a TPM error, the credential service down), import fails with the documented error, stores nothing, leaves one journal entry, and no key ends up in a weaker kind. Cases `tpmfail-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 7. With a TPM device present but failing in each injected way of SPEC Harnesses (device unopenable, a TPM error, the credential service down), import fails with the documented error, stores nothing, leaves one journal entry, and no key ends up in a weaker kind. Cases `tpmfail-*`. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F117",
         "F120",
@@ -434,7 +434,7 @@
     {
       "id": "F140",
       "title": "End-to-end cases: signing after the TPM is cleared",
-      "description": "Acceptance 8. After the TPM is cleared, signing with a TPM key and with a TPM-bound key fails with the documented error and a journal entry; the keys are still listed and can be deleted. Cases `tpm-clear-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 8. After the TPM is cleared, signing with a TPM key and with a TPM-bound key fails with the documented error and a journal entry; the keys are still listed and can be deleted. Cases `tpm-clear-*`, with a TPM and with a lacking TPM. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F129",
         "F131"
@@ -445,7 +445,7 @@
     {
       "id": "F141",
       "title": "End-to-end cases: upgrade between M4 builds keeps kinds",
-      "description": "Acceptance 5 (second part). The upgrade cases upgrade between two M4 builds (package N to N+1) with keys of each kind available in the mode, and keep keys, owners, certificates and kinds. New cases `upgrade-kinds-*`; the existing `upgrade-*` cases still pass. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 5 (second part). The upgrade cases upgrade between two M4 builds (package N to N+1) with keys of each kind available in the mode, and keep keys, owners, certificates and kinds. New cases `upgrade-kinds-*`; the existing `upgrade-*` cases still pass. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F131"
       ],
@@ -466,7 +466,7 @@
     {
       "id": "F143",
       "title": "End-to-end cases: more calls than TPM object slots",
-      "description": "Acceptance 10. More signatures and imports in a row than the TPM has object slots all succeed. Cases `tpm-slots-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 10. More signatures and imports in a row than the TPM has object slots all succeed. Cases `tpm-slots-*`. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F130",
         "F131"
@@ -477,7 +477,7 @@
     {
       "id": "F144",
       "title": "End-to-end cases: journal queries for kinds, purge and load failures",
-      "description": "Acceptance 11. The queries `docs/audit.md` gives for the kind, the purge entries and the failed loads work against the real journal and find exactly the expected entries. Cases `journal-kind-*`. The cases are listed in `e2e/cases.list` and report as skipped in a mode they do not apply to.",
+      "description": "Acceptance 11. The queries `docs/audit.md` gives for the kind, the purge entries and the failed loads work against the real journal and find exactly the expected entries. Cases `journal-kind-*`. The cases are listed in `e2e/targets/debian13/cases.list` (their outcome depends on the TPM or the key kind, not on the distribution: SPEC, end-to-end scope) and report as skipped in a mode they do not apply to.",
       "depends_on": [
         "F120",
         "F121",
@@ -504,7 +504,7 @@
     {
       "id": "F146",
       "title": "Checkpoint: end-to-end cases and documentation",
-      "description": "The full suites pass on the whole milestone: `just check`, the integration tests, the API contract check, the fuzz smoke run, `just e2e` on every target in both TPM modes, and the package gates. Any failure found here is fixed in this feature.",
+      "description": "The full suites pass on the whole milestone: `just check`, the integration tests, the API contract check, the fuzz smoke run, `just e2e` (every target with a TPM, debian13 also without one), and the package gates. Any failure found here is fixed in this feature.",
       "depends_on": [
         "F104",
         "F105",

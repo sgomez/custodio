@@ -87,7 +87,8 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    - The new tests cost what the contract says. Each is NEEDS_WORK: a loop that runs independent
      units (targets, modes, files, cases) one after another, a fixed `sleep` where a condition can
      be waited on, a test at a slower level (e2e, a container, a package) for what a unit test or
-     a script test with a stub would catch.
+     a script test with a stub would catch, an e2e case in `e2e/cases.list` (every target) whose
+     outcome does not depend on the distribution (SPEC, end-to-end scope).
    - The security invariants hold: every signature asks polkit, no `_keep`, key material and
      passwords never reach `Debug`, logs or errors, `unsafe` only in the PKCS#11 FFI layer.
    - New or changed entries in `docs/decisions.md` follow the rules at the top of that file; an

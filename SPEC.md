@@ -227,7 +227,7 @@ Rust, as before. `tss-esapi` and the TPM2 Software Stack it links are new depend
 service's own code adds no `unsafe` (the existing `forbid(unsafe_code)` outside the PKCS#11 FFI
 layer stays). Every harness of M0–M3 stays and keeps blocking the merge with the same thresholds:
 unit and integration tests on a private bus with fake polkit; end-to-end tests on every supported
-target; `cargo-mutants` with no surviving mutant; coverage report and the CRAP gate; `cargo-fuzz`;
+target (scope below); `cargo-mutants` with no surviving mutant; coverage report and the CRAP gate; `cargo-fuzz`;
 Miri and AddressSanitizer on the FFI layer; `rustfmt`, `clippy` with the service's restriction
 lints; `cargo-machete`, `cargo-deny`; `taplo`, `typos`, `shellcheck`, `actionlint`, `zizmor`; the
 systemd exposure score at its current threshold and the unit and bus-policy checks; the package
@@ -239,6 +239,14 @@ and their kinds. One added upgrade test starts from an M3 build and checks the p
 
 M4 adds, all blocking:
 
+- **End-to-end scope.** `just e2e` runs on every supported target with `swtpm`. A case runs on
+  every target only when what it checks depends on the distribution: the package format and its
+  scripts, systemd, polkit and its agent, the bus daemon, journald, or a PKCS#11 consumer the
+  distribution ships (OpenSC, NSS, pkcs11-provider). A case whose outcome depends only on the TPM
+  or the key kind runs on debian13. The run without a TPM is on debian13 only: the TPM mode changes
+  only the kind a key gets on import. The upgrade from the old-path package runs on one target per
+  package format. Self-tests of the test helpers that need no installed system run on the host,
+  not in each container. Each run records the time of each of its steps.
 - **TPM tests against `swtpm`.** Integration and end-to-end tests run the TPM path against
   `swtpm`, not a mock, for both key types and every mechanism; each signature is verified with the
   certificate by an independent implementation. The same suites run with no TPM (host-bound
@@ -290,7 +298,8 @@ M4 adds, all blocking:
 
 ## Acceptance
 
-Automated (integration tests and `just e2e` on every supported target, with `swtpm`):
+Automated (integration tests and `just e2e` with `swtpm`, on the targets the end-to-end scope in
+"Language and harnesses" gives each case):
 
 1. With a TPM, importing an RSA 2048 and a P-256 `.p12` gives kind TPM in the import result, in
    the API's list and in `custodio list`, and the import journal entry names the kind.
@@ -317,7 +326,8 @@ Automated (integration tests and `just e2e` on every supported target, with `swt
 11. The API contract check passes with the kinds and any new error names; `docs/audit.md`
     documents every new field and value, and its queries work.
 12. The unit passes the exposure gate at its current threshold, and every M0–M3 acceptance check
-    that `just e2e` automates still passes, both with a TPM and without one.
+    that `just e2e` automates still passes with a TPM on every supported target, and without one
+    on debian13.
 
 Manual (a person, following written steps the milestone ships in the repository):
 
