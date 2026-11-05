@@ -199,7 +199,7 @@ security-score threshold="10":
         exit 1
     fi
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid and PrivateUsers=yes (each once) and the security-score threshold stays 10, so the
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh

@@ -20,6 +20,12 @@ AmbientCapabilities=
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
+# TPM access, exactly what docs/findings/F109.md decided: the resource manager node only (never /dev/tpm0), brought back
+# through PrivateDevices; the leading '-' keeps the unit startable without a TPM; tss is the group of the node. The
+# credential service (F110) is a Varlink socket under /run, reachable with AF_UNIX: no directive. No TCTI override.
+DeviceAllow=/dev/tpmrm0 rw
+BindPaths=-/dev/tpmrm0
+SupplementaryGroups=tss
 PrivateUsers=yes
 ProtectSystem=strict
 ProtectHome=yes

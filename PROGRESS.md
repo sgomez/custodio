@@ -313,3 +313,9 @@ with an empty context.
 - `KeyEntry` has `kind: Kind`; `write_entry` prints `  kind: <escaped wire>` after `type:` (blocks are five lines). `bus.rs`: `key_entry` maps the `ListKeys` tuple (unit test `a_list_element_keeps_each_field_in_its_place`); `custodio-it` `cli.rs`/`list.rs` follow the new shapes (rig stores `encrypted-host`).
 - Tests: `crates/custodio-cli/tests/storage_kind.rs` (8): `import_tpm`, `import_encrypted_host`, `import_encrypted_tpm`, `weaker_reasons_differ`, `import_unknown_kind`, `failed_import_prints_no_kind`, `list_shows_each_kind` (ids and kinds out of kind order), `list_escapes_kind`.
 - Evidence: `just quick` green; `storage_kind` 8/8; `cargo tree -p custodio-cli -e normal` has no `custodiod`.
+
+### 2026-11-05 — F124 — attempt 1
+- Step 1 note: F110's Decisions need no unit directive for the credential service (Varlink socket under `/run`, `AF_UNIX` already allowed, `/run` readable under `ProtectSystem=strict`); none added. Caveat for F147: the ubuntu2404 path (`systemd-creds --with-key=tpm2`) was run by the service uid under `setpriv`, outside the sandbox, and F110 probed under the unit minus `Type=dbus`/`BusName=`/`After=`/`Requires=`; F147 must still show it works under the unit.
+- `data/custodio.service` gained exactly `DeviceAllow=/dev/tpmrm0 rw`, `BindPaths=-/dev/tpmrm0`, `SupplementaryGroups=tss` plus a comment. Exposure 0.7 SAFE at threshold 10.
+- `scripts/check-unit-hardening.sh` expects `PrivateDevices=yes` and the three directives exactly once; refuses raw-TPM access (tpm0, wildcards, char-misc, 10:224, binding `/dev`) in DeviceAllow/BindPaths/BindReadOnlyPaths, any TCTI mention in Environment*/PassEnvironment (incl. `CUSTODIOD_TEST_SWTPM_TCTI`, quoted), and any `EnvironmentFile=`/`PassEnvironment=`. Cases in `scripts/test-check-unit-hardening.sh` (each failed before the change).
+- Evidence: `just quick` and `just system-gates` green, test script green.
