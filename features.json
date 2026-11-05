@@ -195,7 +195,7 @@
         "F120"
       ],
       "verify": "just quick && cargo test -p custodiod --test purge --locked && just mutants-diff F121",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F122",
