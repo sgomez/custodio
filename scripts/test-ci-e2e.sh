@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# F131: .github/workflows/ci.yml has an e2e job for every target of e2e/targets/ in each of the modes swtpm and none; each runs `just e2e <target>` with E2E_TPM set to
+# F131: .github/workflows/ci.yml has an e2e job for every target of e2e/targets/ with swtpm, and with none for exactly the targets with a tpm-none marker (as
+# `just e2e`); each runs `just e2e <target>` with E2E_TPM set to
 # its mode, cannot pass without the run (no continue-on-error, no `|| true`, no exit 0, no echo-only step), and the `ci` job needs it. Controls: copies of the
-# workflow without the `none` jobs, with a green fallback, or without the `needs` entry are refused.
+# workflow without the `none` job, with `none` on every target, with a green fallback, or without the `needs` entry are refused.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 CI=${CI_WORKFLOW:-$ROOT/.github/workflows/ci.yml}
@@ -57,9 +58,13 @@ for name, job in jobs.items():
             continue
         seen[(target, tpm)] = name
 for t in targets:
-    for m in ("swtpm", "none"):
-        if (t, m) not in seen:
-            print(f"no e2e job for {t} with E2E_TPM={m}")
+    none = os.path.isfile(os.path.join(sys.argv[2], t, "tpm-none"))
+    if (t, "swtpm") not in seen:
+        print(f"no e2e job for {t} with E2E_TPM=swtpm")
+    if none and (t, "none") not in seen:
+        print(f"no e2e job for {t} with E2E_TPM=none (it has a tpm-none marker)")
+    if not none and (t, "none") in seen:
+        print(f"an e2e job runs {t} with E2E_TPM=none, but it has no tpm-none marker")
 for (t, m), name in seen.items():
     if m not in ("swtpm", "none", "lacking"):
         print(f"{name}: {t} runs with E2E_TPM={m!r}")
@@ -91,7 +96,13 @@ w = copy.deepcopy(wf)
 for n, j in w["jobs"].items():
     if n.startswith("e2e"):
         j["strategy"]["matrix"]["tpm"] = ["swtpm"]
+        j["strategy"]["matrix"].pop("include", None)
 save("no-none", w)
+w = copy.deepcopy(wf)
+for n, j in w["jobs"].items():
+    if n.startswith("e2e"):
+        j["strategy"]["matrix"]["tpm"] = ["swtpm", "none"]
+save("none-everywhere", w)
 w = copy.deepcopy(wf)
 for n, j in w["jobs"].items():
     if n.startswith("e2e"):
@@ -113,7 +124,7 @@ for n, j in w["jobs"].items():
         j["env"] = {k: v for k, v in (j.get("env") or {}).items() if k != "E2E_TPM"}
 save("no-variable", w)
 PY
-for c in no-none green echo not-needed no-variable; do
+for c in no-none none-everywhere green echo not-needed no-variable; do
     [ -n "$(problems "$tmp/$c.yml")" ] || bad "control: the workflow variant '$c' was accepted"
 done
 exit "$fail"

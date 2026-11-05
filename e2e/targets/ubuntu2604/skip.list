@@ -1,1 +1,8 @@
-# Cases the e2e suite may skip on ubuntu2604, as `case: reason` (format: e2e/check-cases.sh). Empty: nothing is skipped here.
+# Cases the e2e suite may skip on ubuntu2604, as `case: reason` (format: e2e/check-cases.sh). Only the cases of the upgrade from the old path are skipped here (below).
+# One target per package format runs the upgrade from the old-path package (marker file no-oldpath).
+upgrade-oldpath-version-greater: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)
+upgrade-oldpath-service-new-binary: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)
+upgrade-oldpath-state-unchanged: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)
+upgrade-oldpath-keys-listed: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)
+upgrade-oldpath-signs-with-polkit: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)
+upgrade-oldpath-no-manual-step: the deb upgrade from the old path runs on debian13 (the same package and maintainer scripts)

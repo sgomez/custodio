@@ -61,10 +61,12 @@ exec)
         if [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
         if [ "$mode" = oldpath ]; then
             echo "e2e: installed $(cat "$C.oldpath") from the mounted file"
+            echo "E2E-PHASE oldpath-upgrade 2"
             list=$STUB_ROOT/e2e/cases.list
             [ "$t" != "${STUB_FAIL_OLDPATH:-}" ] || { echo "e2e: FAIL: stubbed (oldpath)"; exit 1; }
         else
             echo "e2e: installed $(cat "$C.pkg") from the mounted file"
+            echo "E2E-PHASE install 3"
             # the main run reports the common cases and the target's own
             list=$C.main
             : > "$list"

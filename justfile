@@ -165,6 +165,7 @@ test-scripts:
     scripts/test-e2e-ops.sh
     scripts/test-e2e-rd.sh
     scripts/test-e2e-jo.sh
+    scripts/test-e2e-journal.sh
     scripts/test-e2e-appid.sh
     scripts/test-e2e-cli.sh
     scripts/test-e2e-select-host.sh

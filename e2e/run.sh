@@ -4,9 +4,10 @@
 # checks the case accounting (check-cases.sh) and saves the record of the run (bus daemon, polkit version) under target/e2e/.
 # The packages (N, N+1 for the upgrade case and the old-path fixture) are built by the `e2e` recipe, not here.
 # A target with a refusal-only marker (F50, ubuntu2404) runs only its own cases (e2e/refusal.sh): it needs no package N+1 and no old-path package.
-# A failed target does not stop the others.
+# A failed target does not stop the others. The guest's E2E-PHASE lines (phase, seconds) go to target/e2e/phases.tsv.
 # F131: E2E_TPM (swtpm, the default, also when unset; none; lacking) says what TPM the service sees. Any other value, an empty one included, is refused before anything starts.
-#       `all` with E2E_TPM unset runs every target twice, with swtpm and with none (never lacking); with E2E_TPM set, with that one mode. The mode is passed to the guest
+#       `all` with E2E_TPM unset runs every target with swtpm, and with none too on a target with a tpm-none marker (debian13; never lacking): no suite reads
+#       the mode, which changes only the kind a key gets on import. With E2E_TPM set, every target runs in that one mode. The mode is passed to the guest
 #       (-e E2E_TPM), is part of the names of the record and the log (target/e2e/<target>.<mode>.record, .log) and is the record's tpm= line, which the guest must report as asked.
 # Needs podman or docker able to run a privileged container (systemd needs cgroups and /run).
 # Usage: run.sh [TARGET]            all the cases of the target (or of every target)
@@ -23,9 +24,9 @@ packages_oldpath=${E2E_PACKAGES_OLDPATH:-target/packages-oldpath} # the old-path
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
 # F131: the TPM modes of the run; checked before anything else is looked at or started
-tpm_modes=''
+tpm_modes='' none_by_marker=''
 if [ -z "${E2E_TPM+set}" ]; then
-    if [ "$want" = all ] && [ "${2:-}" != --cases ]; then tpm_modes='swtpm none'; else tpm_modes=swtpm; fi
+    if [ "$want" = all ] && [ "${2:-}" != --cases ]; then tpm_modes='swtpm none' none_by_marker=1; else tpm_modes=swtpm; fi
 else
     case $E2E_TPM in
     swtpm | none | lacking) tpm_modes=$E2E_TPM ;;
@@ -63,6 +64,13 @@ else
     exit 1
 fi
 [ -n "$list" ] || { echo "e2e: no target directory under $targets_dir" >&2; exit 1; }
+pairs=() # "TARGET MODE", in the order of the modes and targets
+for m in $tpm_modes; do
+    for t in $list; do
+        [ "$m" != none ] || [ -z "$none_by_marker" ] || [ -f "$targets_dir/$t/tpm-none" ] || continue
+        pairs+=("$t $m")
+    done
+done
 
 # F63: the selected cases, in the order of the lists, before anything is started
 select_cases() { # select_cases TARGET: sets selection (ids, one per line); refuses a name or glob that matches no case the target owes
@@ -136,7 +144,7 @@ run_target() { # run_target TARGET MODE
     [ "$(realpath "$found")" != "$(realpath "$found_next")" ] || { echo "e2e[$t]: N and N+1 are the same file" >&2; return 1; }
     bash e2e/check-next.sh "$found" "$found_next" || return 1
     if [ ! -f "$dir/no-oldpath" ]; then
-        # F61: the upgrade from the package with the daemon at the old path, on every target that has one (a no-oldpath marker says why not: Arch)
+        # F61: the upgrade from the package with the daemon at the old path; a no-oldpath marker says why not (Arch has none; one target per format runs it)
         found_oldpath=$(find "$packages_oldpath" -name "$pattern" 2> /dev/null | sort | tail -n 1)
         [ -n "$found_oldpath" ] || { echo "e2e[$t]: no old-path package '$pattern' in $packages_oldpath (the e2e recipe builds it with scripts/package-oldpath.sh)" >&2; return 1; }
         for f in "$found" "$found_next"; do
@@ -192,6 +200,7 @@ run_target() { # run_target TARGET MODE
         value=$(sed -n "s/^$key=//p" "$out_dir/$t.$tpm.record" | head -n 1)
         [ -n "$value" ] || { echo "e2e[$t]: the guest's probe reported no $key" >&2; return 1; }
     done
+    sed -n "s/^E2E-PHASE \([^ ]*\) \([0-9]*\)\$/$t\t$tpm\t\1\t\2/p" "$log" > "$work/$t.$tpm.phases"
     value=$(sed -n 's/^tpm=//p' "$out_dir/$t.$tpm.record" | head -n 1)
     [ "$value" = "$tpm" ] || { echo "e2e[$t]: the guest reported tpm=$value, expected $tpm" >&2; return 1; }
     while IFS= read -r line; do echo "e2e[$t]: record: $line"; done < "$out_dir/$t.$tpm.record"
@@ -206,7 +215,7 @@ jobs=${E2E_JOBS-$(( half > 0 ? half : 1 ))}
 (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )) || { echo "e2e: needs bash 5.1 or later (wait -p)" >&2; exit 1; }
 work=$out_dir/runs
 rm -rf "$work" && mkdir -p "$work"
-containers() { for m in $tpm_modes; do for t in $list; do echo "custodio-e2e-$t-$m-$$"; done; done; }
+containers() { local p; for p in "${pairs[@]}"; do echo "custodio-e2e-${p% *}-${p#* }-$$"; done; }
 cleanup() {
     local c pids
     mapfile -t pids < <(jobs -p)
@@ -232,27 +241,29 @@ reap() {
     IFS=$'\t' read -r _ _ secs result < "$work/${file_of[$pid]}.time"
     echo "e2e: ended ${pair_of[$pid]} in ${secs}s: $result"
 }
-for m in $tpm_modes; do # a failing run does not stop the others
-    for t in $list; do
-        (( running < jobs )) || reap
-        run_pair "$t" "$m" &
-        pair_of[$!]="$t ($m)" file_of[$!]="$t.$m"
-        running=$((running + 1))
-    done
+for p in "${pairs[@]}"; do # a failing run does not stop the others
+    t=${p% *} m=${p#* }
+    (( running < jobs )) || reap
+    run_pair "$t" "$m" &
+    pair_of[$!]="$t ($m)" file_of[$!]="$t.$m"
+    running=$((running + 1))
 done
 while (( running > 0 )); do reap; done
 failed=''
 printf 'target\tmode\tseconds\tresult\n' > "$out_dir/timings.tsv"
-for m in $tpm_modes; do
-    for t in $list; do
-        cat "$work/$t.$m.out"
-        cat "$work/$t.$m.time" >> "$out_dir/timings.tsv"
-        grep -q 'passed$' "$work/$t.$m.time" || failed="$failed $t ($m)"
-    done
+printf 'target\tmode\tphase\tseconds\n' > "$out_dir/phases.tsv"
+for p in "${pairs[@]}"; do
+    t=${p% *} m=${p#* }
+    cat "$work/$t.$m.out"
+    cat "$work/$t.$m.time" >> "$out_dir/timings.tsv"
+    [ ! -f "$work/$t.$m.phases" ] || cat "$work/$t.$m.phases" >> "$out_dir/phases.tsv"
+    grep -q 'passed$' "$work/$t.$m.time" || failed="$failed $t ($m)"
 done
 echo "e2e: wall time $((SECONDS - wall))s for $(($(wc -l < "$out_dir/timings.tsv") - 1)) runs, $jobs at once (times in $out_dir/timings.tsv)"
 if [ -n "$failed" ]; then
     echo "e2e: failed targets:$failed" >&2
     exit 1
 fi
-echo "e2e: passed: $list (tpm: $tpm_modes)"
+passed=''
+for p in "${pairs[@]}"; do passed+=" ${p% *} (${p#* })"; done
+echo "e2e: passed:$passed"

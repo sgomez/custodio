@@ -56,21 +56,30 @@ grep -q 'tpm-filter' "$tmp/out" || bad "lacking without the program: the filter 
 E2E_ENGINE="$tmp/bin/podman" expect_ok "E2E_ENGINE" debian13 || true
 grep -q '^build ' "$tmp/log" || bad "E2E_ENGINE: the named engine was not used"
 if E2E_ENGINE="$tmp/no-such-engine" STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" debian13 > "$tmp/out" 2>&1; then bad "E2E_ENGINE with no program passed"; fi
-# `all` with E2E_TPM unset: every target twice, swtpm and none, never lacking; both records and logs, none overwritten
+# `all` with E2E_TPM unset: every target with swtpm, and with none too only where a tpm-none marker is (debian13), never lacking; both records and logs
 run_all_real() { : > "$tmp/log"; rm -rf "$tmp/o"; STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" "$@" > "$tmp/out" 2>&1; }
-run_all_real all || bad "all (two modes): failed: $(tail -n 5 "$tmp/out")"
+[ "$(cd "$ROOT/e2e/targets" && echo */tpm-none)" = debian13/tpm-none ] || bad "the tpm-none marker is not on debian13 alone: $(cd "$ROOT/e2e/targets" && echo */tpm-none)"
+run_all_real all || bad "all: failed: $(tail -n 5 "$tmp/out")"
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
-    [ "$(grep -c "guest.sh $T\$" "$tmp/log")" -eq 2 ] || bad "all: $T guest was not run exactly twice: $(grep -c "guest.sh $T" "$tmp/log")"
-    grep -q -- "-e E2E_TPM=swtpm.* bash /e2e/guest.sh $T\$" "$tmp/log" || bad "all: $T did not run with swtpm"
-    grep -q -- "-e E2E_TPM=none.* bash /e2e/guest.sh $T\$" "$tmp/log" || bad "all: $T did not run with none"
+    modes=swtpm; [ ! -f "$ROOT/e2e/targets/$T/tpm-none" ] || modes='swtpm none'
+    n=$(wc -w <<< "$modes")
+    [ "$(grep -c "guest.sh $T\$" "$tmp/log")" -eq "$n" ] || bad "all: $T guest was not run $n times: $(grep -c "guest.sh $T" "$tmp/log")"
     for m in swtpm none; do
-        grep -qx "tpm=$m" "$tmp/o/$T.$m.record" || bad "all: the record of $T for $m lacks tpm=$m"
-        [ -s "$tmp/o/$T.$m.log" ] || bad "all: no log of $T for $m"
+        if [[ " $modes " = *" $m "* ]]; then
+            grep -q -- "-e E2E_TPM=$m.* bash /e2e/guest.sh $T\$" "$tmp/log" || bad "all: $T did not run with $m"
+            grep -qx "tpm=$m" "$tmp/o/$T.$m.record" || bad "all: the record of $T for $m lacks tpm=$m"
+            [ -s "$tmp/o/$T.$m.log" ] || bad "all: no log of $T for $m"
+        else
+            grep -q -- "-e E2E_TPM=$m.* bash /e2e/guest.sh $T\$" "$tmp/log" && bad "all: $T ran with $m without a tpm-none marker"
+            [ ! -e "$tmp/o/$T.$m.record" ] || bad "all: a record of $T for $m without a tpm-none marker"
+        fi
     done
 done
 grep -q 'E2E_TPM=lacking' "$tmp/log" && bad "all ran the lacking mode"
-# a set variable narrows `all` to that one mode
+grep -q "^e2e: passed:.* debian13 (none)" "$tmp/out" || bad "all: the passed line does not name debian13 (none): $(tail -n 1 "$tmp/out")"
+# a set variable runs every target in that mode, marker or not
 E2E_TPM=none run_all_real all || bad "all with E2E_TPM=none failed"
+for T in $(cd "$ROOT/e2e/targets" && echo *); do grep -q -- "-e E2E_TPM=none.* bash /e2e/guest.sh $T\$" "$tmp/log" || bad "all with E2E_TPM=none: $T did not run"; done
 grep -q 'E2E_TPM=swtpm' "$tmp/log" && bad "all with E2E_TPM=none ran swtpm"
 [ ! -e "$tmp/o/debian13.swtpm.record" ] || bad "all with E2E_TPM=none made a swtpm record"
 # a failing mode does not stop the other one, and the exit is non-zero; the mode is named

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # F61: the host script e2e/run.sh with the stub `podman` of scripts/lib/e2e-host-fixtures.sh: the upgrade from the old-path fixture runs in its own fresh
-# container on every target that has an old-path package, with its own case ids; Arch (no-oldpath marker) skips them; the host refuses a missing, equal or copied package.
+# container on one target per package format (debian13, alma10), with its own case ids; the others (no-oldpath marker) skip them; the host refuses a missing, equal or copied package.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TEST_NAME=test-e2e-host-oldpath
@@ -20,11 +20,15 @@ for id in $oldpath_ids; do
     STUB_OMIT=$id expect_fail "omitted $id on arch" arch || true
     grep -q "'$id' was not reported" "$tmp/out" || bad "an omitted $id on arch was not named: $(tail -n 3 "$tmp/out")"
 done
+# one target per package format with an old path runs the upgrade from it: debian13 (deb) and alma10 (rpm); the others carry the marker and skip its cases
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     case $T in
-    arch) [ -f "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "arch has no no-oldpath marker" ;;
+    arch | fedora44 | ubuntu2604)
+        [ -s "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "$T has no no-oldpath marker with a reason"
+        for id in $oldpath_ids; do grep -q "^$id:" "$ROOT/e2e/targets/$T/skip.list" || bad "the $T skip list lacks $id"; done ;;
     ubuntu2404) [ -f "$ROOT/e2e/targets/$T/refusal-only" ] || bad "ubuntu2404 is not refusal-only" ;;
-    *) [ ! -e "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "$T has a no-oldpath marker, so it would skip the upgrade from the old path" ;;
+    debian13 | alma10) [ ! -e "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "$T has a no-oldpath marker, so no target of its format runs the upgrade from the old path" ;;
+    *) bad "unknown target $T: say whether it runs the upgrade from the old path" ;;
     esac
 done
 expect_ok "oldpath ids on debian13" debian13 || true

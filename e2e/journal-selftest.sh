@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Self-test of journal.py with synthetic journal streams: every check must pass on a clean stream and
-# fail on each planted defect. Needs only bash and python3; runs locally and first in guest.sh.
+# fail on each planted defect. Needs only bash and python3; runs on the host (scripts/test-e2e-journal.sh).
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 t=$(mktemp -d)

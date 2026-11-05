@@ -3,7 +3,8 @@
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
 # (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
 # Usage: guest.sh TARGET [oldpath]. With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
-# it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path) skips them in the main run.
+# it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path; one target per package format runs it) skips them
+# in the main run. Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
 # With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
 # needs is not run (select.sh); the setup (install, service, user, import) always is.
 set -euo pipefail
@@ -11,6 +12,13 @@ mode=${2:-main}
 case $mode in main | old | oldpath) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
+phase_t=$SECONDS
+phase_done() { # phase_done NAME: the step that ends here, named after the run (oldpath-NAME in the old-path run)
+    local name=$1
+    [ "$mode" = main ] || name=$mode-$1
+    echo "E2E-PHASE $name $((SECONDS - phase_t))"
+    phase_t=$SECONDS
+}
 # shellcheck source=e2e/select.sh
 source /e2e/select.sh
 if [ -n "${E2E_SELECT:-}" ]; then
@@ -31,6 +39,7 @@ if [ -f /e2e-target/refusal-only ]; then
     if phase_runs refusal; then
         bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
         bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
+        phase_done refusal
     fi
     probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
     while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
@@ -39,8 +48,6 @@ if [ -f /e2e-target/refusal-only ]; then
     exit 0
 fi
 
-# The checks of the journal checker come first; a broken checker would make the later checks worthless.
-bash /e2e/journal-selftest.sh || fail "the journal self-test failed"
 start=$(date +%s) # journal checks only look at entries since here
 case $mode in oldpath) from_dir=/pkg-oldpath ;; *) from_dir=/pkg ;; esac
 pkg=$(find "$from_dir" -type f | head -n 1)
@@ -49,6 +56,7 @@ pkg_next=$(find /pkg-next -type f | head -n 1)
 [ -n "$pkg_next" ] || fail "no package N+1 is mounted in /pkg-next"
 bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
 echo "e2e: installed $(basename "$pkg") from the mounted file"
+phase_done install
 # F131: the installed unit has no test drop-in; the TPM of the run (E2E_TPM) is set up after this check and undone before the next one (tpm-lib.sh)
 # shellcheck source=e2e/tpm-lib.sh
 source /e2e/tpm-lib.sh
@@ -72,6 +80,7 @@ systemctl start polkit
 systemctl start custodio || { journalctl -u custodio --no-pager | tail -n 30 >&2; fail "custodio.service did not start"; }
 systemctl is-active --quiet custodio || fail "custodio.service is not active"
 [ "$(systemctl show -p User --value custodio)" = custodio ] || fail "the service does not run as user custodio"
+phase_done service
 
 id alice >/dev/null 2>&1 || useradd -m -s /bin/bash alice
 work=$(mktemp -d /tmp/e2e.XXXXXX)
@@ -97,10 +106,12 @@ chmod 644 "$work"/*
 # Import as the user. Import asks polkit, so import-user.sh starts the test agent and approves in the same login session.
 su -l alice -c "WORK=$work bash /e2e/import-user.sh" || fail "import-user.sh failed"
 rm -f "$work"/*.key "$work"/*.p12
+phase_done import
 
 if [ "$mode" = oldpath ]; then
     WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
     systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old-path package"
+    phase_done upgrade
     echo "e2e: all checks passed (upgrade from the old-path package)"
     exit 0
 fi
@@ -110,6 +121,7 @@ fi
 if phase_runs user; then
     su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
 fi
+phase_done user
 
 # Polkit unavailable: stopped and masked, so that D-Bus activation cannot start it either. The trap only
 # restores it if the explicit restore below was not reached.
@@ -124,9 +136,11 @@ if phase_runs unavailable; then
     restore_polkit || fail "polkit could not be restored"
     systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
 fi
+phase_done unavailable
 if phase_runs journal; then
     WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
 fi
+phase_done journal
 
 # The ownership cases (F91): two ordinary accounts, each with a session and an agent of its own. After the journal step, whose counts they would
 # change (they sign, import and delete), and before the upgrade, whose cases and the lifecycle's look at the state of the keys or at windows of
@@ -134,6 +148,7 @@ fi
 if phase_runs owner; then
     WORK=$work MODULE=$MODULE START=$start bash /e2e/owner-run.sh || fail "owner-run.sh failed"
 fi
+phase_done owner
 
 # The polkit cases of import, delete and replace certificate (F92): alice, her own session and agent, polkit answering, refusing and stopped. After owner,
 # and before the upgrade, for the same reasons; polkit is stopped for a while and restored (the trap below covers every path); every key it makes it deletes.
@@ -141,21 +156,25 @@ if phase_runs ops-polkit; then
     polkit_trap=1
     WORK=$work MODULE=$MODULE bash /e2e/ops-run.sh || fail "ops-run.sh failed"
 fi
+phase_done ops-polkit
 
 # The replace-certificate and delete cases (F93): alice, her own session and agent approving, the CLI, the service and the PKCS#11 module. Each group makes keys of its
 # own and deletes them, so the state after is the one before; after ops-polkit and before the upgrade, for the same reasons.
 if phase_runs replace; then
     WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh replace || fail "rd-run.sh replace failed"
 fi
+phase_done replace
 if phase_runs delete; then
     WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh delete || fail "rd-run.sh delete failed"
 fi
+phase_done delete
 
 # The journal cases of every operation (F94): alice signs, imports, deletes and replaces with known outcomes, root reads the journal of the service between two
 # marker entries. After delete and before the upgrade, for the same reasons; every key is deleted at the end, so the state and the counts are as before.
 if phase_runs journal-ops; then
     WORK=$work MODULE=$MODULE bash /e2e/jo-run.sh || fail "jo-run.sh failed"
 fi
+phase_done journal-ops
 
 # The app-id cases (F95): alice calls from processes in scopes of her user manager (named as flatpak names them, and hostile ones) and root judges the entries
 # of the journal and that nothing of the hostile names is in it. After journal-ops and before the upgrade, for the same reasons; it makes children of her
@@ -163,6 +182,7 @@ fi
 if phase_runs appid; then
     WORK=$work MODULE=$MODULE bash /e2e/appid-run.sh || fail "appid-run.sh failed"
 fi
+phase_done appid
 
 # The CLI cases (F97): alice lists and deletes with the CLI on a pseudo-terminal, a fresh account (carol) imports and deletes through pkttyagent with no agent registered,
 # PAM checking her password for a while. After appid and before the upgrade, for the same reasons; every key is deleted by its owner, the PAM file is restored and
@@ -170,12 +190,14 @@ fi
 if phase_runs cli; then
     WORK=$work MODULE=$MODULE bash /e2e/cli-run.sh || fail "cli-run.sh failed"
 fi
+phase_done cli
 
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then
     WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 fi
+phase_done upgrade
 
 # A target without an old path (Arch) skips the cases of the upgrade from it, with the reason its marker holds.
 if [ -f /e2e-target/no-oldpath ]; then
@@ -189,6 +211,7 @@ fi
 if phase_runs lifecycle; then
     WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
 fi
+phase_done lifecycle
 
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"
@@ -198,6 +221,7 @@ tpm_teardown || fail "the TPM setup could not be undone"
 unit_problems=$(tpm_unit_problems)
 [ -z "$unit_problems" ] || fail "the installed unit has a test drop-in after the run: $unit_problems"
 case_run tpm-installed-unit-clean
+phase_done teardown
 probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
 while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
 echo "E2E-RECORD tpm=$tpm_mode"

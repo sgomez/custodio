@@ -261,7 +261,8 @@ jobs:
         env:
           PACKAGE_LINT_FORCE_CONTAINER: "1"
 
-  # The end-to-end tests: every target in a privileged systemd container, with a software TPM (swtpm) and without one (none). A runner that cannot run such a
+  # The end-to-end tests: every target in a privileged systemd container with a software TPM (swtpm), and without one (none) on the targets with a
+  # tpm-none marker (debian13), as in `just e2e`. A runner that cannot run such a
   # container fails the job (docker run --privileged is the first thing `just e2e` does): nothing here turns that into a pass.
   e2e:
     name: e2e ${{ matrix.target }} ${{ matrix.tpm }}
@@ -272,7 +273,10 @@ jobs:
       fail-fast: false
       matrix:
         target: [debian13, ubuntu2604, ubuntu2404, fedora44, alma10, arch]
-        tpm: [swtpm, none]
+        tpm: [swtpm]
+        include:
+          - target: debian13
+            tpm: none
     env:
       # Debuginfo only slows compiling and linking here.
       CARGO_PROFILE_DEV_DEBUG: 0
