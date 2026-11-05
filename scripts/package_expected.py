@@ -52,12 +52,36 @@ OVERRIDE_KEYS = {"depends", "provides", "conflicts", "replaces", "recommends", "
 # Formats: label used in messages, nfpm name, package glob.
 FORMATS = (("deb", "deb", "*.deb"), ("rpm", "rpm", "*.rpm"), ("arch", "archlinux", "*.pkg.tar.zst"))
 
+# TPM2 Software Stack (F125). Package names confirmed in the dev container (debian13: dpkg -S, apt-cache depends) and on packages.ubuntu.com
+# (noble and resolute carry the same t64 names). The rpm and Arch packages are inferred: `tpm2-tss` owns every libtss2-*.so.0 there (F109
+# found it owns the udev rules and brings the `tss` group on fedora44, alma10 and arch).
+# The package that creates the `tss` group (F109); the unit's SupplementaryGroups=tss needs it, or the unit does not start.
+TSS_GROUP = {"deb": "tpm-udev", "rpm": "tpm2-tss", "arch": "tpm2-tss"}
+# libtss2-tcti-device is loaded by dlopen (libtss2-tctildr), so no NEEDED entry names it: the deb declares it besides the three linked
+# libraries (libtss2-tctildr0t64 depends on it and on tpm-udev too, checked with apt-cache depends on debian13 and packages.ubuntu.com
+# noble); the rpm and Arch packages ship it inside tpm2-tss.
+TSS_DLOPEN = {"deb": ["libtss2-tcti-device0t64"], "rpm": [], "arch": []}
+# The systemd bound per format (docs/findings/F110.md): the .deb serves ubuntu2404 (systemd 255, plain systemd-creds CLI) and debian13, so 255
+# is its floor; the rpm (fedora44 259, alma10 257) and Arch (262) use the user-scoped Varlink calls that exist from 257. The deb carries it in
+# Pre-Depends (PRE_DEPS), the others in their dependency list.
+TSS_NEEDED = {  # soname -> package (deb, rpm, arch); check-tss-deps.sh reads these
+    "libtss2-esys.so.0": ("libtss2-esys-3.0.2-0t64", "tpm2-tss", "tpm2-tss"),
+    "libtss2-tctildr.so.0": ("libtss2-tctildr0t64", "tpm2-tss", "tpm2-tss"),
+    "libtss2-mu.so.0": ("libtss2-mu-4.0.1-0t64", "tpm2-tss", "tpm2-tss"),
+}
+# What each format declares for the stack: the packages of the linked sonames (once each), the dlopen ones and the one that creates `tss`.
+TSS_LIBS = {
+    label: list(dict.fromkeys([names[i] for names in TSS_NEEDED.values()] + TSS_DLOPEN[label] + [TSS_GROUP[label]]))
+    for i, label in enumerate(("deb", "rpm", "arch"))
+}
+SYSTEMD = {"deb": "systemd (>= 255)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
+
 # Dependencies every package must declare, exactly as the format writes them (whitespace normalised). libc and libgcc are
 # listed because the Rust binaries always link them; nfpm does not compute shared-library dependencies.
 DEPS = {
-    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit"],
-    "rpm": ["glibc", "libgcc", "polkit >= 124", "systemd", "dbus", "p11-kit", "util-linux"],
-    "arch": ["glibc", "gcc-libs", "polkit>=124", "systemd", "dbus", "p11-kit", "util-linux"],
+    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit", *TSS_LIBS["deb"]],
+    "rpm": ["glibc", "libgcc", "polkit >= 124", SYSTEMD["rpm"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["rpm"]],
+    "arch": ["glibc", "gcc-libs", "polkit>=124", SYSTEMD["arch"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["arch"]],
 }
 # The CLI runs `setpriv --pdeathsig=KILL -- pkttyagent ...` (F89). setpriv comes from util-linux and pkttyagent from the polkit package
 # the lists above already carry (polkitd on Debian, polkit on Fedora/Alma/Arch), so only rpm and arch add util-linux. The deb leaves it
@@ -65,7 +89,7 @@ DEPS = {
 # finding (see FORBIDDEN_DEPS). Probes (F90): `dnf provides /usr/bin/setpriv` is util-linux on alma10 and fedora44, `pacman -F` util-linux.
 # The deb's Pre-Depends field, entry by entry, exactly as dpkg-deb -f writes it. systemd is here and not in Depends because the preinst runs
 # systemd-sysusers and dpkg guarantees Depends only for the postinst (docs/decisions.md, F43). Only the deb has the field.
-PRE_DEPS = {"deb": ["systemd"]}
+PRE_DEPS = {"deb": [SYSTEMD["deb"]]}
 # Names that must not appear as a dependency: the unversioned polkit of the old package, the M1 bare dbus, the wrong polkit.
 FORBIDDEN_DEPS = {"deb": {"polkit", "dbus", "util-linux"}, "rpm": {"polkitd"}, "arch": {"polkitd"}}
 
@@ -77,6 +101,7 @@ NEEDED = {
     "libpthread.so.0": ("libc6", "glibc", "glibc"),
     "librt.so.1": ("libc6", "glibc", "glibc"),
     "libgcc_s.so.1": ("libgcc-s1", "libgcc", "gcc-libs"),
+    **TSS_NEEDED,
 }
 # The dynamic loader (PT_INTERP) is shipped by the glibc package that libc.so.6 already requires.
 NEEDED_EXEMPT = {"ld-linux-x86-64.so.2"}

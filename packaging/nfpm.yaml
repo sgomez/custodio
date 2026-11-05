@@ -20,10 +20,11 @@ description: |
   so that PKCS#11 applications can sign without ever holding the key.
 rpm:
   group: System Environment/Daemons
+# The bound 255 is ubuntu2404's systemd (docs/findings/F110.md: it uses only the plain systemd-creds CLI); debian13 has 257.
 # systemd is a Pre-Depends, not a Depends: preinst runs systemd-sysusers, and dpkg guarantees Depends only for postinst (docs/decisions.md).
 deb:
   predepends:
-    - systemd
+    - systemd (>= 255)
 
 contents:
   # The service binary where each distribution wants it (F61, docs/decisions.md): /usr/libexec in the .deb and the .rpm, /usr/lib in the Arch
@@ -131,6 +132,13 @@ overrides:
       - polkitd (>= 124)
       - dbus-system-bus
       - p11-kit
+      # TPM2 Software Stack (F125): the three linked libraries, the TCTI that libtss2-tctildr loads by dlopen, and tpm-udev, which creates
+      # the `tss` group the unit names (SupplementaryGroups=tss). The same t64 names on debian13, ubuntu2404 and ubuntu2604.
+      - libtss2-esys-3.0.2-0t64
+      - libtss2-tctildr0t64
+      - libtss2-mu-4.0.1-0t64
+      - libtss2-tcti-device0t64
+      - tpm-udev
       # No util-linux (setpriv, F89) here: it is Essential on Debian and Ubuntu, and a dependency on an Essential package is a lintian
       # finding. pkttyagent comes with polkitd above.
     scripts:
@@ -143,9 +151,10 @@ overrides:
       - glibc
       - libgcc
       - polkit >= 124
-      - systemd
+      - systemd >= 257 # user-scoped systemd-creds Varlink calls (F110: alma10 257, fedora44 259)
       - dbus
       - p11-kit
+      - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
       preinstall: packaging/rpm/pre
@@ -157,9 +166,10 @@ overrides:
       - glibc
       - gcc-libs
       - polkit>=124
-      - systemd
+      - systemd>=257 # user-scoped systemd-creds Varlink calls (F110: arch decided as ubuntu2604)
       - dbus
       - p11-kit
+      - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
       preinstall: packaging/arch/pre_install

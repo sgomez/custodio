@@ -111,6 +111,16 @@ check() {
     done < <(grep -o '/var/lib/[a-z/]*custodio' packaging/deb/postrm | sort -u)
     fenced "$doc" '^#+ .*(Remov|Purg)' | grep -q '/var/lib/private/custodio' || bad "no fenced command that names the state directory"
 
+    # TPM2 Software Stack (F125): each format's line holds the names the table and packaging/nfpm.yaml declare, no more and no fewer.
+    text=$(section "$doc" '^#+ .*TPM2 Software Stack')
+    [ -n "$text" ] || bad "no TPM2 Software Stack section"
+    local fmt want got bt=\`
+    for fmt in deb rpm arch; do
+        want=$(python3 -I scripts/lib/tss_names.py "$fmt" packaging/nfpm.yaml) || { bad "cannot derive the $fmt TPM2 names"; continue; }
+        got=$(printf '%s\n' "$text" | grep -E "^- $fmt: " | grep -o "${bt}[^${bt}]*${bt}" | tr -d "$bt" | sort || true)
+        [ "$got" = "$want" ] || bad "the $fmt line of the TPM2 Software Stack section is [${got//$'\n'/ }], the packaging declares [${want//$'\n'/ }]"
+    done
+
     # Upgrade.
     text=$(section "$doc" '^#+ .*Upgrad')
     [ -n "$text" ] || bad "no upgrade section"
@@ -169,6 +179,11 @@ control 'wrong tool for Arch' 's/pacman -U/pacman -S/g'
 control 'wrong tool for Fedora' 's/dnf install/yum remove/g'
 control 'no apt-get -f install' 's/apt-get -f install/apt-get update/g'
 control 'rpm-ostree layering missing' 's/rpm-ostree install/rpm-ostree status/g'
+control 'TPM2 deb name changed' 's/libtss2-mu-4\.0\.1-0t64/libtss2-mu0/'
+control 'TPM2 rpm package changed' 's/^- rpm: \x60tpm2-tss\x60/- rpm: \x60tpm2-tss-libs\x60/'
+control 'TPM2 arch bound changed' 's/systemd>=257/systemd>=255/'
+control 'TPM2 deb group package dropped' 's/, \x60tpm-udev\x60//'
+drop_section 'TPM2 section removed' '^#+ .*TPM2 Software Stack'
 drop_section 'ProcessFD section removed' '^#+ .*ProcessFD'
 control 'no reboot' 's/reboot/restart/g'
 control 'bus-check answer lacking' 's/could not be queried/failed/g'

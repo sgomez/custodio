@@ -79,6 +79,20 @@ bus check prints a notice and does not refuse. The service checks again every ti
 that the keys stay on disk and does not stop the service; reboot after it. The keys stay, as described in
 [Removing and purging](#removing-and-purging).
 
+## TPM2 Software Stack
+
+Custodio links the TPM2 Software Stack (`libtss2-esys`, `libtss2-tctildr`, `libtss2-mu`) and loads the
+device TCTI (`libtss2-tcti-device`) at run time to reach `/dev/tpmrm0`. The package declares these
+dependencies, so your package manager installs them; nothing else is needed. The `tss` group, which the
+service unit names so that the service may open the TPM, comes from the TPM package of the family
+(`tpm-udev` on Debian and Ubuntu, `tpm2-tss` on Fedora, RHEL/Alma and Arch). The `systemd` bound is what
+`systemd-creds` needs on the oldest system that shares the package (Ubuntu 24.04 has 255; the `.rpm` and
+Arch package need the user-scoped calls of 257).
+
+- deb: `libtss2-esys-3.0.2-0t64`, `libtss2-tctildr0t64`, `libtss2-mu-4.0.1-0t64`, `libtss2-tcti-device0t64`, `tpm-udev`, `systemd (>= 255)`
+- rpm: `tpm2-tss`, `systemd >= 257`
+- arch: `tpm2-tss`, `systemd>=257`
+
 ## Firefox
 
 Firefox finds the module by itself only where the system NSS loads p11-kit's proxy. Fedora and RHEL/Alma

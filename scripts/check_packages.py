@@ -13,7 +13,9 @@ import sys
 import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import package_expected as expected  # noqa: E402
+import package_table  # noqa: E402
+
+expected = package_table.load()
 
 pkg_dir, config_path, extract_dir = sys.argv[1:4]
 problems = []
