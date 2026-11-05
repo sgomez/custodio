@@ -70,3 +70,4 @@ Rules:
 - [M01-acceptance](findings/M01-acceptance.md) — M0/M1 manual run (ubuntu2604): rFirma passes with its own fixes; Firefox snap cannot load the module; Mozilla .deb needs manual registration.
 - [acceptance-6-fingerprint](findings/acceptance-6-fingerprint.md) — acceptance 6 with libfprint's virtual device (ubuntu2604): pass; each signature asks for the finger again, unmatched falls back to password.
 - [F131](findings/F131.md) — e2e TPM: the F108 route works in the final harness on every target (swtpm and none; lacking on debian13); the unit is checked in a transient unit built from its own properties.
+- [F134](findings/F134.md) — sign-* e2e: pkcs11-tool cannot do PSS with this module (no public key object), so `e2e/p11-pss.py` calls it; salts 0/hash/max sign, max+1 and a 246-byte RSA-PKCS payload give CKR_DATA_INVALID; `lacking` (RSAPSS removed) leaves both keys `tpm`
