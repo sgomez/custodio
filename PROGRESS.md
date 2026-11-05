@@ -404,3 +404,8 @@ with an empty context.
   ubuntu2404, ubuntu2604 in both modes (swtpm runs not yet repeated after the namcap-list change, which touches no e2e file).
 - (session 6) Final rerun also passed: fedora44 swtpm, fedora44 none, ubuntu2404 swtpm, ubuntu2404 none. Left: ubuntu2604
   swtpm and none (the 2604 none run passed earlier this session on d54a614).
+- (session 6, end) Final rerun complete from a cleared target/e2e/: twelve records, `tpm=swtpm` x6 and `tpm=none` x6, every
+  `just e2e <target>` exit 0 (alma10, arch, debian13, fedora44, ubuntu2404, ubuntu2604 in both modes). All contract steps
+  ticked. Diff base for the "no gate weakened" check: `d54a614`; the only change since is `packaging/lint/namcap.txt`
+  (five tpm2-tss information entries, each with a reason). No root-only skips were checked here (`just check` ran in
+  earlier sessions). The loop runs the whole `verify`.
