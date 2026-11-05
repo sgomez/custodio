@@ -173,6 +173,8 @@ test-scripts:
     scripts/test-e2e-host-oldpath.sh
     scripts/test-ci-e2e.sh
     scripts/test-e2e-tpm-host.sh
+    scripts/test-e2e-jobs-host.sh
+    scripts/test-check-budgets.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
@@ -465,7 +467,7 @@ status:
 log:
     harness/log.sh
 
-# Milestone lifecycle: list, open, close, approve spec|features, pass <manual feature id>.
+# Milestone lifecycle: list, open, close, approve spec|features|budgets, pass <manual feature id>.
 milestone action="list" *args:
     harness/milestone.sh {{action}} {{args}}
 

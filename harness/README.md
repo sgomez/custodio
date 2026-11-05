@@ -22,6 +22,7 @@ only a person can check.
 | `just milestone list` | Milestones, closed and open |
 | `just milestone open` / `close` | Start a milestone, finish it |
 | `just milestone approve spec` / `approve features` | Approve what you reviewed |
+| `just milestone approve budgets` | Approve the time budgets in `budgets.tsv` |
 | `just milestone pass <id>` | Mark a manual feature as checked; commits pending `docs/` changes first |
 | **Agents** | |
 | `just harness run` | Run the agents, or continue after a stop |
@@ -54,6 +55,7 @@ only a person can check.
 | `rejected 3 times` | Read `NEXT_FINDINGS.md`. If the feature is badly defined, fix it in `features.json`, `just milestone approve features`. Then `rm .harness/state/<id>.attempts` and `just harness run` |
 | `contract not approved` | `just harness fix <id>`: an agent fixes the contract with you, then the evaluator reviews it again |
 | `used 8 builder sessions` | The feature is too big: split it in `features.json`, `just milestone approve features`, `just harness run` |
+| `budgets.tsv changed` | Review `git diff` of `budgets.tsv`, then `just milestone approve budgets` and `just harness run` |
 | `Reached MAX_SESSIONS` | Budget for this run spent: `just harness run` when you want to spend more |
 | `Uncommitted changes` | Commit or `git stash`, then `just harness run`. Not after `stop`: `resume` hands a cut builder session's work to the next builder |
 

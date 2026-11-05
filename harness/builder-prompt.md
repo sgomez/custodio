@@ -24,6 +24,12 @@ Follow "Every session" in CLAUDE.md:
    Commits message scoped to the feature id, e.g. `feat(F05): add key store`. Stop at a clean
    point when your context gets long: the next session continues from the contract.
 
+Every test you add costs time on every later run. Run independent units at once, wait on a
+condition instead of a fixed `sleep`, and test at the cheapest level that catches the fault. After
+the `verify`, the loop checks the measured times against `budgets.tsv` (e2e runs, script tests);
+over budget, the feature goes back to you. Never edit `budgets.tsv`: if a test cannot be faster,
+write BLOCKED.md with its measured time and why.
+
 The session is cut at the time limit given below, and one command may run at most 30 minutes. A
 cut session loses all it did not commit or write to PROGRESS.md, and the next one starts over.
 Before any command that may take more than 10 minutes, commit what is done, tick finished steps

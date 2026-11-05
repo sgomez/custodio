@@ -35,6 +35,15 @@ requirement that only they prove is listed under Scope as proven at the checkpoi
 whose `verify` runs `just e2e-cases` proves its own cases with them. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.
 
+Tests cost time on every later run of the loop, so say what each costs. For each new test or
+suite, Scope states how long it takes, measured or estimated from a similar one, and how it runs
+alongside the others: a unit test is parallel by default; a script test runs in parallel with the
+other script tests; an e2e case adds to every target and TPM mode, so it is the costliest level
+and only for what a cheaper level cannot catch. Independent units (targets, modes, files) run at
+once, never in a loop one after another; waits are on a condition, never a fixed `sleep`. The
+loop checks the measured times against `budgets.tsv`, which a person sets: a feature that cannot
+fit says so under Scope, and the builder asks for a bigger budget in BLOCKED.md.
+
 A builder session is cut at its time limit (45 minutes by default) and one command may run at
 most 30 minutes. Every step must fit in one session, and every command a step runs in one command.
 Measure or look up how long each long suite takes (the earlier checkpoints' logs in

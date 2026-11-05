@@ -3,7 +3,7 @@
 #   harness/milestone.sh list    # closed milestones and the open one
 #   harness/milestone.sh close   # archive the finished milestone in docs/milestones/<name>
 #   harness/milestone.sh open    # start the next one on a milestone/<name> branch from main
-#   harness/milestone.sh approve spec|features   # approve what you reviewed
+#   harness/milestone.sh approve spec|features|budgets   # approve what you reviewed
 #   harness/milestone.sh pass <id>               # mark a manual feature as checked
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -152,5 +152,5 @@ case "${1:-list}" in
   open) open ;;
   approve) shift; harness/approve.sh "$@" ;;
   pass) shift; pass "$@" ;;
-  *) die "Usage: just milestone [list|open|close|approve spec|approve features|pass <id>]" ;;
+  *) die "Usage: just milestone [list|open|close|approve spec|features|budgets|pass <id>]" ;;
 esac
