@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn app_id_not_asked_for_refusals() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             let sink = Arc::new(Sink::default());
             let probe = Probe::new(AppIdOutcome::None);
             let f = start(
@@ -43,6 +43,8 @@ fn app_id_not_asked_for_refusals() -> TestResult {
                                 .await
                                 .map(|_| ())
                         }
+                        // Start-up does it; no call asks for it.
+                        Operation::Purge => Err(zbus::Error::Unsupported),
                     }
                     .map_err(|e| error_name(&e))
                 }

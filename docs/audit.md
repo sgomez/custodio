@@ -2,7 +2,8 @@
 
 `custodiod` writes one journal entry for every request to sign, import a key, delete a key or replace a
 certificate that reaches authorization, whatever the result; `CUSTODIO_OPERATION` says which
-(`sign`, `import`, `delete` or `replace_certificate`). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
+(`sign`, `import`, `delete` or `replace_certificate`). At start-up it also writes one entry for every key of the
+earlier storage format that it removes (`purge`, see "purge" below). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
 (missing, or another user's: `NoSuchKey`, no polkit call), and, for an import, an id the caller already has
 (`KeyIdTaken`, no polkit call). A request whose caller the bus cannot name gets an
 entry without uid and pid. This page
@@ -24,6 +25,7 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `import` | `4c7163ce45d0b9faf8e7c38d098bdb22` |
 | `delete` | `13d1a981ea8f64fc1a6f390bee7fd66c` |
 | `replace_certificate` | `336e0b53720a735afb179ebc7f779ed6` |
+| `purge` | `8e1f5a6c0b3d4972a4c6d58f31b7e902` |
 
 A journal catalog (`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains each in
 `journalctl -x`. Entries written before `CUSTODIO_OPERATION` existed are signing entries without it; the
@@ -37,10 +39,11 @@ signing `MESSAGE_ID` never changed.
 | `MESSAGE_ID` | The identifier above | always |
 | `PRIORITY` | Syslog priority; see the outcomes | always |
 | `SYSLOG_IDENTIFIER` | `custodiod` | always |
-| `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller |
-| `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller |
+| `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller; absent from `purge` entries, which have no caller |
+| `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller; omitted from `purge` entries |
+| `CUSTODIO_OWNER_UID` | User id that owned the purged key, decimal | `purge` entries only |
 | `CUSTODIO_KEY_ID` | Id of the key that was asked for | always |
-| `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete` or `replace_certificate` | always |
+| `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete`, `replace_certificate` or `purge` (not asked: done at start-up) | always |
 | `CUSTODIO_OUTCOME` | Result, one of the values of the operation below | always |
 | `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
 | `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
@@ -150,6 +153,26 @@ is asked (invalid arguments, no such key) leaves no entry. Replaces and deletes 
 time, and a `ListKeys` while the entry is pending may show either certificate. The entry never holds the
 old or the new certificate, only the fields above. Queries by outcome are under "By outcome" below.
 
+### purge
+
+| Outcome | Priority | Meaning |
+|---|---|---|
+| `purged` | 4 | A key of the earlier storage format, found at start-up, was removed; this entry is submitted before any of its files is removed |
+
+When `custodiod` starts and finds key files of the earlier format (no record magic; a key file named by its
+id and the same name plus `-cert`), it removes them before it takes its bus name or answers any call, and leaves one entry per
+key: the owner in `CUSTODIO_OWNER_UID`, the id in `CUSTODIO_KEY_ID`. A key and its certificate file are one entry.
+The entry never holds file content (none is read). It is submitted before the files are removed, so a crash
+between the two can repeat the entry on the next start but never lose one. If the entry cannot be submitted, the
+key is not removed and the service does not start. A start that finds nothing of the earlier format writes
+nothing, so a second start purges nothing. The removal follows the store's rules: a symlink, a file of another
+owner or a wrong type is refused, not repaired, and the service does not start. The same ids can be imported
+again afterwards.
+
+An orphan certificate file of the earlier format (`<id>-cert` with no key file `<id>` of that format) is listed as
+the key `<id>`. If a key of the current format named `<id>` exists, the entry names an id that is still in use:
+only the old certificate file was removed and the current key is untouched.
+
 ## Storage kind
 
 `CUSTODIO_STORAGE_KIND` holds the kind of the stored record, the same string `ImportP12` and `ListKeys` return (see
@@ -240,6 +263,12 @@ delete authorization unavailable, nothing deleted: uid 1000 pid 4242 key my-key
 delete failed after approval, key not removed: uid 1000 pid 4242 key my-key
 ```
 
+Purge:
+
+```text
+key of the earlier format purged: owner uid 1000 key my-key
+```
+
 Replace certificate:
 
 ```text
@@ -269,19 +298,26 @@ All signing entries of the service:
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401
 ```
 
-By operation (`sign`, `import`, `delete` or `replace_certificate`):
+By operation (`sign`, `import`, `delete`, `replace_certificate` or `purge`):
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=delete
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=purge
 ```
 
 By the uid of the caller:
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_UID=1000
+```
+
+By the owner of a purged key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=purge CUSTODIO_OWNER_UID=1000
 ```
 
 By key:
@@ -347,6 +383,9 @@ journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERAT
 - **A crash during a delete.** The `deleted` entry is submitted before the files are removed. If
   the service dies between the two, the key is still stored although an entry says `deleted`.
   Removal after the entry is the choice that keeps a deleted key from ever lacking one.
+- **A crash during a purge.** The `purged` entry is submitted before the files are removed. If the service dies
+  between the two, the next start finds the files and writes the entry again; an entry can be repeated, a purged
+  key never lacks one.
 - **A failed restore after a replace.** If the entry cannot be submitted and the old certificate cannot
   be put back either, the call still fails as `AuditUnavailable`, but the new certificate may stay in place
   without an entry. A crash between the store and the restore has the same effect.

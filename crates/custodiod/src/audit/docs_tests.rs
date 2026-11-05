@@ -97,6 +97,7 @@ fn operation_entries() -> Result<Vec<OperationEntry>, InvalidKeyId> {
     for o in ReplaceOutcome::all() {
         all.push(OperationEntry::replace_certificate(o, Some(CALLER), key()?).with_app_id(app()));
     }
+    all.push(OperationEntry::purge(1000, key()?));
     Ok(all)
 }
 
@@ -116,6 +117,10 @@ fn outcome_pairs(op: Operation) -> Vec<(&'static str, u8)> {
             .map(|o| (o.name(), o.priority()))
             .collect(),
         Operation::ReplaceCertificate => ReplaceOutcome::all()
+            .iter()
+            .map(|o| (o.name(), o.priority()))
+            .collect(),
+        Operation::Purge => PurgeOutcome::all()
             .iter()
             .map(|o| (o.name(), o.priority()))
             .collect(),
@@ -444,7 +449,9 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
                 "MESSAGE_ID" => ids.contains(value),
                 "CUSTODIO_OPERATION" => ops.contains(value),
                 "CUSTODIO_OUTCOME" => outcome_names.contains(value),
-                "CUSTODIO_UID" => value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty(),
+                "CUSTODIO_UID" | "CUSTODIO_OWNER_UID" => {
+                    value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty()
+                }
                 "CUSTODIO_KEY_ID" => KeyId::new(value).is_ok(),
                 "CUSTODIO_STORAGE_KIND" => store_kinds().iter().any(|k| k.wire() == value),
                 "CUSTODIO_CAUSE" => cause_names().contains(value),
@@ -468,3 +475,4 @@ mod causes;
 use causes::{cause_names, store_kinds};
 mod app_id;
 use app_id::app;
+mod purge;

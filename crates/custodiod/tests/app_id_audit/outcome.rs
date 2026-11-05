@@ -12,7 +12,7 @@ fn app_id_on_every_outcome() -> TestResult {
             (Answer::Yes, Fail::AfterApproval),
         ];
         for (answer, fail) in runs {
-            for op in Operation::all() {
+            for op in Operation::requests() {
                 if op == Operation::Delete && fail == Fail::AfterApproval {
                     continue;
                 }
@@ -90,7 +90,7 @@ async fn run(
 #[test]
 fn app_id_check_rejects_a_wrong_case() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for case in answers()? {
                 let sink = Arc::new(Sink::default());
                 let source = GuardedSource::new(Probe::new(case.clone()));
@@ -118,7 +118,7 @@ fn app_id_never_changes_the_outcome() -> TestResult {
             (Answer::Fail, false),
             (Answer::Yes, true),
         ];
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for (answer, fail_sink) in runs {
                 let base = run(op, answer, fail_sink, None).await?;
                 for case in answers()? {

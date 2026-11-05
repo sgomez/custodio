@@ -34,7 +34,7 @@ async fn datagram(op: Operation, source: GuardedSource) -> Result<Vec<u8>, Box<d
 #[test]
 fn journal_sink_datagram_names_the_app_id() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for case in answers()? {
                 let text = String::from_utf8(
                     datagram(op, GuardedSource::new(Probe::new(case.clone()))).await?,
@@ -74,6 +74,7 @@ fn outcome_of(op: Operation) -> &'static str {
         Operation::Import => "stored",
         Operation::Delete => "deleted",
         Operation::ReplaceCertificate => "replaced",
+        Operation::Purge => "purged",
     }
 }
 
@@ -115,7 +116,7 @@ fn hostile_values_never_reach_an_entry() -> TestResult {
         ];
         for (name, op) in hostile
             .into_iter()
-            .flat_map(|n| Operation::all().map(move |op| (n, op)))
+            .flat_map(|n| Operation::requests().map(move |op| (n, op)))
         {
             let root = tree_with(name)?;
             let reader =

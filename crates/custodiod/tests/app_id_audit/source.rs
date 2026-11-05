@@ -7,7 +7,7 @@ use super::*;
 #[test]
 fn source_is_asked_with_the_callers_uid_and_pidfd() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             let sink = Arc::new(Sink::default());
             let probe = Probe::new(AppIdOutcome::None);
             let f = start(

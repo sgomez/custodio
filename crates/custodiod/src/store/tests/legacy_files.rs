@@ -145,3 +145,110 @@ fn a_legacy_file_may_still_be_removed_by_hand() -> TestResult {
     assert_eq!(store.legacy(OWNER)?, []);
     Ok(())
 }
+
+#[test]
+fn remove_legacy_removes_the_files_of_the_entry_only() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    for name in ["old", "old-cert", "keep", "orphan-cert"] {
+        legacy_file(&store, OWNER, name)?;
+    }
+    legacy_file(&store, 2000, "old")?;
+    store.put(&rec(OWNER, "orphan", b"cert"))?;
+    store.put(&rec(OWNER, "new", b"cert"))?;
+    assert_eq!(store.remove_legacy(&entry("old", &["old", "old-cert"]))?, 2);
+    // The orphan certificate goes, the new-format key it is named after stays.
+    assert_eq!(store.remove_legacy(&entry("orphan", &["orphan-cert"]))?, 1);
+    assert_eq!(store.list(OWNER)?, ["keep", "new", "orphan"]);
+    assert!(store.get(OWNER, "orphan").is_ok() && store.get(OWNER, "new").is_ok());
+    // Another owner's key of the same name is not touched.
+    assert_eq!(
+        store.legacy(2000)?,
+        [LegacyEntry {
+            owner: 2000,
+            ..entry("old", &["old"])
+        }]
+    );
+    // Idempotent: a second call finds nothing and removes nothing.
+    assert_eq!(store.remove_legacy(&entry("old", &["old", "old-cert"]))?, 0);
+    Ok(())
+}
+
+#[test]
+fn remove_legacy_never_removes_a_current_record() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    store.put(&rec(OWNER, "a", b"cert"))?;
+    assert_eq!(store.remove_legacy(&entry("a", &["a"]))?, 0);
+    assert!(store.get(OWNER, "a").is_ok());
+    // An owner without an area has nothing, and none is made.
+    assert_eq!(
+        store.remove_legacy(&LegacyEntry {
+            owner: 9,
+            ..entry("a", &["a"])
+        })?,
+        0
+    );
+    assert!(!store.dir().join("9").exists());
+    Ok(())
+}
+
+#[test]
+fn remove_legacy_refuses_a_symlink_and_a_bad_file_and_stops() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    let outside = tmp.path().join("target");
+    fs::write(&outside, b"target")?;
+    legacy_file(&store, OWNER, "first")?;
+    std::os::unix::fs::symlink(&outside, area(&store).join("link"))?;
+    legacy_file(&store, OWNER, "last")?;
+    let err = store.remove_legacy(&entry("x", &["first", "link", "last"]));
+    assert!(matches!(err, Err(StoreError::BadFileType(_))), "{err:?}");
+    // `first` went before the symlink was met; the symlink, its target and `last` are untouched.
+    assert_eq!(store.list(OWNER)?, ["last", "link"]);
+    assert_eq!(fs::read(&outside)?, b"target");
+    assert!(fs::symlink_metadata(area(&store).join("link"))?.is_symlink());
+    // A file with a loose mode is refused, not repaired.
+    fs::set_permissions(area(&store).join("last"), fs::Permissions::from_mode(0o644))?;
+    assert!(matches!(
+        store.remove_legacy(&entry("last", &["last"])),
+        Err(StoreError::BadPermissions(_))
+    ));
+    assert_eq!(mode(&area(&store).join("last"))?, 0o644);
+    // An invalid name is refused before anything is looked at.
+    assert!(matches!(
+        store.remove_legacy(&entry("x", &["../x"])),
+        Err(StoreError::InvalidId)
+    ));
+    Ok(())
+}
+
+#[test]
+fn remove_legacy_refuses_a_foreign_owner_and_a_symlinked_area() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let mut store = KeyStore::open(tmp.path().join("s"))?;
+    legacy_file(&store, OWNER, "old")?;
+    store.file_uid = Some(OWNER + 1);
+    assert!(matches!(
+        store.remove_legacy(&entry("old", &["old"])),
+        Err(StoreError::BadOwner(_))
+    ));
+    store.file_uid = None;
+    assert_eq!(store.list(OWNER)?, ["old"]);
+    // An area that is a symlink is not followed.
+    let real = tmp.path().join("real");
+    DirBuilder::new().mode(0o700).create(&real)?;
+    fs::set_permissions(&real, fs::Permissions::from_mode(0o700))?;
+    fs::write(real.join("old"), b"x")?;
+    std::os::unix::fs::symlink(&real, store.dir().join("3000"))?;
+    let other = LegacyEntry {
+        owner: 3000,
+        ..entry("old", &["old"])
+    };
+    assert!(matches!(
+        store.remove_legacy(&other),
+        Err(StoreError::BadFileType(_))
+    ));
+    assert!(real.join("old").exists());
+    Ok(())
+}

@@ -144,3 +144,33 @@ The certificate is never written.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 8e1f5a6c0b3d4972a4c6d58f31b7e902 en
+Subject: Custodio key of the earlier format purged
+Defined-By: custodio
+
+Custodio removed one key of the earlier storage format when it started, before it answered any call. There is one entry per key; a key and its certificate file are one key. No request caused it, so there is no caller.
+
+`MESSAGE` says what happened, for which owner and with which key. `CUSTODIO_OWNER_UID` is the user id that owned the key. There is no `CUSTODIO_UID` or `CUSTODIO_PID`.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is purge. `CUSTODIO_OUTCOME` is purged. `PRIORITY` is 4.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` is none: no request was made, so there was no caller to look up.
+
+The entry is written before the files are removed. The key must be imported again from its .p12 file. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 8e1f5a6c0b3d4972a4c6d58f31b7e902
+Subject: Custodio key of the earlier format purged
+Defined-By: custodio
+
+Custodio removed one key of the earlier storage format when it started, before it answered any call. There is one entry per key; a key and its certificate file are one key. No request caused it, so there is no caller.
+
+`MESSAGE` says what happened, for which owner and with which key. `CUSTODIO_OWNER_UID` is the user id that owned the key. There is no `CUSTODIO_UID` or `CUSTODIO_PID`.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is purge. `CUSTODIO_OUTCOME` is purged. `PRIORITY` is 4.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` is none: no request was made, so there was no caller to look up.
+
+The entry is written before the files are removed. The key must be imported again from its .p12 file. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

@@ -63,20 +63,18 @@ fn signing_fields_are_the_old_list_plus_the_operation() -> TestResult {
 }
 
 #[test]
-fn operation_names_are_the_four_documented_ones() {
-    let all = |o: Operation| match o {
-        Operation::Sign | Operation::Import | Operation::Delete | Operation::ReplaceCertificate => {
-            Operation::all()
-        }
-    };
-    let names: Vec<_> = all(Operation::Sign).iter().map(|o| o.name()).collect();
-    assert_eq!(names, ["sign", "import", "delete", "replace_certificate"]);
+fn operation_names_are_the_five_documented_ones() {
+    let names: Vec<_> = Operation::all().iter().map(|o| o.name()).collect();
+    assert_eq!(
+        names,
+        ["sign", "import", "delete", "replace_certificate", "purge"]
+    );
 }
 
 #[test]
 fn ids_are_32_lower_hex_and_distinct() {
     let ids: BTreeSet<_> = Operation::all().iter().map(|o| o.message_id()).collect();
-    assert_eq!(ids.len(), 4);
+    assert_eq!(ids.len(), 5);
     for id in &ids {
         assert!(id.len() == 32 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')));
     }
@@ -93,6 +91,45 @@ fn ids_are_32_lower_hex_and_distinct() {
         Operation::ReplaceCertificate.message_id(),
         "336e0b53720a735afb179ebc7f779ed6"
     );
+    assert_eq!(
+        Operation::Purge.message_id(),
+        "8e1f5a6c0b3d4972a4c6d58f31b7e902"
+    );
+}
+
+#[test]
+fn a_purge_entry_names_the_owner_the_id_and_the_outcome_only() -> TestResult {
+    let e = OperationEntry::purge(1000, key()?);
+    assert_eq!(e.owner(), Some(1000));
+    assert_eq!(e.caller(), None);
+    assert_eq!(e.operation(), Operation::Purge);
+    assert_eq!((e.outcome_name(), e.priority()), ("purged", 4));
+    assert_eq!(
+        literal(&e.fields()),
+        [
+            (
+                "MESSAGE",
+                "key of the earlier format purged: owner uid 1000 key k9"
+            ),
+            ("MESSAGE_ID", "8e1f5a6c0b3d4972a4c6d58f31b7e902"),
+            ("PRIORITY", "4"),
+            ("SYSLOG_IDENTIFIER", "custodiod"),
+            ("CUSTODIO_OWNER_UID", "1000"),
+            ("CUSTODIO_KEY_ID", "k9"),
+            ("CUSTODIO_OPERATION", "purge"),
+            ("CUSTODIO_OUTCOME", "purged"),
+            ("CUSTODIO_APP_ID_STATE", "none"),
+        ]
+    );
+    // Only a purge has an owner.
+    let delete = OperationEntry::delete(DeleteOutcome::Deleted, Some(C), key()?);
+    assert_eq!(delete.owner(), None);
+    assert!(get(&delete.fields(), "CUSTODIO_OWNER_UID").is_none());
+    // The sinks take it like any other operation entry.
+    let sink = MemorySink::default();
+    sink.record_operation(&e)?;
+    assert_eq!(sink.operation_entries(), vec![e]);
+    Ok(())
 }
 
 /// (operation, outcome, priority, message phrase) as literals.

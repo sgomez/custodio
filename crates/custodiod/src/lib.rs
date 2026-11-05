@@ -12,6 +12,7 @@ pub mod import;
 mod offload;
 pub mod polkit;
 pub mod sign;
+pub mod startup;
 pub mod store;
 pub mod tpm;
 

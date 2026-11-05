@@ -432,47 +432,6 @@ impl KeyStore {
         };
         Self::names(&area)
     }
-
-    /// The keys of `owner` that are still in the earlier format, one entry per key with the files
-    /// that make it up. Nothing is read but the first bytes of each file.
-    ///
-    /// # Errors
-    /// As [`Self::list`].
-    pub fn legacy(&self, owner: u32) -> Result<Vec<LegacyEntry>, StoreError> {
-        let Some(area) = self.existing_area(owner)? else {
-            return Ok(Vec::new());
-        };
-        let mut old = Vec::new();
-        for name in Self::names(&area)? {
-            if !self.is_record(owner, &name)? {
-                old.push(name);
-            }
-        }
-        Ok(legacy::group(owner, &old))
-    }
-
-    /// [`Self::legacy`] for every owner area of the store, by owner then id.
-    ///
-    /// # Errors
-    /// As [`Self::list`], for any area.
-    pub fn legacy_all(&self) -> Result<Vec<LegacyEntry>, StoreError> {
-        let mut owners = Vec::new();
-        for entry in fs::read_dir(&self.dir)? {
-            let name = entry?.file_name();
-            if let Some(uid) = name
-                .to_str()
-                .and_then(|n| n.parse::<u32>().ok().filter(|u| u.to_string() == n))
-            {
-                owners.push(uid);
-            }
-        }
-        owners.sort_unstable();
-        let mut all = Vec::new();
-        for owner in owners {
-            all.extend(self.legacy(owner)?);
-        }
-        Ok(all)
-    }
 }
 
 /// Check that `path` is a real directory (not a symlink) with mode `0700` owned by `uid`.

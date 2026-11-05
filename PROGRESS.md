@@ -290,3 +290,14 @@ with an empty context.
 ### 2026-11-05 — F120 — attempt 2
 - Fixed NEXT_FINDINGS: `Secrets` now also plants the TPM response codes (`0x101`, `0x143`, `0x1df` and their 8-digit forms), the credential bytes `SpyCreds` produced on failed imports (`produced()`), and the decoder's own text for the wrong-password and unsupported-key rows. Lost-key sign rows now compare the record taken after `break_it()`. `ImportError::TooLarge` now has cause `internal` (table test changed with it).
 - Evidence: `just quick` green; `kind_audit` 9/9; `just mutants-diff F120`: 49 mutants, 27 caught, 22 unviable, 0 missed.
+
+### 2026-11-05 — F121 — attempt 1
+- Done: `KeyStore::remove_legacy` (area lock, `is_record` check = the checked open, no symlink followed, current-format files never removed, dir synced; `legacy`/`legacy_all`/`remove_legacy` now live in `store/legacy.rs`).
+  New operation `purge` (`Operation::Purge`, `PurgeOutcome::Purged`, priority 4, `MESSAGE_ID` `8e1f…e902`, field `CUSTODIO_OWNER_UID`, no uid/pid, app-id state `none`), documented in `docs/audit.md` and the catalog.
+  `Operation::requests()` is the four caller-driven operations (the app-id tests loop over it); `Operation::all()` has five.
+  New `src/startup.rs`: `purge_legacy` (list everything, then per key entry first, removal second; stops on the first refusal) and `start` (purge, then `connect` future is polled, serve, request name). `main` calls only `start`; its own `serve`/`build_service` are gone.
+- Tests: unit `store::tests::legacy_files::remove_legacy_*` (4), `startup::tests` (2), `audit::docs_tests::purge` (control with edited copies), operation_tests purge row, `main_tests::wiring::a_legacy_key_is_purged_by_the_start_up_path` (new; `main` has no serve path of its own, so the start-up function being in `mutants-diff` is its mutation proof).
+  Integration `purge` (9): `state_is_empty_after_start`, `purged_keys_are_not_listed` (proof is the `Sign` row: `NoSuchKey`), `one_entry_per_key`, `entries_reach_the_journal_with_the_documented_fields`, `entries_hold_no_key_bytes`, `same_ids_import_again`, `no_call_before_purge_complete` (blocks on the first and on the last entry; also checks entry-before-removal on disk and `ListNames`), `refuses_and_does_not_start` (symlink in the last owner's area leaves all other owners' keys; failing sink at entry 0 and 2), `second_start_purges_nothing`.
+- Foreign-owner case proven by the store unit test (`file_uid` seam), as the contract says.
+- Evidence: `just quick` green; `purge` 9/9; `just mutants-diff F121`: 52 mutants, 37 caught, 15 unviable, 0 missed. `startup.rs` joined the `mutants` list.
+- Not done: upgrade from a real M3 package and real `journalctl` read (checkpoints); CLI wording (F123).

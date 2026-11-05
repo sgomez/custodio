@@ -145,7 +145,7 @@ pub use journal::{DEFAULT_JOURNAL_SOCKET, JournalSink, MAX_DATAGRAM};
 pub use memory::{FailingSink, MemorySink};
 pub use operation::{
     AuditKeyType, DELETE_MESSAGE_ID, DeleteOutcome, IMPORT_MESSAGE_ID, ImportOutcome, Operation,
-    OperationEntry, REPLACE_CERTIFICATE_MESSAGE_ID, ReplaceOutcome,
+    OperationEntry, PURGE_MESSAGE_ID, PurgeOutcome, REPLACE_CERTIFICATE_MESSAGE_ID, ReplaceOutcome,
 };
 
 /// `MESSAGE_ID` of every signing entry, generated once from a random source.
