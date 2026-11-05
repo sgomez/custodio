@@ -316,7 +316,7 @@
         "F125"
       ],
       "verify": "just quick && just e2e-cases debian13 pkcs11-tool-approve-rsa && E2E_TPM=none just e2e-cases debian13 pkcs11-tool-approve-rsa && E2E_TPM=lacking just e2e-cases debian13 pkcs11-tool-approve-rsa",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F132",
