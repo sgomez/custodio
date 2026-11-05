@@ -388,3 +388,7 @@ with an empty context.
   system migrate` fixes it.
 - Next session should: not rerun steps 1-2; run `E2E_TPM=none` on fedora44, ubuntu2404, ubuntu2604, then
   `just package-gates`, then step 5. Commit and update this entry after each run.
+- (session 6) Env: `podman info` ok, swtpm 0.7.1. Contract base commit for the diff checks: `d54a614` (HEAD at session start; code unchanged since `b1bf7fa`).
+  e2e passed on d54a614: `none` on fedora44 (5m47), ubuntu2404 (refusal-only, 21s), ubuntu2604 (5m35). With the earlier
+  sessions: swtpm on all six, none on alma10, arch, debian13, fedora44, ubuntu2404, ubuntu2604. Step 3 done.
+  Next: `just package-gates`, then the final rerun from a cleared `target/e2e/`.
