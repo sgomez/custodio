@@ -363,7 +363,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'tpm-kind-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F134",
