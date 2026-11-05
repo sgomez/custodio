@@ -135,18 +135,25 @@ tpm_observe() {
 }
 
 # tpm_unit_problems: what the INSTALLED unit has of the test drop-in; no output means nothing. Only meaningful with no TPM setup in place.
+# systemd's own type-level drop-ins (/usr/lib/systemd/system/service.d/, e.g. Fedora's 10-timeout-abort.conf) belong to every service and are not counted.
 tpm_unit_problems() {
-    local dropins files hdr n=0
-    dropins=$(systemctl show -p DropInPaths --value custodio.service)
-    [ -z "$dropins" ] || echo "DropInPaths of custodio.service is not empty: $dropins"
+    local dropins files hdr path n=0 p own=''
+    dropins=''
+    for p in $(systemctl show -p DropInPaths --value custodio.service); do
+        case $p in /usr/lib/systemd/system/service.d/*) ;; *) dropins="$dropins $p" ;; esac
+    done
+    [ -z "$dropins" ] || echo "DropInPaths of custodio.service is not empty:$dropins"
     files=$(bash /e2e-target/files.sh) || { echo "the package file list could not be read"; return 0; }
     [ -n "$files" ] || echo "the package file list is empty"
     ! grep -q 'custodio\.service\.d' <<< "$files" || echo "the package file list names custodio.service.d"
     grep -q '/custodio\.service$' <<< "$files" || echo "the package file list has no custodio.service"
     # systemctl cat prints one "# /path" header per file it shows
     while IFS= read -r hdr; do
+        path=${hdr#\# }
+        case $path in /usr/lib/systemd/system/service.d/*) continue ;; esac
         n=$((n + 1))
-        grep -qxF -- "${hdr#\# }" <<< "$files" || echo "systemctl cat shows a file the package does not own: ${hdr#\# }"
+        grep -qxF -- "$path" <<< "$files" || echo "systemctl cat shows a file the package does not own: $path"
+        own=$path
     done < <(systemctl cat custodio.service | grep '^# /')
-    [ "$n" -eq 1 ] || echo "systemctl cat shows $n files, expected only the packaged unit"
+    [ "$n" -eq 1 ] || echo "systemctl cat shows $n files besides systemd's own drop-ins, expected only the packaged unit${own:+ ($own)}"
 }
