@@ -402,3 +402,5 @@ with an empty context.
 - (session 6) debian13 none passed on the same commit (4m54, alone; the earlier one was cut by the shell's background
   limit, not by a failure). Final rerun so far: alma10, arch, debian13 in both modes. Still to rerun: fedora44,
   ubuntu2404, ubuntu2604 in both modes (swtpm runs not yet repeated after the namcap-list change, which touches no e2e file).
+- (session 6) Final rerun also passed: fedora44 swtpm, fedora44 none, ubuntu2404 swtpm, ubuntu2404 none. Left: ubuntu2604
+  swtpm and none (the 2604 none run passed earlier this session on d54a614).
