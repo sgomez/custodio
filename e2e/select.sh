@@ -21,6 +21,7 @@ case_group() {
     journal-ops-*) echo journal-ops ;;
     appid-*) echo appid ;;
     cli-*) echo cli ;;
+    tpm-*) echo tpm ;; # reported by the end of guest.sh, whose TPM setup always runs
     refusal-*) echo refusal ;;
     *) echo user ;;
     esac

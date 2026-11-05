@@ -69,3 +69,4 @@ Rules:
 - [F118](findings/F118.md) — descriptors of the `systemd-creds` child: a plain `Command` leaks every inherited descriptor; `/usr/bin/bash -c` closes them before `exec` without `unsafe`.
 - [M01-acceptance](findings/M01-acceptance.md) — M0/M1 manual run (ubuntu2604): rFirma passes with its own fixes; Firefox snap cannot load the module; Mozilla .deb needs manual registration.
 - [acceptance-6-fingerprint](findings/acceptance-6-fingerprint.md) — acceptance 6 with libfprint's virtual device (ubuntu2604): pass; each signature asks for the finger again, unmatched falls back to password.
+- [F131](findings/F131.md) — e2e TPM: the F108 route works in the final harness on debian13 (swtpm and none); the unit is checked in a transient unit built from its own properties.

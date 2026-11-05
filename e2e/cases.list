@@ -98,3 +98,4 @@ removal-notice-keys
 reinstall-keys-listed
 reinstall-signs-with-polkit
 reinstall-no-import
+tpm-installed-unit-clean

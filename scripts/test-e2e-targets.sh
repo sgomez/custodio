@@ -44,6 +44,11 @@ target_problems() {
         if grep -Eq '(^|[[:space:]])(dbus|dbus-broker|dbus-broker-units|dbus-daemon-units)([[:space:]\\]|$)' <<< "$pkgs"; then echo "$n: names a bus package"; fi
         ;;
     esac
+    # F131: the software TPM and its tools, on the lines of the install command (arch: swtpm carries swtpm_setup; the others have swtpm-tools)
+    grep -Eq '(^|[[:space:]])swtpm([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install swtpm"
+    grep -Eq '(^|[[:space:]])tpm2-tools([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install tpm2-tools"
+    case $n in arch*) ;; *) grep -Eq '(^|[[:space:]])swtpm-tools([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install swtpm-tools" ;; esac
+    [ -f "$d/refusal-only" ] || [ -f "$d/files.sh" ] || echo "$n: no files.sh"
     grep -Eq 'dpkg|apt|rpm|dnf|pacman' "$inst" 2> /dev/null || echo "$n: install.sh uses no package tool"
     # shellcheck disable=SC2016 # the pattern looks for a literal "$1" in the script
     case $n in
@@ -68,8 +73,8 @@ printf '#!/usr/bin/env bash\nset -euo pipefail\napt-get install -y "$1" > /dev/n
 # controls for the rpm family: an accepted variant, then one change at a time that must be rejected
 fx_rpm() { # NAME: a fedora-style fixture target with polkit + dbus + dnf install "$1"
     mkdir -p "$tmp/fx/$1"
-    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern} "$tmp/fx/$1/"
-    printf 'FROM docker.io/library/fedora:44\nRUN dnf install -y systemd dbus polkit python3-dbus && dnf clean all\n' > "$tmp/fx/$1/Containerfile"
+    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern,files.sh} "$tmp/fx/$1/"
+    printf 'FROM docker.io/library/fedora:44\nRUN dnf install -y systemd dbus polkit python3-dbus swtpm swtpm-tools tpm2-tools && dnf clean all\n' > "$tmp/fx/$1/Containerfile"
     # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
     printf '#!/usr/bin/env bash\nset -euo pipefail\ndnf install -y "$1" > /dev/null\n' > "$tmp/fx/$1/install.sh"
 }
@@ -96,8 +101,8 @@ printf '#!/usr/bin/env bash\nset -euo pipefail\nrpm -i "$1"\n' > "$tmp/fx/fedora
 # controls for the arch family
 fx_arch() { # NAME: an arch-style fixture target with polkit, no bus package, pacman -U "$1"
     mkdir -p "$tmp/fx/$1"
-    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern} "$tmp/fx/$1/"
-    printf 'FROM docker.io/library/archlinux:latest\nRUN pacman -Syu --noconfirm --needed systemd polkit python-gobject && find /var/cache/pacman -type f -delete\n' > "$tmp/fx/$1/Containerfile"
+    cp "$ROOT"/e2e/targets/debian13/{probe.sh,skip.list,package.pattern,files.sh} "$tmp/fx/$1/"
+    printf 'FROM docker.io/library/archlinux:latest\nRUN pacman -Syu --noconfirm --needed systemd polkit python-gobject swtpm tpm2-tools && find /var/cache/pacman -type f -delete\n' > "$tmp/fx/$1/Containerfile"
     # shellcheck disable=SC2016 # the fixture script must contain a literal "$1"
     printf '#!/usr/bin/env bash\nset -euo pipefail\npacman -U --noconfirm "$1" > /dev/null\n' > "$tmp/fx/$1/install.sh"
 }
@@ -135,6 +140,17 @@ sed -i 's/ dbus / dbus dbus-daemon /' "$tmp/fx/debian9999/Containerfile"
 rm "$tmp/fx/ubuntu9999/probe.sh"
 [ -n "$(target_problems "$tmp/fx/ubuntu9999")" ] || bad "control: a target without probe.sh was accepted"
 grep -rqi 'polkit' "$ROOT/e2e/targets" || bad "no target mentions polkit"
+
+# F131: a target whose Containerfile lacks a TPM package is flagged (controls: each name removed in turn)
+for pkg in swtpm tpm2-tools swtpm-tools; do
+    for base in debian13 fedora44 arch; do
+        rm -rf "$tmp/fxt"; mkdir -p "$tmp/fxt"; cp -r "$ROOT/e2e/targets/$base" "$tmp/fxt/$base"
+        [ -z "$(target_problems "$tmp/fxt/$base")" ] || bad "control: $base was rejected before the edit: $(target_problems "$tmp/fxt/$base")"
+        sed -i -E "s/(^|[[:space:]])$pkg([[:space:]\\\\]|\$)/\\1/" "$tmp/fxt/$base/Containerfile"
+        if [ "$base" = arch ] && [ "$pkg" = swtpm-tools ]; then continue; fi
+        grep -q "does not install $pkg" <<< "$(target_problems "$tmp/fxt/$base")" || bad "control: $base without $pkg was not flagged: $(target_problems "$tmp/fxt/$base")"
+    done
+done
 
 # --- shellcheck covers the new scripts
 list=$("$ROOT/scripts/list-shell-scripts.sh")

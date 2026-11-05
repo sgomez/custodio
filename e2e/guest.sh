@@ -20,6 +20,9 @@ else
     rm -f "$E2E_SELECT_FILE"
 fi
 
+tpm_mode=${E2E_TPM:-swtpm}
+case $tpm_mode in swtpm | none) ;; *) fail "E2E_TPM='$tpm_mode' is not set up by this guest (swtpm or none)" ;; esac
+
 # A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
 if [ -f /e2e-target/refusal-only ]; then
     [ "$mode" = main ] || fail "a refusal-only target has no old-package or old-path run"
@@ -31,6 +34,7 @@ if [ -f /e2e-target/refusal-only ]; then
     fi
     probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
     while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
+    echo "E2E-RECORD tpm=$tpm_mode" # nothing is installed here, so there is no service to give a TPM to: the mode is only the one asked for
     echo "e2e: all checks passed (refusal)"
     exit 0
 fi
@@ -45,6 +49,21 @@ pkg_next=$(find /pkg-next -type f | head -n 1)
 [ -n "$pkg_next" ] || fail "no package N+1 is mounted in /pkg-next"
 bash /e2e-target/install.sh "$pkg" || fail "the package could not be installed"
 echo "e2e: installed $(basename "$pkg") from the mounted file"
+# F131: the installed unit has no test drop-in; the TPM of the run (E2E_TPM) is set up after this check and undone before the next one (tpm-lib.sh)
+# shellcheck source=e2e/tpm-lib.sh
+source /e2e/tpm-lib.sh
+# shellcheck source=e2e/report.sh
+source /e2e/report.sh
+bash /e2e/tpm-selftest.sh || fail "the TPM self-test failed"
+unit_problems=$(tpm_unit_problems)
+[ -z "$unit_problems" ] || fail "the installed unit has a test drop-in before the TPM setup: $unit_problems"
+tpm_setup "$tpm_mode" || fail "the TPM setup for $tpm_mode failed"
+# one exit trap for the whole run: polkit back (once a step has stopped it) and the TPM setup undone
+polkit_trap=''
+on_exit() { [ -z "$polkit_trap" ] || restore_polkit > /dev/null 2>&1 || true; tpm_teardown > /dev/null 2>&1 || true; }
+trap on_exit EXIT
+tpm_observe "$tpm_mode" || fail "the TPM the unit sees is not the requested $tpm_mode"
+echo "e2e: the unit sees the TPM of the mode $tpm_mode"
 systemctl daemon-reload
 systemctl reload dbus # restart would drop logind and polkit off the bus
 systemctl start polkit
@@ -96,7 +115,7 @@ fi
 # restores it if the explicit restore below was not reached.
 restore_polkit() { systemctl unmask --runtime polkit && systemctl start polkit; }
 if phase_runs unavailable; then
-    trap 'restore_polkit >/dev/null 2>&1 || true' EXIT
+    polkit_trap=1
     total=$(wc -l < "$work/agent/requests") # requests of the agent so far: one per signature up to here
     systemctl stop polkit
     systemctl mask --runtime polkit >/dev/null 2>&1
@@ -119,7 +138,7 @@ fi
 # The polkit cases of import, delete and replace certificate (F92): alice, her own session and agent, polkit answering, refusing and stopped. After owner,
 # and before the upgrade, for the same reasons; polkit is stopped for a while and restored (the trap below covers every path); every key it makes it deletes.
 if phase_runs ops-polkit; then
-    trap 'restore_polkit >/dev/null 2>&1 || true' EXIT
+    polkit_trap=1
     WORK=$work MODULE=$MODULE bash /e2e/ops-run.sh || fail "ops-run.sh failed"
 fi
 
@@ -174,6 +193,12 @@ fi
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"
 if journalctl -u custodio --no-pager | grep -q "e2e-password"; then fail "the password reached the journal"; fi
+# F131: the TPM setup is undone and the installed unit has no test drop-in after it, as before it
+tpm_teardown || fail "the TPM setup could not be undone"
+unit_problems=$(tpm_unit_problems)
+[ -z "$unit_problems" ] || fail "the installed unit has a test drop-in after the run: $unit_problems"
+case_run tpm-installed-unit-clean
 probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
 while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
+echo "E2E-RECORD tpm=$tpm_mode"
 echo "e2e: all checks passed"

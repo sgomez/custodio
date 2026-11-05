@@ -40,6 +40,8 @@ exec)
         # F63: with -e E2E_SELECT=ids the fake guest reports only those cases (and STUB_EXTRA still adds one)
         sel=''
         for a in "$@"; do case $a in E2E_SELECT=*) sel=${a#E2E_SELECT=} ;; esac; done
+        tpm=''
+        for a in "$@"; do case $a in E2E_TPM=*) tpm=${a#E2E_TPM=} ;; esac; done # F131: the TPM mode the host asks for
         mode=main
         t=${*: -1}
         if [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
@@ -71,8 +73,10 @@ exec)
         if [ -z "${STUB_NOPROBE:-}" ]; then
             echo "E2E-RECORD bus-daemon=dbus-daemon"
             echo "E2E-RECORD polkit-version=126"
+            [ -n "${STUB_NOTPM:-}" ] || echo "E2E-RECORD tpm=${STUB_TPM_REPORT:-$tpm}"
         fi
         [ "$t" != "${STUB_FAIL:-}" ] || { echo "e2e: FAIL: stubbed"; exit 1; }
+        [ -z "${STUB_FAIL_TPM:-}" ] || [ "$tpm" != "$STUB_FAIL_TPM" ] || { echo "e2e: FAIL: stubbed ($tpm)"; exit 1; }
         echo "e2e: all checks passed"
         ;;
     esac

@@ -5,6 +5,9 @@
 # The packages (N, N+1 for the upgrade case and the old-path fixture) are built by the `e2e` recipe, not here.
 # A target with a refusal-only marker (F50, ubuntu2404) runs only its own cases (e2e/refusal.sh): it needs no package N+1 and no old-path package.
 # A failed target does not stop the others.
+# F131: E2E_TPM (swtpm, the default, also when unset; none; lacking) says what TPM the service sees. Any other value, an empty one included, is refused before anything starts.
+#       `all` with E2E_TPM unset runs every target twice, with swtpm and with none (never lacking); with E2E_TPM set, with that one mode. The mode is passed to the guest
+#       (-e E2E_TPM), is part of the names of the record and the log (target/e2e/<target>.<mode>.record, .log) and is the record's tpm= line, which the guest must report as asked.
 # Needs podman or docker able to run a privileged container (systemd needs cgroups and /run).
 # Usage: run.sh [TARGET]            all the cases of the target (or of every target)
 #        run.sh TARGET --cases NAME...   F63 (`just e2e-cases`): one target and only the cases whose ids equal a NAME or match it as a shell glob
@@ -19,6 +22,16 @@ packages_next=${E2E_PACKAGES_NEXT:-target/packages-next} # package N+1 of the up
 packages_oldpath=${E2E_PACKAGES_OLDPATH:-target/packages-oldpath} # the old-path fixture of F61 (scripts/package-oldpath.sh); not for a target with a no-oldpath marker
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
+# F131: the TPM modes of the run; checked before anything else is looked at or started
+tpm_modes=''
+if [ -z "${E2E_TPM+set}" ]; then
+    if [ "$want" = all ] && [ "${2:-}" != --cases ]; then tpm_modes='swtpm none'; else tpm_modes=swtpm; fi
+else
+    case $E2E_TPM in
+    swtpm | none | lacking) tpm_modes=$E2E_TPM ;;
+    *) echo "e2e: E2E_TPM='$E2E_TPM' is not a TPM mode; the allowed values are: swtpm, none, lacking (default swtpm)" >&2; exit 1 ;;
+    esac
+fi
 subset=''  # set by --cases
 names=()
 if [ "${2:-}" = --cases ]; then
@@ -98,11 +111,12 @@ boot_container() {
     return 1
 }
 
-run_target() {
-    local t=$1 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
+run_target() { # run_target TARGET MODE
+    local t=$1 tpm=$2 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
+    [ -f "$dir/refusal-only" ] || [ -f "$dir/files.sh" ] || { echo "e2e[$t]: $dir/files.sh is missing (the package's file list, for the check that the unit has no test drop-in)" >&2; return 1; }
     bash e2e/check-cases.sh lint "$dir/skip.list" || return 1
     pattern=$(head -n 1 "$dir/package.pattern")
     found=$(find "$packages" -name "$pattern" | sort | tail -n 1)
@@ -140,11 +154,11 @@ run_target() {
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
     [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
     boot_container "$name" "$t" "${mounts[@]}" || return 1
-    log="$out_dir/$t.log"
-    local envsel=() sel
+    log="$out_dir/$t.$tpm.log"
+    local envsel=(-e "E2E_TPM=$tpm") sel
     if [ -n "$subset" ]; then
         sel=$(tr '\n' ' ' <<< "$selection")
-        envsel=(-e "E2E_SELECT=${sel% }")
+        envsel+=(-e "E2E_SELECT=${sel% }")
         printf '%s\n' "$selection" > "$cases.sel"
     fi
     "$engine" exec "${envsel[@]}" "$name" bash /e2e/guest.sh "$t" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
@@ -165,22 +179,26 @@ run_target() {
     {
         echo "target=$t"
         sed -n 's/^E2E-RECORD //p' "$log"
-    } > "$out_dir/$t.record"
-    for key in bus-daemon polkit-version; do
-        value=$(sed -n "s/^$key=//p" "$out_dir/$t.record" | head -n 1)
+    } > "$out_dir/$t.$tpm.record"
+    for key in bus-daemon polkit-version tpm; do
+        value=$(sed -n "s/^$key=//p" "$out_dir/$t.$tpm.record" | head -n 1)
         [ -n "$value" ] || { echo "e2e[$t]: the guest's probe reported no $key" >&2; return 1; }
     done
-    while IFS= read -r line; do echo "e2e[$t]: record: $line"; done < "$out_dir/$t.record"
+    value=$(sed -n 's/^tpm=//p' "$out_dir/$t.$tpm.record" | head -n 1)
+    [ "$value" = "$tpm" ] || { echo "e2e[$t]: the guest reported tpm=$value, expected $tpm" >&2; return 1; }
+    while IFS= read -r line; do echo "e2e[$t]: record: $line"; done < "$out_dir/$t.$tpm.record"
 }
 
 failed=''
 trap 'for t in $list; do "$engine" rm -f "custodio-e2e-$t-$$" >/dev/null 2>&1 || true; done' EXIT
-for t in $list; do
-    if ! run_target "$t"; then failed="$failed $t"; fi
-    "$engine" rm -f "custodio-e2e-$t-$$" > /dev/null 2>&1 || true
+for m in $tpm_modes; do # a failing mode does not stop the next one
+    for t in $list; do
+        if ! run_target "$t" "$m"; then failed="$failed $t ($m)"; fi
+        "$engine" rm -f "custodio-e2e-$t-$$" > /dev/null 2>&1 || true
+    done
 done
 if [ -n "$failed" ]; then
     echo "e2e: failed targets:$failed" >&2
     exit 1
 fi
-echo "e2e: passed: $list"
+echo "e2e: passed: $list (tpm: $tpm_modes)"

@@ -3,7 +3,7 @@
 FROM docker.io/library/ubuntu:24.04
 
 RUN apt-get -o APT::Sandbox::User=root update && apt-get -o APT::Sandbox::User=root install -y --no-install-recommends \
-      systemd systemd-sysv dbus dbus-user-session libpam-systemd polkitd p11-kit openssl util-linux procps \
+      systemd systemd-sysv dbus dbus-user-session libpam-systemd polkitd p11-kit openssl util-linux procps swtpm swtpm-tools tpm2-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # The image ships /usr/sbin/policy-rc.d (exit 101); a real machine has none.

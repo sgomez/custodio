@@ -92,7 +92,7 @@ if E2E_SELECT_FILE=$tmp/sel bash -c 'source "$1/e2e/select.sh"; phase_runs nonse
 # every id of the lists belongs to a group, and each script that reports ids of one step is in that group
 for id in $all; do
     g=$(bash -c 'source "$1/e2e/select.sh"; case_group "$2"' _ "$ROOT" "$id")
-    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | upgrade | lifecycle | refusal | other-mode) ;; *) bad "$id: group '$g'" ;; esac
+    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | tpm | upgrade | lifecycle | refusal | other-mode) ;; *) bad "$id: group '$g'" ;; esac
 done
 # the guest uses the decision: each step is behind phase_runs
 for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done

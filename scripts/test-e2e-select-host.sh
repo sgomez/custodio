@@ -36,7 +36,7 @@ grep -q 'E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again 
 sel_guest() { grep 'guest.sh' "$tmp/log" | head -n 1; }
 # the selection reaches the guest, in the order of the lists, one build, one container
 expect_ok subset debian13 --cases pkcs11-tool-approve-rsa 'nss-*' || true
-grep -q 'exec -e E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "subset: the guest exec lacks exactly the selection: $(sel_guest)"
+grep -q 'exec -e E2E_TPM=swtpm -e E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "subset: the guest exec lacks exactly the selection: $(sel_guest)"
 [ "$(grep -c '^build ' "$tmp/log")" -eq 1 ] || bad "subset: not one build"
 [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "subset: not one container"
 [ "$(grep -c 'guest.sh' "$tmp/log")" -eq 1 ] || bad "subset: more than one guest run"
@@ -119,10 +119,10 @@ boot="run -d --name custodio-e2e-debian13-PID --privileged --cgroupns=host --tmp
 exec custodio-e2e-debian13-PID systemctl is-system-running"
 expected="build -q -t custodio-e2e-debian13 -f e2e/targets/debian13/Containerfile e2e/targets/debian13
 $boot
-exec custodio-e2e-debian13-PID bash /e2e/guest.sh debian13
+exec -e E2E_TPM=swtpm custodio-e2e-debian13-PID bash /e2e/guest.sh debian13
 rm -f custodio-e2e-debian13-PID
 $boot
-exec custodio-e2e-debian13-PID bash /e2e/guest.sh debian13 oldpath
+exec -e E2E_TPM=swtpm custodio-e2e-debian13-PID bash /e2e/guest.sh debian13 oldpath
 rm -f custodio-e2e-debian13-PID
 rm -f custodio-e2e-debian13-PID"
 got=$(sed -E "s|$ROOT|ROOT|g; s|ROOT$tmp|ROOT/TMP|g; s|$tmp|TMP|g; s|debian13-[0-9]+|debian13-PID|g" "$tmp/log")
