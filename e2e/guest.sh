@@ -21,7 +21,7 @@ else
 fi
 
 tpm_mode=${E2E_TPM:-swtpm}
-case $tpm_mode in swtpm | none) ;; *) fail "E2E_TPM='$tpm_mode' is not set up by this guest (swtpm or none)" ;; esac
+case $tpm_mode in swtpm | none | lacking) ;; *) fail "E2E_TPM='$tpm_mode' is not set up by this guest (swtpm, none or lacking)" ;; esac
 
 # A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
 if [ -f /e2e-target/refusal-only ]; then

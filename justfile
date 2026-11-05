@@ -171,6 +171,8 @@ test-scripts:
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
+    scripts/test-ci-e2e.sh
+    scripts/test-e2e-tpm-host.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
@@ -376,10 +378,16 @@ glibc-ceiling:
 e2e target="all": e2e-packages
     bash e2e/run.sh {{target}}
 
+# F131: `E2E_TPM` (swtpm, the default; none; lacking) says what TPM the service sees in `e2e` and `e2e-cases`; `just e2e` with it unset runs every target with swtpm and with none.
+# The program that makes a TPM lack an algorithm (an example of custodio-it), which only the lacking mode mounts into the containers; built only for it.
+e2e-tpm-filter:
+    [ "${E2E_TPM:-swtpm}" != lacking ] || cargo build --locked -p custodio-it --example tpm-filter --release
+
 # The packages the end-to-end tests install: package N, package N+1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
 e2e-packages: package
     scripts/package-next.sh
     scripts/package-oldpath.sh
+    just e2e-tpm-filter
 
 # Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the
 # given names or match one as a shell glob, e.g. `just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*'` (quote the glob). The accounting then requires each selected

@@ -32,6 +32,12 @@ else
     *) echo "e2e: E2E_TPM='$E2E_TPM' is not a TPM mode; the allowed values are: swtpm, none, lacking (default swtpm)" >&2; exit 1 ;;
     esac
 fi
+# lacking (F131) needs the filter program, built by `just e2e-tpm-filter`; refused before anything starts
+tpm_filter=${E2E_TPM_FILTER:-target/release/examples/tpm-filter}
+case " $tpm_modes " in
+*" lacking "*) [ -x "$tpm_filter" ] || { echo "e2e: E2E_TPM=lacking needs the filter program $tpm_filter (just e2e-tpm-filter builds it)" >&2; exit 1; }
+    tpm_filter=$(realpath "$tpm_filter") ;;
+esac
 subset=''  # set by --cases
 names=()
 if [ "${2:-}" = --cases ]; then
@@ -81,9 +87,9 @@ select_cases() { # select_cases TARGET: sets selection (ids, one per line); refu
 selection=''
 if [ -n "$subset" ]; then select_cases "$want" || exit 1; fi
 
-engine=$(command -v podman || command -v docker || true)
-if [ -z "$engine" ]; then
-    echo "e2e: neither podman nor docker is installed; a systemd container is required" >&2
+engine=${E2E_ENGINE:-$(command -v podman || command -v docker || true)} # E2E_ENGINE: the container engine to use (CI: docker)
+if [ -z "$engine" ] || ! command -v "$engine" > /dev/null; then
+    echo "e2e: neither podman nor docker is installed (or E2E_ENGINE='${E2E_ENGINE:-}' is not a program); a systemd container is required" >&2
     exit 1
 fi
 mkdir -p "$out_dir"
@@ -153,6 +159,7 @@ run_target() { # run_target TARGET MODE
     local mounts=("$PWD/$found:/pkg/$(basename "$found")")
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
     [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
+    [ "$tpm" != lacking ] || mounts+=("$tpm_filter:/e2e-bin/tpm-filter")
     boot_container "$name" "$t" "${mounts[@]}" || return 1
     log="$out_dir/$t.$tpm.log"
     local envsel=(-e "E2E_TPM=$tpm") sel
