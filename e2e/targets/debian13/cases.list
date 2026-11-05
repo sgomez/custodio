@@ -9,3 +9,9 @@ purge-notice-keys
 reinstall-after-purge-keys-listed
 reinstall-after-purge-signs-with-polkit
 reinstall-after-purge-no-import
+# F133: the kind a key gets with the TPM of the run (swtpm), in the import result, the API's list, `custodio list` and the journal. Skipped under the other modes (skip.list).
+tpm-kind-import-rsa
+tpm-kind-import-ec
+tpm-kind-api-list
+tpm-kind-cli-list
+tpm-kind-journal

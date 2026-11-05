@@ -187,9 +187,9 @@ run_target() { # run_target TARGET MODE
         [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the old-path package)" >&2; return 1; }
     fi
     if [ -n "$subset" ]; then
-        bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" "$cases.sel" || return 1
+        CHECK_TPM_MODE=$tpm bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" "$cases.sel" || return 1
     else
-        bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" || return 1
+        CHECK_TPM_MODE=$tpm bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" || return 1
     fi
     rm -f "$cases" "$cases.sel"
     {

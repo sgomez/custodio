@@ -409,3 +409,15 @@ with an empty context.
   ticked. Diff base for the "no gate weakened" check: `d54a614`; the only change since is `packaging/lint/namcap.txt`
   (five tpm2-tss information entries, each with a reason). No root-only skips were checked here (`just check` ran in
   earlier sessions). The loop runs the whole `verify`.
+
+### 2026-11-05 — F133 — attempt 1
+- Done: cases `tpm-kind-import-rsa`, `tpm-kind-import-ec`, `tpm-kind-api-list`, `tpm-kind-cli-list`, `tpm-kind-journal`. Judgements in
+  `e2e/tpmkind.py` (exact kind `tpm`, key types `rsa2048`/`ecdsa-p256`, `Storage: tpm.` line, one `import` entry per key in `custodio.service`,
+  outcome `stored`), fixtures checked with `openssl` (`tpmkind-lib.sh`), self-test `tpmkind-selftest.sh`, host test `scripts/test-e2e-tpm-kind.sh`
+  (in the `justfile` script-test list). Guest step `phase_runs tpm-kind` after cli (`tpmkind-run.sh`/`tpmkind-user.sh`: own agent dir, keys deleted);
+  `owner-call.py list` prints ListKeys rows. `select.sh`: group `tpm-kind` before `tpm-*`.
+- Placement (planned departure from the `features.json` wording): the ids are in `e2e/targets/debian13/cases.list` and on its `skip.list`, not in
+  `e2e/cases.list`; `run.sh` adds the target list, so they are owed on debian13. Under `none`/`lacking` the guest reports them skipped.
+- No skip under swtpm: `check-cases.sh` reads `CHECK_TPM_MODE` (set by `run.sh`) and rejects a `tpm-kind-*` skip in `swtpm` even when the skip list names it.
+- Runs: `just e2e-cases debian13 'tpm-kind-*'` swtpm: 5 run (68 s wall, whole run); `E2E_TPM=none`: 5 skipped, accounted.
+- Negative control (2) dropped, as the evaluator allowed (it repeats the host control on `encrypted-host`).

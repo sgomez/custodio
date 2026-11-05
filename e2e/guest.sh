@@ -192,6 +192,13 @@ if phase_runs cli; then
 fi
 phase_done cli
 
+# The TPM kind cases (F133): alice imports an RSA 2048 and a P-256 key with the CLI and the kind they get is judged in the import result, the API's list, `custodio list` and the
+# journal; under a mode other than swtpm each case is reported skipped. After cli and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+if phase_runs tpm-kind; then
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmkind-run.sh || fail "tpmkind-run.sh failed"
+fi
+phase_done tpm-kind
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

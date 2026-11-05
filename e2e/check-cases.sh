@@ -5,6 +5,8 @@
 #                                             OUT (the guest's output) reports every case of CASES exactly once, and every skipped
 #                                             case is on SKIP_LIST. With SELECTED (a file of case ids, a subset of CASES: `just
 #                                             e2e-cases`) it reports exactly those cases once each and no other case of CASES
+# CHECK_TPM_MODE (F133): the TPM mode of the run (swtpm, none, lacking; run.sh sets it). In swtpm a case that needs that mode (the tpm-kind-* cases) must be run: reported
+# skipped it fails the accounting even when a skip list names it. Unset, or another mode: no such rule.
 # Skip list format: one `case: reason` per line, the case being [A-Za-z0-9._-]+ and the reason not empty; `#` starts a comment
 # line; blank lines are ignored; a case appears once. Unused entries are reported on stderr and do not fail.
 set -euo pipefail
@@ -48,6 +50,9 @@ check() {
         case $seen in *" $id "*) echo "check-cases: case '$id' reported twice" >&2; bad=1; continue ;; esac
         seen="$seen$id "
         case $owed in *" $id "*) ;; *) echo "check-cases: case '$id' was reported and is not selected" >&2; bad=1; continue ;; esac
+        if [ "$kind" = skipped ] && [ "${CHECK_TPM_MODE:-}" = swtpm ]; then
+            case $id in tpm-kind-*) echo "check-cases: case '$id' needs the swtpm mode and was skipped in it" >&2; bad=1 ;; esac
+        fi
         if [ "$kind" = skipped ]; then
             skipped="$skipped$id "
             case $listed in *" $id "*) echo "check-cases: skipped (on the skip list): $id" ;;

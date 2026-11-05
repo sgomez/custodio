@@ -1,1 +1,1 @@
-the no-TPM mode runs here only: no suite reads the mode, it changes only the kind a key gets on import
+the no-TPM mode runs here only: the tpm-kind-* cases (F133) read the mode and are skipped in it; the rest changes only the kind a key gets on import
