@@ -181,3 +181,133 @@ pub fn flip(signature: &[u8]) -> Vec<u8> {
 pub fn mechanisms_pss(hash: PssHash, salt_len: usize) -> Mechanism {
     Mechanism::RsaPkcsPss { hash, salt_len }
 }
+
+/// The PSS salt lengths of the table for a hash: none, the length of the hash and the largest one a 2048-bit key takes.
+pub fn salt_lengths(hash: PssHash) -> [usize; 3] {
+    [0, hash.len(), 256 - hash.len() - 2]
+}
+
+/// The payloads of `CKM_RSA_PKCS` that are not a `DigestInfo`: text, one zero byte and the longest one a 2048-bit key
+/// takes (245 bytes).
+pub fn opaque_inputs() -> Vec<Vec<u8>> {
+    vec![b"not a digest info".to_vec(), vec![0], vec![0xa5; 245]]
+}
+
+/// The digest lengths of `CKM_ECDSA` in the table; the shortest the service accepts is 1.
+pub const ECDSA_LENGTHS: [usize; 5] = [1, 16, 32, 48, 64];
+
+/// The digest of the table for a length.
+pub fn ecdsa_digest(len: usize) -> Vec<u8> {
+    (0..len)
+        .map(|i| u8::try_from(i * 13 % 251 + 1).unwrap())
+        .collect()
+}
+
+/// What `openssl` is asked to do with a signature of a row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Check {
+    /// `pkeyutl -verify` with PKCS#1 v1.5 and this hash, over the digest.
+    DigestInfo(PssHash),
+    /// `pkeyutl -verifyrecover`: the payload comes back byte for byte.
+    Opaque,
+    /// `pkeyutl -verify` with PSS, this hash and salt length, over the digest.
+    Pss(PssHash, usize),
+    /// `pkeyutl -verify` of the DER form of the signature over the digest.
+    Ecdsa,
+}
+
+/// One line of the table: a mechanism, the bytes handed to `Sign`, and how an independent verifier checks the result.
+#[derive(Debug, Clone)]
+pub struct Row {
+    pub label: String,
+    pub mechanism: Mechanism,
+    /// What `Sign` is given.
+    pub data: Vec<u8>,
+    /// What `openssl` is given as the signed input (the digest, or for the opaque rows the payload).
+    pub input: Vec<u8>,
+    pub check: Check,
+}
+
+impl Row {
+    /// Whether the verifier accepts `signature` with the certificate file `cert`.
+    pub fn accepts(&self, rig: &Rig, cert: &str, signature: &[u8]) -> Res<bool> {
+        match self.check {
+            Check::DigestInfo(hash) => {
+                let opts = [
+                    "-pkeyopt",
+                    "rsa_padding_mode:pkcs1",
+                    "-pkeyopt",
+                    &format!("digest:{}", hash_name(hash)),
+                ];
+                verifies(rig, cert, &self.input, signature, &opts)
+            }
+            Check::Opaque => {
+                Ok(recovered(rig, cert, signature)?.as_deref() == Some(&self.data[..]))
+            }
+            Check::Pss(hash, salt) => {
+                let opts = pss_opts(hash, salt);
+                verifies(rig, cert, &self.input, signature, &strs(&opts))
+            }
+            Check::Ecdsa => {
+                if signature.len() != 64 {
+                    return Ok(false);
+                }
+                verifies(rig, cert, &self.input, &ecdsa_der(signature), &[])
+            }
+        }
+    }
+}
+
+/// Every mechanism of an RSA-2048 key.
+pub fn rsa_rows() -> Vec<Row> {
+    let mut rows = Vec::new();
+    for hash in HASHES {
+        let digest = digest_of(hash, b"a message");
+        rows.push(Row {
+            label: format!("pkcs {hash:?} digest info"),
+            mechanism: Mechanism::RsaPkcs,
+            data: [digest_info_prefix(hash), digest.clone()].concat(),
+            input: digest,
+            check: Check::DigestInfo(hash),
+        });
+    }
+    for payload in opaque_inputs() {
+        rows.push(Row {
+            label: format!("pkcs opaque {}", payload.len()),
+            mechanism: Mechanism::RsaPkcs,
+            input: payload.clone(),
+            data: payload,
+            check: Check::Opaque,
+        });
+    }
+    for hash in HASHES {
+        let digest = digest_of(hash, b"to be signed");
+        for salt in salt_lengths(hash) {
+            rows.push(Row {
+                label: format!("pss {hash:?} salt {salt}"),
+                mechanism: mechanisms_pss(hash, salt),
+                data: digest.clone(),
+                input: digest.clone(),
+                check: Check::Pss(hash, salt),
+            });
+        }
+    }
+    rows
+}
+
+/// Every mechanism of a P-256 key.
+pub fn p256_rows() -> Vec<Row> {
+    ECDSA_LENGTHS
+        .iter()
+        .map(|&len| {
+            let digest = ecdsa_digest(len);
+            Row {
+                label: format!("ecdsa {len}"),
+                mechanism: Mechanism::Ecdsa,
+                data: digest.clone(),
+                input: digest,
+                check: Check::Ecdsa,
+            }
+        })
+        .collect()
+}

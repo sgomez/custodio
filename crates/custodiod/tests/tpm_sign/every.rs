@@ -12,8 +12,9 @@ use custodiod::tpm::open::TestTcti;
 use secrecy::SecretSlice;
 
 use super::oracle::{
-    HASHES, Subject, digest_info_prefix, digest_of, ecdsa_der, flip, hash_name, mechanisms_pss,
-    pss_opts, recovered, strs, verifies,
+    ECDSA_LENGTHS, HASHES, Subject, digest_info_prefix, digest_of, ecdsa_der, ecdsa_digest, flip,
+    hash_name, mechanisms_pss, opaque_inputs, p256_rows, pss_opts, recovered, rsa_rows,
+    salt_lengths, strs, verifies,
 };
 use super::support::{Kind, Rig, TestResult};
 
@@ -66,8 +67,7 @@ fn digest_info_payloads(ctx: Ctx, rsa: &Subject, other: &Subject) -> TestResult 
 fn opaque_payloads(ctx: Ctx, rsa: &Subject, other: &Subject) -> TestResult {
     let (rig, access) = ctx;
     // CKM_RSA_PKCS with payloads that are not a DigestInfo: the payload is recovered byte for byte.
-    let long = vec![0xa5u8; 245];
-    for payload in [&b"not a digest info"[..], &[0u8], &long] {
+    for payload in opaque_inputs().iter().map(Vec::as_slice) {
         let signature = rsa.sign(access, Mechanism::RsaPkcs, payload)?;
         assert_eq!(
             recovered(rig, &rsa.cert, &signature)?.as_deref(),
@@ -96,9 +96,8 @@ fn pss_salts(ctx: Ctx, rsa: &Subject, other: &Subject) -> TestResult {
     let (rig, access) = ctx;
     // CKM_RSA_PKCS_PSS per hash with salt 0, hLen and the largest salt.
     for hash in HASHES {
-        let h = hash.len();
         let digest = digest_of(hash, b"to be signed");
-        for salt_len in [0, h, 256 - h - 2] {
+        for salt_len in salt_lengths(hash) {
             let signature = rsa.sign(access, mechanisms_pss(hash, salt_len), &digest)?;
             assert_eq!(signature.len(), 256);
             let right = pss_opts(hash, salt_len);
@@ -146,10 +145,8 @@ fn pss_salts(ctx: Ctx, rsa: &Subject, other: &Subject) -> TestResult {
 fn ecdsa_digests(ctx: Ctx, ec: &Subject, ec_other: &Subject) -> TestResult {
     let (rig, access) = ctx;
     // CKM_ECDSA with 1-, 16-, 32-, 48- and 64-byte digests; the shortest accepted length is 1.
-    for len in [1usize, 16, 32, 48, 64] {
-        let digest: Vec<u8> = (0..len)
-            .map(|i| u8::try_from(i * 13 % 251 + 1).unwrap())
-            .collect();
+    for len in ECDSA_LENGTHS {
+        let digest = ecdsa_digest(len);
         let signature = ec.sign(access, Mechanism::Ecdsa, &digest)?;
         assert_eq!(signature.len(), 64);
         let der = ecdsa_der(&signature);
@@ -189,6 +186,22 @@ fn every_mechanism_verifies_with_the_certificate() -> TestResult {
     opaque_payloads((&rig, &access), &rsa, &other)?;
     pss_salts((&rig, &access), &rsa, &other)?;
     ecdsa_digests((&rig, &access), &ec, &ec_other)?;
+    // The table as a whole: every row signs and its checker accepts it, and rejects it with the other certificate.
+    for (rows, subject, other) in [(rsa_rows(), &rsa, &other), (p256_rows(), &ec, &ec_other)] {
+        for row in rows {
+            let signature = subject.sign(&access, row.mechanism, &row.data)?;
+            assert!(
+                row.accepts(&rig, &subject.cert, &signature)?,
+                "{}",
+                row.label
+            );
+            assert!(
+                !row.accepts(&rig, &other.cert, &signature)?,
+                "{}",
+                row.label
+            );
+        }
+    }
     rig.assert_nothing_loaded("after the mechanisms")?;
     Ok(())
 }
