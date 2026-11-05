@@ -206,7 +206,7 @@ pub fn lacks_mechanism(rsa: bool) -> Lacks {
 /// The service, its bus and the doubles.
 pub struct Svc {
     _bus: Bus,
-    _state: tempfile::TempDir,
+    state: tempfile::TempDir,
     pub store: Arc<KeyStore>,
     _polkit: Connection,
     _service: Connection,
@@ -258,7 +258,7 @@ impl Svc {
         let client = bus.connect().await?;
         Ok(Self {
             _bus: bus,
-            _state: state,
+            state,
             store,
             _polkit: polkit,
             _service: service,
@@ -295,6 +295,11 @@ impl Svc {
 
     pub async fn import_subject(&self, id: &str, subject: Subject) -> Result<String, String> {
         self.import(id, subject.p12, SENTINEL_PASSWORD).await
+    }
+
+    /// The state directory of the service: the store lives in it.
+    pub fn state_dir(&self) -> &std::path::Path {
+        self.state.path()
     }
 
     /// The kind the store holds for the test user's key `id`.
