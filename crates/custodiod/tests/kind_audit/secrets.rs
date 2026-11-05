@@ -74,7 +74,26 @@ impl Secrets {
             ("key DER", pkcs8),
         ];
         all.extend(record.into_iter().map(|r| ("stored record", r)));
+        // The response codes the rigs inject: a cause is chosen from the typed error, never from the code.
+        all.extend(
+            [
+                "0x101",
+                "0x143",
+                "0x1df",
+                "0x00000101",
+                "0x00000143",
+                "0x000001df",
+            ]
+            .into_iter()
+            .map(|c| ("response code", c.as_bytes().to_vec())),
+        );
         Self(all)
+    }
+
+    /// Adds what a row plants besides the common secrets: credential bytes, a tool's error text.
+    pub fn plus(mut self, what: &'static str, values: impl IntoIterator<Item = Vec<u8>>) -> Self {
+        self.0.extend(values.into_iter().map(|v| (what, v)));
+        self
     }
 }
 

@@ -57,9 +57,11 @@ async fn failure_rows(lost: bool) -> TestResult {
             let case = Case::new(fail, subject).await?;
             let setup = &case.setup;
             let family = Family::of(subject)[0];
-            let (record, listed) = (setup.record_bytes(), setup.list().await?);
+            let listed = setup.list().await?;
             let before = setup.svc.sink.entries().len();
             case.break_it();
+            // Taken after the break: a damaged blob changes the record itself, the sign must not change it further.
+            let record = setup.record_bytes();
             assert_eq!(
                 setup.sign(family).await,
                 Err(fail.error().to_owned()),
@@ -95,9 +97,7 @@ async fn failure_rows(lost: bool) -> TestResult {
                 "{who}"
             );
             assert_eq!(setup.list().await?, listed, "{who}: the listing");
-            if !lost {
-                assert_eq!(setup.record_bytes(), record, "{who}: the record");
-            }
+            assert_eq!(setup.record_bytes(), record, "{who}: the record");
             assert_sign_clean(e, &secrets(setup), &who);
         }
     }

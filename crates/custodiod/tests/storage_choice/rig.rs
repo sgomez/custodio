@@ -98,6 +98,7 @@ pub struct SpyCreds {
     pub decrypts: AtomicUsize,
     fail: Mutex<Option<CredsError>>,
     fail_decrypt: Mutex<Option<CredsError>>,
+    produced: Mutex<Vec<Vec<u8>>>,
 }
 
 impl SpyCreds {
@@ -108,6 +109,7 @@ impl SpyCreds {
             decrypts: AtomicUsize::new(0),
             fail: Mutex::new(None),
             fail_decrypt: Mutex::new(None),
+            produced: Mutex::new(Vec::new()),
         })
     }
 
@@ -127,6 +129,14 @@ impl SpyCreds {
         *self.fail.lock().unwrap_or_else(PoisonError::into_inner) = error;
     }
 
+    /// The credentials `encrypt` has produced, kept or not.
+    pub fn produced(&self) -> Vec<Vec<u8>> {
+        self.produced
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     pub fn encrypts(&self) -> usize {
         self.encrypts.load(Ordering::SeqCst)
     }
@@ -138,7 +148,12 @@ impl Credentials for SpyCreds {
         if let Some(e) = *self.fail.lock().unwrap_or_else(PoisonError::into_inner) {
             return Err(e);
         }
-        self.inner.encrypt(name, plaintext)
+        let credential = self.inner.encrypt(name, plaintext)?;
+        self.produced
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(credential.clone());
+        Ok(credential)
     }
 
     fn decrypt(&self, name: &str, credential: &[u8]) -> Result<SecretSlice<u8>, CredsError> {

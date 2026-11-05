@@ -301,6 +301,7 @@ fn import_failure_causes() -> TestResult {
             let mut keep = Vec::new();
             let (tpm, creds) = (failure.make)(subject, &mut keep);
             block_on(async {
+                let spy = Arc::clone(&creds);
                 let svc = Svc::start(tpm, creds, Answer::Yes).await?;
                 assert_eq!(
                     svc.import_subject("k", subject).await,
@@ -322,7 +323,9 @@ fn import_failure_causes() -> TestResult {
                     "{who}"
                 );
                 assert_eq!(value(e, "CUSTODIO_STORAGE_KIND"), None, "{who}");
-                assert_operation_clean(e, &secrets(&svc, subject), &who);
+                // The credential bytes a failed import produced were never stored: they are planted too.
+                let secrets = secrets(&svc, subject).plus("credential", spy.produced());
+                assert_operation_clean(e, &secrets, &who);
                 Ok::<_, Box<dyn std::error::Error>>(())
             })?;
         }
@@ -407,7 +410,16 @@ fn other_import_entries_unchanged() -> TestResult {
                 let names: Vec<_> = e.fields().into_iter().map(|(n, _)| n).collect();
                 assert_eq!(names, OLD_FIELDS, "{who}: {name}");
                 assert_eq!(value(e, "PRIORITY").as_deref(), Some(priority), "{who}");
-                assert_operation_clean(e, &secrets(&svc, subject), name);
+                // The decoder's own text for this request is planted: it must not reach the entry.
+                let tool = match custodiod::import::parse_p12(p12, &password.into()) {
+                    Err(
+                        custodiod::import::ImportError::Parse(text)
+                        | custodiod::import::ImportError::UnsupportedKey(text),
+                    ) => vec![text.into_bytes()],
+                    _ => Vec::new(),
+                };
+                let secrets = secrets(&svc, subject).plus("decoder text", tool);
+                assert_operation_clean(e, &secrets, name);
             }
         }
         Ok(())

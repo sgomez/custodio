@@ -489,7 +489,7 @@ fn every_import_error_has_its_cause() {
     use crate::tpm::key::KeyRefusal;
     let rc = ResponseCode(0x143);
     let table = [
-        (ImportError::TooLarge, Some(C::Store)),
+        (ImportError::TooLarge, Some(C::Internal)),
         (ImportError::Parse("x".into()), None),
         (ImportError::NoPrivateKey, None),
         (ImportError::MultipleKeys, None),

@@ -71,7 +71,8 @@ pub(super) const fn import_cause(e: &ImportError) -> Option<ImportCause> {
             }
         }),
         ImportError::BindingMismatch => Some(ImportCause::BindingMismatch),
-        ImportError::Store(_) | ImportError::TooLarge => Some(ImportCause::Store),
+        ImportError::Store(_) => Some(ImportCause::Store),
+        ImportError::TooLarge => Some(ImportCause::Internal),
     }
 }
 
