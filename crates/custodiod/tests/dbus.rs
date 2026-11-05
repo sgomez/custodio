@@ -168,7 +168,7 @@ impl Fixture {
         let reply = self
             .call("ImportP12", &(id, P256_P12.to_vec(), PASSWORD))
             .await?;
-        let kind = reply.body().deserialize()?;
+        let (kind, _storage): (String, String) = reply.body().deserialize()?;
         // The import asked polkit under its own action; the tests below count the signatures.
         let asked = std::mem::take(
             &mut *self
@@ -233,14 +233,14 @@ fn verify(cert_der: &[u8], digest: &[u8], signature: &[u8]) -> TestResult {
 fn import_list_and_approved_sign() -> TestResult {
     block_on(async {
         let f = Fixture::start(true).await?;
-        let none: Vec<(String, String, Vec<u8>)> =
+        let none: Vec<(String, String, String, Vec<u8>)> =
             f.call("ListKeys", &()).await?.body().deserialize()?;
         assert_eq!(none.len(), 0);
         assert_eq!(f.import("alice").await?, "ecdsa-p256");
 
-        let keys: Vec<(String, String, Vec<u8>)> =
+        let keys: Vec<(String, String, String, Vec<u8>)> =
             f.call("ListKeys", &()).await?.body().deserialize()?;
-        let [(cert_id, key_type, cert_der)] = keys.as_slice() else {
+        let [(cert_id, key_type, _kind, cert_der)] = keys.as_slice() else {
             return Err("expected exactly one key".into());
         };
         assert_eq!(cert_id, "alice");
@@ -336,7 +336,7 @@ fn import_errors_do_not_leak_the_password_or_store() -> TestResult {
         // polkit was asked before the wrong password was found out.
         assert_eq!(f.asked().len(), 1);
         f.asked.lock().map_err(|_| "poisoned")?.clear();
-        let keys: Vec<(String, String, Vec<u8>)> =
+        let keys: Vec<(String, String, String, Vec<u8>)> =
             f.call("ListKeys", &()).await?.body().deserialize()?;
         assert_eq!(keys.len(), 0);
         f.import("bob").await?;

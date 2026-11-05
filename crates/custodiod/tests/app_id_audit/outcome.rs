@@ -40,7 +40,7 @@ struct Result3 {
     requests: Vec<(String, u32)>,
     store: BTreeMap<String, Vec<u8>>,
     entries: Vec<Vec<(&'static str, String)>>,
-    listed: Vec<(String, String, Vec<u8>)>,
+    listed: Vec<(String, String, String, Vec<u8>)>,
     later_sign: Result<Vec<u8>, String>,
 }
 
@@ -67,7 +67,7 @@ async fn run(
     // The store as a client sees it afterwards: the list, and a later sign (RSA PKCS#1 v1.5 is
     // deterministic, so equal signatures mean the same key).
     sink.fail.store(false, Ordering::SeqCst);
-    let listed: Vec<(String, String, Vec<u8>)> = call(&f.client, "ListKeys", &())
+    let listed: Vec<(String, String, String, Vec<u8>)> = call(&f.client, "ListKeys", &())
         .await?
         .body()
         .deserialize()?;

@@ -44,7 +44,9 @@ impl Importer for DbusImporter {
         .map_err(|e| failure_of(&e))?;
         reply
             .body()
-            .deserialize::<String>()
+            .deserialize::<(String, String)>()
+            // The kind is read and shown by `custodio import` in F123; the key type is all that is used here.
+            .map(|(key_type, _kind)| key_type)
             .map_err(|_| ServiceFailure::Transport)
     }
 }
@@ -61,11 +63,11 @@ impl KeyLister for DbusImporter {
         .map_err(|e| failure_of(&e))?;
         let keys = reply
             .body()
-            .deserialize::<Vec<(String, String, Vec<u8>)>>()
+            .deserialize::<Vec<(String, String, String, Vec<u8>)>>()
             .map_err(|_| ServiceFailure::Transport)?;
         Ok(keys
             .into_iter()
-            .map(|(id, key_type, certificate)| KeyEntry {
+            .map(|(id, key_type, _kind, certificate)| KeyEntry {
                 id,
                 key_type,
                 certificate,

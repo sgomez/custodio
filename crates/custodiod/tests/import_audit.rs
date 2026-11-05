@@ -51,7 +51,11 @@ async fn import(f: &Fixture, id: &str, p12: &[u8], password: &str) -> Result<Str
     let reply = call(&f.client, "ImportP12", &(id, p12.to_vec(), password))
         .await
         .map_err(|e| error_name(&e))?;
-    reply.body().deserialize().map_err(|e| e.to_string())
+    reply
+        .body()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
+        .map_err(|e| e.to_string())
 }
 
 /// The ids in the store area of the test process's uid.

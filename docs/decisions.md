@@ -269,3 +269,12 @@ Format: a title and three short bullets, a couple of lines each:
   name a device, a network address or another daemon.
 - Rejected: reading `TPM2TOOLS_TCTI`/`TSS2_TCTI` (every `tpm2-tools` session sets them); a
   compile-time test feature (e2e runs the packaged binary); `device:` values.
+
+## 2026-11-05 — The storage kind sits next to the key type in the replies
+- Decision: `ImportP12` returns one struct `(key type, kind)` of two strings (`(ss)`); `ListKeys` returns
+  `a(sssay)`: id, key type, kind, certificate. The kind is a string, never a number.
+- Why: the out signatures changed, so a client written for M3 (`s`, `a(ssay)`) fails to read the
+  new replies; the kind goes beside the key type so the old fields keep their positions and
+  a new client reads both together.
+- Rejected: a separate `GetKind` call (a second round trip, and a race with a delete); a dict
+  (`a{sv}`) reply (nothing in this API uses variants); appending the kind after the certificate.

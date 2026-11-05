@@ -106,5 +106,9 @@ async fn call_import(client: &Connection, id: &str) -> Result<String, String> {
     let reply = call(client, "ImportP12", &(id, EC_P12.to_vec(), PASSWORD))
         .await
         .map_err(|e| error_name(&e))?;
-    reply.body().deserialize().map_err(|e| e.to_string())
+    reply
+        .body()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
+        .map_err(|e| e.to_string())
 }

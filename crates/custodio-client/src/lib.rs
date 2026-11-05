@@ -4,6 +4,10 @@
 //! the clients never link the service.
 #![forbid(unsafe_code)]
 
+mod kind;
+
+pub use kind::{KNOWN_KINDS, Kind};
+
 /// Well-known bus name of the service.
 pub const BUS_NAME: &str = "com.rfirma.Custodio1";
 /// Object path of the service.
@@ -46,6 +50,25 @@ pub const ERROR_KEY_LOST: &str = "com.rfirma.Custodio1.Error.KeyLost";
 pub const ERROR_TEMPORARILY_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.TemporarilyUnavailable";
 /// The key store, a stored key or the signing operation failed.
 pub const ERROR_INTERNAL: &str = "com.rfirma.Custodio1.Error.Internal";
+
+/// Every `ERROR_*` name above, once. The contract check compares this list with the service and the document,
+/// so a name added above must be added here.
+pub const ERROR_NAMES: [&str; 14] = [
+    ERROR_INVALID_ARGS,
+    ERROR_NO_SUCH_KEY,
+    ERROR_KEY_ID_TAKEN,
+    ERROR_POLKIT_DENIED,
+    ERROR_AUTHORIZATION_UNAVAILABLE,
+    ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_UNSUPPORTED_KEY_TYPE,
+    ERROR_CERTIFICATE_MISMATCH,
+    ERROR_AUDIT_UNAVAILABLE,
+    ERROR_TPM_FAILED,
+    ERROR_CREDENTIALS_UNAVAILABLE,
+    ERROR_KEY_LOST,
+    ERROR_TEMPORARILY_UNAVAILABLE,
+    ERROR_INTERNAL,
+];
 
 #[cfg(test)]
 mod tests;

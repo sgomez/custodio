@@ -87,10 +87,16 @@ impl Backend for DbusBackend {
             let reply = connection
                 .call_method(Some(BUS_NAME), OBJECT_PATH, Some(BUS_NAME), "ListKeys", &())
                 .await?;
-            reply.body().deserialize::<Vec<(String, String, Vec<u8>)>>()
+            reply
+                .body()
+                .deserialize::<Vec<(String, String, String, Vec<u8>)>>()
         })
-        // `ListKeys` also gives the key type; the module reads it from the certificate.
-        .map(|keys| keys.into_iter().map(|(id, _, cert)| (id, cert)).collect())
+        // `ListKeys` also gives the key type and the storage kind; the module reads it from the certificate.
+        .map(|keys| {
+            keys.into_iter()
+                .map(|(id, _, _, cert)| (id, cert))
+                .collect()
+        })
         .map_err(|e| map_error(&e))
     }
 

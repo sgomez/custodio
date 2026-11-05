@@ -182,6 +182,9 @@ pub fn parse_import_request(
     })
 }
 
+/// One element of the `ListKeys` reply: id, key type, storage kind, DER certificate.
+pub type ListedKey = (String, String, String, Vec<u8>);
+
 fn kind_name(kind: KeyKind) -> &'static str {
     match kind {
         KeyKind::Rsa2048 => "rsa2048",
@@ -344,7 +347,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             .map_err(|_| ServiceError::AuthorizationUnavailable)
     }
 
-    /// `ListKeys` after the bus handed over the sender: `(id, key type, DER certificate)` of every
+    /// `ListKeys` after the bus handed over the sender: `(id, key type, storage kind, DER certificate)` of every
     /// key of the caller. Asks no polkit.
     ///
     /// # Errors
@@ -353,7 +356,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     pub async fn list_keys_call(
         &self,
         sender: Option<&str>,
-    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+    ) -> Result<Vec<ListedKey>, ServiceError> {
         let owner = self.owner(sender).await?;
         let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
@@ -368,10 +371,11 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             };
             // The certificate was checked against the key when it was stored or replaced, so its
             // key type is the key's, and listing never decrypts or touches the TPM.
-            let kind = certificate_kind(record.certificate()).ok_or(ServiceError::Internal)?;
+            let key_type = certificate_kind(record.certificate()).ok_or(ServiceError::Internal)?;
             out.push((
                 id.clone(),
-                kind_name(kind).to_owned(),
+                kind_name(key_type).to_owned(),
+                record.kind().wire().to_owned(),
                 record.certificate().to_vec(),
             ));
         }
@@ -448,16 +452,16 @@ where
     A: Authorizer + Send + Sync + 'static,
     C: CallerCredentials + Send + Sync + 'static,
 {
-    /// `(key id, key type, DER certificate)` for every stored key of the caller.
+    /// `(key id, key type, storage kind, DER certificate)` for every stored key of the caller.
     async fn list_keys(
         &self,
         #[zbus(header)] header: Header<'_>,
-    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+    ) -> Result<Vec<ListedKey>, ServiceError> {
         self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
             .await
     }
 
-    /// Imports a `.p12` as key `id` of the caller; returns the key type.
+    /// Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
     async fn import_p12(
@@ -466,7 +470,7 @@ where
         id: &str,
         p12: Vec<u8>,
         password: &str,
-    ) -> Result<String, ServiceError> {
+    ) -> Result<ImportReply, ServiceError> {
         self.import_call(
             header.sender().map(zbus::names::UniqueName::as_str),
             id,
@@ -529,6 +533,7 @@ where
 mod delete;
 mod delete_state;
 mod import;
+pub use import::ImportReply;
 mod replace;
 mod sign_kind;
 #[cfg(test)]

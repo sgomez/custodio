@@ -16,7 +16,7 @@ use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use x509_cert::Certificate as X509;
 
 use crate::creds::{Credentials, CredsError};
-use crate::store::{KeyStore, Record, StoreError};
+use crate::store::{KeyStore, Kind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::import::ImportError as TpmImportError;
 
@@ -207,7 +207,7 @@ pub fn credential_name(owner: u32, id: &str) -> String {
 }
 
 /// Choose the storage kind (see [`choice`]), protect the key of `parsed` in it and store, for `owner`, one record
-/// under `id` with the protected key and the certificate. The plaintext key goes to the TPM or to the credential
+/// under `id` with the protected key and the certificate; returns the key type and the storage kind chosen. The plaintext key goes to the TPM or to the credential
 /// service and nowhere else; it is dropped before the record is written. Every failure stores nothing.
 ///
 /// # Errors
@@ -219,7 +219,7 @@ pub fn store_parsed(
     owner: u32,
     id: &str,
     parsed: ParsedP12,
-) -> Result<KeyKind, ImportError> {
+) -> Result<(KeyKind, Kind), ImportError> {
     // Check up front so a taken id costs no encryption.
     if id_taken(store, owner, id)? {
         return Err(StoreError::AlreadyExists.into());
@@ -234,7 +234,7 @@ pub fn store_parsed(
     )
     .map_err(StoreError::Record)?;
     store.put(&record)?;
-    Ok(protection.key_type)
+    Ok((protection.key_type, protection.kind))
 }
 
 /// Undo [`store_parsed`] for `id`: remove the record.
@@ -259,6 +259,7 @@ pub fn import_p12(
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
     store_parsed(store, creds, tpm, owner, id, parse_p12(data, password)?)
+        .map(|(key_type, _)| key_type)
 }
 
 fn unsupported(why: &str) -> ImportError {

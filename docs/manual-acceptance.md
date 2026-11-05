@@ -547,7 +547,7 @@ another key). Then the `<DER>` argument forms of the commands below are the ones
    ```
 
    Expected: `b true`. If it is `false`, do the other steps of "Detection" and write down what they print.
-2. List with nothing imported. Dialog: none (`ListKeys` asks polkit nothing). Expected `a(ssay) 0`.
+2. List with nothing imported. Dialog: none (`ListKeys` asks polkit nothing). Expected `a(sssay) 0`.
 
    ```sh
    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
@@ -598,7 +598,7 @@ another key). Then the `<DER>` argument forms of the commands below are the ones
 | # (step) | Dialog seen (action) | Error or result seen | Expected | Result (pass/fail, notes) |
 |---|---|---|---|---|
 | 1 | none | | `b true` | |
-| 2 | none | | `a(ssay) 0` | |
+| 2 | none | | `a(sssay) 0` | |
 | 3 | import-certificate, cancelled | | `PolkitDenied` | |
 | 4 | import-certificate, approved | | `WrongPasswordOrBadP12` | |
 | 5 | none | | `InvalidArgs` | |
@@ -694,7 +694,7 @@ Firefox and LibreOffice still sign with a key that the person imported through t
    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
    ```
 
-   Expected: `a(ssay) 0`, an empty list.
+   Expected: `a(sssay) 0`, an empty list.
 
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
@@ -702,7 +702,7 @@ Firefox and LibreOffice still sign with a key that the person imported through t
 | 2 | LibreOffice signs, dialog seen | valid signature | |
 | 3 | Journal comparison | none extra, none missing | |
 | 4 | Second account: token listing | no token | |
-| 5 | Second account: `ListKeys` | `a(ssay) 0` | |
+| 5 | Second account: `ListKeys` | `a(sssay) 0` | |
 
 ## 19. M3 result form
 

@@ -22,4 +22,10 @@ fn names_are_the_documented_literals() {
     for (name, last) in want {
         assert_eq!(name, format!("com.rfirma.Custodio1.Error.{last}"));
     }
+    let listed: Vec<&str> = want.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        ERROR_NAMES.to_vec(),
+        listed,
+        "ERROR_NAMES lists every constant, in order"
+    );
 }

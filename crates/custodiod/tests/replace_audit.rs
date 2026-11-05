@@ -189,7 +189,7 @@ async fn sign_rsa(c: &Connection, id: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| error_name(&e))
 }
 
-type Listed = Vec<(String, String, Vec<u8>)>;
+type Listed = Vec<(String, String, String, Vec<u8>)>;
 
 async fn listed(c: &Connection) -> Result<Listed, Box<dyn Error>> {
     Ok(call(c, "ListKeys", &()).await?.body().deserialize()?)
@@ -198,7 +198,7 @@ async fn listed(c: &Connection) -> Result<Listed, Box<dyn Error>> {
 /// The certificate `ListKeys` shows for `id`.
 async fn listed_cert(c: &Connection, id: &str) -> Result<Vec<u8>, Box<dyn Error>> {
     let key = listed(c).await?.into_iter().find(|k| k.0 == id);
-    Ok(key.ok_or("key not listed")?.2)
+    Ok(key.ok_or("key not listed")?.3)
 }
 
 fn area(f: &Fixture) -> PathBuf {

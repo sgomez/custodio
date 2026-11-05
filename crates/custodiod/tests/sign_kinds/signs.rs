@@ -144,7 +144,7 @@ fn replace_each_kind() -> TestResult {
                 }
                 let listed = setup.list().await?;
                 assert_eq!(listed.len(), 1, "{who}");
-                assert_eq!(listed[0].2, second, "{who}: ListKeys shows the new one");
+                assert_eq!(listed[0].3, second, "{who}: ListKeys shows the new one");
                 // The kind and the protected form are what they were.
                 let after_record = setup.svc.store.get(uid(), ID)?;
                 assert_eq!(after_record.kind(), before_record.kind(), "{who}");

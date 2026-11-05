@@ -294,7 +294,7 @@ fn lost_keys_stay_listed_and_deletable() -> TestResult {
                 let listed = setup.list().await?;
                 assert_eq!(listed.len(), 1, "{who}");
                 assert_eq!(
-                    (listed[0].0.as_str(), listed[0].1.as_str(), &listed[0].2),
+                    (listed[0].0.as_str(), listed[0].1.as_str(), &listed[0].3),
                     (ID, subject.reply, &certificate),
                     "{who}"
                 );

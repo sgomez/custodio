@@ -199,7 +199,7 @@ impl Setup {
         reply.body().deserialize().map_err(|e| e.to_string())
     }
 
-    pub async fn list(&self) -> Result<Vec<(String, String, Vec<u8>)>, String> {
+    pub async fn list(&self) -> Result<Vec<(String, String, String, Vec<u8>)>, String> {
         let reply = self.svc.call_method("ListKeys", &()).await?;
         reply.body().deserialize().map_err(|e| e.to_string())
     }

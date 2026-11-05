@@ -477,12 +477,12 @@ struct Documented(Arc<Mutex<Vec<Call>>>);
 
 #[interface(name = "com.rfirma.Custodio1")]
 impl Documented {
-    fn import_p12(&self, id: String, p12: Vec<u8>, password: String) -> String {
+    fn import_p12(&self, id: String, p12: Vec<u8>, password: String) -> (String, String) {
         self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push((id, p12, password));
-        "ecdsa-p256".to_owned()
+        ("ecdsa-p256".to_owned(), "encrypted-host".to_owned())
     }
 }
 

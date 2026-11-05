@@ -269,3 +269,12 @@ with an empty context.
 ### 2026-11-05 — F118 — attempt 2
 - Fixed NEXT_FINDINGS: `docs/api.md` (`KeyLost` line) and the `ERROR_KEY_LOST` doc now say `Sign` only; the `Internal` entry says a replace whose key cannot be decrypted fails `Internal` and changes nothing.
 - Evidence: `just quick` green. No code changed, so `sign_kinds` 17/17 and the mutants result (22 mutants, 0 missed) stand.
+
+### 2026-11-05 — F119 — attempt 1
+- Shapes (decided in `docs/decisions.md`): `ImportP12` returns one struct `(ss)` = (key type, kind) (zbus turns a tuple into one struct argument; `busctl` prints it as `ss …`); `ListKeys` returns `a(sssay)` = (id, key type, kind, certificate). The kind is `store::Kind::wire()` read from the record (no TPM or credentials touched). `store_parsed` now returns `(KeyKind, Kind)`; `import_p12` still returns the key type. CLI `bus.rs` and the PKCS#11 backend read the new shape and ignore the kind; existing tests and the docs scripts (`test-docs-api.sh`, `test-docs-manual-m3.sh`, `manual-acceptance.md`) follow.
+- `custodio-client`: `Kind` (three wire strings + `Unknown(text)`), `KNOWN_KINDS`, `ERROR_NAMES` (one exported list of the `ERROR_*` constants, checked against the literal table in the client tests).
+- `docs/api.md`: `out` lines, a "Storage kinds" section (one `- kind` line per value, what each protects against, when each is chosen).
+- `api_kind` (3 tests): `import_returns_kind` (3 kinds x 2 key types, raw `(ss)` signature, equals the stored record), `list_returns_kind` (3 kinds in one store created out of id order, another owner's key unlisted, no TPM open/decrypt/encrypt), `list_after_loss` (swtpm cleared + decrypt failing: same list). Rig: `KindSvc` in `storage_choice/rig.rs`.
+- `api_contract` now starts a service per kind (needs `swtpm`, as `api_kind` does) and compares the document's kind lines with the live kinds and the client's list, and the client's `ERROR_NAMES` with `ServiceError::ALL` and the document; controls in `edited_copies_of_the_document_fail` (kind line removed / invented, a `Sources` with an extra live kind, client constant extra / missing, old `ListKeys` out shape).
+- `just mutants` gained a `custodio-client` run on `kind.rs` (`target/mutants-client`).
+- Evidence: `just quick` green; `just api-contract` 2/2; `api_kind` 3/3; `just mutants-diff F119`: 0 missed in all three runs.

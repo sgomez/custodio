@@ -271,7 +271,11 @@ impl Svc {
         let reply = call(&self.client, "ImportP12", &(id, p12.to_vec(), password))
             .await
             .map_err(|e| error_name(&e))?;
-        reply.body().deserialize().map_err(|e| e.to_string())
+        reply
+            .body()
+            .deserialize::<(String, String)>()
+            .map(|(key_type, _kind)| key_type)
+            .map_err(|e| e.to_string())
     }
 
     pub async fn import_subject(&self, id: &str, subject: Subject) -> Result<String, String> {
@@ -345,4 +349,42 @@ pub fn pkcs8_of(subject: Subject) -> Vec<u8> {
         .key
         .expose_secret()
         .to_vec()
+}
+
+/// A service whose TPM and credential doubles make `kind` the kind of every import, with the `swtpm` behind it.
+pub struct KindSvc {
+    pub rig: Rig,
+    pub svc: Svc,
+    /// The filter in front of the `swtpm` (the TPM that lacks a capability); it must outlive the service's use of it.
+    _filter: Option<custodio_it::tpm_filter::TpmFilter>,
+}
+
+impl KindSvc {
+    /// `Tpm`: a ready `swtpm`. `EncryptedTpm`: a TPM that lacks `Import`, with TPM-bound credentials.
+    /// `EncryptedHost`: no TPM, with host-bound credentials. Fake polkit approves.
+    pub async fn start(kind: Kind) -> Res<Self> {
+        use custodiod::creds::memory::MemoryCreds;
+        use custodiod::tpm::open::{NoTpm, TestTcti};
+        let rig = Rig::new()?;
+        let mut filter = None;
+        let (tpm, creds) = match kind {
+            Kind::Tpm => (
+                Counting::new(TestTcti::new(&rig.tcti())),
+                SpyCreds::new(MemoryCreds::host()),
+            ),
+            Kind::EncryptedTpm => {
+                let (f, _) = rig.filter(lacks_import())?;
+                let tpm = Counting::new(TestTcti::new(&f.tcti()));
+                filter = Some(f);
+                (tpm, SpyCreds::new(MemoryCreds::tpm()))
+            }
+            Kind::EncryptedHost => (Counting::new(NoTpm), SpyCreds::new(MemoryCreds::host())),
+        };
+        let svc = Svc::start(tpm, creds, Answer::Yes).await?;
+        Ok(Self {
+            rig,
+            svc,
+            _filter: filter,
+        })
+    }
 }

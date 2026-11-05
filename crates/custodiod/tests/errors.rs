@@ -57,7 +57,8 @@ async fn import_call(f: &Fixture, id: &str, data: &[u8], pw: &str) -> zbus::Resu
     call(&f.client, "ImportP12", &(id, data.to_vec(), pw))
         .await?
         .body()
-        .deserialize()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
 }
 
 async fn sign_call(

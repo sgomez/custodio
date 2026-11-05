@@ -74,7 +74,7 @@ fn concurrent_list_sees_old_or_new() -> TestResult {
                 let keys = list(&r.a2)
                     .await
                     .map_err(|e| format!("ListKeys failed: {e}"))?;
-                let [(id, _, cert)] = keys.as_slice() else {
+                let [(id, _, _, cert)] = keys.as_slice() else {
                     return Err(format!("{} keys listed", keys.len()));
                 };
                 if id != "k" || !allowed.contains(cert) {

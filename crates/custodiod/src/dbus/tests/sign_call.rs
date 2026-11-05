@@ -187,6 +187,7 @@ pub(super) fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> 
 
 fn import(r: &Rig, id: &str) -> Result<String, ServiceError> {
     zbus::block_on(r.service.import_call(SENDER, id, P12, "test-password"))
+        .map(|(key_type, _)| key_type)
 }
 
 #[test]
@@ -227,6 +228,7 @@ fn list_reads_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>
         [(
             "mine".to_owned(),
             "ecdsa-p256".to_owned(),
+            mine.kind().wire().to_owned(),
             mine.certificate().to_vec()
         )]
     );
@@ -311,7 +313,7 @@ impl crate::import::P12Decoder for FailingDecoder {
 type Answer = fn() -> Result<(), AuthError>;
 
 /// The reply of an import, the polkit calls and the decoder calls.
-type Imported = (Result<String, ServiceError>, usize, usize);
+type Imported = (Result<crate::dbus::ImportReply, ServiceError>, usize, usize);
 
 fn import_with(
     result: fn() -> Result<(), AuthError>,

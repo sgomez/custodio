@@ -138,7 +138,7 @@ async fn sign_rsa(c: &Connection, id: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn listed(c: &Connection) -> Result<Vec<String>, Box<dyn Error>> {
-    let keys: Vec<(String, String, Vec<u8>)> =
+    let keys: Vec<(String, String, String, Vec<u8>)> =
         call(c, "ListKeys", &()).await?.body().deserialize()?;
     Ok(keys.into_iter().map(|k| k.0).collect())
 }

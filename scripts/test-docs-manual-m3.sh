@@ -148,7 +148,7 @@ check() { # DOC API AUDIT MANIFEST
     # ---- Acceptance 16 (section 18)
     m=18; part=$p18
     need 'ListKeys' "no ListKeys for the second account"
-    need 'a\(ssay\) 0' "no expected empty ListKeys"
+    need 'a\(sssay\) 0' "no expected empty ListKeys"
     local ref refs=0 lo=0 ff=0
     while IFS= read -r ref; do
         [ -n "$ref" ] || continue
@@ -287,7 +287,7 @@ ctl_manifest 'busctl in the manifest' 's/gdbus call/busctl call/'
 ctl_manifest 'other app-id (id key only)' 's/^( *"(app-)?id": *")[^"]*/\1org.example.Other/'
 
 # Acceptance 16.
-in18 'no empty ListKeys' 's/a\(ssay\) 0/a(ssay) 1/g'
+in18 'no empty ListKeys' 's/a\(sssay\) 0/a(sssay) 1/g'
 in18 'no ListKeys' 's/ListKeys/List/g'
 in18 'listing command invented' 's/-list$/-show/'
 in18 'listing command invented (tool)' 's/^( *)(modutil|pkcs11-tool) /\1\2x /'

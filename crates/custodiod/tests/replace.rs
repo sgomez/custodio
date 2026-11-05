@@ -50,7 +50,7 @@ const NONE: [String; 0] = [];
 #[path = "replace/concurrent.rs"]
 mod concurrent;
 
-type Listed = Vec<(String, String, Vec<u8>)>;
+type Listed = Vec<(String, String, String, Vec<u8>)>;
 
 /// Name → caller table; counts the lookups.
 #[derive(Clone, Default)]
@@ -182,7 +182,7 @@ async fn list(c: &Connection) -> zbus::Result<Listed> {
 
 async fn certificate_of(c: &Connection, id: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let key = list(c).await?.into_iter().find(|k| k.0 == id);
-    Ok(key.ok_or("key not listed")?.2)
+    Ok(key.ok_or("key not listed")?.3)
 }
 
 async fn sign_err(c: &Connection, id: &str) -> String {
@@ -410,7 +410,15 @@ fn replace_with_matching_certificate() -> TestResult {
                     .into_iter()
                     .filter(|k| k.0 == id)
                     .collect();
-                assert_eq!(listed, [(id.to_owned(), kind.to_owned(), cert.to_vec())]);
+                assert_eq!(
+                    listed,
+                    [(
+                        id.to_owned(),
+                        kind.to_owned(),
+                        before_record.kind().wire().to_owned(),
+                        cert.to_vec()
+                    )]
+                );
                 // One record: the certificate is the new one; owner, id, kind and the protected key are
                 // those of before, byte for byte.
                 let after_record = Record::decode(&std::fs::read(&key_path)?)?;

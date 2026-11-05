@@ -31,7 +31,11 @@ const OTHER_EC_P12: &[u8] = include_bytes!("fixtures/p256-other.p12");
 /// The pairs of caller uids; the second one has root as one of the two.
 const UID_PAIRS: [(u32, u32); 2] = [(1000, 1001), (0, 1000)];
 
-type Listed = Vec<(String, String, Vec<u8>)>;
+/// The storage kind the fixture's service chooses (no TPM).
+const STORAGE_KIND: &str = "encrypted-host";
+
+type Row = (String, String, String, Vec<u8>);
+type Listed = Vec<Row>;
 
 /// Credentials from a table: the bus name of a connection gives its caller.
 #[derive(Clone, Default)]
@@ -113,7 +117,8 @@ async fn import(c: &Connection, id: &str, p12: &[u8]) -> zbus::Result<String> {
     call(c, "ImportP12", &(id, p12.to_vec(), PASSWORD))
         .await?
         .body()
-        .deserialize()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
 }
 
 async fn list(c: &Connection) -> zbus::Result<Listed> {
@@ -126,12 +131,13 @@ fn cert_of(p12: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(custodiod::import::parse_p12(p12, &SecretString::from(PASSWORD.to_owned()))?.certificate)
 }
 
-fn entry(
-    id: &str,
-    kind: &str,
-    p12: &[u8],
-) -> Result<(String, String, Vec<u8>), Box<dyn std::error::Error>> {
-    Ok((id.to_owned(), kind.to_owned(), cert_of(p12)?))
+fn entry(id: &str, kind: &str, p12: &[u8]) -> Result<Row, Box<dyn std::error::Error>> {
+    Ok((
+        id.to_owned(),
+        kind.to_owned(),
+        STORAGE_KIND.to_owned(),
+        cert_of(p12)?,
+    ))
 }
 
 #[test]

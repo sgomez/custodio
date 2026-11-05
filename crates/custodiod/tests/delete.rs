@@ -39,7 +39,7 @@ const ALLOW_INTERACTION: u32 = 1;
 mod concurrent;
 
 const NONE: [String; 0] = [];
-type Listed = Vec<(String, String, Vec<u8>)>;
+type Listed = Vec<(String, String, String, Vec<u8>)>;
 
 #[derive(Clone, Default)]
 struct ByName(Arc<Mutex<HashMap<String, Caller>>>);
