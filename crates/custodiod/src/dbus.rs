@@ -21,7 +21,7 @@ use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_k
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash};
-use crate::store::{KeyStore, Record, StoreError};
+use crate::store::{KeyStore, Kind as StorageKind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::open::NoTpm;
 
@@ -198,8 +198,14 @@ fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism
     Ok((key_id, AuditMechanism::from(mechanism)))
 }
 
-/// What a `Sign` call records: the outcome, the caller if known, and the reply.
-type Attempt = (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>);
+/// What a `Sign` call records: the outcome, the caller if known, the reply, and the storage kind of the record that
+/// was read (none when no record was read).
+type Attempt = (
+    Outcome,
+    Option<Caller>,
+    Result<Vec<u8>, ServiceError>,
+    Option<StorageKind>,
+);
 
 /// A caller the bus named: the sender, its credentials and the pidfd the bus pinned, if any.
 type Known<'a> = (&'a str, Caller, Option<OwnedFd>);
@@ -304,7 +310,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         // A missing key or another uid's key is refused here: no polkit call and no entry. The
         // entry would add nothing the caller does not know, and `NoSuchKey` must look the same
         // for both. See `docs/decisions.md`.
-        let Some(((outcome, caller, result), app_id)) =
+        let Some(((outcome, caller, result, kind), app_id)) =
             self.attempt(sender, &request, data).await?
         else {
             return Err(ServiceError::NoSuchKey);
@@ -314,6 +320,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             None => Entry::without_caller(key_id, Some(audit_mechanism)),
         }
         .with_app_id(app_id);
+        let entry = sign_kind::sign_details(entry, kind, &result);
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record(&entry)).await {
             Some(Ok(())) => result,
@@ -393,7 +400,12 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     ) -> Result<Option<(Attempt, AppIdOutcome)>, ServiceError> {
         let unavailable = || ServiceError::AuthorizationUnavailable;
         let Some((sender, caller, pidfd)) = self.known_caller(sender).await else {
-            let attempt = (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            let attempt = (
+                Outcome::AuthorizationUnavailable,
+                None,
+                Err(unavailable()),
+                None,
+            );
             return Ok(Some((attempt, AppIdOutcome::Undetermined)));
         };
         // Only the caller's own keys are looked at. Any other store failure is reported after
@@ -422,18 +434,16 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         data: &[u8],
     ) -> Attempt {
         let unavailable = || ServiceError::AuthorizationUnavailable;
+        let kind = key.as_ref().ok().map(Record::kind);
         match self.authorizer.authorize(sender, ACTION_ID).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
-                return (
-                    Outcome::Denied,
-                    Some(caller),
-                    Err(ServiceError::PolkitDenied),
-                );
+                let denied = Err(ServiceError::PolkitDenied);
+                return (Outcome::Denied, Some(caller), denied, kind);
             }
             Err(AuthError::BadSender | AuthError::Unavailable(_)) => {
                 let outcome = Outcome::AuthorizationUnavailable;
-                return (outcome, Some(caller), Err(unavailable()));
+                return (outcome, Some(caller), Err(unavailable()), kind);
             }
         }
         let signed = key.and_then(|record| self.sign_record(&record, request.mechanism, data));
@@ -442,7 +452,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         } else {
             Outcome::SigningFailed
         };
-        (outcome, Some(caller), signed)
+        (outcome, Some(caller), signed, kind)
     }
 }
 

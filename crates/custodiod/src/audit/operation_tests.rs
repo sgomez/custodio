@@ -310,3 +310,132 @@ fn the_caller_is_returned_as_given() -> TestResult {
     assert_eq!(e.caller(), Some(C));
     Ok(())
 }
+
+#[test]
+fn import_entries_carry_the_kind_or_the_cause() -> TestResult {
+    use crate::store::Kind as K;
+    let stored = |k| -> Result<_, InvalidKeyId> {
+        Ok(OperationEntry::import(
+            ImportOutcome::Stored,
+            Some(C),
+            key()?,
+            Some(AuditKeyType::Rsa2048),
+        )
+        .with_storage_kind(k)
+        .fields())
+    };
+    for (k, wire) in [
+        (K::Tpm, "tpm"),
+        (K::EncryptedTpm, "encrypted-tpm"),
+        (K::EncryptedHost, "encrypted-host"),
+    ] {
+        let f = stored(k)?;
+        assert_eq!(get(&f, "CUSTODIO_STORAGE_KIND").as_deref(), Some(wire));
+        assert_eq!(get(&f, "CUSTODIO_CAUSE"), None);
+    }
+    // The kind comes after the key type and before the app-id state, so the old fields keep their order.
+    let names: Vec<_> = stored(K::Tpm)?.iter().map(|(n, _)| *n).collect();
+    assert_eq!(
+        names
+            .iter()
+            .rev()
+            .take(3)
+            .rev()
+            .copied()
+            .collect::<Vec<_>>(),
+        [
+            "CUSTODIO_KEY_TYPE",
+            "CUSTODIO_STORAGE_KIND",
+            "CUSTODIO_APP_ID_STATE"
+        ]
+    );
+    for cause in ImportCause::all() {
+        let e = OperationEntry::import(ImportOutcome::StorageFailure, Some(C), key()?, None)
+            .with_cause(cause);
+        assert_eq!(e.cause(), Some(cause));
+        let f = e.fields();
+        assert_eq!(get(&f, "CUSTODIO_CAUSE").as_deref(), Some(cause.name()));
+        assert_eq!(get(&f, "CUSTODIO_STORAGE_KIND"), None);
+    }
+    // No kind and no cause unless given.
+    let plain = OperationEntry::import(ImportOutcome::Denied, Some(C), key()?, None);
+    assert_eq!((plain.storage_kind(), plain.cause()), (None, None));
+    let f = plain.fields();
+    assert!(get(&f, "CUSTODIO_STORAGE_KIND").is_none() && get(&f, "CUSTODIO_CAUSE").is_none());
+    Ok(())
+}
+
+#[test]
+fn only_an_import_takes_a_kind_or_a_cause() -> TestResult {
+    use crate::store::Kind as K;
+    let others = [
+        OperationEntry::delete(DeleteOutcome::Deleted, Some(C), key()?),
+        OperationEntry::replace_certificate(ReplaceOutcome::Replaced, Some(C), key()?),
+    ];
+    for e in others {
+        let e = e.with_storage_kind(K::Tpm).with_cause(ImportCause::Store);
+        assert_eq!((e.storage_kind(), e.cause()), (None, None));
+        let f = e.fields();
+        assert!(get(&f, "CUSTODIO_STORAGE_KIND").is_none() && get(&f, "CUSTODIO_CAUSE").is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn cause_names_are_distinct_and_pinned() {
+    let import: Vec<_> = ImportCause::all().iter().map(|c| c.name()).collect();
+    assert_eq!(
+        import,
+        [
+            "tpm_device",
+            "tpm_owner",
+            "tpm_error",
+            "tpm_key",
+            "credentials_unavailable",
+            "credentials_refused",
+            "binding_mismatch",
+            "store",
+            "internal"
+        ]
+    );
+    let sign: Vec<_> = SignCause::all().iter().map(|c| c.name()).collect();
+    assert_eq!(sign, ["key_lost", "temporarily_unavailable"]);
+}
+
+#[test]
+fn signing_entries_carry_the_kind_and_the_cause() -> TestResult {
+    use crate::store::Kind as K;
+    let failed =
+        || -> Result<_, InvalidKeyId> { Ok(Entry::new(Outcome::SigningFailed, C, key()?, None)) };
+    for cause in SignCause::all() {
+        let e = failed()?
+            .with_storage_kind(K::EncryptedHost)
+            .with_cause(cause);
+        let f = e.fields();
+        assert_eq!(get(&f, "CUSTODIO_CAUSE").as_deref(), Some(cause.name()));
+        assert_eq!(
+            get(&f, "CUSTODIO_STORAGE_KIND").as_deref(),
+            Some("encrypted-host")
+        );
+        assert_eq!(
+            get(&f, "CUSTODIO_OUTCOME").as_deref(),
+            Some("signing_failed")
+        );
+        assert_eq!(get(&f, "PRIORITY").as_deref(), Some("3"));
+    }
+    // A cause belongs to a failed signature only.
+    for o in [
+        Outcome::Signed,
+        Outcome::Denied,
+        Outcome::AuthorizationUnavailable,
+    ] {
+        let e = Entry::new(o, C, key()?, None).with_cause(SignCause::KeyLost);
+        assert_eq!(e.cause(), None);
+        assert!(get(&e.fields(), "CUSTODIO_CAUSE").is_none());
+    }
+    // Without them the entry is what it was before.
+    let plain = failed()?;
+    assert_eq!((plain.storage_kind(), plain.cause()), (None, None));
+    assert!(get(&plain.fields(), "CUSTODIO_STORAGE_KIND").is_none());
+    Ok(())
+}

@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::app_id::AppIdOutcome;
+use crate::store::Kind as StorageKind;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -80,6 +81,16 @@ fn operation_entries() -> Result<Vec<OperationEntry>, InvalidKeyId> {
             OperationEntry::import(o, Some(CALLER), key()?, t.first().copied()).with_app_id(app()),
         );
     }
+    // One import per kind and one per cause, so the fields they add are among those the page must document.
+    for kind in store_kinds() {
+        let stored = OperationEntry::import(ImportOutcome::Stored, Some(CALLER), key()?, None);
+        all.push(stored.with_storage_kind(kind).with_app_id(app()));
+    }
+    for cause in ImportCause::all() {
+        let failed =
+            OperationEntry::import(ImportOutcome::StorageFailure, Some(CALLER), key()?, None);
+        all.push(failed.with_cause(cause).with_app_id(app()));
+    }
     for o in DeleteOutcome::all() {
         all.push(OperationEntry::delete(o, Some(CALLER), key()?).with_app_id(app()));
     }
@@ -139,6 +150,11 @@ fn field_names(op: Operation) -> Result<BTreeSet<&'static str>, InvalidKeyId> {
         for o in outcomes() {
             all.extend(names(&full(o)?));
         }
+        let failed = full(Outcome::SigningFailed)?;
+        all.extend(names(&failed.with_storage_kind(StorageKind::Tpm)));
+        all.extend(names(
+            &full(Outcome::SigningFailed)?.with_cause(SignCause::KeyLost),
+        ));
     }
     for e in operation_entries()?.iter().filter(|e| e.operation() == op) {
         all.extend(e.fields().into_iter().map(|(n, _)| n));
@@ -430,6 +446,8 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
                 "CUSTODIO_OUTCOME" => outcome_names.contains(value),
                 "CUSTODIO_UID" => value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty(),
                 "CUSTODIO_KEY_ID" => KeyId::new(value).is_ok(),
+                "CUSTODIO_STORAGE_KIND" => store_kinds().iter().any(|k| k.wire() == value),
+                "CUSTODIO_CAUSE" => cause_names().contains(value),
                 "CUSTODIO_APP_ID" => crate::app_id::validate(value.as_bytes()).is_some(),
                 "CUSTODIO_APP_ID_STATE" => {
                     ["read", "none", "undetermined"].contains(&value)
@@ -446,5 +464,7 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
     Ok(())
 }
 
+mod causes;
+use causes::{cause_names, store_kinds};
 mod app_id;
 use app_id::app;

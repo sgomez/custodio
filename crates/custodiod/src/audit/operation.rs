@@ -5,8 +5,9 @@
 //! `MESSAGE_ID` per operation. Like [`super::Entry`], an [`OperationEntry`] is built from typed parts only:
 //! a `.p12`, a password, certificate bytes, data and signatures have no place in it.
 
-use super::{Caller, KeyId};
+use super::{Caller, ImportCause, KeyId};
 use crate::app_id::AppIdOutcome;
+use crate::store::Kind as StorageKind;
 
 /// What a request asked Custodio to do. Value of `CUSTODIO_OPERATION`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +313,8 @@ pub struct OperationEntry {
     caller: Option<Caller>,
     key_id: KeyId,
     app_id: AppIdOutcome,
+    storage_kind: Option<StorageKind>,
+    cause: Option<ImportCause>,
 }
 
 impl OperationEntry {
@@ -330,6 +333,8 @@ impl OperationEntry {
             caller,
             key_id,
             app_id: AppIdOutcome::Undetermined,
+            storage_kind: None,
+            cause: None,
         }
     }
 
@@ -341,6 +346,8 @@ impl OperationEntry {
             caller,
             key_id,
             app_id: AppIdOutcome::Undetermined,
+            storage_kind: None,
+            cause: None,
         }
     }
 
@@ -356,6 +363,8 @@ impl OperationEntry {
             caller,
             key_id,
             app_id: AppIdOutcome::Undetermined,
+            storage_kind: None,
+            cause: None,
         }
     }
 
@@ -364,6 +373,37 @@ impl OperationEntry {
     pub fn with_app_id(mut self, app_id: AppIdOutcome) -> Self {
         self.app_id = app_id;
         self
+    }
+
+    /// The import entry with the storage kind of the key that was stored. Other operations ignore it: only an import
+    /// chooses a kind.
+    #[must_use]
+    pub fn with_storage_kind(mut self, kind: StorageKind) -> Self {
+        if matches!(self.kind, Kind::Import(..)) {
+            self.storage_kind = Some(kind);
+        }
+        self
+    }
+
+    /// The import entry with the cause of a failure. Other operations ignore it.
+    #[must_use]
+    pub fn with_cause(mut self, cause: ImportCause) -> Self {
+        if matches!(self.kind, Kind::Import(..)) {
+            self.cause = Some(cause);
+        }
+        self
+    }
+
+    /// The storage kind of an import that stored a key.
+    #[must_use]
+    pub const fn storage_kind(&self) -> Option<StorageKind> {
+        self.storage_kind
+    }
+
+    /// The cause of a failed import, when it has one.
+    #[must_use]
+    pub const fn cause(&self) -> Option<ImportCause> {
+        self.cause
     }
 
     /// The app-id case of the caller.
@@ -449,6 +489,7 @@ impl OperationEntry {
         if let Some(t) = self.key_type() {
             f.push(("CUSTODIO_KEY_TYPE", t.name().to_owned()));
         }
+        super::push_storage(&mut f, self.storage_kind, self.cause.map(ImportCause::name));
         super::push_app_id(&mut f, &self.app_id);
         f
     }

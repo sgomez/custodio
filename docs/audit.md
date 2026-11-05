@@ -45,6 +45,8 @@ signing `MESSAGE_ID` never changed.
 | `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
 | `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
 | `CUSTODIO_APP_ID` | The flatpak app-id of the caller, validated | omitted unless `CUSTODIO_APP_ID_STATE` is `read` |
+| `CUSTODIO_STORAGE_KIND` | How the key is protected in the store: `tpm`, `encrypted-tpm` or `encrypted-host`; see "Storage kind" | import entries that stored a key, and sign entries when the key's record was read (also when the request was denied or failed); omitted otherwise, never guessed |
+| `CUSTODIO_CAUSE` | Why the request failed, one of the causes under "Causes" | import entries with the outcome `storage_failure`, and sign entries with the outcome `signing_failed` whose key is lost or temporarily unusable; omitted otherwise |
 | `CUSTODIO_KEY_TYPE` | Type of the imported key: `rsa_2048` or `ecdsa_p256` | import entries only; omitted when the file did not get far enough to have one (an unreadable file, a wrong password, a refusal before decoding) |
 
 ## Flatpak app-id
@@ -88,7 +90,7 @@ data or a signature.
 | `signed` | 6 | Authorized and signed |
 | `denied` | 5 | polkit denied the request |
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown (including a bus reply without a `ProcessFD` that names the `ProcessID`); nothing was signed |
-| `signing_failed` | 3 | Authorized, but signing failed |
+| `signing_failed` | 3 | Authorized, but signing failed; `CUSTODIO_CAUSE` says why when the key is lost or temporarily unusable |
 
 ### import
 
@@ -99,7 +101,11 @@ data or a signature.
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was stored |
 | `wrong_password` | 4 | Authorized, but the password did not open the file; nothing was stored |
 | `unsupported_key` | 4 | Authorized, but the file holds no key of a supported type; nothing was stored |
-| `storage_failure` | 3 | Authorized and decoded, but the key could not be stored |
+| `storage_failure` | 3 | Authorized and decoded, but the key could not be stored; `CUSTODIO_CAUSE` says why |
+
+An import that stored a key carries its kind in `CUSTODIO_STORAGE_KIND`. An import that stored nothing has no kind: it
+either never chose one or chose one and stored nothing, and the field is omitted rather than guessed. A failed
+import still has its `CUSTODIO_KEY_TYPE` when the file was decoded.
 
 ### delete
 
@@ -143,6 +149,54 @@ lookup (the reply is then `NoSuchKey` or `Internal`, as without the entry). A ca
 is asked (invalid arguments, no such key) leaves no entry. Replaces and deletes of one key run one at a
 time, and a `ListKeys` while the entry is pending may show either certificate. The entry never holds the
 old or the new certificate, only the fields above. Queries by outcome are under "By outcome" below.
+
+## Storage kind
+
+`CUSTODIO_STORAGE_KIND` holds the kind of the stored record, the same string `ImportP12` and `ListKeys` return (see
+`docs/api.md`). The values are only added to:
+
+| Kind | Meaning |
+|---|---|
+| `tpm` | The key is a blob wrapped by the TPM; the private key never leaves it |
+| `encrypted-tpm` | The key is encrypted by the credential service under a key bound to the TPM |
+| `encrypted-host` | The key is encrypted by the credential service under the host key |
+
+## Causes
+
+`CUSTODIO_CAUSE` is chosen from the typed error, never copied from a tool's output, a response code, a path or the
+input, so it holds one of the values below and nothing else. The values of the two operations are different, so a value
+names its operation. The priority is that of the outcome the entry has; a cause does not change it. An entry whose
+failure has no cause listed here has no `CUSTODIO_CAUSE`.
+
+### import causes
+
+For an import with the outcome `storage_failure`; nothing was stored.
+
+| Cause | Priority | Meaning |
+|---|---|---|
+| `tpm_device` | 3 | The TPM device is there and cannot be used: no resource manager, it cannot be opened, or it is gone |
+| `tpm_owner` | 3 | The owner hierarchy cannot be used: it has an authorization value or it is disabled |
+| `tpm_error` | 3 | The TPM answered with an error, or the connection failed, in a query or in the import |
+| `tpm_key` | 3 | The TPM refused the key itself: a type, size or exponent it does not take |
+| `credentials_unavailable` | 3 | The credential service is not available: the socket or the tool is missing, or it cannot encrypt here |
+| `credentials_refused` | 3 | The credential service refused the request, or made a credential that must not be kept |
+| `binding_mismatch` | 3 | The credential is bound to something else than the kind chosen |
+| `store` | 3 | The key store refused the record |
+| `internal` | 3 | A fault of the service itself: a value that does not fit, or no credential service configured |
+
+The TPM causes correspond to the D-Bus error `TpmFailed` and the credential causes and `binding_mismatch` to
+`CredentialsUnavailable`. A TPM error in the query and one in the import are both `tpm_error`.
+
+### sign causes
+
+For a signature with the outcome `signing_failed`.
+
+| Cause | Priority | Meaning |
+|---|---|---|
+| `key_lost` | 3 | The key no longer loads or decrypts (a cleared TPM, a changed host key, a damaged blob); it cannot sign again here. The D-Bus error is `KeyLost` |
+| `temporarily_unavailable` | 3 | The TPM or the credential service cannot be used now; the same request can work later. The D-Bus error is `TemporarilyUnavailable` |
+
+Any other failure after the approval (the D-Bus error `Internal`) is `signing_failed` without a cause.
 
 ## Mechanisms
 
@@ -195,6 +249,8 @@ certificate replacement authorization unavailable, nothing changed: uid 1000 pid
 certificate replacement refused, certificate does not match the key: uid 1000 pid 4242 key my-key
 certificate replacement failed after approval, nothing changed: uid 1000 pid 4242 key my-key
 ```
+
+The text of `MESSAGE` does not change with the kind or the cause; they are in their own fields.
 
 When the bus names no caller, `uid unknown pid unknown` stands for the numbers, as in the last signing example.
 
@@ -259,6 +315,31 @@ A replace that was refused because the certificate belongs to another key:
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch
+```
+
+By storage kind (`tpm`, `encrypted-tpm` or `encrypted-host`), here the imports that stored a key under the host key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_STORAGE_KIND=encrypted-host
+```
+
+By cause, here an import that failed because the credential service was unavailable:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_CAUSE=credentials_unavailable
+```
+
+An import that failed after approval, with the cause in the fields (add `-o json`):
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_OUTCOME=storage_failure
+```
+
+A signature that failed because the key is lost, and one that failed for a reason that may pass:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign CUSTODIO_CAUSE=key_lost
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign CUSTODIO_CAUSE=temporarily_unavailable
 ```
 
 ## Not guaranteed

@@ -127,6 +127,7 @@
 //! let _: OperationEntry = "x".into();
 //! ```
 
+mod cause;
 mod journal;
 mod memory;
 mod operation;
@@ -137,8 +138,9 @@ use std::io;
 
 use crate::app_id::{AppId, AppIdOutcome};
 use crate::sign::{Mechanism, PssHash};
-use crate::store::valid_key_id;
+use crate::store::{Kind as StorageKind, valid_key_id};
 
+pub use cause::{ImportCause, SignCause};
 pub use journal::{DEFAULT_JOURNAL_SOCKET, JournalSink, MAX_DATAGRAM};
 pub use memory::{FailingSink, MemorySink};
 pub use operation::{
@@ -343,6 +345,8 @@ pub struct Entry {
     key_id: KeyId,
     mechanism: Option<AuditMechanism>,
     app_id: AppIdOutcome,
+    storage_kind: Option<StorageKind>,
+    cause: Option<SignCause>,
 }
 
 impl Entry {
@@ -359,6 +363,8 @@ impl Entry {
             key_id,
             mechanism,
             app_id: AppIdOutcome::Undetermined,
+            storage_kind: None,
+            cause: None,
         }
     }
 
@@ -367,6 +373,35 @@ impl Entry {
     pub fn with_app_id(mut self, app_id: AppIdOutcome) -> Self {
         self.app_id = app_id;
         self
+    }
+
+    /// The entry with the storage kind of the record that was used, when it was read.
+    #[must_use]
+    pub const fn with_storage_kind(mut self, kind: StorageKind) -> Self {
+        self.storage_kind = Some(kind);
+        self
+    }
+
+    /// The entry with the cause of a failed signature. Only a [`Outcome::SigningFailed`] entry carries one; for any
+    /// other outcome the cause is not recorded.
+    #[must_use]
+    pub const fn with_cause(mut self, cause: SignCause) -> Self {
+        if matches!(self.outcome, Outcome::SigningFailed) {
+            self.cause = Some(cause);
+        }
+        self
+    }
+
+    /// The storage kind of the record, when it was read.
+    #[must_use]
+    pub const fn storage_kind(&self) -> Option<StorageKind> {
+        self.storage_kind
+    }
+
+    /// The cause of a failed signature, when it has one.
+    #[must_use]
+    pub const fn cause(&self) -> Option<SignCause> {
+        self.cause
     }
 
     /// The app-id case of the caller.
@@ -385,6 +420,8 @@ impl Entry {
             key_id,
             mechanism,
             app_id: AppIdOutcome::Undetermined,
+            storage_kind: None,
+            cause: None,
         }
     }
 
@@ -428,8 +465,28 @@ impl Entry {
         if let Some(m) = self.mechanism {
             f.push(("CUSTODIO_MECHANISM", m.name().to_owned()));
         }
+        push_storage(&mut f, self.storage_kind, self.cause.map(SignCause::name));
         push_app_id(&mut f, &self.app_id);
         f
+    }
+}
+
+/// Field holding the storage kind of the key: a wire string of [`StorageKind`].
+pub const STORAGE_KIND_FIELD: &str = "CUSTODIO_STORAGE_KIND";
+/// Field holding the cause of a failure: a name of [`ImportCause`] or [`SignCause`].
+pub const CAUSE_FIELD: &str = "CUSTODIO_CAUSE";
+
+/// Appends the storage kind and the cause, each only when there is one.
+pub(crate) fn push_storage(
+    f: &mut Vec<(&'static str, String)>,
+    kind: Option<StorageKind>,
+    cause: Option<&'static str>,
+) {
+    if let Some(kind) = kind {
+        f.push((STORAGE_KIND_FIELD, kind.wire().to_owned()));
+    }
+    if let Some(cause) = cause {
+        f.push((CAUSE_FIELD, cause.to_owned()));
     }
 }
 

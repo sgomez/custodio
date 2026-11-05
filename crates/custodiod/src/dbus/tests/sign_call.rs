@@ -366,7 +366,7 @@ fn import_refusals_never_decode() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 use crate::audit::{AuditKeyType, ImportOutcome, Operation};
-use crate::dbus::import::{audit_key_type, import_outcome};
+use crate::dbus::import::{audit_key_type, import_cause, import_outcome};
 use crate::import::ImportError;
 
 /// Every `ImportError`, with the outcome it is recorded as: a literal table, not the code's own rule.
@@ -476,4 +476,91 @@ fn import_refusals_of_polkit_are_recorded_with_the_caller() -> Result<(), Box<dy
         assert!(matches!(r.store.get(11, "k"), Err(StoreError::NotFound)));
     }
     Ok(())
+}
+
+/// Every `ImportError` with the cause it is recorded with: a literal table, not the code's own rule. The errors that
+/// are told apart by their outcome have none.
+#[test]
+fn every_import_error_has_its_cause() {
+    use crate::audit::ImportCause as C;
+    use crate::creds::{CredsError, HeaderError};
+    use crate::tpm::classify::{ResponseCode, TpmError};
+    use crate::tpm::import::ImportError as T;
+    use crate::tpm::key::KeyRefusal;
+    let rc = ResponseCode(0x143);
+    let table = [
+        (ImportError::TooLarge, Some(C::Store)),
+        (ImportError::Parse("x".into()), None),
+        (ImportError::NoPrivateKey, None),
+        (ImportError::MultipleKeys, None),
+        (ImportError::NoCertificate, None),
+        (ImportError::CertificateMismatch, None),
+        (ImportError::UnsupportedKey("x".into()), None),
+        (
+            ImportError::Store(StoreError::AlreadyExists),
+            Some(C::Store),
+        ),
+        (ImportError::Store(StoreError::NotFound), Some(C::Store)),
+        (ImportError::BindingMismatch, Some(C::BindingMismatch)),
+        (
+            ImportError::Protect(CredsError::Unavailable),
+            Some(C::CredentialsUnavailable),
+        ),
+        (
+            ImportError::Protect(CredsError::BadRequest),
+            Some(C::CredentialsRefused),
+        ),
+        (
+            ImportError::Protect(CredsError::CannotDecrypt),
+            Some(C::CredentialsRefused),
+        ),
+        (
+            ImportError::Protect(CredsError::Refused(HeaderError::NullKey)),
+            Some(C::CredentialsRefused),
+        ),
+        (ImportError::Tpm(T::NoTpm), Some(C::TpmDevice)),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OpenFailed)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::ResourceManagerMissing)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::TestTctiRefused)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OwnerAuthSet)),
+            Some(C::TpmOwner),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OwnerDisabled)),
+            Some(C::TpmOwner),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::Response(rc))),
+            Some(C::TpmError),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::Transport)),
+            Some(C::TpmError),
+        ),
+        (ImportError::Tpm(T::ParentMismatch), Some(C::TpmError)),
+        (
+            ImportError::Tpm(T::Refused(KeyRefusal::Malformed)),
+            Some(C::TpmKey),
+        ),
+        (ImportError::Tpm(T::Internal), Some(C::Internal)),
+    ];
+    for (error, want) in table {
+        assert_eq!(import_cause(&error), want, "{error}");
+        // A cause goes with the outcome that says the key was not stored, and with no other.
+        assert_eq!(
+            want.is_some(),
+            import_outcome(&error) == ImportOutcome::StorageFailure,
+            "{error}"
+        );
+    }
 }

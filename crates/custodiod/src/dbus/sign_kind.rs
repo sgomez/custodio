@@ -8,12 +8,13 @@
 //! later": [`ServiceError::KeyLost`] and [`ServiceError::TemporarilyUnavailable`]. The mappings are exhaustive
 //! matches: a new variant of either source error does not build until it has a class.
 
+use crate::audit::{Entry, SignCause};
 use crate::creds::CredsError;
 use crate::dbus::Custodio;
 use crate::error::ServiceError;
 use crate::import::credential_name;
 use crate::sign::{Mechanism, sign};
-use crate::store::Record;
+use crate::store::{Kind as StorageKind, Record};
 use crate::tpm::blob::Imported;
 use crate::tpm::sign::{self as tpm_sign, SignRequest, TpmSignError};
 
@@ -73,6 +74,27 @@ impl<A, C> Custodio<A, C> {
             .decrypt(&name, credential)
             .map_err(|e| ServiceError::from(&e))?;
         sign(&key, mechanism, data).map_err(|e| ServiceError::from(&e))
+    }
+}
+
+/// The entry of a signature with the kind of the record used and, for a failure of one of the two classes a person
+/// can act on, its cause.
+pub(super) fn sign_details(
+    entry: Entry,
+    kind: Option<StorageKind>,
+    result: &Result<Vec<u8>, ServiceError>,
+) -> Entry {
+    let entry = if let Some(k) = kind {
+        entry.with_storage_kind(k)
+    } else {
+        entry
+    };
+    match result {
+        Err(ServiceError::KeyLost) => entry.with_cause(SignCause::KeyLost),
+        Err(ServiceError::TemporarilyUnavailable) => {
+            entry.with_cause(SignCause::TemporarilyUnavailable)
+        }
+        _ => entry,
     }
 }
 

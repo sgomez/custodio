@@ -13,6 +13,9 @@ mod bus;
 #[path = "audit/common.rs"]
 mod common;
 // Shared with `creds`: this target does not use every helper of it.
+#[path = "sign_kinds/case.rs"]
+mod case;
+// Shared with `creds`: this target does not use every helper of it.
 #[path = "sign_kinds/descriptor.rs"]
 mod descriptor;
 #[allow(dead_code)]
