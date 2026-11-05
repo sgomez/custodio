@@ -392,3 +392,7 @@ with an empty context.
   e2e passed on d54a614: `none` on fedora44 (5m47), ubuntu2404 (refusal-only, 21s), ubuntu2604 (5m35). With the earlier
   sessions: swtpm on all six, none on alma10, arch, debian13, fedora44, ubuntu2404, ubuntu2604. Step 3 done.
   Next: `just package-gates`, then the final rerun from a cleared `target/e2e/`.
+  `just package-gates` was red only on namcap: five information lines for the new tpm2-tss dependency (F125), the same
+  kind as glibc/libgcc. Added five entries with a reason to `packaging/lint/namcap.txt`; `just package-gates` exit 0
+  (1m38s), step 4 done. Remaining: the final rerun (step 5) from a cleared `target/e2e/`, one target and mode per command
+  (12 runs, ~5 min each; ubuntu2404 21s); record each pass below.
