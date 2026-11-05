@@ -230,7 +230,7 @@
         "F115"
       ],
       "verify": "just quick && just system-gates && scripts/test-check-unit-hardening.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F125",
