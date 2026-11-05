@@ -243,7 +243,7 @@
         "F115"
       ],
       "verify": "just quick && scripts/test-check-packages-deps.sh && cargo build --release -p custodiod --locked && scripts/check-tss-deps.sh target/release/custodiod packaging/nfpm.yaml",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F126",
