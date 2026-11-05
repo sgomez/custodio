@@ -27,11 +27,25 @@ cat > "$tmp/bin/podman" <<'STUB'
 #!/usr/bin/env bash
 # Logs the arguments; `exec ... guest.sh` prints what the fake guest would, from STUB_* variables.
 echo "$*" >> "$STUB_LOG"
+# the files of a container are its own: e2e/run.sh runs several at once
+cname=''
+if [ "$1" = run ]; then
+    prev=''
+    for a in "$@"; do [ "$prev" = --name ] && cname=$a; prev=$a; done
+elif [ "$1" = exec ]; then
+    shift_e=''
+    for a in "${@:2}"; do
+        if [ -n "$shift_e" ]; then shift_e=''; continue; fi
+        [ "$a" = -e ] && { shift_e=1; continue; }
+        cname=$a; break
+    done
+fi
+C=$STUB_LOG.$cname
 case $1 in
 run)
-    sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.pkg"
-    sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.next"
-    sed -n 's|.*:/pkg-oldpath/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$STUB_LOG.oldpath"
+    sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.pkg"
+    sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.next"
+    sed -n 's|.*:/pkg-oldpath/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.oldpath"
     ;;
 exec)
     case "$*" in
@@ -46,13 +60,13 @@ exec)
         t=${*: -1}
         if [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
         if [ "$mode" = oldpath ]; then
-            echo "e2e: installed $(cat "$STUB_LOG.oldpath") from the mounted file"
+            echo "e2e: installed $(cat "$C.oldpath") from the mounted file"
             list=$STUB_ROOT/e2e/cases.list
             [ "$t" != "${STUB_FAIL_OLDPATH:-}" ] || { echo "e2e: FAIL: stubbed (oldpath)"; exit 1; }
         else
-            echo "e2e: installed $(cat "$STUB_LOG.pkg") from the mounted file"
+            echo "e2e: installed $(cat "$C.pkg") from the mounted file"
             # the main run reports the common cases and the target's own
-            list=$STUB_LOG.main
+            list=$C.main
             : > "$list"
             [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
             # F61: the cases of the upgrade from the old path run in their own container, except on a target that has none (skipped in the main run)
@@ -69,6 +83,12 @@ exec)
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
         done < "$list"
         [ "$mode" = oldpath ] && exit 0
+        if [ -n "${STUB_SLEEP:-}" ]; then # how many main runs are in the guest at once, one line per run in $STUB_LOG.conc
+            touch "$STUB_LOG.act.$cname"
+            find "$(dirname "$STUB_LOG")" -maxdepth 1 -name "$(basename "$STUB_LOG").act.*" | wc -l >> "$STUB_LOG.conc"
+            sleep "$STUB_SLEEP"
+            rm -f "$STUB_LOG.act.$cname"
+        fi
         [ -z "${STUB_EXTRA:-}" ] || echo "E2E-CASE run $STUB_EXTRA"
         if [ -z "${STUB_NOPROBE:-}" ]; then
             echo "E2E-RECORD bus-daemon=dbus-daemon"

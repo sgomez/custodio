@@ -36,7 +36,7 @@ grep -q 'E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again 
 sel_guest() { grep 'guest.sh' "$tmp/log" | head -n 1; }
 # the selection reaches the guest, in the order of the lists, one build, one container
 expect_ok subset debian13 --cases pkcs11-tool-approve-rsa 'nss-*' || true
-grep -q 'exec -e E2E_TPM=swtpm -e E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "subset: the guest exec lacks exactly the selection: $(sel_guest)"
+grep -q 'exec -e E2E_TPM=swtpm -e E2E_SELECT=pkcs11-tool-approve-rsa nss-approve nss-deny nss-asks-again custodio-e2e-debian13-swtpm-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "subset: the guest exec lacks exactly the selection: $(sel_guest)"
 [ "$(grep -c '^build ' "$tmp/log")" -eq 1 ] || bad "subset: not one build"
 [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "subset: not one container"
 [ "$(grep -c 'guest.sh' "$tmp/log")" -eq 1 ] || bad "subset: more than one guest run"
@@ -60,7 +60,7 @@ expect_ok own-case debian13 --cases 'purge-*' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "own-case: expected the main container only: $(grep -c '^run ' "$tmp/log")"
 grep -q 'guest.sh debian13 oldpath' "$tmp/log" && bad "own-case: the old-path run started"
 grep -q '6 cases accounted for' "$tmp/out" || bad "own-case: $(tail -n 3 "$tmp/out")"
-grep -q 'E2E_SELECT=purge-service-stopped .*custodio-e2e-debian13-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "own-case: the main run lacks the selection"
+grep -q 'E2E_SELECT=purge-service-stopped .*custodio-e2e-debian13-swtpm-[0-9]* bash /e2e/guest.sh debian13$' "$tmp/log" || bad "own-case: the main run lacks the selection"
 expect_ok own-case-oldpath debian13 --cases 'upgrade-oldpath-no-manual-step' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "oldpath case: expected the main and the old-path container"
 grep -q 'guest.sh debian13 oldpath$' "$tmp/log" || bad "oldpath case: no old-path run"
@@ -115,17 +115,17 @@ refused extra-argument 'unexpected argument' debian13 nss-approve
 # no subset: the whole list of engine calls of a run of debian13 (old path included) is this one, written out
 expect_ok no-subset-calls debian13 || true
 mnt="-v ROOT/TMP/pkgs/custodio_0.1.0-1_amd64.deb:/pkg/custodio_0.1.0-1_amd64.deb:ro -v ROOT/TMP/next/custodio_0.1.1-1_amd64.deb:/pkg-next/custodio_0.1.1-1_amd64.deb:ro -v ROOT/TMP/oldpath/custodio_0.1.0-1_amd64.deb:/pkg-oldpath/custodio_0.1.0-1_amd64.deb:ro"
-boot="run -d --name custodio-e2e-debian13-PID --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp $mnt -v ROOT/e2e:/e2e:ro -v ROOT/docs/audit.md:/e2e-docs/audit.md:ro -v ROOT/crates/custodiod/src/app_id_source.rs:/e2e-src/app_id_source.rs:ro -v ROOT/e2e/targets/debian13:/e2e-target:ro custodio-e2e-debian13
-exec custodio-e2e-debian13-PID systemctl is-system-running"
+boot="run -d --name custodio-e2e-debian13-swtpm-PID --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock --tmpfs /tmp $mnt -v ROOT/e2e:/e2e:ro -v ROOT/docs/audit.md:/e2e-docs/audit.md:ro -v ROOT/crates/custodiod/src/app_id_source.rs:/e2e-src/app_id_source.rs:ro -v ROOT/e2e/targets/debian13:/e2e-target:ro custodio-e2e-debian13
+exec custodio-e2e-debian13-swtpm-PID systemctl is-system-running"
 expected="build -q -t custodio-e2e-debian13 -f e2e/targets/debian13/Containerfile e2e/targets/debian13
 $boot
-exec -e E2E_TPM=swtpm custodio-e2e-debian13-PID bash /e2e/guest.sh debian13
-rm -f custodio-e2e-debian13-PID
+exec -e E2E_TPM=swtpm custodio-e2e-debian13-swtpm-PID bash /e2e/guest.sh debian13
+rm -f custodio-e2e-debian13-swtpm-PID
 $boot
-exec -e E2E_TPM=swtpm custodio-e2e-debian13-PID bash /e2e/guest.sh debian13 oldpath
-rm -f custodio-e2e-debian13-PID
-rm -f custodio-e2e-debian13-PID"
-got=$(sed -E "s|$ROOT|ROOT|g; s|ROOT$tmp|ROOT/TMP|g; s|$tmp|TMP|g; s|debian13-[0-9]+|debian13-PID|g" "$tmp/log")
+exec -e E2E_TPM=swtpm custodio-e2e-debian13-swtpm-PID bash /e2e/guest.sh debian13 oldpath
+rm -f custodio-e2e-debian13-swtpm-PID
+rm -f custodio-e2e-debian13-swtpm-PID"
+got=$(sed -E "s|$ROOT|ROOT|g; s|ROOT$tmp|ROOT/TMP|g; s|$tmp|TMP|g; s|debian13-swtpm-[0-9]+|debian13-swtpm-PID|g" "$tmp/log")
 got=${got//ROOT\/ROOT\/TMP/ROOT/TMP}
 [ "$got" = "$expected" ] || bad "no subset: the engine calls changed: $(diff <(echo "$expected") <(echo "$got") | head -n 6)"
 

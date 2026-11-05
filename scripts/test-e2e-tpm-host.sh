@@ -79,7 +79,7 @@ for failing in swtpm none; do
     if STUB_FAIL_TPM=$failing run_all_real all; then bad "all: a failing $failing run did not fail the command"; fi
     grep -q "E2E_TPM=$other.* bash /e2e/guest.sh debian13\$" "$tmp/log" || bad "all: the $other run did not happen after $failing failed"
     grep -q "failed targets:.*debian13 ($failing)" "$tmp/out" || bad "all: the failed mode $failing is not named: $(tail -n 2 "$tmp/out")"
-    grep -q "debian13 ($other)" "$tmp/out" && bad "all: the passing mode $other is named as failed"
+    grep "failed targets:" "$tmp/out" | grep -q "debian13 ($other)" && bad "all: the passing mode $other is named as failed"
     [ -f "$tmp/o/debian13.$other.record" ] || bad "all: no record for the passing mode $other"
 done
 # the record must hold the line, and the guest must report the mode that was asked for

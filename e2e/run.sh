@@ -118,7 +118,7 @@ boot_container() {
 }
 
 run_target() { # run_target TARGET MODE
-    local t=$1 tpm=$2 dir="$targets_dir/$1" name="custodio-e2e-$1-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
+    local t=$1 tpm=$2 dir="$targets_dir/$1" name="custodio-e2e-$1-$2-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
@@ -155,7 +155,8 @@ run_target() { # run_target TARGET MODE
     if [ -f "$dir/refusal-only" ]; then : > "$cases"; else cat e2e/cases.list > "$cases"; fi
     [ ! -f "$dir/cases.list" ] || cat "$dir/cases.list" >> "$cases"
     echo "e2e[$t]: building the image from $dir/Containerfile"
-    "$engine" build -q -t "custodio-e2e-$t" -f "$dir/Containerfile" "$dir" > /dev/null || return 1
+    # the two modes of a target share the image: one build at a time per target
+    flock "$work/$t.build.lock" "$engine" build -q -t "custodio-e2e-$t" -f "$dir/Containerfile" "$dir" > /dev/null || return 1
     local mounts=("$PWD/$found:/pkg/$(basename "$found")")
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
     [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
@@ -196,14 +197,60 @@ run_target() { # run_target TARGET MODE
     while IFS= read -r line; do echo "e2e[$t]: record: $line"; done < "$out_dir/$t.$tpm.record"
 }
 
-failed=''
-trap 'for t in $list; do "$engine" rm -f "custodio-e2e-$t-$$" >/dev/null 2>&1 || true; done' EXIT
-for m in $tpm_modes; do # a failing mode does not stop the next one
+# E2E_JOBS: how many target-mode runs at once (default: half the CPUs). Each run has its own container, log and record; the
+# output of each is printed whole, in the order of the modes and targets, once all have ended; until then it is in
+# $out_dir/runs/<target>.<mode>.out, kept after a run that was cut.
+half=$(( $(nproc) / 2 ))
+jobs=${E2E_JOBS-$(( half > 0 ? half : 1 ))}
+[[ $jobs =~ ^[1-9][0-9]*$ ]] || { echo "e2e: E2E_JOBS='$jobs' is not a positive number" >&2; exit 1; }
+(( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )) || { echo "e2e: needs bash 5.1 or later (wait -p)" >&2; exit 1; }
+work=$out_dir/runs
+rm -rf "$work" && mkdir -p "$work"
+containers() { for m in $tpm_modes; do for t in $list; do echo "custodio-e2e-$t-$m-$$"; done; done; }
+cleanup() {
+    local c pids
+    mapfile -t pids < <(jobs -p)
+    [ "${#pids[@]}" -eq 0 ] || kill "${pids[@]}" 2> /dev/null || true
+    wait
+    for c in $(containers); do "$engine" rm -f "$c" > /dev/null 2>&1 || true; done
+}
+trap cleanup EXIT
+run_pair() { # run_pair TARGET MODE: one run, its output and result under $work
+    local t=$1 m=$2 start=$SECONDS rc=0
+    if run_target "$t" "$m" > "$work/$t.$m.out" 2>&1; then rc=0; else rc=1; fi
+    "$engine" rm -f "custodio-e2e-$t-$m-$$" > /dev/null 2>&1 || true
+    printf '%s\t%s\t%s\t%s\n' "$t" "$m" "$((SECONDS - start))" "$([ "$rc" = 0 ] && echo passed || echo failed)" > "$work/$t.$m.time"
+    return "$rc"
+}
+declare -A pair_of=() file_of=()
+running=0 wall=$SECONDS
+reap() {
+    local pid
+    wait -n -p pid || true
+    running=$((running - 1))
+    local secs result
+    IFS=$'\t' read -r _ _ secs result < "$work/${file_of[$pid]}.time"
+    echo "e2e: ended ${pair_of[$pid]} in ${secs}s: $result"
+}
+for m in $tpm_modes; do # a failing run does not stop the others
     for t in $list; do
-        if ! run_target "$t" "$m"; then failed="$failed $t ($m)"; fi
-        "$engine" rm -f "custodio-e2e-$t-$$" > /dev/null 2>&1 || true
+        (( running < jobs )) || reap
+        run_pair "$t" "$m" &
+        pair_of[$!]="$t ($m)" file_of[$!]="$t.$m"
+        running=$((running + 1))
     done
 done
+while (( running > 0 )); do reap; done
+failed=''
+printf 'target\tmode\tseconds\tresult\n' > "$out_dir/timings.tsv"
+for m in $tpm_modes; do
+    for t in $list; do
+        cat "$work/$t.$m.out"
+        cat "$work/$t.$m.time" >> "$out_dir/timings.tsv"
+        grep -q 'passed$' "$work/$t.$m.time" || failed="$failed $t ($m)"
+    done
+done
+echo "e2e: wall time $((SECONDS - wall))s for $(($(wc -l < "$out_dir/timings.tsv") - 1)) runs, $jobs at once (times in $out_dir/timings.tsv)"
 if [ -n "$failed" ]; then
     echo "e2e: failed targets:$failed" >&2
     exit 1
