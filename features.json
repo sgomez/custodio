@@ -289,7 +289,7 @@
         "F120"
       ],
       "verify": "just quick && cargo test -p custodiod --test tpm_lifecycle --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F130",
