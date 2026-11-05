@@ -299,7 +299,7 @@
         "F118"
       ],
       "verify": "just quick && cargo test -p custodiod --test tpm_resources --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F131",
