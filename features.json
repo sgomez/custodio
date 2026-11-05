@@ -184,7 +184,7 @@
         "F118"
       ],
       "verify": "just quick && cargo test -p custodiod --test kind_audit --locked && just mutants-diff F120",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F121",
