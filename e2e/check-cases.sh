@@ -64,6 +64,8 @@ check() {
     done
     for id in $listed; do
         [ -z "$sel" ] || case $owed in *" $id "*) ;; *) continue ;; esac
+        # tpm-kind-* are listed for the modes without swtpm; under swtpm they run, so the entry is expected to match nothing
+        case $id in tpm-kind-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
         case $skipped in *" $id "*) ;; *) echo "check-cases: skip list entry '$id' matches no skipped case; remove it" >&2 ;; esac
     done
     line=$(reported "$out" | wc -l)

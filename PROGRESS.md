@@ -421,3 +421,4 @@ with an empty context.
 - No skip under swtpm: `check-cases.sh` reads `CHECK_TPM_MODE` (set by `run.sh`) and rejects a `tpm-kind-*` skip in `swtpm` even when the skip list names it.
 - Runs: `just e2e-cases debian13 'tpm-kind-*'` swtpm: 5 run (68 s wall, whole run); `E2E_TPM=none`: 5 skipped, accounted.
 - Negative control (2) dropped, as the evaluator allowed (it repeats the host control on `encrypted-host`).
+- (attempt 2) Fixed NEXT_FINDINGS: the 7 mutants in `scripts/test-e2e-tpm-kind.sh` run in parallel (host test ~2 s wall, was 6.3 s); dropped the checks that grep script text (guest.sh order, run.sh string, `judge` strings); `shellcheck disable` moved below the header. `check-cases.sh` no longer warns "skip list entry matches no skipped case" for `tpm-kind-*` under `CHECK_TPM_MODE=swtpm`. Not done (optional notes): delete-entry kind check in the journal judgement. `just quick` green.
