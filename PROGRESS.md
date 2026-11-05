@@ -301,3 +301,9 @@ with an empty context.
 - Foreign-owner case proven by the store unit test (`file_uid` seam), as the contract says.
 - Evidence: `just quick` green; `purge` 9/9; `just mutants-diff F121`: 52 mutants, 37 caught, 15 unviable, 0 missed. `startup.rs` joined the `mutants` list.
 - Not done: upgrade from a real M3 package and real `journalctl` read (checkpoints); CLI wording (F123).
+
+### 2026-11-05 — F122 — attempt 1
+- Re-check: `grep -rn -i "digestinfo\|digest_info" crates/custodiod/src` finds only a comment (`dbus.rs:47`), a doc (`sign.rs:7`) and test data (`tpm/tests/sign.rs`); no parser, so no `digest_info` target. `tpm_sign_input` drives `block::prepare_with` instead.
+- Targets in `crates/custodiod/fuzz` (new dep `arbitrary` for the last): `tpm_blob` (`Blob::parse` and `from_parts`; accepted → `public_area` ok and `to_bytes` parses to an equal blob), `cred_frame` (`inspect`; shorter than `MASK_OFFSET + 8` errors unless the first 16 bytes are a known key id), `record_decode` (decode → encode → decode, same owner/id/kind/certificate), `tpm_sign_input` (all kinds × mechanisms, `salt_len` a full `usize`, the bound check in `prepare_with` is the guard; RSA block 256, digest 32). `fuzz-smoke` default list gained the four names.
+- Seeds (built from the unit-test helpers `rsa_blob`, `p256_blob`, `host()`, `tpm()` of the record tests, by a throwaway test not committed; credential headers and sign inputs by hand): `cargo +nightly-2026-10-26 fuzz run <t> <seed-dir> -- -runs=0` exits 0 for all four. A temporary `panic!("PROBE")` in the accepting branch of `tpm_blob`, `record_decode` and `tpm_sign_input` crashed on those seeds (probes removed), so the round-trip assertions do run.
+- Evidence: `just fuzz-build`, `just lint-fuzz`, `just fuzz-smoke` (10 targets), the 8-name run: exit 0; negative control (`… no_such_target`) exit 1 with `target no_such_target is missing or did not run`; `just quick` green.

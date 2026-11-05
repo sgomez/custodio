@@ -413,7 +413,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000
