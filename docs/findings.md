@@ -65,6 +65,7 @@ Rules:
 - [F110](findings/F110.md) — `systemd-creds` without root: Varlink `user` scope, no `withKey`, read back PCR mask at byte 48 and refuse nonzero/null; 255 and 257 are deviations; Decrypt error = cannot decrypt.
 - [F111](findings/F111.md) — F106/F107 probes on an STM hardware TPM: SHA-512 absent (way (b) still `ready`), P-256 primary 494 ms, RSA 3.7 s, `0x81000001` held by a foreign key.
 - [F113](findings/F113.md) — `TPM2_Import` wrap: outer wrap to the P-256 parent (ECDH seed, KDFa, AES-128-CFB, HMAC) with no session and no new crate; imported keys cannot be duplicated.
-- [F117](findings/F117.md) — test children and `swtpm`: TSS TCTI sockets leak into forked children (no CLOEXEC); spawn through `closed_fds`; AppArmor blocks signals to `swtpm`; service spawn unchecked.
+- [F117](findings/F117.md) — test children and `swtpm`: TSS TCTI sockets leak into forked children (no CLOEXEC); spawn through `closed_fds`; AppArmor blocks signals to `swtpm`; the service's `systemd-creds` spawn is fixed in F118.
+- [F118](findings/F118.md) — descriptors of the `systemd-creds` child: a plain `Command` leaks every inherited descriptor; `/usr/bin/bash -c` closes them before `exec` without `unsafe`.
 - [M01-acceptance](findings/M01-acceptance.md) — M0/M1 manual run (ubuntu2604): rFirma passes with its own fixes; Firefox snap cannot load the module; Mozilla .deb needs manual registration.
 - [acceptance-6-fingerprint](findings/acceptance-6-fingerprint.md) — acceptance 6 with libfprint's virtual device (ubuntu2604): pass; each signature asks for the finger again, unmatched falls back to password.

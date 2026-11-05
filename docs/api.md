@@ -213,6 +213,10 @@ that finds the key asks polkit; nothing is cached.
 - bounds: `id` as above; `data` at most 1024 bytes; `mechanism` one of the three above; `hash` is 0 unless the
   mechanism is `CKM_RSA_PKCS_PSS`, where it must be one of the three hashes; `salt_len` is 0 unless PSS.
 
+A TPM-protected key signs inside the TPM; an encrypted key is decrypted for this one signature and dropped. If the
+key can no longer be used the call fails `KeyLost`; if the TPM or the credential service is not usable right now it
+fails `TemporarilyUnavailable`. Either way the key is left as it is.
+
 ## Errors
 
 Every failure is one of these names, with a fixed message that repeats nothing the caller sent. A client library
@@ -234,6 +238,8 @@ otherwise, the call changed nothing.
 - error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored; a replaced certificate is put back). Message `audit unavailable`.
 - error `com.rfirma.Custodio1.Error.TpmFailed`: `ImportP12` only: the TPM is present but failed or cannot be used (it could not be opened, answered with an error, or its owner hierarchy is unusable). Nothing was stored, and the key was not stored in a weaker form instead. Message `the TPM failed or cannot be used`.
 - error `com.rfirma.Custodio1.Error.CredentialsUnavailable`: `ImportP12` only: the credential service is down or refused to encrypt the key, so it was not stored. Message `the credential service is unavailable`.
+- error `com.rfirma.Custodio1.Error.KeyLost`: `Sign` and `ReplaceCertificate`: the stored key can no longer be used, because its TPM blob does not load (the TPM was cleared or replaced, or the stored key is damaged) or its credential cannot be decrypted (the TPM was cleared, or the host key changed). Retrying does not help. Nothing is changed or deleted: the key stays listed and `DeleteKey` removes it. Message `the stored key can no longer be used`.
+- error `com.rfirma.Custodio1.Error.TemporarilyUnavailable`: `Sign`: the TPM or the credential service cannot be used right now (absent, failing, or not serving the mechanism). The key is intact and signs again once the service is back. Message `the key cannot be used right now, try again later`.
 - error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate). Message `internal error`.
 
 ## Polkit actions

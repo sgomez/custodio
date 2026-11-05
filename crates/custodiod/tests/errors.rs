@@ -321,6 +321,8 @@ fn the_wire_names_are_the_client_constants() -> TestResult {
             ERROR_POLKIT_DENIED,
             custodio_client::ERROR_CREDENTIALS_UNAVAILABLE,
             custodio_client::ERROR_TPM_FAILED,
+            custodio_client::ERROR_KEY_LOST,
+            custodio_client::ERROR_TEMPORARILY_UNAVAILABLE,
             ERROR_UNSUPPORTED_KEY_TYPE,
             ERROR_WRONG_PASSWORD_OR_BAD_P12,
         ];

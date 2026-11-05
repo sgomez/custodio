@@ -12,8 +12,8 @@ use std::fmt;
 use custodio_client::{
     ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_CERTIFICATE_MISMATCH,
     ERROR_CREDENTIALS_UNAVAILABLE, ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN,
-    ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_TPM_FAILED, ERROR_UNSUPPORTED_KEY_TYPE,
-    ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_KEY_LOST, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_TEMPORARILY_UNAVAILABLE,
+    ERROR_TPM_FAILED, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12,
 };
 use zbus::message::{Header, Message};
 use zbus::names::ErrorName;
@@ -40,12 +40,16 @@ pub enum ServiceError {
     TpmFailed,
     /// The credential service is unavailable or refused an import.
     CredentialsUnavailable,
+    /// The stored key can no longer be used: its TPM blob does not load or its credential cannot be decrypted.
+    KeyLost,
+    /// The TPM or the credential service cannot be used right now; the key is intact.
+    TemporarilyUnavailable,
     Internal,
 }
 
 impl ServiceError {
     /// Every variant.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::InvalidArgs,
         Self::NoSuchKey,
         Self::KeyIdTaken,
@@ -57,6 +61,8 @@ impl ServiceError {
         Self::AuditUnavailable,
         Self::TpmFailed,
         Self::CredentialsUnavailable,
+        Self::KeyLost,
+        Self::TemporarilyUnavailable,
         Self::Internal,
     ];
 
@@ -75,6 +81,8 @@ impl ServiceError {
             Self::AuditUnavailable => ERROR_AUDIT_UNAVAILABLE,
             Self::TpmFailed => ERROR_TPM_FAILED,
             Self::CredentialsUnavailable => ERROR_CREDENTIALS_UNAVAILABLE,
+            Self::KeyLost => ERROR_KEY_LOST,
+            Self::TemporarilyUnavailable => ERROR_TEMPORARILY_UNAVAILABLE,
             Self::Internal => ERROR_INTERNAL,
         }
     }
@@ -94,6 +102,8 @@ impl ServiceError {
             Self::AuditUnavailable => "audit unavailable",
             Self::TpmFailed => "the TPM failed or cannot be used",
             Self::CredentialsUnavailable => "the credential service is unavailable",
+            Self::KeyLost => "the stored key can no longer be used",
+            Self::TemporarilyUnavailable => "the key cannot be used right now, try again later",
             Self::Internal => "internal error",
         }
     }

@@ -24,6 +24,11 @@ fn every_variant_has_its_name() {
             ServiceError::CredentialsUnavailable,
             "CredentialsUnavailable",
         ),
+        (ServiceError::KeyLost, "KeyLost"),
+        (
+            ServiceError::TemporarilyUnavailable,
+            "TemporarilyUnavailable",
+        ),
         (ServiceError::Internal, "Internal"),
     ];
     assert_eq!(want.len(), ServiceError::ALL.len());

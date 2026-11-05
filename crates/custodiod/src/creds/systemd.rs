@@ -22,6 +22,13 @@ use super::{Binding, Credentials, CredsError, header};
 pub const SOCKET: &str = "/run/systemd/io.systemd.Credentials";
 /// The command, found through `PATH`.
 pub const PROGRAM: &str = "systemd-creds";
+/// Runs the command with every descriptor above 2 closed (see [`SystemdCreds::run`]).
+pub const LAUNCHER: &str = "/usr/bin/bash";
+/// `bash -c`: closes every inherited descriptor above 2, then replaces itself with the command (`"$@"`). The command
+/// and its arguments are never part of the script text.
+const CLOSE_FDS: &str = "for f in /proc/self/fd/*; do n=${f##*/}; [ \"$n\" -gt 2 ] && eval \"exec $n>&-\"; done 2>/dev/null; exec \"$@\"";
+/// What a shell exits with when it cannot run the command it was asked to `exec` (not executable, not found).
+const SHELL_CANNOT_RUN: [i32; 2] = [126, 127];
 /// The most a reply or the output of the command may hold.
 const MAX_REPLY: usize = 64 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -32,6 +39,7 @@ const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 pub struct SystemdCreds {
     socket: PathBuf,
     program: PathBuf,
+    launcher: PathBuf,
     tpm: Option<String>,
 }
 
@@ -68,8 +76,16 @@ impl SystemdCreds {
         Self {
             socket,
             program,
+            launcher: PathBuf::from(LAUNCHER),
             tpm,
         }
+    }
+
+    /// Starts the command through another launcher (tests: one that does not exist).
+    #[must_use]
+    pub fn with_launcher(mut self, launcher: PathBuf) -> Self {
+        self.launcher = launcher;
+        self
     }
 
     /// The system's socket and command.
@@ -116,9 +132,18 @@ impl SystemdCreds {
     }
 
     /// Runs the command with `stdin`; its output on success.
+    ///
+    /// The child inherits no descriptor above 2. The TSS libraries open their TPM connection without close-on-exec, so a
+    /// child forked while another thread of the service talks to the TPM would keep that connection open for its whole
+    /// life (`docs/findings/F118.md`). The service has `forbid(unsafe_code)`, so the descriptors are not closed in the
+    /// forked child (`pre_exec`): a launcher closes them before it executes the command. A launcher that is missing
+    /// makes the start fail, which is [`CredsError::Unavailable`], never a signature.
     fn run(&self, args: &[OsString], stdin: &[u8]) -> Result<Zeroizing<Vec<u8>>, Failure> {
-        let mut child = Command::new(&self.program)
+        let mut child = Command::new(&self.launcher)
+            .args(["-c", CLOSE_FDS, "close-fds"])
+            .arg(&self.program)
             .args(args)
+            .env_remove("BASH_ENV")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -135,6 +160,10 @@ impl SystemdCreds {
         }
         match child.wait() {
             Ok(status) if status.success() => Ok(out),
+            // The launcher could not execute the command: as a command that could not be started.
+            Ok(status) if status.code().is_some_and(|c| SHELL_CANNOT_RUN.contains(&c)) => {
+                Err(Failure::Spawn)
+            }
             _ => Err(Failure::Exit),
         }
     }

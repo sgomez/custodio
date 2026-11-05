@@ -14,7 +14,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use custodio_it::tpm_filter::{CommandFault, FaultAction, Lacks, alg, cc};
 use custodiod::audit::{AuditKeyType, MemorySink, OperationEntry};
 use custodiod::credentials::BusCredentials;
-use custodiod::creds::memory::MemoryCreds;
 use custodiod::creds::{Credentials, CredsError};
 use custodiod::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
 use custodiod::polkit::PolkitAuthorizer;
@@ -94,18 +93,34 @@ impl TpmAccess for Counting {
 /// A credential double that counts `encrypt` calls, can fail them with a chosen error, and answers with the header of
 /// the wrapped [`MemoryCreds`].
 pub struct SpyCreds {
-    inner: MemoryCreds,
+    inner: Box<dyn Credentials>,
     pub encrypts: AtomicUsize,
+    pub decrypts: AtomicUsize,
     fail: Mutex<Option<CredsError>>,
+    fail_decrypt: Mutex<Option<CredsError>>,
 }
 
 impl SpyCreds {
-    pub fn new(inner: MemoryCreds) -> Arc<Self> {
+    pub fn new(inner: impl Credentials + 'static) -> Arc<Self> {
         Arc::new(Self {
-            inner,
+            inner: Box::new(inner),
             encrypts: AtomicUsize::new(0),
+            decrypts: AtomicUsize::new(0),
             fail: Mutex::new(None),
+            fail_decrypt: Mutex::new(None),
         })
+    }
+
+    /// Makes `decrypt` fail with `error` (or work again with `None`).
+    pub fn fail_decrypt_with(&self, error: Option<CredsError>) {
+        *self
+            .fail_decrypt
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = error;
+    }
+
+    pub fn decrypts(&self) -> usize {
+        self.decrypts.load(Ordering::SeqCst)
     }
 
     pub fn fail_with(&self, error: Option<CredsError>) {
@@ -127,6 +142,14 @@ impl Credentials for SpyCreds {
     }
 
     fn decrypt(&self, name: &str, credential: &[u8]) -> Result<SecretSlice<u8>, CredsError> {
+        self.decrypts.fetch_add(1, Ordering::SeqCst);
+        if let Some(e) = *self
+            .fail_decrypt
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+        {
+            return Err(e);
+        }
         self.inner.decrypt(name, credential)
     }
 }
@@ -176,6 +199,10 @@ pub struct Svc {
     pub sink: Arc<MemorySink>,
     pub creds: Arc<SpyCreds>,
     pub tpm: Arc<Counting>,
+    /// What the fake polkit answers; change it between calls.
+    pub answer: Arc<Mutex<Answer>>,
+    /// `(action id, flags)` of every request the fake polkit got.
+    pub requests: Arc<Mutex<Vec<(String, u32)>>>,
 }
 
 impl Svc {
@@ -183,15 +210,16 @@ impl Svc {
         let bus = Bus::start()?;
         let answer = Arc::new(Mutex::new(answer));
         let asked = Arc::new(Mutex::new(Vec::new()));
+        let requests = Arc::new(Mutex::new(Vec::new()));
         let polkit = bus.connect().await?;
         polkit
             .object_server()
             .at(
                 "/org/freedesktop/PolicyKit1/Authority",
                 FakePolkit {
-                    answer,
+                    answer: answer.clone(),
                     asked,
-                    requests: Arc::default(),
+                    requests: requests.clone(),
                     hold: Arc::default(),
                     hook: Arc::default(),
                 },
@@ -223,7 +251,19 @@ impl Svc {
             sink,
             creds,
             tpm,
+            answer,
+            requests,
         })
+    }
+
+    /// A call to the service by method name: the reply, or the error name.
+    pub async fn call_method<B>(&self, method: &str, body: &B) -> Result<zbus::Message, String>
+    where
+        B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
+    {
+        call(&self.client, method, body)
+            .await
+            .map_err(|e| error_name(&e))
     }
 
     /// `ImportP12`: the key type name of the reply, or the error name.

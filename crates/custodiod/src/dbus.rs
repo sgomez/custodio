@@ -17,12 +17,10 @@ use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::creds::Credentials;
 use crate::error::ServiceError;
-use crate::import::{
-    KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_kind, credential_name,
-};
+use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_kind};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
-use crate::sign::{Mechanism, PssHash, sign};
+use crate::sign::{Mechanism, PssHash};
 use crate::store::{KeyStore, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::open::NoTpm;
@@ -410,25 +408,6 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         Ok(Some((attempt, app_id)))
     }
 
-    /// Signs with the key of `record`. An encrypted key is decrypted for this one signature and
-    /// zeroized when it is dropped. A TPM key is signed in the TPM (F118); until then it is refused.
-    fn sign_record(
-        &self,
-        record: &Record,
-        mechanism: Mechanism,
-        data: &[u8],
-    ) -> Result<Vec<u8>, ServiceError> {
-        let credential = record.protected().credential();
-        let (Some(creds), Some(credential)) = (self.key_creds.as_deref(), credential) else {
-            return Err(ServiceError::Internal);
-        };
-        let name = credential_name(record.owner(), record.id());
-        let key = creds
-            .decrypt(&name, credential)
-            .map_err(|_| ServiceError::Internal)?;
-        sign(&key, mechanism, data).map_err(|e| ServiceError::from(&e))
-    }
-
     /// Polkit, then the signature with the key already looked up.
     async fn authorize_and_sign(
         &self,
@@ -551,5 +530,6 @@ mod delete;
 mod delete_state;
 mod import;
 mod replace;
+mod sign_kind;
 #[cfg(test)]
 mod tests;

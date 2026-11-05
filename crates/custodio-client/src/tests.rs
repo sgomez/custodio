@@ -15,6 +15,8 @@ fn names_are_the_documented_literals() {
         (ERROR_AUDIT_UNAVAILABLE, "AuditUnavailable"),
         (ERROR_TPM_FAILED, "TpmFailed"),
         (ERROR_CREDENTIALS_UNAVAILABLE, "CredentialsUnavailable"),
+        (ERROR_KEY_LOST, "KeyLost"),
+        (ERROR_TEMPORARILY_UNAVAILABLE, "TemporarilyUnavailable"),
         (ERROR_INTERNAL, "Internal"),
     ];
     for (name, last) in want {

@@ -18,6 +18,8 @@ mod fails_closed;
 mod kinds;
 #[path = "storage_choice/order.rs"]
 mod order;
+// The rig is shared with `sign_kinds`, which uses other parts of it than this target does.
+#[allow(dead_code)]
 #[path = "storage_choice/rig.rs"]
 mod rig;
 #[path = "storage_choice/row.rs"]
