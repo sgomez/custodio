@@ -199,6 +199,13 @@ if phase_runs tpm-kind; then
 fi
 phase_done tpm-kind
 
+# The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
+# in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+if phase_runs sign; then
+    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/sign-run.sh || fail "sign-run.sh failed"
+fi
+phase_done sign
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

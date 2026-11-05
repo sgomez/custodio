@@ -13,14 +13,14 @@ fixture_problems() {
     esac
 }
 
-# tk_make DIR: DIR/rsa.p12 and DIR/ec.p12 (the key never stays on disk)
+# tk_make DIR [NAME]: DIR/rsa.p12 and DIR/ec.p12 (the key never stays on disk); NAME (default tpm-kind) is in the subject and the friendly name
 tk_make() {
-    local d=$1 t
+    local d=$1 n=${2:-tpm-kind} t
     for t in rsa ec; do
         if [ "$t" = rsa ]; then openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$d/$t.key" 2> /dev/null
         else openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$d/$t.key" 2> /dev/null; fi
-        openssl req -new -x509 -key "$d/$t.key" -subj "/CN=custodio e2e tpm-kind $t" -days 30 -out "$d/$t.crt"
-        openssl pkcs12 -export -inkey "$d/$t.key" -in "$d/$t.crt" -name "tpm-kind-$t" -passout "pass:$TK_PASSWORD" -out "$d/$t.p12"
+        openssl req -new -x509 -key "$d/$t.key" -subj "/CN=custodio e2e $n $t" -days 30 -out "$d/$t.crt"
+        openssl pkcs12 -export -inkey "$d/$t.key" -in "$d/$t.crt" -name "$n-$t" -passout "pass:$TK_PASSWORD" -out "$d/$t.p12"
         rm -f "$d/$t.key"
     done
 }

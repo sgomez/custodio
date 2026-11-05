@@ -20,6 +20,6 @@ grep -q registered "$E2E_DIR/agent.log" || { cat "$E2E_DIR/agent.log" >&2; fail 
 # Approve only after the agent registered, then import on a pseudo-terminal (the password is only read from /dev/tty).
 echo approve > "$E2E_DIR/mode"
 for k in rsa1 ec1; do
-    python3 -I /e2e/import.py "$WORK/$k.p12" "$k" e2e-password > /dev/null || fail "import of $k failed"
+    python3 -I /e2e/import.py "$WORK/$k.p12" "$k" e2e-password > "$WORK/import-$k.out" || { cat "$WORK/import-$k.out" >&2; fail "import of $k failed"; }
 done
 [ "$(wc -l < "$E2E_DIR/requests")" -eq 2 ] || fail "expected 2 authentication requests for the 2 imports, saw $(wc -l < "$E2E_DIR/requests")"

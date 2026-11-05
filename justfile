@@ -175,6 +175,7 @@ test-scripts:
     scripts/test-ci-e2e.sh
     scripts/test-e2e-tpm-host.sh
     scripts/test-e2e-tpm-kind.sh
+    scripts/test-e2e-sign.sh
     scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
     scripts/test-e2e-targets.sh

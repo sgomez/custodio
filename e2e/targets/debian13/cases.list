@@ -15,3 +15,12 @@ tpm-kind-import-ec
 tpm-kind-api-list
 tpm-kind-cli-list
 tpm-kind-journal
+# F134: every mechanism signs under each kind; run in every TPM mode (swtpm, none, lacking), never skipped.
+sign-kind-matches-mode
+sign-rsa-pkcs
+sign-rsa-pss-sha256
+sign-rsa-pss-sha384
+sign-rsa-pss-sha512
+sign-rsa-composed
+sign-ec-ecdsa
+sign-ec-composed

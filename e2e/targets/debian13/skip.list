@@ -1,4 +1,4 @@
-# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). The tpm-kind cases need the swtpm mode; check-cases.sh refuses them skipped in it.
+# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). The tpm-kind cases need the swtpm mode; check-cases.sh refuses them skipped in it. The sign-* cases (F134) run in every mode and are never listed here; check-cases.sh refuses them skipped.
 tpm-kind-import-rsa: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
 tpm-kind-import-ec: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
 tpm-kind-api-list: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
