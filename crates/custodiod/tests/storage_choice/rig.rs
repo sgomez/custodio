@@ -205,11 +205,11 @@ pub fn lacks_mechanism(rsa: bool) -> Lacks {
 
 /// The service, its bus and the doubles.
 pub struct Svc {
-    _bus: Bus,
+    bus_daemon: Bus,
     state: tempfile::TempDir,
     pub store: Arc<KeyStore>,
     _polkit: Connection,
-    _service: Connection,
+    service_conn: Connection,
     client: Connection,
     pub sink: Arc<MemorySink>,
     pub creds: Arc<SpyCreds>,
@@ -257,11 +257,11 @@ impl Svc {
         service.request_name(BUS_NAME).await?;
         let client = bus.connect().await?;
         Ok(Self {
-            _bus: bus,
+            bus_daemon: bus,
             state,
             store,
             _polkit: polkit,
-            _service: service,
+            service_conn: service,
             client,
             sink,
             creds,
@@ -279,6 +279,52 @@ impl Svc {
         call(&self.client, method, body)
             .await
             .map_err(|e| error_name(&e))
+    }
+
+    /// As [`Svc::call_method`], keeping the message of the error: `(error name, message)`.
+    pub async fn call_error<B>(
+        &self,
+        method: &str,
+        body: &B,
+    ) -> Result<zbus::Message, (String, String)>
+    where
+        B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
+    {
+        call(&self.client, method, body).await.map_err(|e| {
+            let message = match &e {
+                zbus::Error::MethodError(_, Some(text), _) => text.clone(),
+                _ => String::new(),
+            };
+            (error_name(&e), message)
+        })
+    }
+
+    /// The unique bus name that owns the service's well-known name now.
+    pub async fn name_owner(&self) -> Res<String> {
+        let proxy = zbus::fdo::DBusProxy::new(&self.client).await?;
+        let owner = proxy.get_name_owner(BUS_NAME.try_into()?).await?;
+        Ok(owner.to_string())
+    }
+
+    /// Stops the service (it gives up its name and its store) and starts a new one on the same state directory,
+    /// credentials, TPM access, sink and polkit: a new object with a new bus connection.
+    pub async fn restart_service(&mut self) -> Res<()> {
+        self.service_conn.clone().close().await?;
+        let service = self.bus_daemon.connect().await?;
+        let store = Arc::new(KeyStore::open(self.state.path().join("keys"))?);
+        let object = Custodio::new(
+            store.clone(),
+            PolkitAuthorizer::new(service.clone()),
+            BusCredentials::new(service.clone()),
+            self.sink.clone(),
+        )
+        .with_key_credentials(self.creds.clone())
+        .with_tpm(self.tpm.clone());
+        service.object_server().at(OBJECT_PATH, object).await?;
+        service.request_name(BUS_NAME).await?;
+        self.store = store;
+        self.service_conn = service;
+        Ok(())
     }
 
     /// `ImportP12`: the key type name of the reply, or the error name.
