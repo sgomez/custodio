@@ -429,3 +429,8 @@ with an empty context.
 - Runs on this commit: `just e2e-cases debian13 'sign-*'` in `swtpm`, `none`, `lacking`: 8 cases run each, ~47 s per run. `just quick` green. The full `just e2e` and the other targets are not run (checkpoint).
 - Also: `tk_make` takes a name (tpmkind-lib.sh), `import-user.sh` prints the import output when an import fails. Negative control (3) dropped (evaluator note 4).
 - Evaluator notes 1 (CKR name identical across modes): the refusals must give `CKR_DATA_INVALID` in every mode, judged in each run. Note 2: exact total per group only.
+
+### 2026-11-05 — F134 — attempt 2 (BLOCKED)
+- Evaluator rejected amendment (2) (`lacking` == `tpm`). Withdrawn in the contract (own commit); evidence/step wording for the dropped negative control (3) fixed; wrong-salt control is in the guest judging (`e2e/sign.py`).
+- Tried `alg=0x1` in the filter: import fails with `CredentialsUnavailable`; cause is that the root `systemd-creds@.service` refuses the TPM in a container (`docs/findings/F134.md`, last section). Needs a person: `BLOCKED.md`.
+- Code unchanged otherwise; the `sign-*` run step is unticked.
