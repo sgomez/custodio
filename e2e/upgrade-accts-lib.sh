@@ -76,7 +76,7 @@ acct_after_problems() {
     fi
 }
 
-# acct_state_problems STATE_FILE ALICE_UID BOB_UID CUSTODIO_UID: the snapshot (snapshot_state) holds ./<uid>/<id> and ./<uid>/<id>-cert for each key of
+# acct_state_problems STATE_FILE ALICE_UID BOB_UID CUSTODIO_UID: the snapshot (snapshot_state) holds ./<uid>/<id> (one record: key and certificate) for each key of
 # each account and no other file: directory 0700 and files 0600, every one owned by custodio (the owner is the directory), the two rsa1 files with different content
 acct_state_problems() {
     local file=$1 au=$2 bu=$3 cu=$4 u uid id name kind owner _gid mode hash path want got
@@ -91,13 +91,12 @@ acct_state_problems() {
         if [ "$u" = alice ]; then uid=$au; else uid=$bu; fi
         want=''
         for id in $(acct_expect "$u"); do
-            for name in "$id" "$id-cert"; do # the store keeps the key and its certificate as two files
-                want="$want ./$uid/$name"
-                if [ -z "${seen[./$uid/$name]+x}" ]; then echo "state: no file ./$uid/$name ($u's $id)"; continue; fi
-                read -r owner mode hash <<< "${seen[./$uid/$name]}"
-                [ "$owner" = "$cu" ] || echo "state: ./$uid/$name is owned by $owner, not custodio"
-                [ "$mode" = 600 ] || echo "state: ./$uid/$name has mode $mode, expected 600"
-            done
+            name=$id # the store keeps one record file per key, certificate included
+            want="$want ./$uid/$name"
+            if [ -z "${seen[./$uid/$name]+x}" ]; then echo "state: no file ./$uid/$name ($u's $id)"; continue; fi
+            read -r owner mode hash <<< "${seen[./$uid/$name]}"
+            [ "$owner" = "$cu" ] || echo "state: ./$uid/$name is owned by $owner, not custodio"
+            [ "$mode" = 600 ] || echo "state: ./$uid/$name has mode $mode, expected 600"
         done
         got=$(for path in "${!seen[@]}"; do case $path in "./$uid"/*) echo "$path" ;; esac; done | LC_ALL=C sort | tr '\n' ' ')
         for path in $got; do [[ " $want " == *" $path "* ]] || echo "state: $path is not one of $u's keys"; done
