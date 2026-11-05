@@ -217,6 +217,8 @@ $feature
 
 Approved contract: $c
 
+Session time limit: ${SESSION_TIMEOUT:-45m}
+
 The evaluator's notes on the contract:
 $(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)${resumed:+
 

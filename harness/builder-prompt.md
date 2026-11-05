@@ -14,15 +14,23 @@ Follow "Every session" in CLAUDE.md:
    (`cargo test -p <crate> <filter>`), never `just check`, `just e2e`, the package gates or the
    `verify`.
 3. When every step is ticked, run `just quick` once, the contract's evidence, and
-   `just mutants-diff <id>` if the `verify` has it. A full run can take 10-20 minutes: run it
-   once, with `timeout 1700`. While killing survivors, rerun only them, narrowed to their tests:
-   `--re <regex> -- --lib <filter>`. Run the full diff again only at the end. Do not run the whole `verify`: the loop runs it as the gate. The package, install
-   and e2e suites run at the checkpoint features and the release, and failures there are fixed
-   there. Run every command in the foreground with `timeout`; background tasks and polling loops
-   are blocked.
-4. Append your entry to PROGRESS.md and commit with a Conventional Commits message scoped to the
-   feature id, e.g. `feat(F05): add key store`. Stop at a clean point when your context gets
-   long: the next session continues from the contract.
+   `just mutants-diff <id>` if the `verify` has it, each once, with `timeout 1700`. While killing
+   survivors, rerun only them, narrowed to their tests: `--re <regex> -- --lib <filter>`. Run the
+   full diff again only at the end. Do not run the whole `verify`: the loop runs it as the gate.
+   The package, install and e2e suites run at the checkpoint features and the release, and
+   failures there are fixed there. Run every command in the foreground with `timeout`; background
+   tasks and polling loops are blocked.
+4. Append your entry to PROGRESS.md, or finish the one you started, and commit with a Conventional
+   Commits message scoped to the feature id, e.g. `feat(F05): add key store`. Stop at a clean
+   point when your context gets long: the next session continues from the contract.
+
+The session is cut at the time limit given below, and one command may run at most 30 minutes. A
+cut session loses all it did not commit or write to PROGRESS.md, and the next one starts over.
+Before any command that may take more than 10 minutes, commit what is done, tick finished steps
+and write your PROGRESS.md entry. Split a suite that does not fit in one command (at a
+checkpoint, `just e2e` runs one target and mode per command: `E2E_TPM=<mode> just e2e <target>`),
+and after each part add to PROGRESS.md that it passed and on which commit, so the next session
+does not rerun it.
 
 If a fact found while building means the contract cannot hold as written, amend it instead of
 blocking: edit `contracts/<id>.md`, add a line under `## Amendments` with what changed and the
