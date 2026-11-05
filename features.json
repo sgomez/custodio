@@ -267,7 +267,7 @@
         "F117"
       ],
       "verify": "just quick && cargo test -p custodiod --test no_plaintext --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F128",
