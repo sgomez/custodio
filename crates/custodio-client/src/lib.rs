@@ -39,7 +39,7 @@ pub const ERROR_AUDIT_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.AuditUnava
 pub const ERROR_TPM_FAILED: &str = "com.rfirma.Custodio1.Error.TpmFailed";
 /// The credential service is unavailable or refused an import: the key was not stored.
 pub const ERROR_CREDENTIALS_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.CredentialsUnavailable";
-/// `Sign` or `ReplaceCertificate`: the stored key can no longer be used (its TPM blob does not load, or its credential
+/// `Sign`: the stored key can no longer be used (its TPM blob does not load, or its credential
 /// cannot be decrypted). Retrying does not help; the key stays listed and can be deleted.
 pub const ERROR_KEY_LOST: &str = "com.rfirma.Custodio1.Error.KeyLost";
 /// `Sign`: the TPM or the credential service cannot be used right now. The key is intact; try again later.

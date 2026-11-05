@@ -265,3 +265,7 @@ with an empty context.
 - Contract amended (`0fdebdf`) for evaluator notes 1-5 (folded duplicate rows, launcher commands, `missing_launcher` row).
 - Evidence: `just quick` green; `sign_kinds` all pass; `just mutants-diff F118`: 22 mutants, 15 caught, 7 unviable, 0 missed. `dbus/sign_kind.rs` joined the `mutants` list.
 - Not done / for the checkpoints: the packages do not list `bash` as a dependency (Essential on Debian, base on Fedora/Arch) and the run of the launcher under the real hardened unit is proven at F132/F146. Kind in the API (F119), cause in the journal (F120).
+
+### 2026-11-05 — F118 — attempt 2
+- Fixed NEXT_FINDINGS: `docs/api.md` (`KeyLost` line) and the `ERROR_KEY_LOST` doc now say `Sign` only; the `Internal` entry says a replace whose key cannot be decrypted fails `Internal` and changes nothing.
+- Evidence: `just quick` green. No code changed, so `sign_kinds` 17/17 and the mutants result (22 mutants, 0 missed) stand.
