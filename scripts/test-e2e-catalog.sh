@@ -2,7 +2,7 @@
 # F59: the journal catalog check of the e2e suite (`journal.py catalog`, the function the guest case calls), on captured `journalctl -x`
 # text, with no container engine. Also: e2e/catalog-text.txt (the explanation the guest matches, since only /e2e is mounted there) is the
 # body of BOTH entries of the signing id in data/custodio.catalog (the unmarked one that C/POSIX locales show, and the one marked `en`).
-# Every other id of the catalog (import, delete, replace certificate) also has both entries, and a body that is not the signing one.
+# Every other id of the catalog (import, delete, replace certificate, purge) also has both entries, and a body that is not the signing one.
 # NOT checked here: that a booted system registers the catalog and shows it; that is the real run of `just e2e <target>`.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -56,7 +56,7 @@ PY
 # split_check CATALOG: succeeds when every entry of CATALOG has the committed body
 split_check() { rm -f "$tmp/bodies"; python3 -I "$tmp/split.py" "$1" "$EXPECT" "$tmp"; }
 split_check "$ROOT/data/custodio.catalog" || bad "the catalog differs from e2e/catalog-text.txt"
-[ "$(cat "$tmp/bodies" 2> /dev/null)" = "2 3" ] || bad "expected two signing entries (unmarked and en) and three other ids in data/custodio.catalog"
+[ "$(cat "$tmp/bodies" 2> /dev/null)" = "2 4" ] || bad "expected two signing entries (unmarked and en) and four other ids in data/custodio.catalog"
 # control: a change to only one entry is caught
 sed '0,/^identifies this kind of entry\./s//identifies this kind of entry (changed)./' "$ROOT/data/custodio.catalog" > "$tmp/changed.catalog"
 if cmp -s "$tmp/changed.catalog" "$ROOT/data/custodio.catalog"; then bad "control: the catalog copy was not changed"; fi

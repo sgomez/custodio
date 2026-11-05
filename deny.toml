@@ -46,6 +46,10 @@ deny = [
   { crate = "openssl-sys" },
 ]
 skip = [
+  # `tss-esapi` 8.0.0-alpha.4 (the TPM client, F112) pins getrandom 0.2; `rand` 0.10 (via p12-keystore
+  # and the service) needs 0.4. No release of either lets them meet; both are small and audited.
+  # Drop this entry when `tss-esapi` moves to getrandom 0.3 or later.
+  { crate = "getrandom@0.2.17", reason = "pinned by tss-esapi 8.0.0-alpha.4; rand 0.10 needs 0.4" },
   # Two proc-macro generations in the build graph (displaydoc/thiserror-impl on syn 3, the asn1-rs
   # derives on syn 2) via p12-keystore. Build-time only; nothing from either ships in the binary.
   { crate = "syn@2.0.119", reason = "proc-macro only; pulled in by asn1-rs-derive via p12-keystore" },
