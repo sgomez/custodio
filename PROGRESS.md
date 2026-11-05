@@ -445,3 +445,6 @@ with an empty context.
 - Ran on `9cd5dc7` (code unchanged since attempt 1): `just quick` green; `just e2e-cases debian13 'sign-*'` exit 0 in `swtpm` (71 s), `none` (50 s) and `lacking` (52 s),
   each "8 cases accounted for", records `tpm=<mode>`. Last step ticked. Kinds under `lacking` are `tpm`/`tpm` per amendment (5) and the deviation in `SPEC_DEVIATIONS.md`.
 - Negative controls (1) and (2) are host tests in `scripts/test-e2e-sign.sh` (part of `just quick`). Not run: full `just e2e`, other targets (checkpoint).
+
+### 2026-11-05 — F134 — attempt 5
+- Fixed NEXT_FINDINGS: the deviation and amendment (5) now say what covers `encrypted-tpm` signing (kinds_suite F126 with a credential double; sign_kinds failure rows with real systemd-creds, RSA-PKCS/ECDSA only), the PSS gap, that `lacking` adds no kind coverage over `swtpm`, that the proof is for debian13, and that the person must confirm option C. Code unchanged; no step unticked.
