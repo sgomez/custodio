@@ -278,7 +278,7 @@
         "F117"
       ],
       "verify": "just quick && cargo test -p custodiod --test tpm_duplicate --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F129",
