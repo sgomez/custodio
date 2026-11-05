@@ -434,3 +434,9 @@ with an empty context.
 - Evaluator rejected amendment (2) (`lacking` == `tpm`). Withdrawn in the contract (own commit); evidence/step wording for the dropped negative control (3) fixed; wrong-salt control is in the guest judging (`e2e/sign.py`).
 - Tried `alg=0x1` in the filter: import fails with `CredentialsUnavailable`; cause is that the root `systemd-creds@.service` refuses the TPM in a container (`docs/findings/F134.md`, last section). Needs a person: `BLOCKED.md`.
 - Code unchanged otherwise; the `sign-*` run step is unticked.
+
+### 2026-11-05 — F134 — attempt 3
+- Done: the person chose option C of BLOCKED.md. Deviation in `SPEC_DEVIATIONS.md` (F134, also covers F138's `lacking` half), contract amendment (5): `lacking` keeps the RSAPSS filter
+  and expects `tpm`/`tpm`, as `e2e/sign.py` already does. Finding extended: no container passes systemd's container check (PID namespace, no override in 257, Varlink `Encrypt` has no key
+  choice), checked under rootful docker with the host TPM and a vTPM module present. BLOCKED.md removed. Code unchanged.
+- Next session should: wait for the evaluator to review amendment (5) and the deviation, then run the unticked step (the three `sign-*` runs, `just quick`) and tick it.
