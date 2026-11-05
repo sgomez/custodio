@@ -396,3 +396,6 @@ with an empty context.
   kind as glibc/libgcc. Added five entries with a reason to `packaging/lint/namcap.txt`; `just package-gates` exit 0
   (1m38s), step 4 done. Remaining: the final rerun (step 5) from a cleared `target/e2e/`, one target and mode per command
   (12 runs, ~5 min each; ubuntu2404 21s); record each pass below.
+- (session 6, final rerun from a cleared target/e2e/, on the namcap-fix commit) passed: alma10 swtpm, alma10 none,
+  arch swtpm, arch none, debian13 swtpm. debian13 none was running when this was written (see the next line).
+  Still to rerun: debian13 none, fedora44, ubuntu2404, ubuntu2604 (each mode).
