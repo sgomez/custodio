@@ -217,7 +217,7 @@
         "F119"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test storage_kind --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F124",
