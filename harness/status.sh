@@ -18,8 +18,18 @@ why_unapproved() {
   fi
 }
 
+# feature_list: the features and how many pass, once the spec and the list are approved.
+feature_list() {
+  [ -f SPEC.md ] && approved spec && [ -f features.json ] && approved features || return 0
+  jq -r '.features[] | "  \(if .passes then "[x]" else "[ ]" end) \(.id) \(.title)\(if .manual then " (manual)" else "" end)"' features.json
+  total=$(jq '[.features[] | select((.manual // false) | not)] | length' features.json)
+  done_=$(jq '[.features[] | select((.manual // false) | not) | select(.passes)] | length' features.json)
+  printf '\n%s of %s automatic features pass.\n' "$done_" "$total"
+}
+
 if [ -e AGENT_STOP ]; then
-  echo "Stopped by you (AGENT_STOP exists)."
+  feature_list
+  printf '\nStopped by you (AGENT_STOP exists).\n'
   next "just harness resume"
 fi
 if [ -e BLOCKED.md ]; then
@@ -43,10 +53,7 @@ if ! approved features; then
   next "if features.json is the list you want: just milestone approve features"
 fi
 
-jq -r '.features[] | "  \(if .passes then "[x]" else "[ ]" end) \(.id) \(.title)\(if .manual then " (manual)" else "" end)"' features.json
-total=$(jq '[.features[] | select((.manual // false) | not)] | length' features.json)
-done_=$(jq '[.features[] | select((.manual // false) | not) | select(.passes)] | length' features.json)
-printf '\n%s of %s automatic features pass.\n' "$done_" "$total"
+feature_list
 
 current=$(jq -r '[.features[] | select((.manual // false) | not) | select(.passes | not)] | first | .id // empty' features.json)
 if [ -f NEXT_FINDINGS.md ]; then
