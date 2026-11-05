@@ -440,3 +440,8 @@ with an empty context.
   and expects `tpm`/`tpm`, as `e2e/sign.py` already does. Finding extended: no container passes systemd's container check (PID namespace, no override in 257, Varlink `Encrypt` has no key
   choice), checked under rootful docker with the host TPM and a vTPM module present. BLOCKED.md removed. Code unchanged.
 - Next session should: wait for the evaluator to review amendment (5) and the deviation, then run the unticked step (the three `sign-*` runs, `just quick`) and tick it.
+
+### 2026-11-05 — F134 — attempt 4
+- Ran on `9cd5dc7` (code unchanged since attempt 1): `just quick` green; `just e2e-cases debian13 'sign-*'` exit 0 in `swtpm` (71 s), `none` (50 s) and `lacking` (52 s),
+  each "8 cases accounted for", records `tpm=<mode>`. Last step ticked. Kinds under `lacking` are `tpm`/`tpm` per amendment (5) and the deviation in `SPEC_DEVIATIONS.md`.
+- Negative controls (1) and (2) are host tests in `scripts/test-e2e-sign.sh` (part of `just quick`). Not run: full `just e2e`, other targets (checkpoint).
