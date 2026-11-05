@@ -173,7 +173,7 @@
         "F118"
       ],
       "verify": "just quick && just api-contract && cargo test -p custodiod --test api_kind --locked && just mutants-diff F119",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F120",
