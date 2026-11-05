@@ -399,3 +399,6 @@ with an empty context.
 - (session 6, final rerun from a cleared target/e2e/, on the namcap-fix commit) passed: alma10 swtpm, alma10 none,
   arch swtpm, arch none, debian13 swtpm. debian13 none was running when this was written (see the next line).
   Still to rerun: debian13 none, fedora44, ubuntu2404, ubuntu2604 (each mode).
+- (session 6) debian13 none passed on the same commit (4m54, alone; the earlier one was cut by the shell's background
+  limit, not by a failure). Final rerun so far: alma10, arch, debian13 in both modes. Still to rerun: fedora44,
+  ubuntu2404, ubuntu2604 in both modes (swtpm runs not yet repeated after the namcap-list change, which touches no e2e file).
