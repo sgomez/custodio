@@ -355,3 +355,9 @@ with an empty context.
 - Note: `SystemdCreds::decrypt` refuses PCR-bound credentials by design, so the PCR 7 control runs the real tool through the daemon's wrapper.
 - The journal outcome of a lost key is `signing_failed` with cause `key_lost` (as F120), not an outcome named `key_lost`.
 - Evidence: see the commit; `just quick` and `cargo test -p custodiod --test tpm_lifecycle`.
+
+### 2026-11-05 — F130 — attempt 1
+- `crates/custodiod/tests/tpm_resources.rs` (rig from `KindSvc`/`sign_kinds::kit`/`tpm_import::support` through `#[path]`; the fault filter is swapped in with `Counting::swap`). Slot count from `tpm2_getcap properties-fixed` (`parse_slots`; `MAX_SLOTS` named constant), calls = `3 * slots + MARGIN`.
+- Tests: `slot_count_is_reported` (controls: name line or value line removed, empty text → error), `signatures_exceed_slots` (all verified by `openssl`, nothing loaded after; control: `slots` leaked primaries make `Sign` fail, a flush fixes it), `imports_exceed_slots` (kind `tpm`, `ListKeys` shows all, nothing loaded after the whole run, last key of each type signs and verifies), `failed_signatures_leave_no_slot_used`, `failed_imports_leave_no_slot_used` (class one `Respond(0x101)` repeated `slots + 1` times, the filter record shows the fault fired; class two drops and `FlushContext` fault: error, handles left behind (asserted), stand-in `tpm2_flushcontext -t`, nothing loaded; one long run after the last fault; failed imports leave `ListKeys` and the files unchanged).
+- Errors on the bus: sign with `0x101` is `TemporarilyUnavailable`, except a failed `Load`, which is `KeyLost`; import is `TpmFailed`. A failed flush does reach the bus as an error, so no amendment was needed.
+- Evidence: `just quick` green; `cargo test -p custodiod --test tpm_resources` 5/5.
