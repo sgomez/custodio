@@ -7,6 +7,7 @@
 use std::fmt::{self, Write as _};
 use std::io::{self, Write};
 
+use custodio_client::Kind;
 use x509_cert::Certificate;
 use x509_cert::der::Decode;
 
@@ -23,6 +24,7 @@ pub const UNREADABLE: &str = "certificate unreadable";
 pub struct KeyEntry {
     pub id: String,
     pub key_type: String,
+    pub kind: Kind,
     /// DER certificate. Never printed.
     pub certificate: Vec<u8>,
 }
@@ -32,6 +34,7 @@ impl fmt::Debug for KeyEntry {
         f.debug_struct("KeyEntry")
             .field("id", &self.id)
             .field("key_type", &self.key_type)
+            .field("kind", &self.kind)
             .finish_non_exhaustive()
     }
 }
@@ -99,7 +102,7 @@ impl fmt::Display for ListFailure {
 
 impl std::error::Error for ListFailure {}
 
-/// Writes one block of four lines for a key.
+/// Writes one block of five lines for a key.
 ///
 /// # Errors
 /// If writing fails.
@@ -107,10 +110,12 @@ pub fn write_entry<W: Write>(
     out: &mut W,
     id: &str,
     key_type: &str,
+    kind: &Kind,
     info: Option<&CertificateInfo>,
 ) -> io::Result<()> {
     writeln!(out, "id: {}", escape(id))?;
     writeln!(out, "  type: {}", escape(key_type))?;
+    writeln!(out, "  kind: {}", escape(kind.wire()))?;
     if let Some(info) = info {
         writeln!(out, "  subject: {}", escape(&info.subject))?;
         writeln!(out, "  valid until: {}", escape(&info.not_after))
@@ -135,7 +140,8 @@ pub fn run_list<L: KeyLister, W: Write>(lister: &L, out: &mut W) -> Result<(), L
     for key in &keys {
         let info = certificate_info(&key.certificate);
         unreadable += usize::from(info.is_none());
-        write_entry(out, &key.id, &key.key_type, info.as_ref()).map_err(ListFailure::Output)?;
+        write_entry(out, &key.id, &key.key_type, &key.kind, info.as_ref())
+            .map_err(ListFailure::Output)?;
     }
     if unreadable > 0 {
         return Err(ListFailure::Unreadable(unreadable));

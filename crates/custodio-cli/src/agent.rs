@@ -7,6 +7,7 @@
 
 use std::io;
 
+use custodio_client::Kind;
 use secrecy::SecretString;
 
 use crate::Importer;
@@ -137,7 +138,7 @@ impl<I: Importer, S: AgentSpawner> Importer for WithAgent<I, S> {
         id: &str,
         p12: &[u8],
         password: &SecretString,
-    ) -> Result<String, ServiceFailure> {
+    ) -> Result<(String, Kind), ServiceFailure> {
         let _agent = self.guard();
         self.inner.import_p12(id, p12, password)
     }

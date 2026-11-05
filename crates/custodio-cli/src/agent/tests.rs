@@ -40,9 +40,14 @@ impl KeyDeleter for Inner {
 }
 
 impl Importer for Inner {
-    fn import_p12(&self, id: &str, _: &[u8], _: &SecretString) -> Result<String, ServiceFailure> {
+    fn import_p12(
+        &self,
+        id: &str,
+        _: &[u8],
+        _: &SecretString,
+    ) -> Result<(String, Kind), ServiceFailure> {
         self.0.borrow_mut().push(format!("call {id}"));
-        Ok("ec".to_owned())
+        Ok(("ec".to_owned(), Kind::Tpm))
     }
 }
 

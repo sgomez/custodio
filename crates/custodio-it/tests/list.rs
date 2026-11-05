@@ -300,8 +300,11 @@ struct Listed {
     status: u8,
 }
 
+/// The rig has no TPM, so every key it imports is `encrypted-host`.
 fn block(id: &str, kind: &str, subject: &str, until: &str) -> String {
-    format!("id: {id}\n  type: {kind}\n  subject: {subject}\n  valid until: {until}\n")
+    format!(
+        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  subject: {subject}\n  valid until: {until}\n"
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {

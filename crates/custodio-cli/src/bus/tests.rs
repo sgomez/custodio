@@ -51,3 +51,17 @@ fn transport_errors_say_so() {
     let other = zbus::Error::FDO(Box::new(zbus::fdo::Error::AccessDenied("x".into())));
     assert_eq!(failure_of(&other), ServiceFailure::Transport);
 }
+
+#[test]
+fn a_list_element_keeps_each_field_in_its_place() {
+    let entry = key_entry((
+        "id1".into(),
+        "rsa2048".into(),
+        "encrypted-tpm".into(),
+        vec![1, 2, 3],
+    ));
+    assert_eq!(entry.id, "id1");
+    assert_eq!(entry.key_type, "rsa2048");
+    assert_eq!(entry.kind, Kind::EncryptedTpm);
+    assert_eq!(entry.certificate, vec![1, 2, 3]);
+}

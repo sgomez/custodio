@@ -16,6 +16,7 @@ fn key(id: &str, kind: &str, der: &[u8]) -> KeyEntry {
     KeyEntry {
         id: id.into(),
         key_type: kind.into(),
+        kind: Kind::Tpm,
         certificate: der.to_vec(),
     }
 }
@@ -58,8 +59,8 @@ fn keys_are_sorted_by_id_each_with_its_own_certificate() {
     assert!(result.is_ok());
     assert_eq!(
         out,
-        "id: a\n  type: ecdsa-p256\n  subject: CN=custodio test p256-other\n  valid until: 2126-10-03T16:05:48Z\n\
-         id: b\n  type: rsa2048\n  subject: CN=custodio test rsa3072\n  valid until: 2126-10-03T16:05:48Z\n"
+        "id: a\n  type: ecdsa-p256\n  kind: tpm\n  subject: CN=custodio test p256-other\n  valid until: 2126-10-03T16:05:48Z\n\
+         id: b\n  type: rsa2048\n  kind: tpm\n  subject: CN=custodio test rsa3072\n  valid until: 2126-10-03T16:05:48Z\n"
     );
     assert!(!out.contains(NO_KEYS));
 }
@@ -90,7 +91,9 @@ fn an_unreadable_certificate_never_hides_the_key() {
         key("good", "ecdsa-p256", P256),
     ])));
     assert!(matches!(result, Err(ListFailure::Unreadable(1))));
-    assert!(out.contains("id: bad\n  type: rsa2048\n  subject: certificate unreadable\n"));
+    assert!(
+        out.contains("id: bad\n  type: rsa2048\n  kind: tpm\n  subject: certificate unreadable\n")
+    );
     assert!(out.contains("id: good\n"));
     assert!(out.contains("CN=custodio test p256-other"));
     assert!(!out.contains("garbage"));
@@ -103,7 +106,7 @@ fn control_characters_are_never_written_raw_but_the_readable_part_stays() {
         not_after: "2126-10-03T16:05:48Z".into(),
     };
     let mut out = Vec::new();
-    write_entry(&mut out, "i\td", "ty\rpe", Some(&info)).unwrap_or_default();
+    write_entry(&mut out, "i\td", "ty\rpe", &Kind::Tpm, Some(&info)).unwrap_or_default();
     let text = String::from_utf8_lossy(&out);
     assert!(
         text.contains("CN=evil\\x0a\\x1b[31mred\\x07\\x85\\x7f end"),
@@ -114,7 +117,7 @@ fn control_characters_are_never_written_raw_but_the_readable_part_stays() {
     for b in text.bytes() {
         assert!(b == b'\n' || (b >= 0x20 && b != 0x7f), "raw byte {b:#x}");
     }
-    assert_eq!(text.matches('\n').count(), 4);
+    assert_eq!(text.matches('\n').count(), 5);
 }
 
 #[test]

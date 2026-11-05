@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 
-use custodio_client::MAX_P12_LEN;
+use custodio_client::{Kind, MAX_P12_LEN};
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
@@ -140,7 +140,7 @@ pub trait PasswordPrompt {
 
 /// The service side of `ImportP12`.
 pub trait Importer {
-    /// Returns the key type reported by the service.
+    /// Returns the key type and the storage kind reported by the service.
     ///
     /// # Errors
     /// A [`ServiceFailure`]: it has a fixed message and never holds the password or the service's text.
@@ -149,7 +149,7 @@ pub trait Importer {
         id: &str,
         p12: &[u8],
         password: &SecretString,
-    ) -> Result<String, ServiceFailure>;
+    ) -> Result<(String, Kind), ServiceFailure>;
 }
 
 #[derive(Debug)]
@@ -186,6 +186,25 @@ fn read_limited(path: &Path) -> Result<Zeroizing<Vec<u8>>, ImportFailure> {
     Ok(data)
 }
 
+/// What the person is told about where the key now lives. The reason of a weaker kind comes from
+/// the kind alone: the import result names no missing capability.
+fn kind_text(kind: &Kind) -> String {
+    match kind {
+        Kind::Tpm => "Storage: tpm. The key is in the TPM and cannot be copied out of it.".to_owned(),
+        Kind::EncryptedHost => "Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is \
+a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it."
+            .to_owned(),
+        Kind::EncryptedTpm => "Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability \
+the key type needs, so the key is a file encrypted with a key bound to this TPM. Root can use it while the machine runs.\n\
+See \"TPM capabilities\" in docs/api.md for what each key type needs."
+            .to_owned(),
+        Kind::Unknown(text) => format!(
+            "Storage: {}. This CLI does not know this kind, so it cannot say what the key is protected against.",
+            list::escape(text)
+        ),
+    }
+}
+
 /// Read the file, ask for the password, send both to the service, then tell the person to delete
 /// the original. The reminder is printed only after the service accepted the import.
 ///
@@ -201,11 +220,17 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
     let password = prompt
         .password(&format!("Password for {}: ", args.file.display()))
         .map_err(ImportFailure::Password)?;
-    let kind = importer
+    let (key_type, kind) = importer
         .import_p12(&args.id, &data, &password)
         .map_err(ImportFailure::Service)?;
     // Output errors must not hide the fact that the import happened.
-    let _ = writeln!(out, "Imported key '{}' ({kind}).", args.id);
+    let _ = writeln!(
+        out,
+        "Imported key '{}' ({}).",
+        args.id,
+        list::escape(&key_type)
+    );
+    let _ = writeln!(out, "{}", kind_text(&kind));
     let _ = writeln!(
         out,
         "Now delete the original file: it still holds your private key.\n  shred -u {}   (or remove it with your file manager and empty the trash)",
