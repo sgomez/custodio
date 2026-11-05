@@ -207,7 +207,7 @@
         "F116"
       ],
       "verify": "just quick && just fuzz-build && just lint-fuzz && just fuzz-smoke && just fuzz-smoke \"delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame\"",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F123",
