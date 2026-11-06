@@ -182,6 +182,7 @@ test-scripts:
     scripts/test-e2e-fallback.sh
     scripts/test-e2e-tpmfail.sh
     scripts/test-e2e-tpmclear.sh
+    scripts/test-e2e-tpmslots.sh
     scripts/test-e2e-upgradekinds.sh
     scripts/test-e2e-m3.sh
     scripts/test-e2e-m3-judge.sh

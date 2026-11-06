@@ -264,6 +264,14 @@ if phase_runs tpmclear; then
 fi
 phase_done tpmclear
 
+# The tpmslots cases (F143): more signatures and imports in a row than the TPM has object slots, and no object left loaded (handles-transient and handles-loaded-session before and after, on the
+# service's own TPM socket, which has no resource manager). Reported skipped in mode none (no TPM, no slots). After tpmclear and before the upgrade; the service and the TPM are as they were
+# and all its keys are deleted.
+if phase_runs tpmslots; then
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmslots-run.sh || fail "tpmslots-run.sh failed"
+fi
+phase_done tpmslots
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

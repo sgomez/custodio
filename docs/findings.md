@@ -76,3 +76,4 @@ Rules:
 - [F137](findings/F137.md) — pcr-* e2e: root extends PCRs and restarts swtpm (startup-clear resets them) and the service from the guest; a PCR-7-policy object fails with 0x99D after the extension, the keys do not
 - [F139](findings/F139.md) — injected failures: a stopped systemd-creds.socket gives CredentialsUnavailable; a stale socket TpmFailed/tpm_device; a failing capability query TpmFailed/tpm_error
 - [F140](findings/F140.md) — signing after a TPM clear: KeyLost / CKR_DEVICE_ERROR with a journal entry, keys listed and deletable; a second swtpm isolates the clear; one pkcs11-tool run makes two Sign calls
+- [F143](findings/F143.md) — tpm-slots-* e2e: TPM2_PT_HR_TRANSIENT_MIN is the reported minimum (3 in swtpm); a handle left loaded shows in handles-transient; only no-leak is the leak proof
