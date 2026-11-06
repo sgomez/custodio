@@ -94,7 +94,18 @@ exec)
             [ "$c" = "${STUB_OMIT:-}" ] && continue
             if [ -n "$sel" ]; then case " $sel " in *" $c "*) ;; *) continue ;; esac; fi
             if [ "$mode" = main ] && [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then case $c in upgrade-oldpath-*) echo "E2E-CASE skipped $c"; continue ;; esac; fi
-            if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
+            # the real guest skips what its mode cannot run (the rules of e2e/check-cases.sh); the list of the target names them
+            skipped_here=''
+            if grep -q "^$c:" "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/skip.list" 2> /dev/null; then
+                skipped_here=1
+                case $c in
+                fallback-host-*) [ "${tpm:-swtpm}" = none ] && skipped_here='' ;;
+                tpmfail-*) [ "${tpm:-swtpm}" = swtpm ] && skipped_here='' ;;
+                tpm-kind-*) [ "${tpm:-swtpm}" = swtpm ] && skipped_here='' ;;
+                tpm-dup-* | pcr-* | tpm-clear-* | tpm-slots-*) [ "${tpm:-swtpm}" = none ] || skipped_here='' ;;
+                esac
+            fi
+            if [ "$c" = "${STUB_SKIP:-}" ] || [ -n "$skipped_here" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
         done < "$list"
         [ "$mode" = oldpath ] || [ "$mode" = m3 ] && exit 0

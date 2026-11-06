@@ -30,15 +30,15 @@ E2E_JOBS=4 run_all || bad "order: failed"
 # timings.tsv: a header and one line per pair, with seconds and the result
 [ "$(head -n 1 "$tmp/o/timings.tsv")" = "$(printf 'target\tmode\tseconds\tresult')" ] || bad "timings: no header"
 [ "$(tail -n +2 "$tmp/o/timings.tsv" | awk -F'\t' '$3 ~ /^[0-9]+$/ && $4 == "passed"' | wc -l)" -eq 4 ] || bad "timings: $(cat "$tmp/o/timings.tsv")"
-# phases.tsv: a header and the guest's E2E-PHASE lines of each pair, the old-path run's among them
+# phases.tsv: a header and the guest's E2E-PHASE lines of each pair, the old-path and M3 runs' among them
 [ "$(head -n 1 "$tmp/o/phases.tsv")" = "$(printf 'target\tmode\tphase\tseconds')" ] || bad "phases: no header"
 for p in alma10:swtpm debian13:swtpm alma10:none debian13:none; do
-    for ph in install:3 oldpath-upgrade:2; do
+    for ph in install:3 oldpath-upgrade:2 m3-upgrade:2; do
         line=$(printf '%s\t%s\t%s\t%s' "${p%:*}" "${p#*:}" "${ph%:*}" "${ph#*:}")
         grep -qxF "$line" "$tmp/o/phases.tsv" || bad "phases: no '$ph' line for $p: $(cat "$tmp/o/phases.tsv")"
     done
 done
-[ "$(wc -l < "$tmp/o/phases.tsv")" -eq 9 ] || bad "phases: not two lines per pair: $(cat "$tmp/o/phases.tsv")"
+[ "$(wc -l < "$tmp/o/phases.tsv")" -eq 13 ] || bad "phases: not three lines per pair: $(cat "$tmp/o/phases.tsv")"
 
 STUB_FAIL=alma10 E2E_JOBS=4 run_all && bad "a failing pair did not fail the run"
 grep -qP '^alma10\tswtpm\t[0-9]+\tfailed$' "$tmp/o/timings.tsv" || bad "timings: the failed pair is not marked: $(cat "$tmp/o/timings.tsv")"

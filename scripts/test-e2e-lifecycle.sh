@@ -62,7 +62,12 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     { ids_of "$ROOT/e2e/cases.list"; ids_of "$d/cases.list" || true; } > "$tmp/ids"
     cat "$ROOT/e2e/cases.list" > "$tmp/cases"
     [ ! -f "$d/cases.list" ] || cat "$d/cases.list" >> "$tmp/cases"
-    sed 's/^/E2E-CASE run /' "$tmp/ids" > "$tmp/out.all"
+    # a swtpm run: it skips what the target's list names, except the cases that need a TPM (they run) and have no entry in swtpm
+    while IFS= read -r id; do
+        if grep -q "^$id:" "$d/skip.list" 2> /dev/null && [[ $id != tpm-kind-* && $id != tpmfail-* && $id != tpm-dup-* && $id != pcr-* && $id != tpm-clear-* && $id != tpm-slots-* ]]; then
+            echo "E2E-CASE skipped $id"
+        else echo "E2E-CASE run $id"; fi
+    done < "$tmp/ids" > "$tmp/out.all"
     bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$d/skip.list" "$tmp/out.all" > /dev/null 2>&1 || bad "$T: the complete report was not accepted"
     for id in $removal_ids; do
         grep -vx "E2E-CASE run $id" "$tmp/out.all" > "$tmp/out.omit"
