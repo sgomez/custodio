@@ -1,4 +1,4 @@
-# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). The tpm-kind cases need the swtpm mode; check-cases.sh refuses them skipped in it. The sign-* (F134) and noplain-* (F135) cases run in every mode and are never listed here; check-cases.sh refuses them skipped. The tpm-dup-* cases (F136) need a key of kind tpm: they run in swtpm and lacking, are skipped in none only, and check-cases.sh refuses them skipped in the other two. The pcr-* cases (F137) are skipped in none only, the same way.
+# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). The tpm-kind cases need the swtpm mode; check-cases.sh refuses them skipped in it. The sign-* (F134) and noplain-* (F135) cases run in every mode and are never listed here; check-cases.sh refuses them skipped. The tpm-dup-* cases (F136) need a key of kind tpm: they run in swtpm and lacking, are skipped in none only, and check-cases.sh refuses them skipped in the other two. The pcr-* cases (F137) are skipped in none only, the same way. The fallback-tpmbound-* cases (F138) are skipped in every mode (deviation F134); the fallback-host-* cases run in none and are skipped in swtpm and lacking.
 tpm-kind-import-rsa: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
 tpm-kind-import-ec: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
 tpm-kind-api-list: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
@@ -10,3 +10,9 @@ tpm-dup-other-tpm: only a mode with a TPM gives a key of kind tpm; in none there
 pcr-extended-signs: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
 pcr-restarted-signs: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
 pcr-signs-every-key: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
+fallback-tpmbound-import: the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); storage_kind::import_encrypted_tpm (custodio-cli) covers the text, kinds_suite the kind
+fallback-tpmbound-cli-list: the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); the list row is covered by custodio-cli storage_kind
+fallback-host-import-rsa: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-import-ec: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-says-weaker-why: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-cli-list: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm

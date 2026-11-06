@@ -227,6 +227,13 @@ if phase_runs pcr; then
 fi
 phase_done pcr
 
+# The fallback cases (F138): in mode none alice imports an RSA 2048 and a P-256 key with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so (weaker, no TPM).
+# The tpmbound cases are skipped in every mode (SPEC_DEVIATIONS.md, F134). After pcr and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+if phase_runs fallback; then
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/fallback-run.sh || fail "fallback-run.sh failed"
+fi
+phase_done fallback
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

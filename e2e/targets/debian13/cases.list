@@ -37,3 +37,11 @@ tpm-dup-other-tpm
 pcr-extended-signs
 pcr-restarted-signs
 pcr-signs-every-key
+
+# F138: the kind after import and what the CLI says (acceptance 6). The host cases run in none (kind encrypted-host); the tpmbound cases are skipped in every mode (SPEC_DEVIATIONS.md, F134).
+fallback-host-import-rsa
+fallback-host-import-ec
+fallback-host-says-weaker-why
+fallback-host-cli-list
+fallback-tpmbound-import
+fallback-tpmbound-cli-list
