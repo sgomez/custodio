@@ -6,8 +6,7 @@
 # read: under scripts/with-swtpm.sh the helper line of the page runs on records of keys made on the swtpm (a key without policy
 # passes; a duplicable key, an altered record and a wrong command line fail), and the page's tpm2_pcrextend line changes PCR 7.
 # Every kind of check has a negative control: a fixture copy with the claim broken must differ from the real file and must fail.
-# The M1 to M3 sections are never searched for an M4 item. Cost: the text checks and controls ~10 s, the swtpm part ~8 s, run at
-# once. A missing swtpm is a failure, never a skip.
+# The M1 to M3 sections are never searched for an M4 item. Cost: ~6.5 s wall (controls run in parallel subshells, the swtpm part at once). A missing swtpm is a failure, never a skip.
 # Usage: scripts/test-docs-manual-m4.sh   (CHECK_ONLY=1 only checks the real files, no controls and no swtpm)
 # SC2016: the regexes hold literal backticks and dollars. SC2013: the words looped over contain no spaces.
 # shellcheck disable=SC2016,SC2013

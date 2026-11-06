@@ -51,7 +51,7 @@ PY
     grep -q 'tpm2_load failed' "$w/run.out" && ! grep -q 'POLICY_FAIL' "$w/run.out" || { cat "$w/run.out" >&2; echo "swtpm part: (iii) the load failure is not reported as a load failure" >&2; return 1; }
     run_line k-missing
     [ "$rc" = 2 ] || { cat "$w/run.out" >&2; echo "swtpm part: (iv) an unknown key id must give exit 2, got $rc" >&2; return 1; }
-    run_line k-good 'sed "s# /var#  --bogus /var#; s#--bogus #--bogus #"'
+    run_line k-good 'sed "s#^\([^ ]*\) #\1 --bogus #"'
     [ "$rc" = 2 ] && grep -q '^usage:' "$w/run.out" && ! grep -q 'pass' "$w/run.out" || { cat "$w/run.out" >&2; echo "swtpm part: (iv) a wrong option must give usage and exit 2" >&2; return 1; }
     out=$( cd "$ROOT" && bash -c "${line% *}" 2>&1 ) && { echo "swtpm part: (iv) a missing key id passed" >&2; return 1; }
     grep -q '^usage:' <<< "$out" || { echo "swtpm part: (iv) a missing key id gave no usage" >&2; return 1; }

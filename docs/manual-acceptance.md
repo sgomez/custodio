@@ -862,7 +862,7 @@ rm -rf "$copy"
 ```
 
 The usage of the check is `scripts/check-no-plaintext.sh STATE_DIR P12 < password`: the password goes on standard input and
-never in an argument. Run the two checks for every imported `.p12` of the machine. The copy and the password must
+never in an argument. Run the check for every imported `.p12` of the machine: on the VM of section 21 only the `rsa2048.p12` line, since only that key was imported there. The copy and the password must
 not reach a log, a terminal recording or a file you keep; the copy is removed by the last line. Expected: exit 0 for each `.p12`.
 Exit 1 means a match: the files are named on standard output, and the step failed (write the file names down, never
 their content). Exit 3 means the check did not run (a wrong password, a file that is not a `.p12`): it is never a pass, run
