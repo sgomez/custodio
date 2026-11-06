@@ -4,7 +4,7 @@
 # The user's keys are alice: rsa1 and ec1; bob: rsa1 and bobonly, with their p12 files in $ACC/USER-ID.p12 (password e2e-password).
 #   upgrade-m3-user.sh seed           imports the user's keys (with the M3 build's CLI)
 #   upgrade-m3-user.sh collect DIR    the API list and the CLI list into DIR/USER.api and DIR/USER.cli, the exit status of each in DIR/USER.api.rc and DIR/USER.cli.rc
-#   upgrade-m3-user.sh import         imports the user's keys again (with this tree's CLI), the exit status of each into $ACC/reimported/import/USER-ID.rc (the directory is made by upgrade-m3.sh)
+#   upgrade-m3-user.sh import         imports the user's keys again (with this tree's CLI), the exit status of each into $ACC/reimported/import/USER-ID.rc and the number of polkit requests the agent saw into USER.requests (the directory is made by upgrade-m3.sh)
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 : "${WORK:?}"
@@ -49,11 +49,12 @@ collect)
     ;;
 import)
     start_agent import
-        for id in $ids; do
+    for id in $ids; do
         st=0
         python3 -I /e2e/import.py "$ACC/$user-$id.p12" "$id" e2e-password > "$ACC/reimported/import/$user-$id.out" 2>&1 || st=$?
         echo "$st" > "$ACC/reimported/import/$user-$id.rc"
     done
+    wc -l < "$E2E_DIR/requests" > "$ACC/reimported/import/$user.requests"
     ;;
 *) fail "usage: upgrade-m3-user.sh seed|collect DIR|import" ;;
 esac

@@ -11,7 +11,7 @@ A state snapshot is "RELATIVE-PATH<TAB>SHA256" per regular file under the state 
   upgradem3.py empty DIR                              both accounts' API and CLI listings succeeded and show none of the seeded ids
   upgradem3.py journal ALICE_UID BOB_UID JSON         JSON (journalctl -o json after the cursor taken before the install): the purge entries are exactly the seeded (owner uid, id)
                                                       pairs, once each, with no caller
-  upgradem3.py reimport ALICE_UID BOB_UID DIR         every import ended with status 0 (DIR/import/USER-ID.rc) and both accounts list exactly their own ids (DIR as for `empty`)
+  upgradem3.py reimport ALICE_UID BOB_UID DIR         every import ended with status 0 (DIR/import/USER-ID.rc) and the agent saw one polkit request per import (DIR/import/USER.requests) and both accounts list exactly their own ids (DIR as for `empty`)
 """
 import json
 import re
@@ -181,6 +181,10 @@ def reimport(d):
             rc = rc_of(f"{d}/import/{user}-{key}.rc")
             if rc != 0:
                 out.append(f"{d}/import/{user}-{key}.rc: the import of {user}'s {key} did not succeed (status {rc!r})")
+    for user in KEYS:
+        t = read(f"{d}/import/{user}.requests")
+        if t is None or not re.fullmatch(r"\s*[0-9]+\s*", t) or int(t) != len(KEYS[user]):
+            out.append(f"{d}/import/{user}.requests: polkit saw {t.strip() if t else None!r} requests for {user}'s imports, expected {len(KEYS[user])}")
     got, bad = listing_ids(d)
     out += bad
     for user, by in got.items():

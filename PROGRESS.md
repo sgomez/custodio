@@ -500,3 +500,8 @@ with an empty context.
 - Real runs on 9b4a0bd (all exit 0, "4 cases accounted for"): `just e2e-cases debian13 'upgrade-m3-*'` swtpm (wall 67 s, m3 phase 43 s), `E2E_TPM=none` debian13 (68 s), fedora44 swtpm (112 s, phase 44 s), alma10 swtpm (115 s, phase 43 s; the other-format check). fedora44 `none` not run (proves nothing new). The first guest run passed with no fix needed.
 - Budget: the full `just e2e` adds one m3 guest run (~45 s phase plus boot, ~10 s) to each target-mode, in parallel with the others; debian13 swtpm was at 360 s of 430 s before F135–F140 growth (already flagged by F139), so the checkpoint decides; the full run was not made here.
 - Not done: nothing in the contract; full `just e2e` and the package gates are the checkpoint's.
+
+### 2026-11-06 — F142 — attempt 2
+- Fixed NEXT_FINDINGS: the re-import now checks polkit. `upgrade-m3-user.sh import` writes the agent's request count to `reimported/import/USER.requests`; `upgradem3.py reimport` requires 2 per user. Host controls: `test-e2e-m3-judge.sh` (count 0, count missing) and `test-e2e-m3-run.sh` (`SIM_REQUESTS=0`); the `for` indent is fixed. `test-e2e-m3*.sh` pass.
+- Correction to attempt 1: `E2E_TPM=none just e2e-cases fedora44 'upgrade-m3-*'` was run by the evaluator (exit 0, 4 cases accounted, 96 s); I had not run it. `test-e2e-m3*.sh` are in `test-scripts` (part of `just check`), not `just quick`.
+- Runs: `just e2e-cases debian13 'upgrade-m3-*'` swtpm exit 0 (68 s wall) with the new check; `just quick` green. The six host tests red at base (`test-e2e-host` etc.) are not touched here.

@@ -94,6 +94,7 @@ mk_reimp() { # DIR
     mk_list "$1"
     mkdir -p "$1/import"
     for k in alice-rsa1 alice-ec1 bob-rsa1 bob-bobonly; do echo 0 > "$1/import/$k.rc"; done
+    echo 2 > "$1/import/alice.requests"; echo 2 > "$1/import/bob.requests"
     printf 'ec1\tecdsa-p256\ttpm\nrsa1\trsa2048\ttpm\n' > "$1/alice.api"
     printf 'id: ec1\n  type: x\nid: rsa1\n  type: y\n' > "$1/alice.cli"
     printf 'bobonly\trsa2048\ttpm\nrsa1\trsa2048\ttpm\n' > "$1/bob.api"
@@ -113,6 +114,12 @@ refuses "listed under the wrong owner" 'alice lists' reimport 1000 4711 "$T/re-s
 cp -r "$T/re" "$T/re-norc"
 rm "$T/re-norc/import/alice-ec1.rc"
 refuses "no status of an import" "import of alice's ec1 did not succeed" reimport 1000 4711 "$T/re-norc"
+cp -r "$T/re" "$T/re-nopolkit"
+echo 0 > "$T/re-nopolkit/import/alice.requests"
+refuses "an import without polkit" "polkit saw '0' requests for alice's imports, expected 2" reimport 1000 4711 "$T/re-nopolkit"
+cp -r "$T/re" "$T/re-noreq"
+rm "$T/re-noreq/import/bob.requests"
+refuses "no request count" "polkit saw None requests for bob" reimport 1000 4711 "$T/re-noreq"
 if um3 bogus > /dev/null 2>&1; then bad "a bad subcommand passed"; fi
 
 

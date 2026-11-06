@@ -31,6 +31,7 @@ seed)
     ;;
 import)
     for i in $ids; do echo "new $user $i" > "$SIM_DIR/imported-$user-$i"; echo "${SIM_IMPORT_RC:-0}" > "$WORK/upgrade-m3/reimported/import/$user-$i.rc"; done
+    echo "${SIM_REQUESTS:-2}" > "$WORK/upgrade-m3/reimported/import/$user.requests"
     ;;
 collect)
     : > "$dir/$user.api"; : > "$dir/$user.cli"; echo 0 > "$dir/$user.api.rc"; echo 0 > "$dir/$user.cli.rc"
@@ -116,6 +117,7 @@ simbad "purged key listed" 'is shown' SIM_LIST=1
 simbad "no journal entries" 'purge entries' SIM_NOJOURNAL=1
 simbad "one entry missing" 'owner 4711 key bobonly: 0 purge entries' SIM_DROP=4711:bobonly
 simbad "import fails" 'did not succeed' SIM_IMPORT_RC=1
+simbad "import without polkit" 'polkit saw' SIM_REQUESTS=0
 # a copy that leaves the judgements out accepts the same bad evidence: the verdict comes from them
 mkdir -p "$S/mutant"
 cp "$S"/e2e/* "$S/mutant/"
