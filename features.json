@@ -484,7 +484,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'journal-kind-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F145",
