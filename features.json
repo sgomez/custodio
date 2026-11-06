@@ -395,7 +395,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'tpm-dup-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F137",
