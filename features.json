@@ -450,7 +450,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'upgrade-*' && E2E_TPM=none just e2e-cases debian13 'upgrade-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F142",
