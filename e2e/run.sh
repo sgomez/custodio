@@ -113,6 +113,8 @@ boot_container() {
         "${mounts[@]}" \
         -v "$PWD/e2e:/e2e:ro" \
         -v "$PWD/docs/audit.md:/e2e-docs/audit.md:ro" \
+        -v "$PWD/scripts/check-no-plaintext.sh:/e2e-noplain/scripts/check-no-plaintext.sh:ro" \
+        -v "$PWD/scripts/check_no_plaintext.py:/e2e-noplain/scripts/check_no_plaintext.py:ro" \
         -v "$PWD/crates/custodiod/src/app_id_source.rs:/e2e-src/app_id_source.rs:ro" \
         -v "$PWD/$dir:/e2e-target:ro" \
         "custodio-e2e-$t" > /dev/null || return 1

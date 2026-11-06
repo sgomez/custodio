@@ -24,3 +24,8 @@ sign-rsa-pss-sha512
 sign-rsa-composed
 sign-ec-ecdsa
 sign-ec-composed
+
+# F135: no plaintext key in the state directory after each import; run in every TPM mode (swtpm, none, lacking), never skipped.
+noplain-rsa
+noplain-ec
+noplain-no-key-file

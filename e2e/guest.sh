@@ -206,6 +206,13 @@ if phase_runs sign; then
 fi
 phase_done sign
 
+# The no-plaintext cases (F135): alice imports an RSA 2048 and a P-256 key, and after each import scripts/check-no-plaintext.sh (mounted unchanged) searches the real state directory for the key in
+# every encoding; no file there may be an unencrypted private key. Every TPM mode; both keys are deleted, so the state and the counts are as before.
+if phase_runs noplain; then
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/noplain-run.sh || fail "noplain-run.sh failed"
+fi
+phase_done noplain
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

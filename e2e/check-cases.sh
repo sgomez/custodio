@@ -8,6 +8,7 @@
 # CHECK_TPM_MODE (F133): the TPM mode of the run (swtpm, none, lacking; run.sh sets it). In swtpm a case that needs that mode (the tpm-kind-* cases) must be run: reported
 # skipped it fails the accounting even when a skip list names it. Unset, or another mode: no such rule.
 # F134: a sign-* case runs in every TPM mode; reported skipped it fails the accounting in any mode, even when a skip list names it.
+# F135: the same for the noplain-* cases.
 # Skip list format: one `case: reason` per line, the case being [A-Za-z0-9._-]+ and the reason not empty; `#` starts a comment
 # line; blank lines are ignored; a case appears once. Unused entries are reported on stderr and do not fail.
 set -euo pipefail
@@ -52,7 +53,7 @@ check() {
         seen="$seen$id "
         case $owed in *" $id "*) ;; *) echo "check-cases: case '$id' was reported and is not selected" >&2; bad=1; continue ;; esac
         if [ "$kind" = skipped ]; then
-            case $id in sign-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
+            case $id in sign-* | noplain-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
         fi
         if [ "$kind" = skipped ] && [ "${CHECK_TPM_MODE:-}" = swtpm ]; then
             case $id in tpm-kind-*) echo "check-cases: case '$id' needs the swtpm mode and was skipped in it" >&2; bad=1 ;; esac

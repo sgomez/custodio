@@ -448,3 +448,8 @@ with an empty context.
 
 ### 2026-11-05 — F134 — attempt 5
 - Fixed NEXT_FINDINGS: the deviation and amendment (5) now say what covers `encrypted-tpm` signing (kinds_suite F126 with a credential double; sign_kinds failure rows with real systemd-creds, RSA-PKCS/ECDSA only), the PSS gap, that `lacking` adds no kind coverage over `swtpm`, that the proof is for debian13, and that the person must confirm option C. Code unchanged; no step unticked.
+
+### 2026-11-06 — F135 — attempt 1
+- Done: cases `noplain-rsa`, `noplain-ec`, `noplain-no-key-file` (debian13 `cases.list`, group `noplain` in `select.sh`, never skipped: `check-cases.sh` rejects a `noplain-*` skip). `e2e/noplain.py` (kind and no-key-file judgements; `openssl` probes with `-passin pass:wrong-password` and stdin from /dev/null), `noplain-run.sh`/`noplain-user.sh` (alice imports RSA then EC, root scans after each; `noplain-ec` also scans the RSA `.p12`; no-key-file runs after both imports; planted-copy control; deletes), host test `scripts/test-e2e-noplain.sh` (in the justfile list). The script reaches the guest by a read-only mount of both `scripts/check-no-plaintext.sh` and `check_no_plaintext.py` (`e2e/run.sh`), unchanged.
+- Deviation (F134 entry) extended to F135 with the F127 `encrypted-tpm` cell named (own commit). Finding `docs/findings/F135.md`.
+- Runs on this code: `just e2e-cases debian13 'noplain-*'` exit 0 in `swtpm` (~61 s), `none` (42 s), `lacking` (43 s), "3 cases accounted for", kinds tpm / encrypted-host / tpm. `just quick` green. Full `just e2e` not run (checkpoint).
