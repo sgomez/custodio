@@ -558,3 +558,6 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 5 (session 1)
 - NEXT_FINDINGS.md is the same fedora44 `removal-not-activatable` failure that attempt 4 already traced to the host's inotify limit (`docs/findings/F146.md`); its timestamp (16:30) predates the fix. Host limit is 1024 now; `just quick` exit 0. No code change; the loop's `verify` is the gate.
+
+### 2026-11-06 — F146 — attempt 6 (session 1)
+- NEXT_FINDINGS: two script tests over budget in the parallel `just check` (`test-shell-scripts.sh` 92 s of 80, `test-arch-lifecycle-real.sh` 97 s of 95). Lone runs were 63 s and 49 s. `test-shell-scripts.sh` now runs its clean and its dirty shellcheck at once on two copies (63 s -> 33 s lone; one shellcheck call over all files stays, since batching changes what it follows). `test-arch-lifecycle-real.sh` runs the ten mutants at once in subshells (49 s -> 37 s lone); a surviving mutant still fails the test (checked with a mutant edited to a no-op).

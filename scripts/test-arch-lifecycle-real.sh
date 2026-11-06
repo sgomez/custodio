@@ -246,7 +246,17 @@ grep -qF 'command failed to execute correctly' "$OUT/$s.out" || bad "failsysuser
 grep -qx "custodio 0.1.1-1" "$OUT/$s.version" || bad "failsysusers-upgrade: the upgrade did not go on: $(cat "$OUT/$s.version")"
 
 # ---- the mutants: the checks of the flow must fail for each ----
-mutant_flow() { # NAME NFPM-SED FILE SED [FILE SED]...
+# Each mutant has its own package, fixture files and container, so they run at once, each in a subshell whose exit status is its $fail.
+mutant_pids=()
+mutant_flow() { # runs in the background; mutant_wait collects them
+    ( mutant_flow_run "$@"; exit "$fail" ) &
+    mutant_pids+=($!)
+}
+mutant_wait() {
+    local p
+    for p in "${mutant_pids[@]}"; do wait "$p" || fail=1; done
+}
+mutant_flow_run() { # NAME NFPM-SED FILE SED [FILE SED]...
     local name=$1
     mutant_pkg "$@"
     mutant_mode=1
@@ -270,5 +280,6 @@ mutant_flow() { # NAME NFPM-SED FILE SED [FILE SED]...
     mutant_flow enable-by-link-in-post-install '' post_install 's|^:$|mkdir -p /etc/systemd/system/multi-user.target.wants\nln -s /usr/lib/systemd/system/custodio.service /etc/systemd/system/multi-user.target.wants/custodio.service|'
     mutant_flow enable-in-post-install '' post_install 's|^:$|systemctl enable custodio.service|'
 }
+mutant_wait
 
 exit "$fail"

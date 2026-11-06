@@ -38,9 +38,14 @@ mkdir "$copy"
 git -C "$copy" init -q
 git -C "$copy" add -A
 list=$(cd "$ROOT" && just --evaluate shell_scripts)
-lint() { (cd "$copy" && bash -c "$list" | xargs -r shellcheck > /dev/null 2>&1); }
-lint || bad "shellcheck failed on the clean copy"
-printf '%s\n' '#!/bin/sh' "echo \$x" > "$copy/bad-script"
-git -C "$copy" add bad-script
-if lint; then bad "shellcheck line passed with an unquoted-variable script without suffix"; fi
+# The second tree is a second copy, so both shellcheck runs go at once.
+copy2=$tmp/copy2
+cp -a "$copy" "$copy2"
+printf '%s\n' '#!/bin/sh' "echo \$x" > "$copy2/bad-script"
+git -C "$copy2" add bad-script
+lint() { (cd "$1" && bash -c "$list" | xargs -r shellcheck > /dev/null 2>&1); }
+lint "$copy" & clean=$!
+lint "$copy2" & dirty=$!
+wait "$clean" || bad "shellcheck failed on the clean copy"
+if wait "$dirty"; then bad "shellcheck line passed with an unquoted-variable script without suffix"; fi
 exit "$fail"
