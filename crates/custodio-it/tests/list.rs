@@ -300,10 +300,13 @@ struct Listed {
     status: u8,
 }
 
+/// The reason `custodio list` gives under a key that is `encrypted-host` (the text of the import notice).
+const NOTE: &str = "This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.";
+
 /// The rig has no TPM, so every key it imports is `encrypted-host`.
 fn block(id: &str, kind: &str, subject: &str, until: &str) -> String {
     format!(
-        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  subject: {subject}\n  valid until: {until}\n"
+        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  note: {NOTE}\n  subject: {subject}\n  valid until: {until}\n"
     )
 }
 

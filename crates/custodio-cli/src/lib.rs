@@ -205,6 +205,18 @@ See \"TPM capabilities\" in docs/api.md for what each key type needs."
     }
 }
 
+/// The sentence `custodio list` adds under a key whose kind is weaker than a TPM key: the reason
+/// of [`kind_text`], without its `Storage:` prefix and without the pointer line. A `tpm` key and a
+/// kind this CLI does not know get none.
+pub(crate) fn weaker_note(kind: &Kind) -> Option<String> {
+    if !matches!(kind, Kind::EncryptedHost | Kind::EncryptedTpm) {
+        return None;
+    }
+    let text = kind_text(kind);
+    let first = text.lines().next()?;
+    first.split_once(". ").map(|(_, reason)| reason.to_owned())
+}
+
 /// Read the file, ask for the password, send both to the service, then tell the person to delete
 /// the original. The reminder is printed only after the service accepted the import.
 ///

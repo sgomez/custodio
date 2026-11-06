@@ -121,12 +121,12 @@ check() {
     needf '^custodio import --id rsa2048 rsa2048\.p12$' "no import"
     needf '^custodio list$' "no custodio list"
     grep -qF 'writeln!(out, "  kind: {}", escape(kind.wire()))' "$D_LIST" || bad "$m: list.rs prints the kind in another form than the page expects"
-    ! grep -qi 'weaker' "$D_LIST" || bad "$m: list.rs now prints a weaker sentence, the page must be revised"
-    local kl
+    grep -qF 'writeln!(out, "  note: {note}")' "$D_LIST" || bad "$m: list.rs prints the weaker note in another form than the page expects"
+    local kl nl
     kl=$(fenced <<< "$part" | grep -E '^kind:' || true)
     [ "$kl" = 'kind: encrypted-host' ] || bad "$m: the custodio list expectation must be exactly 'kind: encrypted-host', not '$kl'"
-    need 'no sentence about a weaker key' "no statement that custodio list prints no weaker sentence"
-    need 'approver decides' "no sentence that the approver decides on acceptance 14"
+    nl=$(fenced <<< "$part" | grep -E '^note:' || true)
+    [ "$nl" = "note: ${host#Storage: encrypted-host. }" ] || bad "$m: the note line on the page is not the reason of kind_text (EncryptedHost), but '$nl'"
     need 'ls /dev/tpm' "no check that the VM has no TPM"
     need 'systemctl reboot' "no reboot step"
     need 'After the reboot' "no step after the reboot"

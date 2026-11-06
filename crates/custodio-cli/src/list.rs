@@ -102,7 +102,7 @@ impl fmt::Display for ListFailure {
 
 impl std::error::Error for ListFailure {}
 
-/// Writes one block of five lines for a key.
+/// Writes one block of five lines for a key, and a sixth `note:` line for a kind weaker than a TPM key.
 ///
 /// # Errors
 /// If writing fails.
@@ -116,6 +116,9 @@ pub fn write_entry<W: Write>(
     writeln!(out, "id: {}", escape(id))?;
     writeln!(out, "  type: {}", escape(key_type))?;
     writeln!(out, "  kind: {}", escape(kind.wire()))?;
+    if let Some(note) = crate::weaker_note(kind) {
+        writeln!(out, "  note: {note}")?;
+    }
     if let Some(info) = info {
         writeln!(out, "  subject: {}", escape(&info.subject))?;
         writeln!(out, "  valid until: {}", escape(&info.not_after))

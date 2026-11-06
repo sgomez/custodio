@@ -178,7 +178,40 @@ fn list_shows_each_kind() {
     assert_eq!(kind_of(&out, "c"), "future");
     assert_eq!(kind_of(&out, "d"), "encrypted-tpm");
     assert_eq!(kind_of(&out, "e"), "encrypted-host");
-    assert!(!out.contains("weaker"), "{out}");
+}
+
+/// The lines of the block of `id`, up to the next block.
+fn block_of(out: &str, id: &str) -> String {
+    let mut lines = out.lines().skip_while(|l| *l != format!("id: {id}"));
+    let mut block = lines.next().expect("block").to_owned();
+    for l in lines.take_while(|l| !l.starts_with("id: ")) {
+        block.push('\n');
+        block.push_str(l);
+    }
+    block
+}
+
+#[test]
+fn list_says_weaker_for_the_two_weaker_kinds_only() {
+    let out = list(vec![
+        entry("a", Kind::EncryptedHost),
+        entry("b", Kind::Tpm),
+        entry("c", Kind::Unknown("future".into())),
+        entry("d", Kind::EncryptedTpm),
+    ]);
+    let a = block_of(&out, "a");
+    assert!(a.contains("weaker than a TPM key"), "{a}");
+    assert!(a.contains("encrypted with the host key"), "{a}");
+    assert!(a.contains("no TPM"), "{a}");
+    let d = block_of(&out, "d");
+    assert!(d.contains("weaker than a TPM key"), "{d}");
+    assert!(d.contains("lacks a capability"), "{d}");
+    assert!(d.contains("bound to this TPM"), "{d}");
+    assert!(!d.contains("host key"), "{d}");
+    for id in ["b", "c"] {
+        let b = block_of(&out, id);
+        assert!(!b.contains("weaker"), "{b}");
+    }
 }
 
 #[test]

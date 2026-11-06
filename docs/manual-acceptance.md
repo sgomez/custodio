@@ -823,13 +823,13 @@ Nothing on this page was run in such a VM (**unverified**).
    Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
    ```
 
-3. Expected: `custodio list` shows the line below for the key. It prints the kind and no sentence about a weaker key
-   (`crates/custodio-cli/src/list.rs`), while SPEC.md acceptance 14 says `custodio list` says the key is weaker. Do not tick
-   the `custodio list` row for text the command never printed: write down what it printed, and the milestone approver decides
-   whether `kind: encrypted-host` alone meets acceptance 14.
+3. Expected: `custodio list` shows the two lines below for the key: the kind, then the same reason as the import notice
+   (the `note:` line, `crates/custodio-cli/src/list.rs`). SPEC.md acceptance 14 asks that `custodio list` says the key is
+   encrypted with the host key and weaker.
 
    ```text
    kind: encrypted-host
+   note: This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
    ```
 
 4. Reboot (`sudo systemctl reboot`), then `custodio list` again: the key is still listed with `kind: encrypted-host`.
@@ -839,7 +839,7 @@ Nothing on this page was run in such a VM (**unverified**).
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
 | 1 | Import output | the notice of step 2, word for word | |
-| 2 | `custodio list` | `kind: encrypted-host` (decision on "weaker" for the approver) | |
+| 2 | `custodio list` | `kind: encrypted-host` and the `note:` line of step 3 | |
 | 3 | After the reboot: `custodio list` | the key, `kind: encrypted-host` | |
 | 4 | After the reboot: sign from Firefox or LibreOffice | dialog, then signed | |
 
