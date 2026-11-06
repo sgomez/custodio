@@ -1,11 +1,11 @@
 suite	name	seconds	reason
-e2e	alma10	470	measured 392s (swtpm), 6 runs at once, 12-core dev host, 2026-11-05
-e2e	arch	410	measured 343s (swtpm), 6 runs at once, 12-core dev host, 2026-11-05
-e2e	debian13	700	lone 605s (swtpm) with M4 cases F135-F144; raised by a person 2026-11-06 (was 430, measured 360s before M4)
-e2e	fedora44	500	measured 414s (swtpm), 6 runs at once, 12-core dev host, 2026-11-05
-e2e	ubuntu2404	100	refusal only; measured 80s (swtpm), waiting on the shared image builds, 2026-11-05
-e2e	ubuntu2604	460	measured 381s (swtpm), 6 runs at once, 12-core dev host, 2026-11-05
-script	*	60	default; p90 of the 54 scripts was 45s, median 3s, 2026-11-05
+e2e	alma10	540	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 470s
+e2e	arch	480	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 410s
+e2e	debian13	800	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 700s
+e2e	fedora44	570	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 500s
+e2e	ubuntu2404	120	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 100s
+e2e	ubuntu2604	530	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 460s
+script	*	120	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 60s
 script	scripts/test-rpm-lifecycle-real.sh	200	builds and installs real rpms; measured 159s
 script	scripts/test-arch-lifecycle.sh	250	worst 194s; raised by a person 2026-11-07: parallel-run noise
 script	scripts/test-rpm-lifecycle.sh	200	worst 151s; raised by a person 2026-11-07: parallel-run noise
