@@ -429,7 +429,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'tpmfail-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F140",
