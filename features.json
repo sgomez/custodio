@@ -440,7 +440,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'tpm-clear-*' && E2E_TPM=lacking just e2e-cases debian13 'tpm-clear-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F141",
