@@ -9,6 +9,7 @@
 # skipped it fails the accounting even when a skip list names it. Unset, or another mode: no such rule.
 # F134: a sign-* case runs in every TPM mode; reported skipped it fails the accounting in any mode, even when a skip list names it.
 # F135: the same for the noplain-* cases.
+# F136: a tpm-dup-* case needs a key of kind tpm: skipped it fails the accounting in swtpm and lacking (only mode none may skip it).
 # Skip list format: one `case: reason` per line, the case being [A-Za-z0-9._-]+ and the reason not empty; `#` starts a comment
 # line; blank lines are ignored; a case appears once. Unused entries are reported on stderr and do not fail.
 set -euo pipefail
@@ -59,6 +60,7 @@ check() {
             case $id in tpm-kind-*) echo "check-cases: case '$id' needs the swtpm mode and was skipped in it" >&2; bad=1 ;; esac
         fi
         if [ "$kind" = skipped ]; then
+            case $id in tpm-dup-*) case ${CHECK_TPM_MODE:-} in swtpm | lacking) echo "check-cases: case '$id' needs a TPM key and was skipped in mode ${CHECK_TPM_MODE}" >&2; bad=1 ;; esac ;; esac
             skipped="$skipped$id "
             case $listed in *" $id "*) echo "check-cases: skipped (on the skip list): $id" ;;
                 *) echo "check-cases: case '$id' was skipped and is not on the skip list" >&2; bad=1 ;; esac
@@ -71,6 +73,7 @@ check() {
         [ -z "$sel" ] || case $owed in *" $id "*) ;; *) continue ;; esac
         # tpm-kind-* are listed for the modes without swtpm; under swtpm they run, so the entry is expected to match nothing
         case $id in tpm-kind-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
+        case $id in tpm-dup-*) case ${CHECK_TPM_MODE:-} in swtpm | lacking) continue ;; esac ;; esac
         case $skipped in *" $id "*) ;; *) echo "check-cases: skip list entry '$id' matches no skipped case; remove it" >&2 ;; esac
     done
     line=$(reported "$out" | wc -l)

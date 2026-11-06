@@ -214,6 +214,44 @@ fn certificate_key_hex(rig: &Rig, der: &[u8]) -> String {
         .to_lowercase()
 }
 
+/// Writes every record of the store as the encoder gives it into a state-directory layout (`<uid>/<id>`, one non-TPM record
+/// among them), runs `e2e/tpmdup.py scan` on it and compares what it reads with the blobs.
+fn check_guest_reader(k: &KindSvc, stored: &[Stored]) -> support::TestResult {
+    use std::process::Command;
+    let root = std::env::temp_dir().join(format!("tpmdup-reader-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let area = root.join("state").join(uid().to_string());
+    std::fs::create_dir_all(&area)?;
+    for s in stored {
+        let record: Record = k.svc.store.get(uid(), &s.id)?;
+        std::fs::write(area.join(&s.id), record.encode()?)?;
+    }
+    let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../../e2e/tpmdup.py");
+    let out = Command::new("python3")
+        .args(["-I", script, "scan"])
+        .arg(root.join("state"))
+        .arg(root.join("out"))
+        .output()?;
+    assert!(out.status.success(), "{out:?}");
+    let rows: Vec<Vec<String>> = String::from_utf8(out.stdout)?
+        .lines()
+        .map(|l| l.split('\t').map(str::to_owned).collect())
+        .collect();
+    assert_eq!(rows.len(), stored.len());
+    for s in stored {
+        let record: Record = k.svc.store.get(uid(), &s.id)?;
+        let (blob, name) = record.protected().blob().unwrap();
+        let hex_name = support::hex(name);
+        let row = rows.iter().find(|r| r[1] == s.id).unwrap();
+        assert_eq!(row[2..], ["tpm".to_owned(), hex_name], "{}", s.id);
+        let dir = root.join("out").join(format!("{}-{}", uid(), s.id));
+        assert_eq!(std::fs::read(dir.join("k.pub"))?, blob.public_bytes());
+        assert_eq!(std::fs::read(dir.join("k.priv"))?, blob.private_bytes());
+    }
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
 #[test]
 fn checks_every_stored_key() -> support::TestResult {
     let f = fixture();
@@ -258,6 +296,8 @@ fn checks_every_stored_key() -> support::TestResult {
             );
         }
     }
+    // The guest reads the records with `e2e/tpmdup.py`: it must agree with the encoder that wrote them (F136).
+    check_guest_reader(&f.k, &stored)?;
     // The re-imported key replaced the first one: the first blob is nowhere in the store.
     let current: Vec<Vec<u8>> = stored.iter().map(|s| s.blob.to_bytes()).collect();
     assert!(

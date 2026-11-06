@@ -29,3 +29,6 @@ sign-ec-composed
 noplain-rsa
 noplain-ec
 noplain-no-key-file
+tpm-dup-authpolicy-empty
+tpm-dup-duplicate-fails
+tpm-dup-other-tpm

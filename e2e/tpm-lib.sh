@@ -22,14 +22,15 @@ TPM_SETUP_DONE='' # read by tpm-selftest.sh (which sources this file)
 
 tpm_fail() { echo "e2e: FAIL: tpm: $*" >&2; return 1; }
 
-# tpm_swtpm_start [SOCKET]: swtpm on SOCKET (default $TPM_SOCK); both sockets world-writable because the unit's dynamic user connects (test only)
+# tpm_swtpm_start [SOCKET [STATE]]: swtpm on SOCKET (default $TPM_SOCK) with its state in STATE (default $TPM_STATE; the tpm-dup-* cases (F136) start a second, independent one);
+# both sockets world-writable because the unit's dynamic user connects (test only)
 tpm_swtpm_start() {
-    local sock=${1:-$TPM_SOCK}
-    mkdir -p "$TPM_STATE"
-    swtpm_setup --tpm2 --tpmstate "$TPM_STATE" --createek --not-overwrite > "$TPM_STATE/setup.log" 2>&1 || { tail -n 5 "$TPM_STATE/setup.log" >&2; tpm_fail "swtpm_setup failed"; return 1; }
-    swtpm socket --tpm2 --tpmstate "dir=$TPM_STATE" --server "type=unixio,path=$sock,mode=0666" \
-        --ctrl "type=unixio,path=$sock.ctrl,mode=0666" --flags not-need-init,startup-clear --daemon > "$TPM_STATE/socket.log" 2>&1 \
-        || { tail -n 5 "$TPM_STATE/socket.log" >&2; tpm_fail "swtpm socket failed"; return 1; }
+    local sock=${1:-$TPM_SOCK} state=${2:-$TPM_STATE}
+    mkdir -p "$state"
+    swtpm_setup --tpm2 --tpmstate "$state" --createek --not-overwrite > "$state/setup.log" 2>&1 || { tail -n 5 "$state/setup.log" >&2; tpm_fail "swtpm_setup failed"; return 1; }
+    swtpm socket --tpm2 --tpmstate "dir=$state" --server "type=unixio,path=$sock,mode=0666" \
+        --ctrl "type=unixio,path=$sock.ctrl,mode=0666" --flags not-need-init,startup-clear --daemon > "$state/socket.log" 2>&1 \
+        || { tail -n 5 "$state/socket.log" >&2; tpm_fail "swtpm socket failed"; return 1; }
     for _ in $(seq 50); do [ -S "$sock" ] && [ -S "$sock.ctrl" ] && return 0; sleep 0.1; done
     tpm_fail "swtpm made no socket"
 }

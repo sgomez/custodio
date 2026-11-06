@@ -213,6 +213,13 @@ if phase_runs noplain; then
 fi
 phase_done noplain
 
+# The TPM-key-cannot-be-duplicated cases (F136): alice imports an RSA 2048 and a P-256 key; root reads the service's stored records, loads each key under the service's TPM with tpm2-tools,
+# and shows an empty authPolicy, a failing tpm2_duplicate and a blob that a second swtpm refuses. Reported skipped in mode none (no key is a TPM key). Both keys are deleted, so the state is as before.
+if phase_runs tpmdup; then
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmdup-run.sh || fail "tpmdup-run.sh failed"
+fi
+phase_done tpmdup
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

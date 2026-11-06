@@ -72,3 +72,4 @@ Rules:
 - [F131](findings/F131.md) — e2e TPM: the F108 route works in the final harness on every target (swtpm and none; lacking on debian13); the unit is checked in a transient unit built from its own properties.
 - [F134](findings/F134.md) — sign-* e2e: pkcs11-tool cannot do PSS with this module (no public key object), so `e2e/p11-pss.py` calls it; salts 0/hash/max sign, max+1 and a 246-byte RSA-PKCS payload give CKR_DATA_INVALID; `lacking` (RSAPSS removed) leaves both keys `tpm`; no container can give `encrypted-tpm` (systemd's creds daemon skips the TPM in any container, no override in 257)
 - [F135](findings/F135.md) — noplain-* e2e: state dir `/var/lib/private/custodio`, one file per key; `check-no-plaintext.sh` runs unchanged in the container via a read-only mount of both script files
+- [F136](findings/F136.md) — tpm-dup-* e2e: reading records with tpm2-tools, second swtpm start/stop, the exact tpm2_readpublic/duplicate/load outputs (0x99D, 0x1DF integrity)
