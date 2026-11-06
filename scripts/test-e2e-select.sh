@@ -3,6 +3,7 @@
 # case print nothing), and e2e/select.sh decides which steps of guest.sh run for a selection. NOT checked here: a real guest (the verify of F63).
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+export E2E_TARGET_DIR=$ROOT/e2e/targets/debian13 # the target whose own list owes the M4 cases
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
@@ -97,5 +98,13 @@ done
 # the guest uses the decision: each step is behind phase_runs
 for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
 grep -q 'phase_runs refusal' "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs refusal"
+# a target whose own list owes no M4 case does not run the M4 steps, with or without a selection (alma10 reported cases its accounting does not know)
+for tgt in alma10 "$tmp/no-such-dir"; do
+    for sel in none "$tmp/sel"; do
+        got=$(E2E_TARGET_DIR=$ROOT/e2e/targets/$tgt E2E_SELECT_FILE=$sel bash -c 'source "$1/e2e/select.sh"; for p in tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind user; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
+        case $sel in none) [ "$got" = "user " ] || bad "target $tgt, no selection: the steps are '$got', expected only 'user '" ;; *) [ -z "${got//user /}" ] || bad "target $tgt: M4 steps run: '$got'" ;; esac
+    done
+done
+[ -d "$ROOT/e2e/targets/alma10" ] && [ ! -f "$ROOT/e2e/targets/alma10/cases.list" ] || bad "alma10 now has its own list: this control needs another target"
 
 exit "$fail"
