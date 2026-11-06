@@ -45,3 +45,9 @@ fallback-host-says-weaker-why
 fallback-host-cli-list
 fallback-tpmbound-import
 fallback-tpmbound-cli-list
+
+# F139: with a TPM present that fails in an injected way, and with the credential service down, import fails with the documented error, stores nothing, leaves one journal entry and makes no weaker kind (acceptance 7). Run in swtpm, skipped in none and lacking.
+tpmfail-device-unopenable
+tpmfail-tpm-error
+tpmfail-credentials-down-tpm-lacking
+tpmfail-credentials-down-host

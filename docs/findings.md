@@ -74,3 +74,4 @@ Rules:
 - [F135](findings/F135.md) — noplain-* e2e: state dir `/var/lib/private/custodio`, one file per key; `check-no-plaintext.sh` runs unchanged in the container via a read-only mount of both script files
 - [F136](findings/F136.md) — tpm-dup-* e2e: reading records with tpm2-tools, second swtpm start/stop, the exact tpm2_readpublic/duplicate/load outputs (0x99D, 0x1DF integrity)
 - [F137](findings/F137.md) — pcr-* e2e: root extends PCRs and restarts swtpm (startup-clear resets them) and the service from the guest; a PCR-7-policy object fails with 0x99D after the extension, the keys do not
+- [F139](findings/F139.md) — injected failures: a stopped systemd-creds.socket gives CredentialsUnavailable; a stale socket TpmFailed/tpm_device; a failing capability query TpmFailed/tpm_error

@@ -234,6 +234,14 @@ if phase_runs fallback; then
 fi
 phase_done fallback
 
+# The tpmfail cases (F139): with a TPM that is present and fails (unopenable, a TPM error) and with the credential service down, the import fails with the documented error, stores nothing,
+# leaves one journal entry and puts the key in no weaker kind. Only in swtpm (the cases change the TPM of the run themselves and restore it). After fallback and before the upgrade;
+# the TPM drop-in, the credential socket and the service are put back, and the keys it imports are deleted.
+if phase_runs tpmfail; then
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmfail-run.sh || fail "tpmfail-run.sh failed"
+fi
+phase_done tpmfail
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

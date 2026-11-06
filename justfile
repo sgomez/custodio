@@ -180,6 +180,7 @@ test-scripts:
     scripts/test-e2e-tpmdup.sh
     scripts/test-e2e-pcr.sh
     scripts/test-e2e-fallback.sh
+    scripts/test-e2e-tpmfail.sh
     scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
     scripts/test-e2e-targets.sh

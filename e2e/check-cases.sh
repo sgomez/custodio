@@ -12,6 +12,7 @@
 # F136: a tpm-dup-* case needs a key of kind tpm: skipped it fails the accounting in swtpm and lacking (only mode none may skip it).
 # F137: the same for the pcr-* cases (they need a TPM: only mode none may skip them).
 # F138: a fallback-tpmbound-* case is skipped in every mode (SPEC_DEVIATIONS.md, F134) and refused reported run; a fallback-host-* case must run in mode none.
+# F139: a tpmfail-* case needs mode swtpm: skipped it fails the accounting in swtpm, and reported run it fails in none and lacking (they replace the TPM of the run themselves).
 # Skip list format: one `case: reason` per line, the case being [A-Za-z0-9._-]+ and the reason not empty; `#` starts a comment
 # line; blank lines are ignored; a case appears once. Unused entries are reported on stderr and do not fail.
 set -euo pipefail
@@ -59,6 +60,7 @@ check() {
             case $id in sign-* | noplain-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
         fi
         if [ "$kind" = run ]; then
+            case $id in tpmfail-*) case ${CHECK_TPM_MODE:-} in none | lacking) echo "check-cases: case '$id' runs only in swtpm and was reported run in mode ${CHECK_TPM_MODE}" >&2; bad=1 ;; esac ;; esac
             case $id in fallback-tpmbound-*) echo "check-cases: case '$id' cannot be run (deviation F134) and was reported run" >&2; bad=1 ;; esac
         fi
         if [ "$kind" = skipped ] && [ "${CHECK_TPM_MODE:-}" = swtpm ]; then
@@ -66,6 +68,7 @@ check() {
         fi
         if [ "$kind" = skipped ]; then
             case $id in tpm-dup-* | pcr-*) case ${CHECK_TPM_MODE:-} in swtpm | lacking) echo "check-cases: case '$id' needs a TPM key and was skipped in mode ${CHECK_TPM_MODE}" >&2; bad=1 ;; esac ;; esac
+            case $id in tpmfail-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || { echo "check-cases: case '$id' needs mode swtpm and was skipped in it" >&2; bad=1; } ;; esac
             case $id in fallback-host-*) [ "${CHECK_TPM_MODE:-}" != none ] || { echo "check-cases: case '$id' needs mode none and was skipped in it" >&2; bad=1; } ;; esac
             skipped="$skipped$id "
             case $listed in *" $id "*) echo "check-cases: skipped (on the skip list): $id" ;;
@@ -81,6 +84,7 @@ check() {
         case $id in tpm-kind-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
         case $id in tpm-dup-* | pcr-*) case ${CHECK_TPM_MODE:-} in swtpm | lacking) continue ;; esac ;; esac
         case $id in fallback-host-*) [ "${CHECK_TPM_MODE:-}" != none ] || continue ;; esac
+        case $id in tpmfail-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
         case $skipped in *" $id "*) ;; *) echo "check-cases: skip list entry '$id' matches no skipped case; remove it" >&2 ;; esac
     done
     line=$(reported "$out" | wc -l)
