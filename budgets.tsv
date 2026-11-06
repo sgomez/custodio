@@ -7,7 +7,9 @@ e2e	ubuntu2404	100	refusal only; measured 80s (swtpm), waiting on the shared ima
 e2e	ubuntu2604	460	measured 381s (swtpm), 6 runs at once, 12-core dev host, 2026-11-05
 script	*	60	default; p90 of the 54 scripts was 45s, median 3s, 2026-11-05
 script	scripts/test-rpm-lifecycle-real.sh	200	builds and installs real rpms; measured 159s
-script	scripts/test-arch-lifecycle.sh	150	measured 122s
-script	scripts/test-rpm-lifecycle.sh	115	measured 92s
-script	scripts/test-arch-lifecycle-real.sh	95	measured 75s
-script	scripts/test-shell-scripts.sh	80	shellcheck over every script; measured 62s
+script	scripts/test-arch-lifecycle.sh	250	worst 194s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-rpm-lifecycle.sh	200	worst 151s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-arch-lifecycle-real.sh	130	worst 97s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-shell-scripts.sh	120	worst 92s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-e2e-upgrade.sh	90	worst 65s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-deb-lifecycle.sh	100	worst 73s; raised by a person 2026-11-07: parallel-run noise
