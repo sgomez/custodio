@@ -11,7 +11,7 @@ case_group() {
     case $1 in
     polkit-unavailable) echo unavailable ;;
     journal-entries | journal-catalog) echo journal ;;
-    upgrade-oldpath-*) echo other-mode ;; # reported by its own guest run (oldpath)
+    upgrade-oldpath-* | upgrade-m3-*) echo other-mode ;; # reported by their own guest runs (oldpath, m3)
     upgrade-*) echo upgrade ;;
     removal-* | reinstall-* | purge-*) echo lifecycle ;;
     owner-*) echo owner ;;

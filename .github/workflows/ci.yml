@@ -290,6 +290,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # the tag v0.5.0 (M3) is built for the upgrade-m3-* cases (scripts/package-m3.sh)
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev rpm libarchive-tools zstd python3-yaml
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3

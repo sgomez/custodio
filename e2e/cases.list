@@ -89,6 +89,10 @@ upgrade-oldpath-state-unchanged
 upgrade-oldpath-keys-listed
 upgrade-oldpath-signs-with-polkit
 upgrade-oldpath-no-manual-step
+upgrade-m3-state-purged
+upgrade-m3-list-empty
+upgrade-m3-journal-purge
+upgrade-m3-reimport
 removal-service-stopped
 removal-no-packaged-files
 removal-not-activatable

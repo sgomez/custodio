@@ -2,14 +2,15 @@
 # Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
 # (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
-# Usage: guest.sh TARGET [oldpath]. With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
+# Usage: guest.sh TARGET [oldpath|m3]. With "m3" (F142, on a fresh container) it installs the M3 build (/pkg-m3, built from the tag v0.5.0 by scripts/package-m3.sh), imports four keys with it,
+# installs this tree's package over it and reports the upgrade-m3-* cases only (e2e/upgrade-m3.sh). With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
 # it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path; one target per package format runs it) skips them
 # in the main run. Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
 # With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
 # needs is not run (select.sh); the setup (install, service, user, import) always is.
 set -euo pipefail
 mode=${2:-main}
-case $mode in main | old | oldpath) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
+case $mode in main | old | oldpath | m3) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 phase_t=$SECONDS
@@ -49,7 +50,7 @@ if [ -f /e2e-target/refusal-only ]; then
 fi
 
 start=$(date +%s) # journal checks only look at entries since here
-case $mode in oldpath) from_dir=/pkg-oldpath ;; *) from_dir=/pkg ;; esac
+case $mode in oldpath) from_dir=/pkg-oldpath ;; m3) from_dir=/pkg-m3 ;; *) from_dir=/pkg ;; esac
 pkg=$(find "$from_dir" -type f | head -n 1)
 [ -n "$pkg" ] || fail "no package is mounted in $from_dir"
 pkg_next=$(find /pkg-next -type f | head -n 1)
@@ -81,6 +82,19 @@ systemctl start custodio || { journalctl -u custodio --no-pager | tail -n 30 >&2
 systemctl is-active --quiet custodio || fail "custodio.service is not active"
 [ "$(systemctl show -p User --value custodio)" = custodio ] || fail "the service does not run as user custodio"
 phase_done service
+
+# F142: the upgrade from the M3 build, on this fresh container: it needs the service and an account, not the keys of the steps below
+if [ "$mode" = m3 ]; then
+    id alice > /dev/null 2>&1 || useradd -m -s /bin/bash alice
+    work=$(mktemp -d /tmp/e2e.XXXXXX)
+    chmod 755 "$work"
+    chown alice "$work"
+    WORK=$work bash /e2e/upgrade-m3.sh "$pkg" "$pkg_next" || fail "upgrade-m3.sh failed"
+    systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the M3 build"
+    phase_done upgrade
+    echo "e2e: all checks passed (upgrade from the M3 build)"
+    exit 0
+fi
 
 id alice >/dev/null 2>&1 || useradd -m -s /bin/bash alice
 work=$(mktemp -d /tmp/e2e.XXXXXX)

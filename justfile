@@ -183,6 +183,9 @@ test-scripts:
     scripts/test-e2e-tpmfail.sh
     scripts/test-e2e-tpmclear.sh
     scripts/test-e2e-upgradekinds.sh
+    scripts/test-e2e-m3.sh
+    scripts/test-e2e-m3-judge.sh
+    scripts/test-e2e-m3-run.sh
     scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
     scripts/test-e2e-targets.sh
@@ -395,10 +398,11 @@ e2e target="all": e2e-packages
 e2e-tpm-filter:
     [ "${E2E_TPM:-swtpm}" != lacking ] || cargo build --locked -p custodio-it --example tpm-filter --release
 
-# The packages the end-to-end tests install: package N, package N+1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
+# The packages the end-to-end tests install: package N, package N+1, the old-path fixture and the M3 build of the tag v0.5.0 (target/packages-m3, kept between runs). The one build that `e2e` and `e2e-cases` share.
 e2e-packages: package
     scripts/package-next.sh
     scripts/package-oldpath.sh
+    scripts/package-m3.sh
     just e2e-tpm-filter
 
 # Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the

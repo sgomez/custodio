@@ -21,6 +21,7 @@ targets_dir=${E2E_TARGETS:-e2e/targets}
 packages=${E2E_PACKAGES:-target/packages}
 packages_next=${E2E_PACKAGES_NEXT:-target/packages-next} # package N+1 of the upgrade case (scripts/package-next.sh), never in $packages
 packages_oldpath=${E2E_PACKAGES_OLDPATH:-target/packages-oldpath} # the old-path fixture of F61 (scripts/package-oldpath.sh); not for a target with a no-oldpath marker
+packages_m3=${E2E_PACKAGES_M3:-target/packages-m3} # the M3 build of the tag v0.5.0 (F142, scripts/package-m3.sh): the upgrade-m3-* cases install it first
 out_dir=${E2E_OUT:-target/e2e}
 want=${1:-all}
 # F131: the TPM modes of the run; checked before anything else is looked at or started
@@ -128,7 +129,7 @@ boot_container() {
 }
 
 run_target() { # run_target TARGET MODE
-    local t=$1 tpm=$2 dir="$targets_dir/$1" name="custodio-e2e-$1-$2-$$" pattern found found_next='' found_oldpath='' state log rc=0 line key value cases
+    local t=$1 tpm=$2 dir="$targets_dir/$1" name="custodio-e2e-$1-$2-$$" pattern found found_next='' found_oldpath='' found_m3='' state log rc=0 line key value cases
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
@@ -154,11 +155,19 @@ run_target() { # run_target TARGET MODE
         done
         ! cmp -s "$found" "$found_oldpath" || { echo "e2e[$t]: the old-path package has the same content as N" >&2; return 1; }
     fi
+    # F142: the M3 build, for the upgrade-m3-* cases (every target that installs a package; they are in e2e/cases.list)
+    found_m3=$(find "$packages_m3" -name "$pattern" 2> /dev/null | sort | tail -n 1)
+    [ -n "$found_m3" ] || { echo "e2e[$t]: no M3 package '$pattern' in $packages_m3 (the e2e recipe builds it with scripts/package-m3.sh)" >&2; return 1; }
+    for f in "$found" "$found_next"; do
+        [ "$(realpath "$found_m3")" != "$(realpath "$f")" ] || { echo "e2e[$t]: the M3 package is the same file as N or N+1" >&2; return 1; }
+    done
+    ! cmp -s "$found" "$found_m3" || { echo "e2e[$t]: the M3 package has the same content as N" >&2; return 1; }
     fi
-    # F63: whether a subset needs the extra guest run (it always does without one)
-    run_oldpath=1
+    # F63: whether a subset needs the extra guest runs (it always does without one)
+    run_oldpath=1 run_m3=1
     if [ -n "$subset" ]; then
         grep -q '^upgrade-oldpath-' <<< "$selection" || run_oldpath=''
+        grep -q '^upgrade-m3-' <<< "$selection" || run_m3=''
     fi
     # the cases of every target, and the ones of this target only
     cases=$(mktemp)
@@ -170,6 +179,7 @@ run_target() { # run_target TARGET MODE
     local mounts=("$PWD/$found:/pkg/$(basename "$found")")
     [ -z "$found_next" ] || mounts+=("$PWD/$found_next:/pkg-next/$(basename "$found_next")")
     [ -z "$found_oldpath" ] || mounts+=("$PWD/$found_oldpath:/pkg-oldpath/$(basename "$found_oldpath")")
+    [ -z "$found_m3" ] || mounts+=("$PWD/$found_m3:/pkg-m3/$(basename "$found_m3")")
     [ "$tpm" != lacking ] || mounts+=("$tpm_filter:/e2e-bin/tpm-filter")
     boot_container "$name" "$t" "${mounts[@]}" || return 1
     log="$out_dir/$t.$tpm.log"
@@ -187,6 +197,13 @@ run_target() { # run_target TARGET MODE
         boot_container "$name" "$t" "${mounts[@]}" || return 1
         "$engine" exec "${envsel[@]}" "$name" bash /e2e/guest.sh "$t" oldpath 2>&1 | tee -a "$log" || rc=${PIPESTATUS[0]}
         [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the old-path package)" >&2; return 1; }
+    fi
+    if [ -n "$found_m3" ] && [ -n "$run_m3" ]; then
+        # F142: the same, from the M3 build, on a fresh container
+        "$engine" rm -f "$name" > /dev/null 2>&1 || true
+        boot_container "$name" "$t" "${mounts[@]}" || return 1
+        "$engine" exec "${envsel[@]}" "$name" bash /e2e/guest.sh "$t" m3 2>&1 | tee -a "$log" || rc=${PIPESTATUS[0]}
+        [ "$rc" -eq 0 ] || { echo "e2e[$t]: the guest exited with status $rc (upgrade from the M3 build)" >&2; return 1; }
     fi
     if [ -n "$subset" ]; then
         CHECK_TPM_MODE=$tpm bash e2e/check-cases.sh check "$cases" "$dir/skip.list" "$log" "$cases.sel" || return 1

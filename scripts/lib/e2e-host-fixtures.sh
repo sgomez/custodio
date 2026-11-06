@@ -14,7 +14,8 @@ trap 'fx_cleanup; rm -rf "$tmp"' EXIT
 fx_build cur 0.1.0 '' none
 fx_build next 0.1.1 '' none
 fx_build oldpath 0.1.0 '' oldpath
-mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/oldpath"
+fx_build m3 0.0.9 '' none
+mkdir -p "$tmp/bin" "$tmp/pkgs" "$tmp/next" "$tmp/oldpath" "$tmp/m3"
 for f in deb rpm archlinux; do
     cp "$(fx_file cur "$f")" "$tmp/pkgs/"
     cp "$(fx_file next "$f")" "$tmp/next/"
@@ -23,6 +24,9 @@ export E2E_PACKAGES_NEXT=$tmp/next
 # the old-path fixture (F61): the .deb and the .rpm only, with other content than N (the host refuses an equal one)
 for f in deb rpm; do cp "$(fx_file oldpath "$f")" "$tmp/oldpath/"; done
 export E2E_PACKAGES_OLDPATH=$tmp/oldpath
+# the M3 build (F142): all three formats, a lower version
+for f in deb rpm archlinux; do cp "$(fx_file m3 "$f")" "$tmp/m3/"; done
+export E2E_PACKAGES_M3=$tmp/m3
 cat > "$tmp/bin/podman" <<'STUB'
 #!/usr/bin/env bash
 # Logs the arguments; `exec ... guest.sh` prints what the fake guest would, from STUB_* variables.
@@ -46,6 +50,7 @@ run)
     sed -n 's|.*:/pkg/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.pkg"
     sed -n 's|.*:/pkg-next/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.next"
     sed -n 's|.*:/pkg-oldpath/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.oldpath"
+    sed -n 's|.*:/pkg-m3/\([^: ]*\):ro.*|\1|p' <<< "$*" > "$C.m3"
     ;;
 exec)
     case "$*" in
@@ -58,8 +63,13 @@ exec)
         for a in "$@"; do case $a in E2E_TPM=*) tpm=${a#E2E_TPM=} ;; esac; done # F131: the TPM mode the host asks for
         mode=main
         t=${*: -1}
-        if [ "$t" = oldpath ]; then mode=$t; t=${*: -2:1}; fi
-        if [ "$mode" = oldpath ]; then
+        if [ "$t" = oldpath ] || [ "$t" = m3 ]; then mode=$t; t=${*: -2:1}; fi
+        if [ "$mode" = m3 ]; then
+            echo "e2e: installed $(cat "$C.m3") from the mounted file"
+            echo "E2E-PHASE m3-upgrade 2"
+            list=$STUB_ROOT/e2e/cases.list
+            [ "$t" != "${STUB_FAIL_M3:-}" ] || { echo "e2e: FAIL: stubbed (m3)"; exit 1; }
+        elif [ "$mode" = oldpath ]; then
             echo "e2e: installed $(cat "$C.oldpath") from the mounted file"
             echo "E2E-PHASE oldpath-upgrade 2"
             list=$STUB_ROOT/e2e/cases.list
@@ -73,18 +83,21 @@ exec)
             [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
             # F61: the cases of the upgrade from the old path run in their own container, except on a target that has none (skipped in the main run)
             if [ ! -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then grep -v '^upgrade-oldpath-' "$list" > "$list.x" || true; mv "$list.x" "$list"; fi
+            # F142: the cases of the upgrade from the M3 build run in their own container
+            grep -v '^upgrade-m3-' "$list" > "$list.x" || true; mv "$list.x" "$list"
             cat "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/cases.list" >> "$list" 2> /dev/null || true
         fi
         while IFS= read -r c; do
             case $c in '' | '#'*) continue ;; esac
             if [ "$mode" = oldpath ]; then case $c in upgrade-oldpath-*) ;; *) continue ;; esac; fi
+            if [ "$mode" = m3 ]; then case $c in upgrade-m3-*) ;; *) continue ;; esac; fi
             [ "$c" = "${STUB_OMIT:-}" ] && continue
             if [ -n "$sel" ]; then case " $sel " in *" $c "*) ;; *) continue ;; esac; fi
             if [ "$mode" = main ] && [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then case $c in upgrade-oldpath-*) echo "E2E-CASE skipped $c"; continue ;; esac; fi
             if [ "$c" = "${STUB_SKIP:-}" ]; then echo "E2E-CASE skipped $c"; else echo "E2E-CASE run $c"; fi
             [ "$c" = "${STUB_DUP:-}" ] && echo "E2E-CASE run $c"
         done < "$list"
-        [ "$mode" = oldpath ] && exit 0
+        [ "$mode" = oldpath ] || [ "$mode" = m3 ] && exit 0
         if [ -n "${STUB_SLEEP:-}" ]; then # how many main runs are in the guest at once, one line per run in $STUB_LOG.conc
             touch "$STUB_LOG.act.$cname"
             find "$(dirname "$STUB_LOG")" -maxdepth 1 -name "$(basename "$STUB_LOG").act.*" | wc -l >> "$STUB_LOG.conc"

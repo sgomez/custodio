@@ -31,8 +31,8 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
     [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
-    # the mounts and the containers: N and N+1 and the old-path fixture of F61 (every target without a no-oldpath marker)
-    mounts=2 runs=1
+    # the mounts and the containers: N, N+1 and the M3 build of F142 (its own fresh container), and the old-path fixture of F61 (every target without a no-oldpath marker)
+    mounts=3 runs=2
     [ -f "$ROOT/e2e/targets/$T/no-oldpath" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
     [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq "$mounts" ] || bad "$T: expected $mounts different read-only mounts: $(grep '^run ' "$tmp/log")"
     [ "$(grep -c '^run ' "$tmp/log")" -eq "$runs" ] || bad "$T: expected $runs containers, each upgrade source in a fresh one: $(grep -c '^run ' "$tmp/log")"
@@ -47,7 +47,7 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
         grep -q "exec .* bash /e2e/guest.sh $T oldpath" "$tmp/log" || bad "$T: the guest is not run in the oldpath mode"
         [ "$(grep -c "guest.sh $T oldpath" "$tmp/log")" -eq 1 ] || bad "$T: the oldpath run happened more than once"
         rl=$(grep -n "guest.sh $T oldpath" "$tmp/log" | cut -d: -f1)
-        rr=$(grep -n '^run ' "$tmp/log" | tail -n 1 | cut -d: -f1)
+        rr=$(grep -n '^run ' "$tmp/log" | cut -d: -f1 | awk -v l="$rl" '$1 < l { r = $1 } END { print r }') # the container the old-path run is in: the last one started before it
         rrm=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
         { [ "$rrm" -lt "$rr" ] && [ "$rr" -lt "$rl" ]; } || bad "$T: the oldpath run is not in its own fresh container: $(cat "$tmp/log")"
     fi
