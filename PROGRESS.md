@@ -567,3 +567,6 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 8 (session 1)
 - NEXT_FINDINGS: the verify passed; four budgets exceeded in the parallel run: e2e alma10 478/470 s, arch 420/410 s, debian13 707/700 s, `test-install-real.sh` 88/60 s. The e2e overages are 2 % (run-to-run noise at seven containers at once). `test-install-real.sh` takes 11 s alone (measured now), so the 88 s is contention in the parallel `just check`. No code change; `BLOCKED.md` asks a person for the budgets. `budgets.tsv` untouched.
+
+### 2026-11-06 — F146 — attempt 9 (session 1)
+- NEXT_FINDINGS.md (alma10 478/470, arch 420/410, debian13 707/700, `test-install-real.sh` 88/60) is older (23:33) than the person's decision in b71f378 / 63b7a9d (00:52): `budgets.tsv` now has alma10 540, arch 480, debian13 800 and the default script budget was raised. `BLOCKED.md` is gone. No code change; the loop's `verify` is the gate.
