@@ -71,9 +71,15 @@ for f in k-tpm k-etpm k-one; do [ -n "$(np kind "$tmp/$f" none $specs)" ] || bad
     printf 'x\n' > d-good/record.txt
 )
 for n in pkcs8 pkcs1 der p12 sec1; do
-    out=$(np files "$tmp/d-$n") || true
-    [ -n "$out" ] || bad "the planted form '$n' is accepted"
-    grep -q "d-$n/key" <<< "$out" || [ -z "$out" ] || bad "the judgement for '$n' does not name the file"
+    (
+        out=$(np files "$tmp/d-$n") || true
+        [ -n "$out" ] || echo "the planted form '$n' is accepted"
+        grep -q "d-$n/key" <<< "$out" || [ -z "$out" ] || echo "the judgement for '$n' does not name the file"
+    ) > "$tmp/res-$n" &
+done
+wait
+for n in pkcs8 pkcs1 der p12 sec1; do
+    while IFS= read -r l; do bad "$l"; done < "$tmp/res-$n"
 done
 start=$SECONDS
 out=$(timeout 60 python3 -I "$ROOT/e2e/noplain.py" files "$tmp/d-good") || bad "judging the encrypted-only directory failed"

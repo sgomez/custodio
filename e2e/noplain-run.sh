@@ -42,46 +42,54 @@ judge() { # CASE PROBLEMS: the case is reported when it has no problem
 $case:
 $p"; fi
 }
-case_scan() { # CASE TYPE [OTHER...]: the kind of np-TYPE, then the script on TYPE.p12 and each OTHER.p12
-    local c=$1 t=$2 out rc=0 p
-    shift 2
-    p=$(np kind "$NP/list-$t.out" "$mode" "np-$t:$([ "$t" = rsa ] && echo rsa2048 || echo ecdsa-p256)")
-    echo "noplain: $c kind $(awk -v k="np-$t" '$1 == k { print $3 }' "$NP/list-$t.out")"
-    for f in "$t" "$@"; do
-        rc=0
-        out=$(scan "$NP/$f.p12" 2>&1) || rc=$?
-        echo "noplain: $c: check-no-plaintext on $f.p12 exit $rc"
-        [ "$rc" = 0 ] || p="$p
-check-no-plaintext.sh on $f.p12 exited $rc: $out"
-    done
-    judge "$c" "$p"
+scan_job() { # NAME P12: the script on P12 into $NP/job-NAME.out, its exit code into $NP/job-NAME.rc (run as a background job)
+    local rc=0
+    scan "$2" > "$NP/job-$1.out" 2>&1 || rc=$?
+    echo "$rc" > "$NP/job-$1.rc"
+}
+scan_problem() { # NAME P12: the problem of a finished scan job, if any
+    local rc
+    rc=$(cat "$NP/job-$1.rc")
+    echo "noplain: check-no-plaintext on $(basename "$2") ($1) exit $rc" >&2
+    [ "$rc" = 0 ] || echo "check-no-plaintext.sh on $(basename "$2") exited $rc: $(cat "$NP/job-$1.out")"
+}
+kind_problem() { # CASE TYPE: the kind of np-TYPE in the mode
+    np kind "$NP/list-$2.out" "$mode" "np-$2:$([ "$2" = rsa ] && echo rsa2048 || echo ecdsa-p256)"
+    echo "noplain: $1 kind $(awk -v k="np-$2" '$1 == k { print $3 }' "$NP/list-$2.out")" >&2
+}
+control_job() { # the script finds a planted key in a copy of the directory; the live one is untouched. Problems into $NP/job-control.out
+    local before copy rc=0 out
+    before=$(find "$state" -printf '%p %s %T@\n' | sort)
+    copy=$(mktemp -d)
+    cp -a "$state/." "$copy/"
+    openssl pkcs12 -in "$NP/rsa.p12" -passin "pass:$TK_PASSWORD" -nocerts -noenc 2> /dev/null | openssl pkey -outform DER -out "$copy/planted.der"
+    out=$(printf '%s\n' "$TK_PASSWORD" | timeout 120 bash "$CHECK" "$copy" "$NP/rsa.p12" 2>&1) || rc=$?
+    echo "noplain: control: planted key in a copy: exit $rc" >&2
+    rm -rf "$copy"
+    [ "$rc" = 1 ] && grep -q 'planted.der' <<< "$out" || echo "the script did not find the planted key in the copy (exit $rc): $out"
+    [ "$before" = "$(find "$state" -printf '%p %s %T@\n' | sort)" ] || echo "the live state directory changed during the control"
 }
 
 alice import rsa
-case_scan noplain-rsa rsa
+scan_job rsa "$NP/rsa.p12" # right after its own import, before anything else touches the state
+judge noplain-rsa "$(kind_problem noplain-rsa rsa)
+$(scan_problem rsa "$NP/rsa.p12")"
+
 alice import ec
-case_scan noplain-ec ec rsa # the first key must not be exposed by the later write
-
-# the files that exist, then the judgement
+# the independent checks run at once: both scans (the first key must not be exposed by the later write), the files judgement, the control
+scan_job ec "$NP/ec.p12" &
+scan_job rsa2 "$NP/rsa.p12" &
 np list "$state" | sed 's/^/noplain: file /'
-judge noplain-no-key-file "$(np files "$state")"
-
-# guest control: the script finds a planted key in a copy of the directory; the live one is untouched
-before=$(find "$state" -printf '%p %s %T@\n' | sort)
-copy=$(mktemp -d)
-trap 'rm -rf "$copy"' EXIT
-cp -a "$state/." "$copy/"
-openssl pkcs12 -in "$NP/rsa.p12" -passin "pass:$TK_PASSWORD" -nocerts -noenc 2> /dev/null | openssl pkey -outform DER -out "$copy/planted.der"
-rc=0
-out=$(printf '%s\n' "$TK_PASSWORD" | timeout 120 bash "$CHECK" "$copy" "$NP/rsa.p12" 2>&1) || rc=$?
-echo "noplain: control: planted key in a copy: exit $rc"
-[ "$rc" = 1 ] && grep -q 'planted.der' <<< "$out" || problems="$problems
+(np files "$state" > "$NP/job-files.out" 2>&1 || echo "np files failed" >> "$NP/job-files.out") &
+control_job > "$NP/job-control.out" &
+wait
+judge noplain-ec "$(kind_problem noplain-ec ec)
+$(scan_problem ec "$NP/ec.p12")
+$(scan_problem rsa2 "$NP/rsa.p12")"
+judge noplain-no-key-file "$(cat "$NP/job-files.out")"
+if [ -s "$NP/job-control.out" ]; then problems="$problems
 control:
-the script did not find the planted key in the copy (exit $rc): $out"
-rm -rf "$copy"
-[ "$before" = "$(find "$state" -printf '%p %s %T@\n' | sort)" ] || problems="$problems
-control:
-the live state directory changed during the control"
+$(cat "$NP/job-control.out")"; fi
 
 alice delete
 if grep -qE '^np-(rsa|ec)	' "$NP/list-after.out"; then problems="$problems

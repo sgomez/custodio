@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 KINDS = {"swtpm": ("tpm", "tpm"), "none": ("encrypted-host",) * 2, "lacking": ("tpm", "tpm")}  # mode -> (RSA kind, EC kind), as sign.py
 KEYTYPES = {"rsa": "rsa2048", "ec": "ecdsa-p256"}
@@ -38,23 +39,31 @@ def files(root):
     return out
 
 
+def probe(p, cmd, form):
+    if cmd == "pkcs12":
+        r = run(["openssl", "pkcs12", *form, "-in", p, "-passin", "pass:", "-nocerts", "-noenc"])
+        if r is not None and r.returncode == 0 and b"PRIVATE KEY" in r.stdout:
+            return f"{p}: openssl pkcs12 reads a private key from it with an empty password"
+        return None
+    r = run(["openssl", cmd, "-in", p, "-inform", form, "-passin", "pass:wrong-password", "-noout"])
+    if r is None:
+        return f"{p}: openssl {cmd} {form} did not finish (a prompt?)"
+    if r.returncode == 0:
+        return f"{p}: openssl {cmd} {form} reads it as a {form} private key without a password"
+    return None
+
+
 def file_problems(root):
+    paths = files(root)
     problems = []
-    for p in files(root):
+    for p in paths:
         with open(p, "rb") as f:
-            data = f.read()
-        if PLAIN_HEADER.search(data):
-            problems.append(f"{p}: a PEM private key that is not encrypted")
-        for cmd, form in READS:
-            r = run(["openssl", cmd, "-in", p, "-inform", form, "-passin", "pass:wrong-password", "-noout"])
-            if r is None:
-                problems.append(f"{p}: openssl {cmd} {form} did not finish (a prompt?)")
-            elif r.returncode == 0:
-                problems.append(f"{p}: openssl {cmd} reads it as a {form} private key without a password")
-        for legacy in ([], ["-legacy"]):
-            r = run(["openssl", "pkcs12", *legacy, "-in", p, "-passin", "pass:", "-nocerts", "-noenc"])
-            if r is not None and r.returncode == 0 and b"PRIVATE KEY" in r.stdout:
-                problems.append(f"{p}: openssl pkcs12 reads a private key from it with an empty password")
+            if PLAIN_HEADER.search(f.read()):
+                problems.append(f"{p}: a PEM private key that is not encrypted")
+    # every (file, read) pair is independent: run them all at once
+    jobs = [(p, c, f) for p in paths for c, f in READS] + [(p, "pkcs12", leg) for p in paths for leg in ([], ["-legacy"])]
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        problems += [r for r in ex.map(lambda j: probe(*j), jobs) if r]
     return problems
 
 
