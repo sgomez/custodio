@@ -561,3 +561,6 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 6 (session 1)
 - NEXT_FINDINGS: two script tests over budget in the parallel `just check` (`test-shell-scripts.sh` 92 s of 80, `test-arch-lifecycle-real.sh` 97 s of 95). Lone runs were 63 s and 49 s. `test-shell-scripts.sh` now runs its clean and its dirty shellcheck at once on two copies (63 s -> 33 s lone; one shellcheck call over all files stays, since batching changes what it follows). `test-arch-lifecycle-real.sh` runs the ten mutants at once in subshells (49 s -> 37 s lone); a surviving mutant still fails the test (checked with a mutant edited to a no-op).
+
+### 2026-11-06 — F146 — attempt 7 (session 1)
+- NEXT_FINDINGS.md (`test-e2e-upgrade.sh` 65 s of 60 s) is older (21:19) than the person's budget decision: `budgets.tsv` now has 90 s for it (commit fa1ba0b, approved in 83ce403). No code change; the loop's `verify` is the gate.
