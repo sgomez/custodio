@@ -555,3 +555,6 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 4 (session 1)
 - NEXT_FINDINGS.md was the failure from before the host's `fs.inotify.max_user_instances` went from 128 to 1024 (fedora44 `removal-not-activatable`, dbus-broker `Job ... failed`; cause in `docs/findings/F146.md`). No code change. With the limit at 1024: `just quick` exit 0; whole parallel `just e2e` from a cleared `target/e2e/` exit 0, all seven runs passed (six swtpm, debian13 none), 160 cases accounted for debian13, wall 681 s for 7 runs.
+
+### 2026-11-06 — F146 — attempt 5 (session 1)
+- NEXT_FINDINGS.md is the same fedora44 `removal-not-activatable` failure that attempt 4 already traced to the host's inotify limit (`docs/findings/F146.md`); its timestamp (16:30) predates the fix. Host limit is 1024 now; `just quick` exit 0. No code change; the loop's `verify` is the gate.
