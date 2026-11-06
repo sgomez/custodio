@@ -406,7 +406,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'pcr-*' && E2E_TPM=lacking just e2e-cases debian13 'pcr-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F138",
