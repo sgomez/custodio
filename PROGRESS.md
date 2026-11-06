@@ -546,3 +546,9 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 3 (session 1)
 - Could not reproduce the `cli-import-pkttyagent-wrong-password` timeout (24 burners on 12 CPUs, `just e2e-cases debian13 'cli-import-pkttyagent*'` passes); the failed run's transcript was not kept, so the cause is a hypothesis: the answer to the repeated `Password: ` prompt is lost under load (tty input flush when the agent switches echo off). Hardening, not a proven fix: `e2e/cli-pty.py` answers a repeat prompt left unanswered for 15 s again (max 3 times, logs `resend` in the events file); `cli_agent_outcome_problems` now prints the last 300 bytes of the transcript on failure, so a next failure shows the cause. The arch bus-reload flake (journal printed since attempt 2) is not touched and still unexplained. `just quick` green. The loop's `verify` is the gate.
+
+### 2026-11-06 — F146 — after attempt 3 (with a person)
+- Cause of the parallel-only e2e failures found (`docs/findings/F146.md`): the host's `fs.inotify.max_user_instances` (128) runs out with 6 containers at once; dbus-broker reloads fail (`dirwatch_new: Too many open files`). The person raised it to 1024 on the host.
+- `e2e/run.sh` refuses to start below 32 per run at once + 64 (`E2E_INOTIFY_LIMIT_FILE` overrides the path; the stub fixtures point it at a large value); controls in `scripts/test-e2e-jobs-host.sh`. `e2e/lifecycle.sh` prints the bus journal for dnf5's `>>> Job for ... failed` too. The pty resend of fe681c4 is reverted (wrong hypothesis); its transcript on failure stays.
+- `test-e2e-jobs-host`, `-host`, `-select-host`, `-tpm-host`, `-host-oldpath`, `-m3` pass. `just quick` in the person's host shell fails only in `custodiod --test creds` (`Unavailable`), the same on HEAD without these changes (host environment, not the harness container).
+- Next: `rm -f .harness/state/F146.attempts && just harness run`.
