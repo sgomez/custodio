@@ -538,3 +538,7 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 1 (session 3)
 - Final `just quick` after the last fix (`7fd867e`) and the person's budget decision (debian13 700 s, `BLOCKED.md` answered and removed): exit 0. Every contract step is ticked; no code changed in this session. The e2e times above are lone-run estimates; the loop's `verify` is the gate.
+
+### 2026-11-06 — F146 — attempt 2 (session 1)
+- The loop's `verify` failed only on arch (swtpm), in the parallel `just e2e`: lifecycle `remove`, the pacman hook "Reloading system bus configuration" gave `Job for dbus-broker.service failed`, so `removal-not-activatable` failed ("still activatable"). Seen twice in the parallel run (654 s / 638 s wall for debian13), never in a lone arch run (`E2E_TPM=swtpm just e2e arch` exit 0, 103 cases, 308 s) nor with 14 CPU burners (`e2e-cases arch 'removal-*'` exit 0). The `chroot() environment: Permission denied` lines also appear in passing runs, so they are not the cause.
+- Added to `e2e/lifecycle.sh`: when the tool's output has a failed `Job for ...`, the journal of dbus-broker/dbus is printed (diagnostic only, no assertion changed). Next: rerun the whole `just e2e` to read the journal, then fix the cause.
