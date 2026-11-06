@@ -68,3 +68,10 @@ upgrade-kinds-before
 upgrade-kinds-kept
 upgrade-kinds-signs
 upgrade-kinds-tpmbound
+
+# F144: the documented journal queries for the storage kind, the purge entries and the failed signatures find exactly the entries the step caused (acceptance 11). Run in every mode.
+journal-kind-import
+journal-kind-purge
+journal-kind-owner
+journal-kind-key-lost
+journal-kind-temporarily-unavailable

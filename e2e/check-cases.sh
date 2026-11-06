@@ -9,6 +9,7 @@
 # skipped it fails the accounting even when a skip list names it. Unset, or another mode: no such rule.
 # F134: a sign-* case runs in every TPM mode; reported skipped it fails the accounting in any mode, even when a skip list names it.
 # F135: the same for the noplain-* cases.
+# F144: the same for the journal-kind-* cases (every injection they use exists in every mode: skipped fails the accounting in any mode).
 # F136: a tpm-dup-* case needs a key of kind tpm: skipped it fails the accounting in swtpm and lacking (only mode none may skip it).
 # F137: the same for the pcr-* cases (they need a TPM: only mode none may skip them).
 # F138: a fallback-tpmbound-* case is skipped in every mode (SPEC_DEVIATIONS.md, F134) and refused reported run; a fallback-host-* case must run in mode none.
@@ -61,7 +62,7 @@ check() {
         case $owed in *" $id "*) ;; *) echo "check-cases: case '$id' was reported and is not selected" >&2; bad=1; continue ;; esac
         if [ "$kind" = skipped ]; then
             case $id in upgrade-kinds-tpmbound) ;; upgrade-kinds-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
-            case $id in sign-* | noplain-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
+            case $id in sign-* | noplain-* | journal-kind-*) echo "check-cases: case '$id' applies to every TPM mode and was skipped" >&2; bad=1 ;; esac
         fi
         if [ "$kind" = run ]; then
             case $id in tpmfail-*) case ${CHECK_TPM_MODE:-} in none | lacking) echo "check-cases: case '$id' runs only in swtpm and was reported run in mode ${CHECK_TPM_MODE}" >&2; bad=1 ;; esac ;; esac

@@ -272,6 +272,14 @@ if phase_runs tpmslots; then
 fi
 phase_done tpmslots
 
+# The journalkind cases (F144): the queries docs/audit.md gives for the storage kind, the purge entries and the failed signatures, run against the real journal and compared with the
+# entries the step caused. Old-format key files are placed for two owners and the service restarted (the purge); a record is damaged and the TPM or credential service made unavailable for
+# one signature each; everything is undone and the step's keys are deleted. After tpmslots and before the upgrade.
+if phase_runs journalkind; then
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/journalkind-run.sh || fail "journalkind-run.sh failed"
+fi
+phase_done journalkind
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then
