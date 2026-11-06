@@ -109,7 +109,7 @@ rm -f "$work"/*.key "$work"/*.p12
 phase_done import
 
 if [ "$mode" = oldpath ]; then
-    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
     systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old-path package"
     phase_done upgrade
     echo "e2e: all checks passed (upgrade from the old-path package)"
@@ -253,7 +253,7 @@ phase_done tpmclear
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then
-    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
+    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 fi
 phase_done upgrade
 

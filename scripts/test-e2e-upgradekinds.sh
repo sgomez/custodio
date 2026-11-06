@@ -266,6 +266,13 @@ sed 's/\[ -z "\$p" \] || {/true || {/' "$ROOT/e2e/upgrade-kinds.sh" > "$tmp/upgr
 if cmp -s "$tmp/upgrade-kinds.sh" "$ROOT/e2e/upgrade-kinds.sh"; then bad "the mutant of the judgement changed nothing"; fi
 if stops_on_bad swtpm "$tmp/upgrade-kinds.sh"; then bad "the mutant that leaves the judgement out is not caught"; fi
 
+# a judgement that crashes (here: python exits at once) stops the run and reports no case
+mkdir -p "$tmp/crash"
+cp "$ROOT/e2e/report.sh" "$ROOT/e2e/select.sh" "$ROOT/e2e/upgrade-kinds.sh" "$tmp/crash/"
+printf 'import sys\nsys.exit("crash")\n' > "$tmp/crash/upgradekinds.py"
+if runuk swtpm "$tmp/ev-swtpm" "$tmp/crash/upgrade-kinds.sh"; then bad "a crashed judgement did not stop the run"; fi
+grep -q '^E2E-CASE run' "$tmp/out" && bad "a crashed judgement still reported a case run"
+
 # --- upgrade.sh calls the step where each case needs it
 line() { grep -n -- "$1" "$ROOT/e2e/upgrade.sh" | head -n 1 | cut -d: -f1; }
 before() { # WHAT A B: line A is found and comes before line B

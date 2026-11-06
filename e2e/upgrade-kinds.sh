@@ -45,8 +45,14 @@ collect)
             || { cat "$K/$phase/$u.out" >&2; fail "$u: the kinds listing ($phase) failed"; }
     done
     ;;
-before) judged upgrade-kinds-before "$(uk listing "$mode" "$K/before")" ;;
-kept) judged upgrade-kinds-kept "$(uk kept "$mode" "$K/before" "$K/after")" ;;
+before)
+    p=$(uk listing "$mode" "$K/before") || fail "upgrade-kinds-before: the judgement did not run"
+    judged upgrade-kinds-before "$p"
+    ;;
+kept)
+    p=$(uk kept "$mode" "$K/before" "$K/after") || fail "upgrade-kinds-kept: the judgement did not run"
+    judged upgrade-kinds-kept "$p"
+    ;;
 cursor)
     journalctl --sync
     journalctl -n1 --show-cursor --no-pager | sed -n 's/^-- cursor: //p' > "$K/cursor"
@@ -63,8 +69,10 @@ signs)
         requests=$((requests + $(wc -l < "$log")))
     done
     read -r ua ub _ <<< "$(id -u alice) $(id -u bob)"
-    judged upgrade-kinds-signs "$(uk journal "$mode" "$K/journal.json" "$ua" "$ub" "$requests")
-$(uk kept "$mode" "$K/before" "$K/round")"
+    p=$(uk journal "$mode" "$K/journal.json" "$ua" "$ub" "$requests") || fail "upgrade-kinds-signs: the journal judgement did not run"
+    q=$(uk kept "$mode" "$K/before" "$K/round") || fail "upgrade-kinds-signs: the listing judgement did not run"
+    judged upgrade-kinds-signs "$p
+$q"
     ;;
 tpmbound)
     case_skip upgrade-kinds-tpmbound "the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); the kinds, owners and certificates surviving a store opened again over one state directory are covered by the custodiod integration test state_format reload (cargo test -p custodiod --test state_format reload), not an end-to-end proof"
