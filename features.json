@@ -384,7 +384,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'noplain-*' && E2E_TPM=none just e2e-cases debian13 'noplain-*' && E2E_TPM=lacking just e2e-cases debian13 'noplain-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F136",
