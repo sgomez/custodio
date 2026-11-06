@@ -242,6 +242,14 @@ if phase_runs tpmfail; then
 fi
 phase_done tpmfail
 
+# The tpmclear cases (F140): the service is pointed at a second swtpm (behind the filter in lacking), alice imports an RSA 2048 and a P-256 key and signs, root clears that TPM with tpm2_clear, and
+# signing fails with KeyLost (CKR_DEVICE_ERROR through the module) and a journal entry, the keys stay listed and can be deleted. Reported skipped in mode none (no TPM). The main TPM is never cleared;
+# the drop-in, the service and the second swtpm are put back at the end, and both keys are deleted. After tpmfail and before the upgrade.
+if phase_runs tpmclear; then
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmclear-run.sh || fail "tpmclear-run.sh failed"
+fi
+phase_done tpmclear
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then

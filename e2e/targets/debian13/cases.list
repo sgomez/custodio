@@ -51,3 +51,8 @@ tpmfail-device-unopenable
 tpmfail-tpm-error
 tpmfail-credentials-down-tpm-lacking
 tpmfail-credentials-down-host
+
+# F140: signing after the TPM is cleared (acceptance 8): it fails with KeyLost and a journal entry, the keys are still listed and can be deleted. Run in swtpm and lacking, skipped in none (no TPM to clear).
+tpm-clear-sign-fails
+tpm-clear-keys-listed
+tpm-clear-delete
