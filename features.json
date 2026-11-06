@@ -499,7 +499,7 @@
         "F137"
       ],
       "verify": "just quick && scripts/test-docs-manual-m4.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F146",
