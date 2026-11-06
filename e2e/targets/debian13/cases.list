@@ -56,3 +56,9 @@ tpmfail-credentials-down-host
 tpm-clear-sign-fails
 tpm-clear-keys-listed
 tpm-clear-delete
+
+# F141: the kind of the seeded keys before, after and in use around the N to N+1 upgrade (e2e/upgrade-kinds.sh); the kind depends on the TPM of the run, not on the distribution.
+upgrade-kinds-before
+upgrade-kinds-kept
+upgrade-kinds-signs
+upgrade-kinds-tpmbound

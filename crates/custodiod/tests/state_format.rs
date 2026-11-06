@@ -20,6 +20,8 @@ mod framing;
 mod legacy;
 #[path = "state_format/plaintext.rs"]
 mod plaintext;
+#[path = "state_format/reload.rs"]
+mod reload;
 #[path = "state_format/replace.rs"]
 mod replace;
 #[path = "state_format/rules.rs"]

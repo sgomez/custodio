@@ -5,6 +5,7 @@
 #   upgrade-accts-user.sh seed          (bob) imports rsa1 and bobonly, then replaces the certificate of rsa1 (D-Bus, owner-call.py)
 #   upgrade-accts-user.sh collect PHASE the list (custodio list) and the certificate of each listed id through the PKCS#11 module, into $ACC/PHASE
 #   upgrade-accts-user.sh sign          one signature with each listed key, one request each; then a denied one (agent denies)
+#   upgrade-accts-user.sh kinds PHASE   (F141) ListKeys (owner-call.py list) and `custodio list` into $ACC/kinds/PHASE/USER.api and USER.cli; no polkit call
 #   upgrade-accts-user.sh cleanup       (bob) deletes his keys, so the state is as it was before the seed
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
@@ -57,6 +58,11 @@ collect)
     custodio list > "$ACC/$phase/$user.list"
     for id in $(listed_ids); do read_cert "$id" "$ACC/$phase/$user-$id.der"; done
     ;;
+kinds)
+    phase=${2:?}
+    timeout 60 python3 -I /e2e/owner-call.py list > "$ACC/kinds/$phase/$user.api" || fail "$user: ListKeys gave no reply"
+    timeout 60 custodio list > "$ACC/kinds/$phase/$user.cli" || fail "$user: custodio list failed"
+    ;;
 sign)
     start_agent
     first=''
@@ -82,6 +88,6 @@ cleanup)
     for id in $(listed_ids); do python3 -I /e2e/delete.py "$id" > /dev/null || fail "bob: delete of $id failed"; done
     expect_requests 2
     ;;
-*) fail "usage: upgrade-accts-user.sh seed|collect PHASE|sign|cleanup" ;;
+*) fail "usage: upgrade-accts-user.sh seed|collect PHASE|kinds PHASE|sign|cleanup" ;;
 esac
 echo "upgrade-accts-user $user: $mode done"

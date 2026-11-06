@@ -42,6 +42,9 @@ judged() {
     [ -z "$out" ] || { printf '%s\n' "$out" >&2; fail "$what (see above)"; }
 }
 ACC=$WORK/upgrade-acct
+# The kinds part (F141, upgrade-kinds.sh): only in the N to N+1 run, on a target that lists the cases, and never with the stub tools of the tests of this script.
+kinds() { bash "$here/upgrade-kinds.sh" "$@"; }
+uk_on() { [ -z "${E2E_NO_ACCOUNTS:-}" ] && kinds enabled "$id"; }
 
 user_run() { su -l alice -c "WORK=$WORK MODULE=$MODULE bash /e2e/upgrade-user.sh $1"; }
 
@@ -62,6 +65,10 @@ id1=$(stat -L -c '%d:%i' "/proc/$pid1/exe")
 # Two accounts hold keys, and one certificate is replaced, with the old package, before the state is recorded and anything is installed.
 accts seed || fail "the seed of the two accounts failed"
 judged "the seeded accounts are not as expected" acct_seed_problems "$ACC"
+if uk_on; then
+    kinds collect before || fail "the kinds listing before the upgrade failed"
+    kinds before
+fi
 snapshot_state "$STATE_LINK" > "$WORK/state.before"
 user_run list > "$WORK/listing.before" || fail "the key listing before the upgrade failed"
 uid1=$(id -u custodio):$(id -g custodio)
@@ -102,13 +109,23 @@ case_run "$id-state-unchanged"
 user_run list > "$WORK/listing.after" || fail "the key listing after the upgrade failed"
 compare_listing "$WORK/listing.before" "$WORK/listing.after" || fail "the keys listed after the upgrade differ (see above)"
 accts collect || fail "the lists after the upgrade failed"
+if uk_on; then
+    kinds collect after || fail "the kinds listing after the upgrade failed"
+    kinds kept
+fi
 judged "the accounts do not list their own keys, or the certificates are wrong" acct_after_problems "$ACC"
 case_run "$id-keys-listed"
 
+if uk_on; then kinds cursor || fail "no journal cursor before the signing round"; fi
 user_run sign || fail "signing after the upgrade failed"
 accts sign || fail "the signatures of the two accounts failed"
 judged "alice's signatures are wrong" acct_sign_problems "$ACC" alice
 judged "bob's signatures are wrong" acct_sign_problems "$ACC" bob
+if uk_on; then
+    kinds collect round || fail "the kinds listing after the signing round failed"
+    kinds signs
+    kinds tpmbound
+fi
 accts cleanup || fail "bob's keys could not be deleted at the end of the case"
 case_run "$id-signs-with-polkit"
 # END upgrade-case
