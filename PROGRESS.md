@@ -552,3 +552,6 @@ with an empty context.
 - `e2e/run.sh` refuses to start below 32 per run at once + 64 (`E2E_INOTIFY_LIMIT_FILE` overrides the path; the stub fixtures point it at a large value); controls in `scripts/test-e2e-jobs-host.sh`. `e2e/lifecycle.sh` prints the bus journal for dnf5's `>>> Job for ... failed` too. The pty resend of fe681c4 is reverted (wrong hypothesis); its transcript on failure stays.
 - `test-e2e-jobs-host`, `-host`, `-select-host`, `-tpm-host`, `-host-oldpath`, `-m3` pass. `just quick` in the person's host shell fails only in `custodiod --test creds` (`Unavailable`), the same on HEAD without these changes (host environment, not the harness container).
 - Next: `rm -f .harness/state/F146.attempts && just harness run`.
+
+### 2026-11-06 — F146 — attempt 4 (session 1)
+- NEXT_FINDINGS.md was the failure from before the host's `fs.inotify.max_user_instances` went from 128 to 1024 (fedora44 `removal-not-activatable`, dbus-broker `Job ... failed`; cause in `docs/findings/F146.md`). No code change. With the limit at 1024: `just quick` exit 0; whole parallel `just e2e` from a cleared `target/e2e/` exit 0, all seven runs passed (six swtpm, debian13 none), 160 cases accounted for debian13, wall 681 s for 7 runs.
