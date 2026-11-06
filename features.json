@@ -461,7 +461,7 @@
         "F131"
       ],
       "verify": "just quick && just e2e-cases debian13 'upgrade-m3-*' && just e2e-cases fedora44 'upgrade-m3-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F143",
