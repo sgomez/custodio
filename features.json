@@ -417,7 +417,7 @@
         "F131"
       ],
       "verify": "just quick && E2E_TPM=none just e2e-cases debian13 'fallback-*' && E2E_TPM=lacking just e2e-cases debian13 'fallback-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F139",
