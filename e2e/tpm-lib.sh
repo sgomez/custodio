@@ -61,6 +61,25 @@ tpm_swtpm_stop() {
     tpm_fail "swtpm did not stop"
 }
 
+# tpm_swtpm_restart MODE (F137): the TPM of the run goes down and comes back on the same state directory (the seeds persist, `startup-clear` resets the PCRs). swtpm is stopped over
+# its control socket and the state directory must be free of any process before it starts again, so that the new one cannot race with the one still exiting. In lacking the
+# filter (which removes stale sockets itself) is stopped before and started again after the real swtpm. Mode none has no TPM and is refused.
+tpm_swtpm_restart() {
+    local mode=$1 sock
+    case $mode in
+    swtpm) sock=$TPM_SOCK ;;
+    lacking) sock=$TPM_UPSTREAM; tpm_filter_stop; for _ in $(seq 50); do pgrep -f "$TPM_FILTER" > /dev/null || break; sleep 0.1; done ;;
+    *) tpm_fail "no TPM to restart in mode '$mode'"; return 1 ;;
+    esac
+    [ -S "$sock.ctrl" ] || { tpm_fail "no control socket $sock.ctrl"; return 1; }
+    swtpm_ioctl --unix "$sock.ctrl" -s > /dev/null 2>&1 || { tpm_fail "swtpm_ioctl -s failed"; return 1; }
+    for _ in $(seq 100); do pgrep -f "dir=$TPM_STATE" > /dev/null || break; sleep 0.1; done
+    ! pgrep -f "dir=$TPM_STATE" > /dev/null || { tpm_fail "swtpm still holds $TPM_STATE"; return 1; }
+    rm -f "$sock" "$sock.ctrl"
+    tpm_swtpm_start "$sock" || return 1
+    if [ "$mode" = lacking ]; then tpm_filter_start || return 1; fi
+}
+
 # tpm_setup MODE: before the service starts. The directory exists in every mode: the unit binds it, and a missing source would stop the unit.
 tpm_setup() {
     local mode=$1

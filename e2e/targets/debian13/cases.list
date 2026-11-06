@@ -32,3 +32,8 @@ noplain-no-key-file
 tpm-dup-authpolicy-empty
 tpm-dup-duplicate-fails
 tpm-dup-other-tpm
+
+# F137: every TPM and TPM-bound key still signs after PCRs are extended and the TPM and the service restarted; skipped in none (no TPM), run in swtpm and lacking.
+pcr-extended-signs
+pcr-restarted-signs
+pcr-signs-every-key

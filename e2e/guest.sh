@@ -220,6 +220,13 @@ if phase_runs tpmdup; then
 fi
 phase_done tpmdup
 
+# The PCR cases (F137): alice imports an RSA 2048 and a P-256 key; root extends PCRs 7, 0 and 11 on the service's TPM, restarts the TPM and the service, and every key still signs. Reported
+# skipped in mode none (no TPM). It restarts the service in the middle of the run: the steps below read the main pid fresh. Both keys are deleted.
+if phase_runs pcr; then
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/pcr-run.sh || fail "pcr-run.sh failed"
+fi
+phase_done pcr
+
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then
