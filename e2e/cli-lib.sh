@@ -104,7 +104,7 @@ cli_agent_outcome_problems() {
     case $2 in
     complete) grep -qF '==== AUTHENTICATION COMPLETE ====' "$1" || echo "$1: pkttyagent did not complete the authentication" ;;
     failed)
-        grep -qF '==== AUTHENTICATION FAILED ====' "$1" || echo "$1: pkttyagent did not report a failed authentication"
+        grep -qF '==== AUTHENTICATION FAILED ====' "$1" || echo "$1: pkttyagent did not report a failed authentication; its last output: $(tail -c 300 "$1" | tr -c '[:print:]' ' ')"
         ! grep -qF '==== AUTHENTICATION COMPLETE ====' "$1" || echo "$1: pkttyagent completed the authentication" ;;
     esac
 }
