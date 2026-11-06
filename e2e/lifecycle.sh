@@ -58,7 +58,7 @@ cycle() {
     bash "$tool" > "$WORK/$kind.out" 2>&1 || { tail -n 20 "$WORK/$kind.out" >&2; fail "$tool failed"; }
     sed "s/^/e2e: $kind output: /" "$WORK/$kind.out" | tail -n 25
     # a failed job in the tool's hooks (the bus reload) is explained by the journal of the unit it names
-    if grep -q '^Job for .* failed' "$WORK/$kind.out"; then
+    if grep -q 'Job for .* failed' "$WORK/$kind.out"; then # dnf5 prefixes the scriptlet output with ">>> "
         journalctl --no-pager -n 30 -u dbus-broker.service -u dbus.service 2>&1 | sed "s/^/e2e: $kind bus journal: /" || true
     fi
     status=$(db_status "$fmt")

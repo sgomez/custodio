@@ -70,17 +70,8 @@ def main():
         log.write(f"missing\t{arg}\t{count()}\n")
         break
     end = time.time() + 60
-    resent = 0
     while status != 124:
-        # Under load the answer to a repeated prompt can be lost (the terminal flushes input when the agent switches echo off), so a prompt left
-        # unanswered for 15 s is answered again (at most 3 times); the repeat text is a wrong password, so a second answer proves nothing false.
-        chunk = pump(min(end, time.time() + 15) if repeat else end)
-        if chunk is None and repeat and time.time() < end and resent < 3 and repeat[0].search(bytes(out[max(0, len(out) - 200):])):
-            resent += 1
-            log.write(f"resend\t{repeat[0].pattern.decode()}\t{count()}\n")
-            log.flush()
-            os.write(fd, repeat[1])
-            continue
+        chunk = pump(end)
         if chunk is None:
             status = 124
             break

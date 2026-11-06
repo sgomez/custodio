@@ -231,6 +231,15 @@ run_target() { # run_target TARGET MODE
 half=$(( $(nproc) / 2 ))
 jobs=${E2E_JOBS-$(( half > 0 ? half : 1 ))}
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || { echo "e2e: E2E_JOBS='$jobs' is not a positive number" >&2; exit 1; }
+# Every container takes inotify instances from one per-user limit of the host (~12 measured for fedora44). A bus reload that gets
+# none keeps the old configuration (dbus-broker: dirwatch_new: Too many open files), so cases failed at random in parallel runs (F146).
+at_once=$(( jobs < ${#pairs[@]} ? jobs : ${#pairs[@]} ))
+need=$(( at_once * 32 + 64 ))
+limit=$(cat "${E2E_INOTIFY_LIMIT_FILE:-/proc/sys/fs/inotify/max_user_instances}" 2> /dev/null) || limit=unreadable
+if ! [[ $limit =~ ^[0-9]+$ ]] || (( limit < need )); then
+    echo "e2e: fs.inotify.max_user_instances is $limit; $at_once runs at once need $need (32 each, 64 for the host). Raise it (sysctl fs.inotify.max_user_instances=1024) or lower E2E_JOBS" >&2
+    exit 1
+fi
 (( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 501 )) || { echo "e2e: needs bash 5.1 or later (wait -p)" >&2; exit 1; }
 work=$out_dir/runs
 rm -rf "$work" && mkdir -p "$work"

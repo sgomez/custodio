@@ -27,6 +27,9 @@ export E2E_PACKAGES_OLDPATH=$tmp/oldpath
 # the M3 build (F142): all three formats, a lower version
 for f in deb rpm archlinux; do cp "$(fx_file m3 "$f")" "$tmp/m3/"; done
 export E2E_PACKAGES_M3=$tmp/m3
+# no container starts, so the host's inotify limit is not what the stub runs are about
+echo 1000000 > "$tmp/inotify-limit"
+export E2E_INOTIFY_LIMIT_FILE=$tmp/inotify-limit
 cat > "$tmp/bin/podman" <<'STUB'
 #!/usr/bin/env bash
 # Logs the arguments; `exec ... guest.sh` prints what the fake guest would, from STUB_* variables.

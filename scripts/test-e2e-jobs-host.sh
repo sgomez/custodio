@@ -56,4 +56,23 @@ for v in 0 -1 x 1.5 '' ' 2'; do
     grep -Eq '^(build|run|exec) ' "$tmp/log" && bad "E2E_JOBS='$v': the engine ran"
 done
 
+# the host's inotify instance limit: 32 per run at once plus 64; runs at once are at most the pairs (4 here)
+lim() { echo "$1" > "$tmp/inotify"; }
+check_lim() { # LIMIT JOBS EXPECT(pass|refuse)
+    lim "$1"
+    if E2E_INOTIFY_LIMIT_FILE=$tmp/inotify E2E_JOBS=$2 run_all; then r=pass; else r=refuse; fi
+    [ "$r" = "$3" ] || bad "inotify limit $1, E2E_JOBS=$2: $r, expected $3: $(tail -n 2 "$tmp/out")"
+    if [ "$3" = refuse ]; then
+        grep -q "fs.inotify.max_user_instances is $1" "$tmp/out" || bad "inotify limit $1: not named: $(tail -n 2 "$tmp/out")"
+        if grep -Eq '^(build|run|exec) ' "$tmp/log"; then bad "inotify limit $1: the engine ran"; fi
+    fi
+}
+check_lim 127 2 refuse
+check_lim 128 2 pass
+check_lim 191 4 refuse
+check_lim 192 9 pass
+if E2E_INOTIFY_LIMIT_FILE=$tmp/none E2E_JOBS=1 run_all; then bad "an unreadable inotify limit was accepted"; fi
+lim x
+if E2E_INOTIFY_LIMIT_FILE=$tmp/inotify E2E_JOBS=1 run_all; then bad "a non-numeric inotify limit was accepted"; fi
+
 exit "$fail"
