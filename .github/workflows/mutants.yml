@@ -1,6 +1,6 @@
 name: Mutants
 
-# Every mutant, in four shards, weekly and on each release tag. ci.yml only runs the ones on changed lines, so this catches a
+# Every mutant, in 16 round-robin shards, weekly and on each release tag. ci.yml only runs the ones on changed lines, so this catches a
 # mutant that a test change let survive.
 on:
   push:
@@ -16,13 +16,14 @@ env:
 
 jobs:
   full:
-    name: full (${{ matrix.shard }}/4)
+    name: full (${{ matrix.shard }}/16)
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    # About 90 mutants a shard (1,400 in all); 30 minutes cut four shards short.
+    timeout-minutes: 120
     permissions:
       contents: read
     steps:
@@ -39,8 +40,9 @@ jobs:
           tool: just@1.59.0,cargo-mutants@27.1.0,cargo-nextest@0.9.148
       - env:
           SHARD: ${{ matrix.shard }}
-        run: just mutants --in-place --shard "$SHARD/4"
-      - if: failure()
+        run: just mutants --in-place --shard "$SHARD/16" --sharding round-robin
+      # A shard past its timeout keeps what it tested.
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutants-${{ matrix.shard }}
@@ -50,10 +52,10 @@ jobs:
             target/mutants-pkcs11/mutants.out/*.txt
             target/mutants-pkcs11/mutants.out/outcomes.json
 
-  # One open issue collects every failing run, a comment each.
+  # One open issue collects every failing or unfinished run, a comment each.
   report:
     needs: [full]
-    if: always() && contains(needs.*.result, 'failure')
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
@@ -68,6 +70,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SHA: ${{ github.sha }}
+          UNFINISHED: ${{ contains(needs.*.result, 'cancelled') }}
         run: |
           # A failing unmutated tree tests no mutant: that is its own issue, not a missed mutant.
           broken=$(find mutants -name outcomes.json -exec jq -r \
@@ -81,6 +84,10 @@ jobs:
             title="Missed mutants"
             intro="Mutants the tests did not catch:"
             list=$(find mutants -name missed.txt -exec cat {} + 2>/dev/null || true)
+          fi
+          if [ -z "$broken" ] && [ -z "$list" ] && [ "$UNFINISHED" = true ]; then
+            title="Mutants sweep unfinished"
+            intro="A shard ran past its timeout or was cancelled; raise the shard count if it was the timeout."
           fi
           {
             echo "Full sweep on \`$SHA\`: $RUN_URL"

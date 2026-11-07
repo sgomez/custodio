@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fails unless harness/Containerfile and every job of ci.yml and mutants.yml that builds or tests the workspace install the TPM
+# Fails unless harness/Containerfile and every job of the workflows that builds or tests the workspace install the TPM
 # packages (F104), each install preceded by a comment that mentions the TPM. Usage: check-tpm-install-sync.sh [ROOT]
 # ROOT holds harness/Containerfile and .github/workflows/ (default: this repository).
 set -euo pipefail
@@ -10,7 +10,9 @@ PACKAGES=(swtpm swtpm-tools tpm2-tools libtss2-dev)
 EXEMPT=(
     "ci.yml:commits"  # commitlint only (node)
     "ci.yml:ci"       # aggregator of the other jobs' results
+    "ci.yml:signoff"  # reads a commit status
     "mutants.yml:report" # files a GitHub issue from the artifacts
+    "e2e.yml:result"  # aggregator of the e2e results
 )
 fail=0
 bad() { echo "check-tpm-install-sync: $*" >&2; fail=1; }
@@ -59,7 +61,7 @@ if [ -f "$cf" ]; then
 fi
 
 declare -A seen=()
-for wf in ci.yml mutants.yml; do
+for wf in ci.yml e2e.yml mutants.yml mutants-diff.yml; do
     f=$ROOT/.github/workflows/$wf
     [ -f "$f" ] || { bad "missing $f"; continue; }
     ids=$(awk '/^jobs:/ { j = 1; next } j && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { sub(/^  /, ""); sub(/:.*/, ""); print }' "$f")

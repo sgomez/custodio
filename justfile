@@ -51,7 +51,7 @@ deps-check:
     scripts/deps_check.py
 
 # Lints of the fuzz workspace, and the `fuzzing` feature refusing to build in release. Each compiles the dependencies in
-# another configuration, so they run with the nightly checks, not in `check`.
+# another configuration, so they run with the memory-safety checks, not in `check`.
 lint-fuzz:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -331,6 +331,46 @@ mutants-diff id *args:
     # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
     just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
 
+# Gates: `ci` (ci.yml's jobs but commitlint, in the dev container), `mutants` (the mutants diff against main). Instead
+# of `git push`: nothing is pushed or signed unless every gate passes on HEAD. E.g. `just signoff ci mutants`.
+# Runs CI checks locally on HEAD, then pushes it and signs it off (gh-signoff); CI skips them.
+[positional-arguments]
+signoff +gates:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    clean() { [ -z "$(git status --porcelain)" ]; }
+    clean || { echo "signoff: commit or remove every change first; the signoff is for HEAD" >&2; exit 1; }
+    gh signoff --help >/dev/null 2>&1 || { echo "signoff: needs gh extension install basecamp/gh-signoff" >&2; exit 1; }
+    sha=$(git rev-parse HEAD)
+    git fetch -q origin main
+    in_box() { if [ -e /run/.containerenv ]; then just "$@"; else harness/run.sh just "$@"; fi; }
+    workflows=()
+    for gate in "$@"; do
+        case $gate in
+            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling package-lint \
+                    coverage-gate memory-safety
+                workflows+=(ci.yml) ;;
+            mutants) mkdir -p target
+                git diff "$(git merge-base origin/main HEAD)" HEAD > target/signoff.diff
+                in_box mutants --in-diff target/signoff.diff --jobs 3
+                workflows+=(mutants-diff.yml) ;;
+            *) echo "signoff: unknown gate $gate: ci or mutants" >&2; exit 1 ;;
+        esac
+    done
+    if [ "$(git rev-parse HEAD)" != "$sha" ] || ! clean; then
+        echo "signoff: HEAD or the tree changed during the run" >&2; exit 1
+    fi
+    git push -q -u origin HEAD
+    gh signoff "$@"
+    # A PR's runs started at the push, before the signoff: re-run them so they skip the signed-off checks.
+    sleep 10
+    for wf in "${workflows[@]}"; do
+        run=$(gh run list -w "$wf" -c "$sha" -L 1 --json databaseId -q '.[0].databaseId // empty')
+        [ -n "$run" ] || continue
+        gh run cancel "$run" >/dev/null 2>&1 && gh run watch "$run" >/dev/null 2>&1 || true
+        gh run rerun "$run"
+    done
+
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
 coverage:
@@ -418,12 +458,12 @@ e2e-packages: package
 e2e-cases target +names: e2e-packages
     bash e2e/run.sh {{target}} --cases {{quote(names)}}
 
-# Slow checks (later features add to it): everything in `check`, the nightly checks, mutation testing, coverage with the CRAP
+# Slow checks (later features add to it): everything in `check`, the memory-safety checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.
-check-slow: check nightly mutants coverage-gate package-gates
+check-slow: check memory-safety mutants coverage-gate package-gates
 
-# Miri, ASan, the fuzz targets building and their lints.
-nightly: miri asan fuzz-build lint-fuzz
+# Miri, ASan, the fuzz targets building and their lints (on the nightly toolchain).
+memory-safety: miri asan fuzz-build lint-fuzz
 
 # Coverage of every test (unit and integration) and the CRAP gate on it.
 coverage-gate: coverage crap
@@ -497,6 +537,6 @@ milestone action="list" *args:
 harness action="run" *args:
     harness/harness.sh "$@"
 
-# Next version from the commits (git-cliff), CHANGELOG.md, release commit, tag and push.
+# Release of the closed milestone, from its branch: CHANGELOG.md, check-slow, signoffs, PR, merge and version tag.
 release:
     harness/release.sh

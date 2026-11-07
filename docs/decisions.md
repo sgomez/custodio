@@ -111,13 +111,14 @@ Format: a title and three short bullets, a couple of lines each:
   user's subject otherwise; reloads fail in a chroot.
 - Rejected: relaxing the store's symlink check; running as root (SPEC forbids).
 
-## 2026-10-28 — CI
-- Decision: one required `ci` check; actions pinned by SHA, tools to `mise.toml`; jobs by build
-  family with caches keyed on toolchain and lockfiles; PRs run lint, test and mutants on the diff,
-  main adds coverage and nightly, a weekly job sweeps every mutant. No pre-push hook.
-- Why: one serial job took 20 minutes; floating versions and caches broke CI with no change here.
-- Rejected: a job per recipe (same artifacts rebuilt); every mutant on every push; `check-slow`
-  before each push.
+## 2026-11-07 — CI
+- Decision: required checks `ci`, `e2e`, `just mutants (diff)`, one workflow each; actions pinned
+  by SHA, tools to `mise.toml`; every PR runs all of them, a weekly job sweeps every mutant.
+  `just signoff ci|mutants` runs a check locally, pushes and signs off (gh-signoff): CI skips it.
+  A milestone PR must be signed off by `just release` (after `check-slow`); e2e still runs.
+- Why: a milestone's mutants diff (882) passed the 30-minute timeout; e2e alone found a product bug
+  that local runs did not; coverage and memory-safety after the merge were no gate.
+- Rejected: a skip label (no proof anything ran); sharding a milestone's diff; tagging before CI.
 
 ## 2026-10-28 — Truncation of SHA-384/512 digests for P-256 happens in the service
 - Decision: the module passes the full digest for `CKM_ECDSA_SHA384/512`; the service's

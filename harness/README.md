@@ -17,7 +17,7 @@ only a person can check.
 |---|---|
 | `just status` | Where things are and what to run next |
 | `just log` | Follow the agent session running in the dev container |
-| `just release` | Changelog, version tag and push |
+| `just release` | From the closed milestone's branch: changelog, `just check-slow`, signoff, PR, merge, version tag |
 | **Milestone** | |
 | `just milestone list` | Milestones, closed and open |
 | `just milestone open` / `close` | Start a milestone, finish it |
@@ -44,7 +44,9 @@ only a person can check.
 7. Check by hand the features marked `manual`, then `just milestone pass <id>` for each.
 8. Review `SPEC_DEVIATIONS.md`: for each entry, update `SPEC.md` and set `Status: accepted`, or set
    `rejected` and say what to build instead. `just milestone close` refuses while any is not accepted.
-9. `just release` (runs `just check-slow` first, in the dev container), then `just milestone close`.
+9. `just milestone close`, then `just release` on the milestone branch (needs `gh extension install basecamp/gh-signoff`).
+   It runs `just check-slow` in the dev container, signs off the commit (CI requires it on a milestone PR),
+   opens the PR, waits for CI, merges it and tags the merge. After a failure, fix, commit and run it again.
 
 ## When it stops
 

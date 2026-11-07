@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# F131: .github/workflows/ci.yml has an e2e job for every target of e2e/targets/ with swtpm, and with none for exactly the targets with a tpm-none marker (as
+# F131: .github/workflows/e2e.yml has an e2e job for every target of e2e/targets/ with swtpm, and with none for exactly the targets with a tpm-none marker (as
 # `just e2e`); each runs `just e2e <target>` with E2E_TPM set to
-# its mode, cannot pass without the run (no continue-on-error, no `|| true`, no exit 0, no echo-only step), and the `ci` job needs it. Controls: copies of the
+# its mode, cannot pass without the run (no continue-on-error, no `|| true`, no exit 0, no echo-only step), and its `result` job (the required `e2e` check) needs it. Controls: copies of the
 # workflow without the `none` job, with `none` on every target, with a green fallback, or without the `needs` entry are refused.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-CI=${CI_WORKFLOW:-$ROOT/.github/workflows/ci.yml}
+CI=${CI_WORKFLOW:-$ROOT/.github/workflows/e2e.yml}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
@@ -71,10 +71,10 @@ for (t, m), name in seen.items():
     if t not in targets:
         print(f"{name}: runs the unknown target {t}")
 e2e_jobs = [n for n in jobs if n.startswith("e2e")]
-needs = jobs.get("ci", {}).get("needs", [])
+needs = jobs.get("result", {}).get("needs", [])
 for n in e2e_jobs:
     if n not in needs:
-        print(f"the ci job does not need {n}")
+        print(f"the result job does not need {n}")
 if not e2e_jobs:
     print("no e2e job")
 for n in e2e_jobs:
@@ -83,7 +83,7 @@ for n in e2e_jobs:
 PY
 }
 p=$(problems "$CI")
-[ -z "$p" ] || bad "ci.yml: $p"
+[ -z "$p" ] || bad "e2e.yml: $p"
 
 # controls
 python3 -I - "$CI" "$tmp" << 'PY'
@@ -116,7 +116,7 @@ for n, j in w["jobs"].items():
                 st["run"] = "echo 'no privileged container on this runner'\njust e2e \"$TARGET\" || true"
 save("echo", w)
 w = copy.deepcopy(wf)
-w["jobs"]["ci"]["needs"] = [n for n in w["jobs"]["ci"]["needs"] if not n.startswith("e2e")]
+w["jobs"]["result"]["needs"] = [n for n in w["jobs"]["result"]["needs"] if not n.startswith("e2e")]
 save("not-needed", w)
 w = copy.deepcopy(wf)
 for n, j in w["jobs"].items():
