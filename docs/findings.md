@@ -82,3 +82,4 @@ Rules:
 - [F146](findings/F146.md) — parallel e2e flakes: the host's inotify instance limit (128) runs out with 6 containers; bus reloads fail, names stay activatable; run.sh needs 32 per run + 64
 - [F147](findings/F147.md) — M4 acceptance 13 (AMD fTPM, ubuntu2604): both keys `tpm`, not duplicable, sign after reboot, upgrade and a PCR 7 extension (no `dbx` offered); Ubuntu's Firefox needs `modutil`.
 - [F148](findings/F148.md) — M4 acceptance 14 (VM without a TPM, xubuntu2604): pass; import and list print the `encrypted-host` weaker notice word for word; after a reboot LibreOffice signs with a polkit dialog.
+- [F149](findings/F149.md) — M4 acceptance 15 (TPM host and xubuntu2604): pass; a root copy of the state directory holds no private key; M0–M2 top-level key files are not purged by F121 (removed by hand).
