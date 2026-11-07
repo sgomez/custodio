@@ -69,6 +69,8 @@ if ai.slice_path("/sys/fs/cgroup", "/abc123/system.slice/custodio.service", 1000
     bad("slice_path in a container is wrong")
 if ai.slice_path("/sys/fs/cgroup", "/system.slice/custodio.service", 7) != "/sys/fs/cgroup/user.slice/user-7.slice/user@7.service/app.slice":
     bad("slice_path on a host is wrong")
+if ai.slice_path("/sys/fs/cgroup", "/system.slice/docker-ab.scope/system.slice/custodio.service", 7) != "/sys/fs/cgroup/system.slice/docker-ab.scope/user.slice/user-7.slice/user@7.service/app.slice":
+    bad("slice_path in a docker container with the host's cgroup namespace is wrong")
 try:
     ai.slice_path("/sys/fs/cgroup", "/abc/custodio.service", 1)
     bad("slice_path accepts a control group without system.slice")
