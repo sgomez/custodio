@@ -573,3 +573,6 @@ with an empty context.
 
 ### 2026-11-07 — F147 — manual run (with a person)
 - Acceptance 13 run on an AMD fTPM (ubuntu2604); result per event in `docs/findings/F147.md`. Import and the duplicate check pass; both keys sign after reboot, upgrade (`0.1.0-1 -> 0.1.1~rc.1-1`) and a PCR 7 extension (fwupd offered no `dbx`). Not run: LibreOffice `rsa2048` after the upgrade; Firefox `rsa2048` and LibreOffice `p256` after the PCR 7 change. F109's `DeviceAllow=` need is now verified. Ubuntu's Firefox needs `modutil` registration.
+
+### 2026-11-07 — F148 — manual run (agent on the person's behalf)
+- Acceptance 14 run in the lab VM `xubuntu2604` (no TPM): import and list show `encrypted-host` with the weaker notice word for word; after a reboot the key is listed and LibreOffice signs with a polkit dialog. Result in `docs/findings/F148.md`. Firefox not tried (snap).
