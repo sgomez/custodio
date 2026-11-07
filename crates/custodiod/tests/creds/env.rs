@@ -62,6 +62,9 @@ fn real_file_system() -> TestResult<PathBuf> {
 /// The daemon and the directories around it.
 pub struct Daemon {
     pub dir: TempDir,
+    /// The socket's own directory, under the temporary directory: the other uids of the namespace must
+    /// reach it, and the path to the build directory may not let them (`/home/runner` is `0750` in CI).
+    _sock_dir: TempDir,
     pub socket: PathBuf,
     pub lib: PathBuf,
     child: Child,
@@ -84,7 +87,11 @@ impl Daemon {
             .tempdir_in(real_file_system()?)?;
         let lib = dir.path().join("lib");
         fs::create_dir(&lib)?;
-        let socket = dir.path().join("sock");
+        let sock_dir = tempfile::Builder::new()
+            .prefix("custodio-creds-sock.")
+            .tempdir()?;
+        fs::set_permissions(sock_dir.path(), fs::Permissions::from_mode(0o755))?;
+        let socket = sock_dir.path().join("sock");
         let log = fs::File::create(dir.path().join("daemon.log"))?;
         let child = Command::new("unshare")
             .args(NAMESPACE)
@@ -98,6 +105,7 @@ impl Daemon {
             .map_err(|e| format!("cannot run `unshare` (util-linux): {e}"))?;
         let mut daemon = Self {
             dir,
+            _sock_dir: sock_dir,
             socket,
             lib,
             child,
