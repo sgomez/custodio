@@ -1,10 +1,8 @@
 name: Mutants
 
-# Every mutant, in 16 round-robin shards, weekly and on each release tag. ci.yml only runs the ones on changed lines, so this catches a
-# mutant that a test change let survive.
+# Every mutant, in 16 round-robin shards, weekly. mutants-diff.yml only runs the ones on changed lines, so this catches a
+# mutant that a test change let survive. Not on a release tag: `just release` ran every mutant locally and signed it off.
 on:
-  push:
-    tags: ['v*']
   schedule:
     - cron: '0 3 * * 6'
   workflow_dispatch:
@@ -19,6 +17,8 @@ jobs:
     name: full (${{ matrix.shard }}/16)
     strategy:
       fail-fast: false
+      # Half the shards at a time, so a sweep leaves runners for the PRs.
+      max-parallel: 8
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     runs-on: ubuntu-26.04
@@ -34,13 +34,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
       # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      # No rust-cache: a tag-triggered workflow restoring a cache is a cache-poisoning path, and this runs rarely.
+      # No rust-cache: a full sweep runs rarely and builds once per shard.
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: just@1.59.0,cargo-mutants@27.1.0,cargo-nextest@0.9.148
       - env:
           SHARD: ${{ matrix.shard }}
-        run: just mutants --in-place --shard "$SHARD/16" --sharding round-robin
+        # --caught --unviable: a line per mutant, to follow the progress in the log.
+        run: just mutants --in-place --shard "$SHARD/16" --sharding round-robin --caught --unviable
       # A shard past its timeout keeps what it tested.
       - if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
