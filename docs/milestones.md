@@ -21,7 +21,7 @@ Make Custodio work with clients as they are, instead of clients adapting to it.
 
 ## M2 — Packaging and distributions (done)
 
-Build and test the packages; publishing them waits for M5.
+Build and test the packages; publishing them waits for M6.
 
 - Supported: the versions whose bus has `ProcessFD` and that their distribution still maintains.
   Debian 13, Ubuntu 26.04, Fedora 44, RHEL/Alma 10 and Arch. Out: Debian 12, Ubuntu 22.04, RHEL 9
@@ -44,7 +44,7 @@ Build and test the packages; publishing them waits for M5.
 
 ## M3 — Client API (done)
 
-What any client needs from the service, rFirma included. The rFirma side waits for M5.
+What any client needs from the service, rFirma included. The rFirma side waits for M6.
 
 - Import asks polkit, as signing does. Today any process of any uid can import.
 - Each key belongs to the uid that imported it; listing and signing only see the caller's keys.
@@ -69,10 +69,10 @@ What any client needs from the service, rFirma included. The rFirma side waits f
   that stops loading cannot be imported again without the `.p12`. No PIN either: polkit is already
   the barrier, and against a stolen machine full-disk encryption does the same at no cost.
 
-## M4.1 — The encrypted fallback on real machines
+## M5 — The encrypted fallback on real machines
 
 M4's encrypted fallback was proven only in containers and with stand-ins for `systemd-creds`
-(`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Before M5:
+(`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Before M6:
 
 - An end-to-end target on a VM with a virtual TPM, where systemd sees a real TPM: the `lacking` mode
   produces `encrypted-tpm`, and the cases of F134, F135, F137, F138, F140 and F141 run with it, RSA-PSS
@@ -82,7 +82,7 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
 - Ubuntu 24.04 without a TPM: import fails, since systemd 255 gives a non-root service no host-bound
   credential. Fix it or document it as a limitation.
 
-## M5 — Public release
+## M6 — Public release
 
 - Written threat model and security policy (`SECURITY.md`, how to report a vulnerability). The
   threat model says that without full-disk encryption whoever takes the machine can use the keys,

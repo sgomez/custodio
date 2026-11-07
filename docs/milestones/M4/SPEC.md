@@ -183,7 +183,7 @@ never silently dropped or changed for a TPM key.
   Deviation (`SPEC_DEVIATIONS.md`, F110): on systemd 257 (Debian 13, Alma 10) the service cannot
   choose the PCRs, so it refuses any credential bound to a PCR, and the TPM-bound kind is not
   available there; on systemd 255 (Ubuntu 24.04) there is no host-bound kind, so import fails
-  without a TPM. Follow-up in M4.1.
+  without a TPM. Follow-up in M5.
 - The encrypted file is the only form on disk. To sign, the service decrypts the key into
   `secrecy`/`zeroize` memory for that one signature and drops it afterwards; it keeps no decrypted
   key between calls.
@@ -258,7 +258,7 @@ M4 adds, all blocking:
   profile that disables an algorithm, or a documented replacement if the installed `swtpm` cannot).
   Deviation (`SPEC_DEVIATIONS.md`, F134): in the containers systemd never seals to a TPM, so the
   TPM-bound kind runs only in integration tests with a stand-in for `systemd-creds`, not end to
-  end. Follow-up in M4.1.
+  end. Follow-up in M5.
 - **No-plaintext check.** After each import, under every kind, a test searches the whole state
   directory for the private key in every encoding the test can produce (raw scalar or primes,
   PKCS#1, PKCS#8, SEC1, the `.p12` itself) and fails on any match.
