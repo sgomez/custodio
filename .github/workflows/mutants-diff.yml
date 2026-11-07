@@ -1,0 +1,104 @@
+name: Mutants diff
+
+# Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week. Its own workflow, so a
+# re-run (`just signoff` does one) is this job alone. A required status check of main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# A newer push cancels the older run, on main too: the newest commit contains the older ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  mutants:
+    name: just mutants (diff)
+    # The merge of a PR: the PR ran it already.
+    if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request ') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    permissions:
+      contents: read
+      statuses: read
+    steps:
+      # A PR whose head commit is signed off (`gh signoff mutants`, by `just signoff` or `just release`) does not
+      # run it again; only someone with write access can sign off. A milestone PR (a milestone/ branch of this
+      # repository; a fork's head repo differs) must be: `just release` ran every mutant, past this timeout.
+      - id: signoff
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          MILESTONE: >-
+            ${{ startsWith(github.head_ref, 'milestone/') &&
+            github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          signed() {
+            [ "$(gh api "repos/$REPO/commits/$SHA/status" \
+              --jq '[.statuses[] | select(.context == "signoff/mutants")][0].state // ""')" = success ]
+          }
+          # `just release` signs off after its push: give it a few minutes.
+          tries=1
+          [ "$MILESTONE" = true ] && tries=20
+          for _ in $(seq "$tries"); do
+            if signed; then echo "signed off: skipped"; echo signed=true >> "$GITHUB_OUTPUT"; exit 0; fi
+            [ "$tries" = 1 ] || sleep 15
+          done
+          if [ "$MILESTONE" = true ]; then
+            echo "::error::$SHA has no signoff/mutants: run just release on the milestone branch"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.signoff.outputs.signed != 'true'
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+        if: steps.signoff.outputs.signed != 'true'
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+        if: steps.signoff.outputs.signed != 'true'
+      # The test job's cache holds the same test build; saving one here would freeze whatever the first diff compiled.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.signoff.outputs.signed != 'true'
+        with:
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
+          add-rust-environment-hash-key: false
+          shared-key: test-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
+          save-if: false
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        if: steps.signoff.outputs.signed != 'true'
+        with:
+          tool: just@1.59.0,cargo-mutants@27.1.0,cargo-nextest@0.9.148
+      - if: steps.signoff.outputs.signed != 'true'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A new branch (all-zero `before`) or a force push leaves no usable base: diff the last commit.
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            base=$(git merge-base "$BASE" HEAD)
+          else
+            base=HEAD^
+          fi
+          git diff "$base" HEAD > "$RUNNER_TEMP/changes.diff"
+          just mutants --in-place --in-diff "$RUNNER_TEMP/changes.diff"
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutants-diff
+          path: |
+            target/mutants/mutants.out/*.txt
+            target/mutants-pkcs11/mutants.out/*.txt

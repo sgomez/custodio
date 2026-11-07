@@ -1,0 +1,80 @@
+name: E2E
+
+# The end-to-end tests, in their own workflow: a push to another job's workflow does not cancel them.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# A newer push cancels the older run, on main too: the newest commit contains the older ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The end-to-end tests: every target in a privileged systemd container with a software TPM (swtpm), and without one (none) on the targets with a
+  # tpm-none marker (debian13), as in `just e2e`. A runner that cannot run such a
+  # container fails the job (docker run --privileged is the first thing `just e2e` does): nothing here turns that into a pass.
+  e2e:
+    name: e2e ${{ matrix.target }} ${{ matrix.tpm }}
+    # The packages are built here and installed on the targets: 26.04 for tss2-sys 4.1.3, as in the package job, which checks the glibc ceiling.
+    # On 24.04, swtpm_setup fails in the guests.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [debian13, ubuntu2604, ubuntu2404, fedora44, alma10, arch]
+        tpm: [swtpm]
+        include:
+          - target: debian13
+            tpm: none
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      E2E_TPM: ${{ matrix.tpm }}
+      E2E_ENGINE: docker
+      TARGET: ${{ matrix.target }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the tag v0.5.0 (M3) is built for the upgrade-m3-* cases (scripts/package-m3.sh)
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev rpm libarchive-tools zstd python3-yaml
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
+          add-rust-environment-hash-key: false
+          shared-key: package-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
+          save-if: false
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just@1.59.0
+      # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - run: just e2e "$TARGET"
+
+  # A required status check of main: it fails if any target did not succeed.
+  result:
+    name: e2e
+    if: always()
+    needs: [e2e]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RESULT: ${{ needs.e2e.result }}
+        run: '[ "$RESULT" = success ] || { echo "e2e: $RESULT"; exit 1; }'

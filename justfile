@@ -331,8 +331,8 @@ mutants-diff id *args:
     # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
     just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
 
-# For a diff too big for CI: push first, then re-run the CI job, which skips a signed-off gate.
-# `just mutants` on the lines changed since main, then `gh signoff mutants` on HEAD (gh-signoff).
+# For a diff too big for CI, after the push: `just mutants` on the lines changed since main, `gh signoff mutants` on
+# HEAD (gh-signoff), and a re-run of the branch's Mutants diff workflow, which skips a signed-off commit.
 signoff:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -342,6 +342,10 @@ signoff:
     git diff "$(git merge-base origin/main HEAD)" HEAD > target/signoff.diff
     just mutants --in-diff target/signoff.diff --jobs 3
     gh signoff mutants
+    run=$(gh run list -w mutants-diff.yml -b "$(git branch --show-current)" -c "$(git rev-parse HEAD)" -L 1 --json databaseId -q '.[0].databaseId')
+    [ -n "$run" ] || { echo "no Mutants diff run for HEAD: push first" >&2; exit 1; }
+    gh run cancel "$run" 2>/dev/null && gh run watch "$run" >/dev/null 2>&1 || true
+    gh run rerun "$run"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
