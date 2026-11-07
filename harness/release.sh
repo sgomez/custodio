@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Release of a closed milestone, from its branch: CHANGELOG.md and release commit, `just check-slow`, push,
-# the signoff/mutants status on that commit (gh-signoff), the PR, CI, the merge, and the version tag
+# the signoff/check-slow and signoff/mutants statuses on that commit (gh-signoff), the PR, CI, the merge, and the version tag
 # on the merge in main. Run it again after a fix or a stop: it picks up where it was.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=harness/lib.sh
 . harness/lib.sh
 
-context=mutants
 branch=$(git branch --show-current)
 [[ $branch == milestone/m* ]] || die "Run it on the milestone branch (milestone/mN), not $branch."
 [ -f features.json ] && die "Close the milestone first: just milestone close"
@@ -27,13 +26,14 @@ if [ "$(pr_state)" != MERGED ]; then
 
   sha=$(git rev-parse HEAD)
   signed=$(gh api "repos/{owner}/{repo}/commits/$sha/status" \
-    --jq "[.statuses[] | select(.context == \"signoff/$context\")][0].state // \"\"" 2>/dev/null || true)
+    --jq "[.statuses[] | select(.context == \"signoff/check-slow\")][0].state // \"\"" 2>/dev/null || true)
   if [ "$signed" != success ]; then
     log "Running just check-slow..."
     if [ -e /run/.containerenv ]; then just check-slow; else harness/run.sh just check-slow; fi \
       || die "just check-slow failed; fix it, commit, and run just release again."
     git push -q -u origin HEAD
-    gh signoff "$context"
+    # check-slow covers ci.yml (but commitlint) and every mutant (mutants-diff.yml).
+    gh signoff check-slow mutants
   else
     git push -q -u origin HEAD
   fi
@@ -42,7 +42,7 @@ if [ "$(pr_state)" != MERGED ]; then
     title=$(sed -n "s/^## $name — \(.*\)/\1/p" docs/milestones.md | sed 's/ (done)$//' | tr '[:upper:]' '[:lower:]')
     [ -n "$title" ] || die "No '## $name — <title>' heading in docs/milestones.md."
     gh pr create --base main --head "$branch" --title "feat: $title (milestone $name)" \
-      --body "Milestone $name (docs/milestones.md), released as $version. \`just check-slow\` passed on the head commit: signoff/$context (every mutant, in check-slow)."
+      --body "Milestone $name (docs/milestones.md), released as $version. \`just check-slow\` passed on the head commit: signoff/check-slow and signoff/mutants."
   fi
   log "Waiting for CI..."
   sleep 20 # the checks of a push take a moment to appear

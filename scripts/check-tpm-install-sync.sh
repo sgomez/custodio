@@ -10,6 +10,7 @@ PACKAGES=(swtpm swtpm-tools tpm2-tools libtss2-dev)
 EXEMPT=(
     "ci.yml:commits"  # commitlint only (node)
     "ci.yml:ci"       # aggregator of the other jobs' results
+    "ci.yml:signoff"  # reads a commit status
     "mutants.yml:report" # files a GitHub issue from the artifacts
     "e2e.yml:result"  # aggregator of the e2e results
 )

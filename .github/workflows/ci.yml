@@ -39,8 +39,42 @@ jobs:
             git log -1 --format=%B "$HEAD" | npx --no-install commitlint --verbose
           fi
 
+  # A milestone PR (a milestone/ branch of this repository; a fork's head repo differs) is a release: `just release`
+  # ran `just check-slow` on its head commit and signed it off. The jobs below that check-slow covers do not run
+  # again; it must be signed off. Only someone with write access can sign off.
+  signoff:
+    name: signoff
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'milestone/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      statuses: read
+    outputs:
+      signed: ${{ steps.check.outputs.signed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # `just release` signs off after its push: give it a few minutes.
+          for _ in $(seq 20); do
+            state=$(gh api "repos/$REPO/commits/$SHA/status" \
+              --jq '[.statuses[] | select(.context == "signoff/check-slow")][0].state // ""')
+            if [ "$state" = success ]; then echo signed=true >> "$GITHUB_OUTPUT"; exit 0; fi
+            sleep 15
+          done
+          echo "::error::$SHA has no signoff/check-slow: run just release on the milestone branch"
+          exit 1
+
   lint:
     name: just lint
+    needs: [signoff]
+    if: always() && needs.signoff.result != 'failure' && needs.signoff.outputs.signed != 'true'
     env:
       # Debuginfo only slows compiling and linking here.
       CARGO_PROFILE_DEV_DEBUG: 0
@@ -80,6 +114,8 @@ jobs:
 
   test:
     name: just test
+    needs: [signoff]
+    if: always() && needs.signoff.result != 'failure' && needs.signoff.outputs.signed != 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -177,6 +213,8 @@ jobs:
   # The three packages from one nfpm file list, and the gate on their contents.
   package:
     name: just package
+    needs: [signoff]
+    if: always() && needs.signoff.result != 'failure' && needs.signoff.outputs.signed != 'true'
     # 26.04, because tss-esapi needs tss2-sys 4.1.3 and 24.04 has 4.0.1. Its glibc is newer than the ceiling
     # (packaging/glibc-ceiling.txt); `just glibc-ceiling` below fails a binary that needs more than 2.39.
     runs-on: ubuntu-26.04
@@ -224,7 +262,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [commits, lint, test, package, coverage, nightly]
+    needs: [commits, signoff, lint, test, package, coverage, nightly]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
@@ -232,7 +270,7 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          # `skipped` is a main-only job on a PR.
+          # `skipped`: a main-only job on a PR, or one a milestone's signoff covers.
           for r in $RESULTS; do
             case "$r" in success|skipped) ;; *) echo "job result: $r"; exit 1 ;; esac
           done
