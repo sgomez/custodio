@@ -74,11 +74,19 @@ What any client needs from the service, rFirma included. The rFirma side waits f
 M4's encrypted fallback was proven only in containers and with stand-ins for `systemd-creds`
 (`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Before M6:
 
-- An end-to-end target on a VM with a virtual TPM, where systemd sees a real TPM: the `lacking` mode
-  produces `encrypted-tpm`, and the cases of F134, F135, F137, F138, F140 and F141 run with it, RSA-PSS
-  included.
-- On Debian 13 and Alma 10 (systemd 257), read the PCR mask of a credential the daemon seals with a
-  TPM present, to confirm or refute the inferred PCR 7 binding.
+- One end-to-end target on a VM: the Ubuntu 26.04 minimal cloud image with a virtual TPM. On
+  systemd 259 and later the daemon seals `encrypted-tpm` with no PCR, the same route as Fedora 44
+  and Arch, so the cases of F134, F135, F137, F138, F140 and F141 run with that kind, RSA-PSS
+  included. No other distribution gets a VM: on systemd 257 the kind cannot exist (the service
+  refuses the PCR 7 binding). The minimal image's kernel may lack the TPM drivers; if so, a finding
+  says which image or kernel package to use instead.
+- The VM run is a release test: CI runs it on the release, never on each PR. Within the milestone,
+  it runs only at the checkpoint and the last feature.
+- The `.deb` depends on `libtss2-rc0t64`. systemd loads it by `dlopen` and Ubuntu only recommends
+  it, so on an install without recommends (the minimal cloud image) `systemd-creds` cannot use the
+  TPM and an import that needs `encrypted-tpm` fails with a binding mismatch.
+- By hand, once: on Debian 13 with a TPM, read the PCR mask of a credential the daemon seals, to
+  confirm or refute the inferred PCR 7 binding.
 - Ubuntu 24.04 without a TPM: import fails, since systemd 255 gives a non-root service no host-bound
   credential. Fix it or document it as a limitation.
 
@@ -116,7 +124,10 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
 - **Snap and systemd-sysext** packages.
 - **More key types:** RSA 3072/4096, P-384.
 - **Fingerprint acceptance:** M0's SPEC acceptance 6 on a machine with a reader.
-- **RSA-PSS:** `CKM_RSA_PKCS_PSS` and the composed variants, once a target client needs it.
+- **Composed RSA-PSS:** `CKM_SHA256_RSA_PKCS_PSS` and peers (`CKM_RSA_PKCS_PSS` is in M4), once a
+  target client needs them.
+- **Refuse the encrypted kinds:** an administrator setting, deferred by M4's SPEC; an organisation
+  may prefer no key over a weaker one. Worth deciding before the public release.
 - **Key loss:** what happens to the keys when the disk dies (no export by design). Listing, deleting
   and replacing are in M3.
 - **Keys born in the TPM:** `C_GenerateKeyPair` and a CSR, so the key never exists outside the TPM
