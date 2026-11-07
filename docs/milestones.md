@@ -69,6 +69,19 @@ What any client needs from the service, rFirma included. The rFirma side waits f
   that stops loading cannot be imported again without the `.p12`. No PIN either: polkit is already
   the barrier, and against a stolen machine full-disk encryption does the same at no cost.
 
+## M4.1 — The encrypted fallback on real machines
+
+M4's encrypted fallback was proven only in containers and with stand-ins for `systemd-creds`
+(`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Before M5:
+
+- An end-to-end target on a VM with a virtual TPM, where systemd sees a real TPM: the `lacking` mode
+  produces `encrypted-tpm`, and the cases of F134, F135, F137, F138, F140 and F141 run with it, RSA-PSS
+  included.
+- On Debian 13 and Alma 10 (systemd 257), read the PCR mask of a credential the daemon seals with a
+  TPM present, to confirm or refute the inferred PCR 7 binding.
+- Ubuntu 24.04 without a TPM: import fails, since systemd 255 gives a non-root service no host-bound
+  credential. Fix it or document it as a limitation.
+
 ## M5 — Public release
 
 - Written threat model and security policy (`SECURITY.md`, how to report a vulnerability). The
