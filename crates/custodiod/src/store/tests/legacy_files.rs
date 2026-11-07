@@ -231,7 +231,7 @@ fn remove_legacy_refuses_a_foreign_owner_and_a_symlinked_area() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let mut store = KeyStore::open(tmp.path().join("s"))?;
     legacy_file(&store, OWNER, "old")?;
-    store.file_uid = Some(OWNER + 1);
+    store.file_uid = Some(store.uid.wrapping_add(1));
     assert!(matches!(
         store.remove_legacy(&entry("old", &["old"])),
         Err(StoreError::BadOwner(_))
