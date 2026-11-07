@@ -1,3 +1,247 @@
+## [0.6.0] - 2026-11-07
+
+### 🚀 Features
+
+- *(F104)* Add with-swtpm recipe and tpm packages in container and ci
+- *(F105)* Add tss-esapi and an swtpm fixture for rust tests
+- *(F106)* Add tpm-probe parent and the parent key finding
+- *(F107)* Add tpm-probe mechanisms, a lacking-tpm filter and the parity finding
+- *(F115)* Add encrypted key storage with systemd-creds
+- *(F112)* Add tpm access point and capability query in custodiod
+- *(F113)* Import a key into the tpm with TPM2_Import under the srk parent
+- *(F114)* Sign inside the tpm with every mechanism
+- *(F116)* Add the new state format with the storage kind
+- *(F117)* Choose the storage kind at import and fail closed
+- *(F118)* Sign by stored kind with key-lost and unavailable errors
+- *(F119)* Report the storage kind in import and list, document it in the api
+- *(F120)* Name the storage kind and the cause of a failure in the journal
+- *(F121)* Purge pre-m4 keys before answering any call
+- *(F122)* Add fuzz targets for tpm blob, credential header, record and sign input
+- *(F123)* Show the storage kind in custodio import and list
+- *(F124)* Give the unit the tpm resource manager node and the tss group
+- *(F125)* Declare the tpm2 software stack in the packages
+- *(F126)* Run the lifecycle suites under each storage kind
+- *(F127)* Add the no-plaintext check script and its integration target
+- *(F128)* Check stored tpm keys cannot be duplicated or loaded elsewhere
+- *(F129)* Check pcr extension, restarts and tpm clear for stored keys
+- *(F130)* Test more signatures and imports than tpm object slots
+- *(F131)* Add e2e tpm modes swtpm and none with a unit check on debian13
+- *(F131)* Add the lacking tpm mode, the filter example and the e2e ci jobs
+- *(F131)* Run the tpm modes on every target and record the findings
+- *(F133)* Add tpm-kind e2e cases for import, list and journal
+- *(F134)* Add sign e2e cases for every mechanism under each kind
+- *(F134)* Run sign cases in all three tpm modes
+- *(F135)* Run no-plaintext cases in all three tpm modes
+- *(F136)* Add tpm-dup end-to-end cases for stored TPM keys
+- *(F137)* Add pcr end-to-end cases for keys surviving a PCR change and restarts
+- *(F138)* Add fallback end-to-end cases for the host-bound kind and the CLI text
+- *(F139)* Add end-to-end cases for injected tpm and credential failures
+- *(F140)* Add end-to-end cases for signing after the tpm is cleared
+- *(F141)* Add end-to-end cases for kinds kept across an upgrade
+- *(F142)* Add end-to-end cases for the upgrade from an M3 build
+- *(F143)* Add tpm-slots cases for more calls than TPM object slots
+- *(F144)* Add journal-kind cases for the kind, purge and load-failure queries
+- *(F145)* Add M4 manual acceptance steps and their test
+- *(F146)* Make custodio list say a host or tpm-bound key is weaker
+
+### 🐛 Bug Fixes
+
+- *(F104)* Stop swtpm over its control socket
+- *(F104)* Pass stdin to the command and bound the swtpm stop wait
+- *(F107)* Keep probing when the tpm refuses pss or sign|decrypt, split the probe
+- *(harness)* Fail hung tests and kill what a session leaves running
+- *(F112)* Stop swtpm inheriting tcti sockets from sibling tests
+- *(F113)* Search the seed on the wire and zero key copies
+- *(F113)* Write the sensitive area into zeroizing buffers only
+- *(F113)* Zeroize the ecdh point, aes key schedule and sha-256 states
+- *(F114)* Drop an unused mut and split the sign unit tests
+- *(F114)* Justify the allow in the second sign unit test file
+- *(test)* Stop a killed test binary's swtpm through a guardian shell
+- *(quick)* Check new files too in check-files
+- *(test)* Start test children with no inherited descriptors
+- *(F117)* Move choice unit tests to their own file
+- *(F117)* Justify the allows in the storage_choice test target
+- *(F117)* Drop the import password right after decoding
+- *(F118)* Document key lost as sign only
+- *(F120)* Plant response codes, credential bytes and decoder text in the no-secret rows
+- *(F132)* Skip the getrandom pair, judge the new journal fields and sync the catalog text
+- *(F132)* Check the one-record-per-key store in the upgrade accounts check
+- *(F132)* Except the tpm2-tss information lines in the namcap list
+- *(harness)* List the features in status when stopped by agent_stop
+- *(harness)* List the features in status even before they are approved
+- *(F133)* Run the tpm-kind mutants in parallel and drop script-text checks
+- *(F141)* Stop the run when the kinds judgement crashes and make the host test executable
+- *(F142)* Require polkit approval for the re-import in the judgement
+- *(F145)* Make the wrong-option case path-independent and run the controls in parallel
+- *(F146)* Bring the stale e2e host tests up to date with M4
+- *(F146)* Run the M4 guest steps only on the target whose own list owes their cases
+- *(F146)* Refuse a parallel e2e run when the host's inotify instance limit is too low
+- *(harness)* Commit new docs files in milestone pass
+
+### 📚 Documentation
+
+- Accept the F89 spec deviation
+- Close milestone M3
+- Mark M2 and M3 as done
+- Update README.md
+- Open milestone M4
+- Write milestone M4 idea
+- Add spec drafted by the planner
+- *(F104)* Add contract
+- Answer the blocked question
+- *(F105)* Add contract
+- *(F106)* Add contract
+- *(F106)* Apply evaluator notes to contract
+- *(F107)* Add contract
+- *(F107)* Apply evaluator notes to contract
+- *(F108)* Add contract
+- *(F108)* Add the finding on how swtpm reaches the e2e containers
+- *(F109)* Add contract
+- *(F109)* Amend contract after evaluator review
+- *(F109)* Revise contract after evaluator review
+- *(F109)* Add the finding on how the service reaches the tpm under its unit
+- *(F110)* Add contract
+- *(F110)* Add the finding on how the service uses systemd-creds without root
+- *(F115)* Add contract
+- *(F115)* Revise contract after evaluator review
+- *(F111)* Record the manual acceptance run
+- *(F111)* Note the decrypt threat-model point for F119
+- *(F112)* Add contract
+- *(F112)* Revise contract after evaluator review
+- *(F113)* Add contract
+- *(F113)* Revise contract after evaluator review
+- *(F114)* Add contract
+- *(F114)* Amend contract to clean up after a faulted flush with flushcontext -t
+- *(F114)* Record attempt 3
+- *(F116)* Add contract
+- *(F116)* Revise contract after evaluator review
+- *(F117)* Add contract
+- *(F117)* Amend contract to drop control (c)
+- Split findings per feature and prune obsolete ones
+- *(F118)* Require no inherited descriptors for systemd-creds
+- *(F117)* Record attempt 4 hand-off
+- *(F118)* Add contract
+- *(F118)* Settle lacks class and add launcher evidence
+- *(F118)* Amend contract to fold duplicate rows and name the launcher evidence
+- *(F119)* Add contract
+- *(F120)* Add contract
+- *(F121)* Add contract
+- *(F122)* Add contract
+- *(F123)* Add contract
+- *(F123)* Address evaluator notes in contract
+- *(F124)* Add contract
+- *(F124)* Address evaluator notes in contract
+- *(F124)* Tick contract steps
+- *(F125)* Add contract
+- *(F125)* Address evaluator notes in contract
+- *(F126)* Add contract
+- *(F126)* Address evaluator notes in contract
+- *(F127)* Add contract
+- *(F127)* Address evaluator notes in contract
+- *(F128)* Add contract
+- *(F128)* Address evaluator notes in contract
+- *(F129)* Add contract
+- *(F130)* Add contract
+- *(F130)* Separate flushable faults from drops in contract
+- *(F130)* Add builder notes to contract
+- *(F131)* Add contract
+- *(F131)* Amend contract to split the target work into debian13 and the others
+- *(F132)* Add contract
+- *(F132)* Fix contract accounting per review
+- *(F132)* Amend contract to run e2e one target and mode per command
+- *(F132)* Record none-mode e2e passes on fedora44, ubuntu2404 and ubuntu2604
+- *(F132)* Record the final e2e rerun so far
+- *(F132)* Record debian13 none in the final rerun
+- *(F132)* Record fedora44 and ubuntu2404 in the final rerun
+- *(F132)* Tick the checkpoint steps and record the final rerun
+- *(spec)* Run each e2e case only where its outcome can differ
+- *(F133)* Add contract
+- *(F133)* Require a failure on a skip under swtpm
+- *(F134)* Add contract
+- *(F134)* Amend contract after review
+- *(F134)* Align steps with scope after approval
+- *(F134)* Amend contract to the kinds and tools a run showed
+- *(F134)* Amend contract to withdraw the tpm expectation under lacking
+- *(F134)* Block on encrypted-tpm under lacking in the container
+- *(F134)* Amend contract to a deviation for encrypted-tpm in containers
+- *(F134)* Amend contract to state what covers encrypted-tpm signing
+- *(F134)* Record attempt 5 in progress
+- *(F135)* Add contract
+- *(F135)* Amend contract to extend the encrypted-tpm deviation
+- *(F136)* Add contract
+- *(F137)* Add contract
+- *(F137)* Amend contract to extend the F134 deviation to the pcr cases
+- *(F138)* Add contract
+- *(F138)* Name the replacement coverage in the F134 deviation
+- *(F139)* Add contract
+- *(F140)* Add contract
+- *(F140)* Amend contract to extend the F134 deviation and reword the negative control
+- *(F141)* Add contract
+- *(F141)* Amend contract to name the encrypted-tpm cover and extend the F134 deviation
+- *(F142)* Add contract
+- *(F142)* Record the real runs and tick the last steps
+- *(F143)* Add contract
+- *(F143)* Fix where the host test runs
+- *(F143)* Apply evaluator notes to the contract
+- *(F144)* Add contract
+- *(F144)* Amend contract to run every case in every mode
+- *(F145)* Add contract
+- *(F145)* Revise contract
+- *(F146)* Add contract
+- *(F146)* Revise contract
+- *(F146)* Record the baseline
+- *(F146)* Record the e2e runs so far
+- *(F146)* Record the e2e and package-gate runs and the debian13 budget question
+- Answer the blocked question
+- *(F146)* Record the final quick run
+- *(F146)* Record the load-dependent e2e failures
+- *(F146)* Record the inotify cause of the parallel e2e failures
+- *(F146)* Record the passing parallel e2e run with the raised inotify limit
+- *(F146)* Record that the findings predate the inotify fix
+- *(F146)* Record that the upgrade script budget was raised by a person
+- *(F146)* Ask a person for the budgets the parallel run exceeded
+- *(F146)* Record the budget overages and the request
+- *(F146)* Record that the findings predate the raised budgets
+- *(F147)* Record the manual acceptance run
+- *(F148)* Add progress entry
+- *(F148)* Record the manual acceptance run
+- *(F149)* Add progress entry
+- *(F149)* Record the manual acceptance run
+
+### ⚡ Performance
+
+- *(mutants)* Stop each mutant's tests at the first failure and build without debuginfo
+- *(e2e)* Run the target-mode pairs at once
+- *(e2e)* Run the no-tpm mode and the old-path upgrade once, time each step
+- *(F135)* Run the independent no-plaintext checks at once
+- *(F146)* Run the shellcheck pair and the arch mutants at once
+
+### 🧪 Testing
+
+- Drop tests that only pin document wording
+- *(F146)* Print the bus journal when a package hook job fails in the lifecycle run
+- *(F146)* Answer a lost repeat prompt again in the pty helper and print the transcript on failure
+- *(F110)* Keep the creds tests hermetic on a host with a TPM
+- *(F149)* Kill the size-limit and ec-oid mutants in the p12 import
+
+### ⚙️ Miscellaneous Tasks
+
+- Add feature list drafted by the initializer
+- *(harness)* Run mutants-diff in parallel and void runs that ran out of disk
+- *(harness)* Tell builders the session limit and to commit before long runs
+- *(harness)* Make contracts split suites that do not fit a session
+- *(harness)* Check time budgets after each verify
+- *(harness)* Ask contracts and reviews for the time cost of tests
+- *(F146)* Raise the e2e debian13 budget to 700 s as a person decided
+- *(F146)* Raise the noisy script budgets as a person decided
+- *(F146)* Raise the e2e and default script budgets as a person decided
+
+### 💼 Other
+
+- Cap agent-read docs in check-files
+- Forbid tests that grep the wording of documents
+- *(harness)* Run the release's check-slow in the dev container
+- *(harness)* Add a build timeout and MUTANTS_ITERATE to just mutants
 ## [0.5.0] - 2026-11-03
 
 ### 🚀 Features
