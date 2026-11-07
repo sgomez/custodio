@@ -16,7 +16,7 @@ It stops a process running as you from signing by mistake. It does not protect a
 running as the same uid, against root, or your intent: the dialog cannot prove what is being
 signed.
 
-Not ready for use yet: it runs only in test machines until the public release (M5). Roadmap in
+Not ready for use yet: it runs only in test machines until the public release (M6). Roadmap in
 [docs/milestones.md](docs/milestones.md).
 
 ## Names
