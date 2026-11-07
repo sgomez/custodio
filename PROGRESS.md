@@ -570,3 +570,6 @@ with an empty context.
 
 ### 2026-11-06 — F146 — attempt 9 (session 1)
 - NEXT_FINDINGS.md (alma10 478/470, arch 420/410, debian13 707/700, `test-install-real.sh` 88/60) is older (23:33) than the person's decision in b71f378 / 63b7a9d (00:52): `budgets.tsv` now has alma10 540, arch 480, debian13 800 and the default script budget was raised. `BLOCKED.md` is gone. No code change; the loop's `verify` is the gate.
+
+### 2026-11-07 — F147 — manual run (with a person)
+- Acceptance 13 run on an AMD fTPM (ubuntu2604); result per event in `docs/findings/F147.md`. Import and the duplicate check pass; both keys sign after reboot, upgrade (`0.1.0-1 -> 0.1.1~rc.1-1`) and a PCR 7 extension (fwupd offered no `dbx`). Not run: LibreOffice `rsa2048` after the upgrade; Firefox `rsa2048` and LibreOffice `p256` after the PCR 7 change. F109's `DeviceAllow=` need is now verified. Ubuntu's Firefox needs `modutil` registration.
