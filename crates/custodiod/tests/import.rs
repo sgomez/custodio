@@ -118,6 +118,10 @@ fn rejects_oversized_input() -> TestResult {
     let big = vec![0_u8; MAX_P12_LEN + 1];
     let err = err_of(parse_p12(&big, &pw(PASSWORD)))?;
     assert!(matches!(err, ImportError::TooLarge), "{err:?}");
+    // The limit itself is allowed: it reaches the parser.
+    let limit = vec![0_u8; MAX_P12_LEN];
+    let err = err_of(parse_p12(&limit, &pw(PASSWORD)))?;
+    assert!(matches!(err, ImportError::Parse(_)), "{err:?}");
     Ok(())
 }
 

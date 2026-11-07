@@ -55,3 +55,20 @@ fn every_import_error_has_its_own_message() {
         assert!(message.contains(expected), "{message:?} lacks {expected:?}");
     }
 }
+
+#[test]
+fn a_p256_curve_under_another_algorithm_is_not_an_ecdsa_key()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cert = include_bytes!("../../tests/fixtures/cert-p256-other.der");
+    assert!(cert_public_key(KeyKind::EcdsaP256, cert).is_some());
+    // id-ecPublicKey (1.2.840.10045.2.1) to 1.2.840.10045.2.2, the P-256 parameter kept.
+    let ec_public_key = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
+    let at = cert
+        .windows(ec_public_key.len())
+        .position(|w| w == ec_public_key)
+        .ok_or("no id-ecPublicKey")?;
+    let mut other = cert.to_vec();
+    *other.get_mut(at + 8).ok_or("short")? = 0x02;
+    assert_eq!(cert_public_key(KeyKind::EcdsaP256, &other), None);
+    Ok(())
+}
