@@ -1,19 +1,31 @@
-//! Key store: one plain file per key, kept in a private directory per owner uid:
-//! `<root>/<uid>/<id>`.
+//! Key store: one record file per key, kept in a private directory per owner uid:
+//! `<root>/<uid>/<id>`. The file is a [`Record`]: owner, id, [`Kind`], certificate and the protected
+//! key. The write API takes only a [`Record`], which holds a [`Protected`] key and nothing else, so
+//! no plaintext key reaches a file, a temporary one included.
 //!
-//! Every directory is `0700` and every file `0600`. A key is written to a temporary file in the
-//! same directory, synced, then linked into place, so a reader never sees a partial key and an
-//! existing key is never overwritten.
+//! Every directory is `0700` and every file `0600`. A record is written to a temporary file in the
+//! same directory, synced, then linked into place, so a reader never sees a partial record and an
+//! existing record is never overwritten. A file of the earlier format (no magic) is recognised and
+//! never read.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
-use rustix::fs::OFlags;
-use secrecy::{ExposeSecret, SecretSlice};
-use zeroize::Zeroizing;
+use rustix::fs::{FlockOperation, OFlags};
+
+mod error;
+mod files;
+mod kind;
+mod legacy;
+mod record;
+
+pub use error::StoreError;
+use files::{TMP_PREFIX, remove_temp_files, removed_by_us, sync_dir, tmp_path, write_synced};
+pub use kind::Kind;
+pub use legacy::LegacyEntry;
+pub use record::{Field, MAX_RECORD, Protected, Record, RecordError};
 
 const DIR_MODE: u32 = 0o700;
 const FILE_MODE: u32 = 0o600;
@@ -26,59 +38,6 @@ pub(crate) fn valid_key_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-}
-
-const MAX_KEY_LEN: u64 = 64 * 1024;
-const TMP_PREFIX: &str = ".tmp-";
-
-static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Errors from the key store. Messages never contain key material.
-#[derive(Debug)]
-pub enum StoreError {
-    /// The key id is empty, too long or has characters outside `[A-Za-z0-9_-]`.
-    InvalidId,
-    /// A key with this id already exists.
-    AlreadyExists,
-    /// No key with this id.
-    NotFound,
-    /// The state directory or a key file has a mode other than the required one.
-    BadPermissions(PathBuf),
-    /// The state path or a key file is not a plain directory/file (symlinks are rejected).
-    BadFileType(PathBuf),
-    /// The state path or a key file is not owned by the service uid.
-    BadOwner(PathBuf),
-    /// The key file is larger than any key we store.
-    TooLarge,
-    /// The key was stored, but syncing the directory failed, so durability is unconfirmed.
-    /// Retrying `put` yields `AlreadyExists`; use `get` to check the key.
-    SyncFailed(io::Error),
-    /// Underlying I/O failure.
-    Io(io::Error),
-}
-
-impl std::fmt::Display for StoreError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidId => f.write_str("invalid key id"),
-            Self::AlreadyExists => f.write_str("key already exists"),
-            Self::NotFound => f.write_str("key not found"),
-            Self::BadPermissions(p) => write!(f, "unsafe permissions on {}", p.display()),
-            Self::BadFileType(p) => write!(f, "unexpected file type at {}", p.display()),
-            Self::BadOwner(p) => write!(f, "unexpected owner of {}", p.display()),
-            Self::SyncFailed(e) => write!(f, "key stored but directory sync failed: {e}"),
-            Self::TooLarge => f.write_str("key file too large"),
-            Self::Io(e) => write!(f, "i/o error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for StoreError {}
-
-impl From<io::Error> for StoreError {
-    fn from(e: io::Error) -> Self {
-        Self::Io(e)
-    }
 }
 
 /// Key store rooted at a state directory.
@@ -183,22 +142,36 @@ impl KeyStore {
         Ok(area)
     }
 
-    /// Store `key` for `owner` under `id`, atomically and without overwriting.
+    /// Store `record` for its owner under its id, atomically and without overwriting. The record is
+    /// checked again first, so nothing is created for one that is not well formed.
     ///
     /// # Errors
-    /// `AlreadyExists` if the owner already has this id, `InvalidId` for a bad id, `Io` otherwise.
-    pub fn put(&self, owner: u32, id: &str, key: &SecretSlice<u8>) -> Result<(), StoreError> {
-        if !valid_key_id(id) {
-            return Err(StoreError::InvalidId);
-        }
-        let area = self.ensure_area(owner)?;
-        let dest = area.join(id);
-        let tmp = area.join(format!(
-            "{TMP_PREFIX}{}-{}",
-            std::process::id(),
-            TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        let result = write_synced(&tmp, key.expose_secret())
+    /// `AlreadyExists` if the owner already has this id, `Record` for a record that fails its checks,
+    /// `Io` otherwise.
+    pub fn put(&self, record: &Record) -> Result<(), StoreError> {
+        self.put_with_hook(record, |_| Ok(()))
+    }
+
+    /// [`Self::put`] with `between` run on the temporary file after it is written and before it is
+    /// linked into place; if it fails, nothing is linked. Lets a test look at the file in between.
+    ///
+    /// # Errors
+    /// The errors of [`Self::put`]; the failure of `between`, as `Io`.
+    #[doc(hidden)]
+    pub fn put_with_hook(
+        &self,
+        record: &Record,
+        between: impl FnOnce(&Path) -> io::Result<()>,
+    ) -> Result<(), StoreError> {
+        let data = record.encode().map_err(|e| match e {
+            RecordError::BadId => StoreError::InvalidId,
+            e => StoreError::Record(e),
+        })?;
+        let area = self.ensure_area(record.owner())?;
+        let dest = area.join(record.id());
+        let tmp = tmp_path(&area);
+        let result = write_synced(&tmp, &data)
+            .and_then(|()| between(&tmp))
             // `hard_link` fails if `dest` exists, so this is atomic and never overwrites.
             .and_then(|()| fs::hard_link(&tmp, &dest));
         let _ = fs::remove_file(&tmp);
@@ -209,25 +182,25 @@ impl KeyStore {
                 StoreError::Io(e)
             }
         })?;
-        File::open(&area)
-            .and_then(|d| d.sync_all())
-            .map_err(StoreError::SyncFailed)
+        sync_dir(&area)
     }
 
-    /// Read the key `owner` stored under `id`.
-    ///
-    /// # Errors
-    /// `NotFound`; `BadPermissions`, `BadOwner` or `BadFileType` if the area or the file is not
-    /// as required (a plain `0700` directory / `0600` file owned by the service uid, symlinks not
-    /// followed); `Io` otherwise.
-    pub fn get(&self, owner: u32, id: &str) -> Result<SecretSlice<u8>, StoreError> {
+    /// Opens the file of `owner`'s `id` and applies the file rules, without reading it: a plain file
+    /// of the service uid with mode `0600`, symlinks not followed, a FIFO never blocking.
+    fn open_checked(&self, owner: u32, id: &str) -> Result<(PathBuf, File), StoreError> {
         if !valid_key_id(id) {
             return Err(StoreError::InvalidId);
         }
-        let path = self
-            .existing_area(owner)?
-            .ok_or(StoreError::NotFound)?
-            .join(id);
+        let area = self.existing_area(owner)?.ok_or(StoreError::NotFound)?;
+        self.open_in(&area, id)
+    }
+
+    /// [`Self::open_checked`] for the file `id` of a directory already checked.
+    fn open_in(&self, area: &Path, id: &str) -> Result<(PathBuf, File), StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let path = area.join(id);
         let file = match OpenOptions::new()
             .read(true)
             // NONBLOCK so a FIFO cannot hang the open; NOCTTY so a tty cannot become ours.
@@ -267,14 +240,72 @@ impl KeyStore {
         if meta.mode() & PERM_MASK != FILE_MODE {
             return Err(StoreError::BadPermissions(path));
         }
-        if meta.len() > MAX_KEY_LEN {
+        Ok((path, file))
+    }
+
+    /// Whether `owner` has a file under `id` that passes the file rules. The content is not read, so
+    /// this is true of a record that no longer parses and of a file of the earlier format.
+    ///
+    /// # Errors
+    /// The area and file errors of `get`, except `NotFound`, which is `Ok(false)`.
+    pub fn contains(&self, owner: u32, id: &str) -> Result<bool, StoreError> {
+        match self.open_checked(owner, id) {
+            Ok(_) => Ok(true),
+            Err(StoreError::NotFound) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Read the record `owner` stored under `id`.
+    ///
+    /// # Errors
+    /// `NotFound`; `BadPermissions`, `BadOwner` or `BadFileType` if the area or the file is not
+    /// as required (a plain `0700` directory / `0600` file owned by the service uid, symlinks not
+    /// followed); `Legacy` for a file of the earlier format, which is not read past its first
+    /// bytes; `TooLarge`, `Record` or `Mismatch` for a file that is not a well-formed record of
+    /// this owner and id; `Io` otherwise.
+    pub fn get(&self, owner: u32, id: &str) -> Result<Record, StoreError> {
+        let (path, file) = self.open_checked(owner, id)?;
+        let mut magic = Vec::with_capacity(record::MAGIC.len());
+        (&file)
+            .take(record::MAGIC.len() as u64)
+            .read_to_end(&mut magic)?;
+        if magic.as_slice() != record::MAGIC.as_slice() {
+            return Err(StoreError::Legacy);
+        }
+        // Only a file with the magic is read on. One byte more than the bound tells a file that is
+        // too large from one that is not.
+        let mut bytes = Vec::new();
+        (&file).rewind()?;
+        (&file)
+            .take(MAX_RECORD as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > MAX_RECORD {
             return Err(StoreError::TooLarge);
         }
-        // Allocate the exact size up front so the buffer never moves and leaves key bytes behind.
-        let len = usize::try_from(meta.len()).map_err(|_| StoreError::TooLarge)?;
-        let mut buf = Zeroizing::new(vec![0_u8; len]);
-        file.take(meta.len()).read_exact(&mut buf)?;
-        Ok(SecretSlice::from(buf.to_vec()))
+        let record = Record::decode(&bytes).map_err(StoreError::Record)?;
+        if record.owner() != owner || record.id() != id {
+            return Err(StoreError::Mismatch(path));
+        }
+        Ok(record)
+    }
+
+    /// Takes the exclusive lock of the area of `owner` (`flock` on the directory), held until the
+    /// returned handle is dropped. Remove and replace take it, so a replace cannot recreate a record
+    /// that a remove has just deleted.
+    fn lock_area(area: &Path) -> Result<File, StoreError> {
+        let dir = OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                OFlags::DIRECTORY
+                    .union(OFlags::NOFOLLOW)
+                    .union(OFlags::CLOEXEC)
+                    .bits()
+                    .cast_signed(),
+            )
+            .open(area)?;
+        rustix::fs::flock(&dir, FlockOperation::LockExclusive).map_err(io::Error::from)?;
+        Ok(dir)
     }
 
     /// Remove the key `owner` stored under `id`. A missing key or area is not an error and creates
@@ -288,7 +319,8 @@ impl KeyStore {
     }
 
     /// Like [`Self::remove`], but tells whether this call removed the file: `Ok(false)` when there
-    /// was none, so of two callers removing the same file only one gets `Ok(true)`.
+    /// was none, so of two callers removing the same file only one gets `Ok(true)`. The file rules
+    /// apply but the content is not parsed, so a record that no longer parses can still be removed.
     ///
     /// # Errors
     /// The same as [`Self::remove`].
@@ -299,9 +331,10 @@ impl KeyStore {
         let Some(area) = self.existing_area(owner)? else {
             return Ok(false);
         };
-        // `get` refuses what is not a plain file of the service uid, without following symlinks, so
-        // `remove_file` below only ever sees a file this store wrote.
-        match self.get(owner, id) {
+        let _lock = Self::lock_area(&area)?;
+        // `open_checked` refuses what is not a plain file of the service uid, without following
+        // symlinks, so `remove_file` below only ever sees a file this store wrote.
+        match self.open_checked(owner, id) {
             Ok(_) => {}
             Err(StoreError::NotFound) => return Ok(false),
             Err(e) => return Err(e),
@@ -309,58 +342,97 @@ impl KeyStore {
         if !removed_by_us(fs::remove_file(area.join(id)))? {
             return Ok(false);
         }
-        File::open(&area)
-            .and_then(|d| d.sync_all())
-            .map_err(StoreError::SyncFailed)?;
+        sync_dir(&area)?;
         Ok(true)
     }
 
-    /// Replace the content of the existing file `owner` stored under `id` with `data`, atomically:
-    /// a temporary file in the same directory is written and synced, then renamed over the target,
-    /// then the directory is synced. A reader sees the old or the new content, never neither. It
-    /// never creates an entry and never follows or replaces a symlink, a directory or a file of
-    /// another owner (`get`'s checks apply to the target). A failure leaves the old content and no
-    /// temporary file.
+    /// Replace the certificate of the existing record `owner` stored under `id`, atomically: the
+    /// whole new record (kind and protected key unchanged) is written to a temporary file in the
+    /// same directory and synced, then renamed over the target, then the directory is synced. A
+    /// reader sees the old or the new record, never neither. It never creates a record and holds
+    /// the area lock, so a concurrent remove cannot be undone by it. Gives back the old certificate.
     ///
     /// # Errors
-    /// `NotFound` if there is no such file; the errors of `get` for a target that is not a plain
-    /// `0600` file of the service uid; `SyncFailed` if the new content is in place but the directory
-    /// could not be synced; `Io` otherwise.
-    pub fn replace_existing(&self, owner: u32, id: &str, data: &[u8]) -> Result<(), StoreError> {
-        self.replace_with(owner, id, data, || Ok(()))
+    /// `NotFound` if there is no such record; the errors of `get` for a target that is not a plain
+    /// `0600` record of the service uid; `Record` for a certificate that is empty or over its bound;
+    /// `SyncFailed` if the new record is in place but the directory could not be synced; `Io`
+    /// otherwise. A failure leaves the old record and no temporary file.
+    pub fn replace_certificate(
+        &self,
+        owner: u32,
+        id: &str,
+        certificate: &[u8],
+    ) -> Result<Vec<u8>, StoreError> {
+        self.replace_with(owner, id, certificate, || Ok(()))
     }
 
-    /// [`Self::replace_existing`] with `before_rename` run after the temporary file is written and
+    /// [`Self::replace_certificate`] with `before_rename` run after the temporary file is written and
     /// before the rename; if it fails, nothing is renamed. Lets a test look at the moment between.
     fn replace_with(
         &self,
         owner: u32,
         id: &str,
-        data: &[u8],
+        certificate: &[u8],
         before_rename: impl FnOnce() -> io::Result<()>,
-    ) -> Result<(), StoreError> {
+    ) -> Result<Vec<u8>, StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let area = self.existing_area(owner)?.ok_or(StoreError::NotFound)?;
+        let _lock = Self::lock_area(&area)?;
         // `get` refuses what is not a plain file of the service uid, so `rename` below only ever
         // replaces a file this store wrote.
-        drop(self.get(owner, id)?);
-        let area = self.existing_area(owner)?.ok_or(StoreError::NotFound)?;
-        let tmp = area.join(format!(
-            "{TMP_PREFIX}{}-{}",
-            std::process::id(),
-            TMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        let result = write_synced(&tmp, data)
+        let old = self.get(owner, id)?;
+        let data = old
+            .with_certificate(certificate)
+            .and_then(|new| new.encode())
+            .map_err(StoreError::Record)?;
+        let tmp = tmp_path(&area);
+        let result = write_synced(&tmp, &data)
             .and_then(|()| before_rename())
             .and_then(|()| fs::rename(&tmp, area.join(id)));
         if result.is_err() {
             let _ = fs::remove_file(&tmp);
         }
         result?;
-        File::open(&area)
-            .and_then(|d| d.sync_all())
-            .map_err(StoreError::SyncFailed)
+        sync_dir(&area)?;
+        Ok(old.certificate().to_vec())
     }
 
-    /// Ids of all keys of `owner`, sorted. An owner without an area has none; nothing is created.
+    /// The names in the area of `owner` that can be ids, sorted: not temporary files, not other entries.
+    fn names(area: &Path) -> Result<Vec<String>, StoreError> {
+        let mut names = Vec::new();
+        for entry in fs::read_dir(area)? {
+            let name = entry?.file_name();
+            if let Some(name) = name.to_str()
+                && !name.starts_with(TMP_PREFIX)
+                && valid_key_id(name)
+            {
+                names.push(name.to_owned());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// Whether the file `name` of `owner` starts with the magic. Reads no more than the magic.
+    fn is_record(&self, owner: u32, name: &str) -> Result<bool, StoreError> {
+        let (_, file) = self.open_checked(owner, name)?;
+        Self::starts_with_magic(&file)
+    }
+
+    /// Whether `file` starts with the magic. Reads no more than the magic.
+    fn starts_with_magic(file: &File) -> Result<bool, StoreError> {
+        let mut head = Vec::with_capacity(record::MAGIC.len());
+        file.take(record::MAGIC.len() as u64)
+            .read_to_end(&mut head)?;
+        Ok(head.as_slice() == record::MAGIC.as_slice())
+    }
+
+    /// The ids in the area of `owner`, sorted: every file that can be a key, whatever its format. An
+    /// owner without an area has none; nothing is created. No file is opened, so a file that breaks
+    /// the rules shows up here and is refused by `get`; a file of the earlier format also shows up
+    /// here, `get` answers `Legacy` for it, and [`Self::legacy`] lists those.
     ///
     /// # Errors
     /// `Io` if the area cannot be read; the area errors of `get`.
@@ -368,28 +440,7 @@ impl KeyStore {
         let Some(area) = self.existing_area(owner)? else {
             return Ok(Vec::new());
         };
-        let mut ids = Vec::new();
-        for entry in fs::read_dir(&area)? {
-            let name = entry?.file_name();
-            if let Some(name) = name.to_str()
-                && !name.starts_with(TMP_PREFIX)
-                && valid_key_id(name)
-            {
-                ids.push(name.to_owned());
-            }
-        }
-        ids.sort();
-        Ok(ids)
-    }
-}
-
-/// Whether a `remove_file` removed the file: a file already gone (another remover was faster, in
-/// the time since `get`) is `false`, any other failure an error.
-fn removed_by_us(result: io::Result<()>) -> Result<bool, StoreError> {
-    match result {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e.into()),
+        Self::names(&area)
     }
 }
 
@@ -407,30 +458,6 @@ fn check_dir(path: &Path, uid: u32) -> Result<(), StoreError> {
         return Err(StoreError::BadOwner(path.to_owned()));
     }
     Ok(())
-}
-
-fn remove_temp_files(dir: &Path) -> Result<(), StoreError> {
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        if entry.file_name().to_string_lossy().starts_with(TMP_PREFIX)
-            && entry.file_type()?.is_file()
-        {
-            fs::remove_file(entry.path())?;
-        }
-    }
-    Ok(())
-}
-
-fn write_synced(path: &Path, data: &[u8]) -> io::Result<()> {
-    let mut f = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(FILE_MODE)
-        .open(path)?;
-    // The umask can only remove bits; make the mode exact regardless.
-    f.set_permissions(fs::Permissions::from_mode(FILE_MODE))?;
-    f.write_all(data)?;
-    f.sync_all()
 }
 
 #[cfg(test)]

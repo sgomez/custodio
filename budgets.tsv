@@ -1,0 +1,15 @@
+suite	name	seconds	reason
+e2e	alma10	540	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 470s
+e2e	arch	480	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 410s
+e2e	debian13	800	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 700s
+e2e	fedora44	570	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 500s
+e2e	ubuntu2404	120	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 100s
+e2e	ubuntu2604	530	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 460s
+script	*	120	raised by a person 2026-11-07: parallel-run noise, ~15% over the worst loop run; was 60s
+script	scripts/test-rpm-lifecycle-real.sh	200	builds and installs real rpms; measured 159s
+script	scripts/test-arch-lifecycle.sh	250	worst 194s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-rpm-lifecycle.sh	200	worst 151s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-arch-lifecycle-real.sh	130	worst 97s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-shell-scripts.sh	120	worst 92s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-e2e-upgrade.sh	90	worst 65s; raised by a person 2026-11-07: parallel-run noise
+script	scripts/test-deb-lifecycle.sh	100	worst 73s; raised by a person 2026-11-07: parallel-run noise

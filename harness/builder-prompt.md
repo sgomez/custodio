@@ -14,14 +14,29 @@ Follow "Every session" in CLAUDE.md:
    (`cargo test -p <crate> <filter>`), never `just check`, `just e2e`, the package gates or the
    `verify`.
 3. When every step is ticked, run `just quick` once, the contract's evidence, and
-   `just mutants-diff <id>` if the `verify` has it (narrow it with `--re <regex>` while killing
-   survivors). Do not run the whole `verify`: the loop runs it as the gate. The package, install
-   and e2e suites run at the checkpoint features and the release, and failures there are fixed
-   there. Run every command in the foreground with `timeout`; background tasks and polling loops
-   are blocked.
-4. Append your entry to PROGRESS.md and commit with a Conventional Commits message scoped to the
-   feature id, e.g. `feat(F05): add key store`. Stop at a clean point when your context gets
-   long: the next session continues from the contract.
+   `just mutants-diff <id>` if the `verify` has it, each once, with `timeout 1700`. While killing
+   survivors, rerun only them, narrowed to their tests: `--re <regex> -- --lib <filter>`. Run the
+   full diff again only at the end. Do not run the whole `verify`: the loop runs it as the gate.
+   The package, install and e2e suites run at the checkpoint features and the release, and
+   failures there are fixed there. Run every command in the foreground with `timeout`; background
+   tasks and polling loops are blocked.
+4. Append your entry to PROGRESS.md, or finish the one you started, and commit with a Conventional
+   Commits message scoped to the feature id, e.g. `feat(F05): add key store`. Stop at a clean
+   point when your context gets long: the next session continues from the contract.
+
+Every test you add costs time on every later run. Run independent units at once, wait on a
+condition instead of a fixed `sleep`, and test at the cheapest level that catches the fault. After
+the `verify`, the loop checks the measured times against `budgets.tsv` (e2e runs, script tests);
+over budget, the feature goes back to you. Never edit `budgets.tsv`: if a test cannot be faster,
+write BLOCKED.md with its measured time and why.
+
+The session is cut at the time limit given below, and one command may run at most 30 minutes. A
+cut session loses all it did not commit or write to PROGRESS.md, and the next one starts over.
+Before any command that may take more than 10 minutes, commit what is done, tick finished steps
+and write your PROGRESS.md entry. Split a suite that does not fit in one command (at a
+checkpoint, `just e2e` runs one target and mode per command: `E2E_TPM=<mode> just e2e <target>`),
+and after each part add to PROGRESS.md that it passed and on which commit, so the next session
+does not rerun it.
 
 If a fact found while building means the contract cannot hold as written, amend it instead of
 blocking: edit `contracts/<id>.md`, add a line under `## Amendments` with what changed and the
@@ -34,6 +49,8 @@ yourself and go on. When a finding proves a SPEC.md requirement impossible for a
 project ships, record a deviation as CLAUDE.md says and amend the contract in the same commit;
 do not block. Write BLOCKED.md only for what needs a person: credentials, a change to the dev
 container or the host, a contradiction with SPEC.md or features.json that is a choice rather than
-an impossibility, or a hard-to-undo decision SPEC.md does not cover. Check every claim about the environment by running it before you write it.
+an impossibility, or a hard-to-undo decision SPEC.md does not cover. Research goes in
+`docs/findings/<id>.md` under the rules at the top of `docs/findings.md`: the conclusion and the
+lines that prove it, never a whole output. Check every claim about the environment by running it before you write it.
 
 Do not edit features.json or SPEC.md. If you need a human, write BLOCKED.md, commit, and stop.

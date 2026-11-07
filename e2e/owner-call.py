@@ -3,7 +3,7 @@
 Usage: owner-call.py sign ID [SIGNATURE-FILE] | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD
 Prints one line: "ok" or "error <D-Bus error name>". Exit 0 when that line was printed, 2 on anything else.
 
-Why not busctl: `busctl call` prints "Call failed: <message>" and drops the error name (finding "F91" in docs/findings.md); GLib's D-Bus
+Why not busctl: `busctl call` prints "Call failed: <message>" and drops the error name (docs/findings/F91.md); GLib's D-Bus
 (the one agent.py uses, from python3-gi) keeps it. The calls, each with the signature of docs/api.md; none sets the interactive-
 authorization flag (Gio.DBusCallFlags.NONE), because the service asks polkit itself, with AllowUserInteraction, and the flag only matters to
 the bus-level policy:
@@ -11,6 +11,7 @@ the bus-level policy:
   delete   DeleteKey(id s)                                              as "(s)"
   replace  ReplaceCertificate(id s, certificate ay)                     as "(say)"
   import   ImportP12(id s, p12 ay, password s) -> s                     as "(says)" (F92: the ops-polkit-* cases)
+  list     ListKeys() -> a(sssay)                                       no parameters (F133: prints "ID<TAB>TYPE<TAB>KIND" per key, not "ok")
 """
 import sys
 
@@ -34,7 +35,9 @@ def build(argv):
         with open(argv[2], "rb") as f:
             p12 = f.read()
         return "ImportP12", GLib.Variant("(says)", (argv[1], p12, argv[3]))
-    sys.exit("usage: owner-call.py sign ID [SIGNATURE-FILE] | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD")
+    if argv == ["list"]:
+        return "ListKeys", None
+    sys.exit("usage: owner-call.py sign ID [SIGNATURE-FILE] | delete ID | replace ID CERTIFICATE-DER-FILE | import ID P12-FILE PASSWORD | list")
 
 
 def main():
@@ -52,6 +55,10 @@ def main():
     if method == "Sign" and len(sys.argv) == 4:  # F94: the signature is kept, for the sweep of the journal
         with open(sys.argv[3], "wb") as f:
             f.write(bytes(reply.unpack()[0]))
+    if method == "ListKeys":  # F133: one line per key, "ID<TAB>KEY TYPE<TAB>STORAGE KIND", as the service returned them
+        for key_id, key_type, kind, _cert in reply.unpack()[0]:
+            print(f"{key_id}\t{key_type}\t{kind}")
+        return 0
     print("ok")
     return 0
 

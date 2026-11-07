@@ -68,6 +68,7 @@ exec)
         [ -z "${STUB_EXTRA:-}" ] || echo "E2E-CASE run $STUB_EXTRA"
         echo "E2E-RECORD bus-daemon=dbus-daemon"
         echo "E2E-RECORD polkit-version=124"
+        for a in "$@"; do case $a in E2E_TPM=*) echo "E2E-RECORD tpm=${a#E2E_TPM=}" ;; esac; done
         ;;
     esac
     ;;
@@ -81,7 +82,7 @@ run ubuntu2404 || bad "the refusal target failed with no N+1 and no old package:
 grep -q 'guest.sh ubuntu2404' "$tmp/log" || bad "the guest did not run"
 [ "$(grep '^run ' "$tmp/log" | grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' | sort -u | wc -l)" -eq 1 ] || bad "the refusal target mounts more than the package"
 grep -q 'cases accounted for' "$tmp/out" || bad "the cases were not accounted for"
-grep -q 'bus-daemon=dbus-daemon' "$tmp/o/ubuntu2404.record" || bad "no record"
+grep -q 'bus-daemon=dbus-daemon' "$tmp/o/ubuntu2404.swtpm.record" || bad "no record"
 for id in $want; do
     STUB_OMIT=$id run ubuntu2404 && bad "a run that omits $id passed"
     grep -q "'$id' was not reported" "$tmp/out" || bad "the omitted $id was not named"
@@ -92,6 +93,7 @@ grep -q "unknown case '$first'" "$tmp/out" || bad "a common id on the refusal ta
 # without the marker the same directory demands N+1 (and the common ids)
 cp -r "$T" "$tmp/targets/ubuntu9999"
 rm "$tmp/targets/ubuntu9999/refusal-only"
+cp "$ROOT/e2e/targets/debian13/files.sh" "$tmp/targets/ubuntu9999/"
 run ubuntu9999 && bad "a target without the marker ran with no package N+1"
 grep -q 'no package N+1' "$tmp/out" || bad "the missing N+1 was not named: $(tail -n 3 "$tmp/out")"
 grep -Eq '^(build|run|exec) ' "$tmp/log" && bad "the engine ran for a target without the marker and without N+1"

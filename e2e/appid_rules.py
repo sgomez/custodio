@@ -200,11 +200,11 @@ def cleanup(slice_path, names_path):
 
 
 def slice_path(mount, control_group, uid):
-    """The tree the daemon walks (scan.rs tree_root and open_app_slice): everything in front of system.slice in the daemon's own cgroup."""
+    """The tree the daemon walks (scan.rs tree_root and open_app_slice): everything in front of the last system.slice in the daemon's own cgroup."""
     parts = control_group.strip().strip("/").split("/")
     if "system.slice" not in parts:
         raise ValueError("the control group of the service has no system.slice")
-    prefix = parts[:parts.index("system.slice")]
+    prefix = parts[:len(parts) - 1 - parts[::-1].index("system.slice")]
     return os.path.join(mount, *prefix, "user.slice", f"user-{uid}.slice", f"user@{uid}.service", "app.slice")
 
 

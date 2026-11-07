@@ -11,7 +11,12 @@ yanked = "deny"
 # the attacker cannot collect the thousands of timings the attack needs), the service passes an RNG
 # so private-key operations are blinded, and a hostile same-uid process is out of scope in SPEC.md.
 # Re-check when `rsa` publishes a fix; see docs/decisions.md (signing primitives).
-ignore = ["RUSTSEC-2023-0071"]
+#
+# RUSTSEC-2024-0436 (`paste` is unmaintained, no vulnerability): a proc-macro crate that only runs at
+# build time, pulled in by `tss-esapi` 8.0.0-alpha.4, which only `custodio-it` uses as a dev-dependency
+# (the swtpm test fixture). Nothing from it ships in a binary. The 8.0 alpha is needed because 7.x
+# cannot address swtpm on a Unix socket. Drop this entry when `tss-esapi` stops using `paste`.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2024-0436"]
 
 # Licences compatible with EUPL-1.2 (permissive, or weak copyleft listed as compatible in its
 # appendix). Add to this list only after checking compatibility.
@@ -41,6 +46,10 @@ deny = [
   { crate = "openssl-sys" },
 ]
 skip = [
+  # `tss-esapi` 8.0.0-alpha.4 (the TPM client, F112) pins getrandom 0.2; `rand` 0.10 (via p12-keystore
+  # and the service) needs 0.4. No release of either lets them meet; both are small and audited.
+  # Drop this entry when `tss-esapi` moves to getrandom 0.3 or later.
+  { crate = "getrandom@0.2.17", reason = "pinned by tss-esapi 8.0.0-alpha.4; rand 0.10 needs 0.4" },
   # Two proc-macro generations in the build graph (displaydoc/thiserror-impl on syn 3, the asn1-rs
   # derives on syn 2) via p12-keystore. Build-time only; nothing from either ships in the binary.
   { crate = "syn@2.0.119", reason = "proc-macro only; pulled in by asn1-rs-derive via p12-keystore" },

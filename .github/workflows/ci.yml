@@ -53,6 +53,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -90,6 +92,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -118,6 +124,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -142,6 +152,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: just@1.59.0,cargo-fuzz@0.13.2
@@ -163,8 +175,13 @@ jobs:
       - run: just nightly
 
   # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week.
+  # Skipped on a PR labelled skip-mutants (a milestone PR whose features each passed `just mutants-diff`; label it
+  # before the push, a re-run keeps the old labels), and on the merge of a PR, which ran it already.
   mutants:
     name: just mutants (diff)
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'skip-mutants') &&
+      !startsWith(github.event.head_commit.message, 'Merge pull request ')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
@@ -178,6 +195,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # The test job's cache holds the same test build; saving one here would freeze whatever the first diff compiled.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -187,7 +208,7 @@ jobs:
           save-if: false
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just@1.59.0,cargo-mutants@27.1.0
+          tool: just@1.59.0,cargo-mutants@27.1.0,cargo-nextest@0.9.148
       - env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -210,8 +231,9 @@ jobs:
   # The three packages from one nfpm file list, and the gate on their contents.
   package:
     name: just package
-    # The binaries link against the runner's glibc: 24.04's 2.39 is the ceiling (packaging/glibc-ceiling.txt).
-    runs-on: ubuntu-24.04
+    # 26.04, because tss-esapi needs tss2-sys 4.1.3 and 24.04 has 4.0.1. Its glibc is newer than the ceiling
+    # (packaging/glibc-ceiling.txt); `just glibc-ceiling` below fails a binary that needs more than 2.39.
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       # Debuginfo only slows compiling and linking here.
@@ -223,6 +245,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -249,11 +273,60 @@ jobs:
         env:
           PACKAGE_LINT_FORCE_CONTAINER: "1"
 
+  # The end-to-end tests: every target in a privileged systemd container with a software TPM (swtpm), and without one (none) on the targets with a
+  # tpm-none marker (debian13), as in `just e2e`. A runner that cannot run such a
+  # container fails the job (docker run --privileged is the first thing `just e2e` does): nothing here turns that into a pass.
+  e2e:
+    name: e2e ${{ matrix.target }} ${{ matrix.tpm }}
+    # The packages are built here and installed on the targets: 26.04 for tss2-sys 4.1.3, as in the package job, which checks the glibc ceiling.
+    # On 24.04, swtpm_setup fails in the guests.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [debian13, ubuntu2604, ubuntu2404, fedora44, alma10, arch]
+        tpm: [swtpm]
+        include:
+          - target: debian13
+            tpm: none
+    env:
+      # Debuginfo only slows compiling and linking here.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      E2E_TPM: ${{ matrix.tpm }}
+      E2E_ENGINE: docker
+      TARGET: ${{ matrix.target }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the tag v0.5.0 (M3) is built for the upgrade-m3-* cases (scripts/package-m3.sh)
+      # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev rpm libarchive-tools zstd python3-yaml
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
+          add-rust-environment-hash-key: false
+          shared-key: package-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
+          save-if: false
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just@1.59.0
+      # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - run: just e2e "$TARGET"
+
   # Single required status check for branch protection: it fails if any job above did not succeed.
   ci:
     name: ci
     if: always()
-    needs: [commits, lint, test, package, coverage, nightly, mutants]
+    needs: [commits, lint, test, package, e2e, coverage, nightly, mutants]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}

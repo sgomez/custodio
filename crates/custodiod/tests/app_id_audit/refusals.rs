@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn app_id_not_asked_for_refusals() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             let sink = Arc::new(Sink::default());
             let probe = Probe::new(AppIdOutcome::None);
             let f = start(
@@ -18,6 +18,8 @@ fn app_id_not_asked_for_refusals() -> TestResult {
             // A key of another user, and one that does not exist.
             custodiod::import::import_p12(
                 &f.store,
+                &custodiod::creds::memory::MemoryCreds::host(),
+                &custodiod::tpm::open::NoTpm,
                 uid() + 1,
                 "foreign",
                 RSA_P12,
@@ -41,6 +43,8 @@ fn app_id_not_asked_for_refusals() -> TestResult {
                                 .await
                                 .map(|_| ())
                         }
+                        // Start-up does it; no call asks for it.
+                        Operation::Purge => Err(zbus::Error::Unsupported),
                     }
                     .map_err(|e| error_name(&e))
                 }

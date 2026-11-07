@@ -1,8 +1,8 @@
 //! `.p12` import: parse a PKCS#12 file with its password, accept only RSA 2048 and ECDSA P-256
 //! keys that come with a certificate, and hand the result to the key store.
 //!
-//! The private key is stored as PKCS#8 DER under `<id>`, the leaf certificate as DER under
-//! `<id>-cert`.
+//! The key is protected in the form [`choice`] names (TPM, encrypted TPM-bound or encrypted host-bound) by
+//! [`protect`] and stored with the leaf certificate in one record under `<id>`; the PKCS#8 DER never reaches the store.
 
 use std::fmt;
 
@@ -15,7 +15,13 @@ use pkcs8::der::{
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 use x509_cert::Certificate as X509;
 
-use crate::store::{KeyStore, StoreError};
+use crate::creds::{Credentials, CredsError};
+use crate::store::{KeyStore, Kind, Record, StoreError};
+use crate::tpm::TpmAccess;
+use crate::tpm::import::ImportError as TpmImportError;
+
+pub mod choice;
+pub mod protect;
 
 /// `rsaEncryption` (RFC 8017).
 const OID_RSA: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
@@ -53,6 +59,12 @@ pub enum ImportError {
     CertificateMismatch,
     /// The key is neither RSA 2048 nor ECDSA P-256.
     UnsupportedKey(String),
+    /// The key could not be encrypted, or the credential was refused.
+    Protect(CredsError),
+    /// The TPM cannot be judged, or its import failed. Nothing is stored in a weaker form.
+    Tpm(TpmImportError),
+    /// The credential is bound to something else than the storage kind chosen.
+    BindingMismatch,
     /// The key store refused the key or certificate.
     Store(StoreError),
 }
@@ -75,12 +87,23 @@ impl fmt::Display for ImportError {
                 f,
                 "unsupported key: {why}; only RSA 2048 and ECDSA P-256 are accepted"
             ),
+            Self::Protect(e) => write!(f, "cannot protect the key: {e}"),
+            Self::Tpm(e) => write!(f, "cannot import the key into the TPM: {e}"),
+            Self::BindingMismatch => {
+                f.write_str("the credential is bound to something else than the storage chosen")
+            }
             Self::Store(e) => write!(f, "cannot store the key: {e}"),
         }
     }
 }
 
 impl std::error::Error for ImportError {}
+
+impl From<TpmImportError> for ImportError {
+    fn from(e: TpmImportError) -> Self {
+        Self::Tpm(e)
+    }
+}
 
 impl From<StoreError> for ImportError {
     fn from(e: StoreError) -> Self {
@@ -168,56 +191,58 @@ impl P12Decoder for RealDecoder {
     }
 }
 
-/// Whether `owner` already has a key `id` (or a certificate entry of that name).
+/// Whether `owner` already has a key `id`.
 ///
 /// # Errors
 /// [`StoreError`] if the owner's area cannot be listed.
 pub fn id_taken(store: &KeyStore, owner: u32, id: &str) -> Result<bool, StoreError> {
     let ids = store.list(owner)?;
-    Ok(ids.iter().any(|i| i == id || *i == cert_id(id)))
+    Ok(ids.iter().any(|i| i == id))
 }
 
-/// Store, for `owner`, the key of `parsed` as `id` and its certificate as `<id>-cert`.
-///
-/// The certificate is written first: it is public, so a failure between the two writes leaves
-/// nothing sensitive behind.
+/// The name a key's credential is made under: it binds the credential to its owner and id.
+#[must_use]
+pub fn credential_name(owner: u32, id: &str) -> String {
+    format!("custodio-{owner}-{id}")
+}
+
+/// Choose the storage kind (see [`choice`]), protect the key of `parsed` in it and store, for `owner`, one record
+/// under `id` with the protected key and the certificate; returns the key type and the storage kind chosen. The plaintext key goes to the TPM or to the credential
+/// service and nowhere else; it is dropped before the record is written. Every failure stores nothing.
 ///
 /// # Errors
 /// See [`ImportError`].
 pub fn store_parsed(
     store: &KeyStore,
+    creds: &dyn Credentials,
+    tpm: &dyn TpmAccess,
     owner: u32,
     id: &str,
     parsed: ParsedP12,
-) -> Result<KeyKind, ImportError> {
-    // Check up front so a refused key write cannot leave a certificate without a key behind.
+) -> Result<(KeyKind, Kind), ImportError> {
+    // Check up front so a taken id costs no encryption.
     if id_taken(store, owner, id)? {
         return Err(StoreError::AlreadyExists.into());
     }
-    store.put(owner, &cert_id(id), &SecretSlice::from(parsed.certificate))?;
-    store.put(owner, id, &parsed.key)?;
-    Ok(parsed.kind)
+    let protection = protect::protect(tpm, creds, &credential_name(owner, id), parsed)?;
+    let record = Record::new(
+        owner,
+        id,
+        protection.kind,
+        &protection.certificate,
+        protection.protected,
+    )
+    .map_err(StoreError::Record)?;
+    store.put(&record)?;
+    Ok((protection.key_type, protection.kind))
 }
 
-/// Undo [`store_parsed`] for `id`: remove the key, then the certificate.
-///
-/// The key goes first, so a partial rollback never leaves a key without its certificate (the
-/// certificate is written first, see [`store_parsed`]). If the key cannot be removed the
-/// certificate is left alone.
+/// Undo [`store_parsed`] for `id`: remove the record.
 ///
 /// # Errors
-/// The first [`StoreError`] of a removal.
+/// The [`StoreError`] of the removal.
 pub fn rollback_import(store: &KeyStore, owner: u32, id: &str) -> Result<(), StoreError> {
-    rollback_with(id, |name| store.remove(owner, name))
-}
-
-/// [`rollback_import`] with the removal given, so a test can see the order.
-fn rollback_with(
-    id: &str,
-    mut remove: impl FnMut(&str) -> Result<(), StoreError>,
-) -> Result<(), StoreError> {
-    remove(id)?;
-    remove(&cert_id(id))
+    store.remove(owner, id)
 }
 
 /// Parse a `.p12` and store it for `owner`: [`parse_p12`], then [`store_parsed`].
@@ -226,18 +251,15 @@ fn rollback_with(
 /// See [`ImportError`].
 pub fn import_p12(
     store: &KeyStore,
+    creds: &dyn Credentials,
+    tpm: &dyn TpmAccess,
     owner: u32,
     id: &str,
     data: &[u8],
     password: &SecretString,
 ) -> Result<KeyKind, ImportError> {
-    store_parsed(store, owner, id, parse_p12(data, password)?)
-}
-
-/// Key store id of the certificate belonging to key `id`.
-#[must_use]
-pub fn cert_id(id: &str) -> String {
-    format!("{id}-cert")
+    store_parsed(store, creds, tpm, owner, id, parse_p12(data, password)?)
+        .map(|(key_type, _)| key_type)
 }
 
 fn unsupported(why: &str) -> ImportError {
@@ -361,6 +383,47 @@ pub(crate) fn cert_public_key(kind: KeyKind, cert_der: &[u8]) -> Option<Vec<u8>>
         }
         _ => None,
     }
+}
+
+/// The key type and canonical public key (the form of [`public_key_of`]) of the public area of a TPM
+/// blob; `None` for a key of another type.
+pub(crate) fn blob_public_key(blob: &crate::tpm::blob::Blob) -> Option<(KeyKind, Vec<u8>)> {
+    use tss_esapi::structures::Public;
+    match blob.public_area().ok()? {
+        Public::Rsa {
+            parameters, unique, ..
+        } => {
+            // An exponent of 0 means the default, 65537.
+            let e = match parameters.exponent().value() {
+                0 => 65_537_u32,
+                e => e,
+            };
+            Some((
+                KeyKind::Rsa2048,
+                rsa_canonical(unique.as_slice(), &e.to_be_bytes()),
+            ))
+        }
+        Public::Ecc { unique, .. } => {
+            let pad = |v: &[u8]| -> Option<Vec<u8>> {
+                let fill = 32_usize.checked_sub(v.len())?;
+                let mut out = vec![0_u8; fill];
+                out.extend_from_slice(v);
+                Some(out)
+            };
+            let mut point = vec![4_u8];
+            point.extend(pad(unique.x().as_slice())?);
+            point.extend(pad(unique.y().as_slice())?);
+            Some((KeyKind::EcdsaP256, point))
+        }
+        _ => None,
+    }
+}
+
+/// The key type of the public key in a certificate, if it is one of the two we accept.
+pub(crate) fn certificate_kind(cert_der: &[u8]) -> Option<KeyKind> {
+    [KeyKind::Rsa2048, KeyKind::EcdsaP256]
+        .into_iter()
+        .find(|k| cert_public_key(*k, cert_der).is_some())
 }
 
 #[cfg(test)]

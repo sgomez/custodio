@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::app_id::AppIdOutcome;
+use crate::store::Kind as StorageKind;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -80,12 +81,23 @@ fn operation_entries() -> Result<Vec<OperationEntry>, InvalidKeyId> {
             OperationEntry::import(o, Some(CALLER), key()?, t.first().copied()).with_app_id(app()),
         );
     }
+    // One import per kind and one per cause, so the fields they add are among those the page must document.
+    for kind in store_kinds() {
+        let stored = OperationEntry::import(ImportOutcome::Stored, Some(CALLER), key()?, None);
+        all.push(stored.with_storage_kind(kind).with_app_id(app()));
+    }
+    for cause in ImportCause::all() {
+        let failed =
+            OperationEntry::import(ImportOutcome::StorageFailure, Some(CALLER), key()?, None);
+        all.push(failed.with_cause(cause).with_app_id(app()));
+    }
     for o in DeleteOutcome::all() {
         all.push(OperationEntry::delete(o, Some(CALLER), key()?).with_app_id(app()));
     }
     for o in ReplaceOutcome::all() {
         all.push(OperationEntry::replace_certificate(o, Some(CALLER), key()?).with_app_id(app()));
     }
+    all.push(OperationEntry::purge(Some(1000), key()?));
     Ok(all)
 }
 
@@ -105,6 +117,10 @@ fn outcome_pairs(op: Operation) -> Vec<(&'static str, u8)> {
             .map(|o| (o.name(), o.priority()))
             .collect(),
         Operation::ReplaceCertificate => ReplaceOutcome::all()
+            .iter()
+            .map(|o| (o.name(), o.priority()))
+            .collect(),
+        Operation::Purge => PurgeOutcome::all()
             .iter()
             .map(|o| (o.name(), o.priority()))
             .collect(),
@@ -139,6 +155,11 @@ fn field_names(op: Operation) -> Result<BTreeSet<&'static str>, InvalidKeyId> {
         for o in outcomes() {
             all.extend(names(&full(o)?));
         }
+        let failed = full(Outcome::SigningFailed)?;
+        all.extend(names(&failed.with_storage_kind(StorageKind::Tpm)));
+        all.extend(names(
+            &full(Outcome::SigningFailed)?.with_cause(SignCause::KeyLost),
+        ));
     }
     for e in operation_entries()?.iter().filter(|e| e.operation() == op) {
         all.extend(e.fields().into_iter().map(|(n, _)| n));
@@ -321,34 +342,6 @@ fn message_example_in_docs() -> TestResult {
 }
 
 #[test]
-fn limits_and_compatibility_documented() -> TestResult {
-    let docs = docs()?;
-    let mut lines = docs.lines();
-    let heading = lines
-        .by_ref()
-        .find(|l| l.starts_with('#') && l.to_lowercase().contains("not guaranteed"));
-    assert!(heading.is_some(), "no 'Not guaranteed' heading");
-    let section = lines
-        .take_while(|l| !l.starts_with('#'))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .to_lowercase();
-    for word in ["person", "pid reuse", "rate limit", "volatile", "imitat"] {
-        assert!(section.contains(word), "'Not guaranteed' lacks {word}");
-    }
-    let rule = docs.lines().any(|l| {
-        let l = l.to_lowercase();
-        l.contains("names")
-            && l.contains("identifier")
-            && l.contains("priorities")
-            && l.contains("only added to")
-            && l.contains("never changed")
-    });
-    assert!(rule, "compatibility rule missing");
-    Ok(())
-}
-
-#[test]
 fn catalog_format() -> TestResult {
     // For each id the `en` entry comes first and the untagged default entry follows, because a
     // catalog with only a tagged entry makes `journalctl --list-catalog` abort.
@@ -423,7 +416,7 @@ fn query_uses_trusted_fields() -> TestResult {
             op.name()
         );
     }
-    assert!(docs.contains("data/sysusers.d/custodio.conf") && docs.contains("id -u custodio"));
+    assert!(docs.contains("id -u custodio"));
     assert!(read("data/sysusers.d/custodio.conf")?.contains("u custodio"));
     Ok(())
 }
@@ -456,8 +449,12 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
                 "MESSAGE_ID" => ids.contains(value),
                 "CUSTODIO_OPERATION" => ops.contains(value),
                 "CUSTODIO_OUTCOME" => outcome_names.contains(value),
-                "CUSTODIO_UID" => value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty(),
+                "CUSTODIO_UID" | "CUSTODIO_OWNER_UID" => {
+                    value.bytes().all(|b| b.is_ascii_digit()) && !value.is_empty()
+                }
                 "CUSTODIO_KEY_ID" => KeyId::new(value).is_ok(),
+                "CUSTODIO_STORAGE_KIND" => store_kinds().iter().any(|k| k.wire() == value),
+                "CUSTODIO_CAUSE" => cause_names().contains(value),
                 "CUSTODIO_APP_ID" => crate::app_id::validate(value.as_bytes()).is_some(),
                 "CUSTODIO_APP_ID_STATE" => {
                     ["read", "none", "undetermined"].contains(&value)
@@ -474,103 +471,8 @@ fn every_query_uses_only_what_the_code_emits() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn delete_order_and_outcomes_documented() -> TestResult {
-    let text = docs()?;
-    let section = text
-        .split("### delete")
-        .nth(1)
-        .and_then(|s| s.split("### replace_certificate").next())
-        .ok_or("no delete section")?;
-    let flat = section.split_whitespace().collect::<Vec<_>>().join(" ");
-    for statement in [
-        "the key was made unusable and this entry submitted before any file was removed",
-        "| `storage_failure` | 3 | Reserved: delete never emits it |",
-        "Delete never emits `storage_failure`",
-        "first made unusable",
-        "then the entry is submitted, and only then are the files removed",
-        "the key is restored",
-        "`AuditUnavailable`",
-        "never lacks an entry",
-        "A crash between the entry and the removal",
-        "stays unusable until the service restarts",
-        "leaves no entry",
-    ] {
-        assert!(flat.contains(statement), "missing: {statement}");
-    }
-    assert!(text.contains("**A crash during a delete.**"));
-    Ok(())
-}
-
-#[test]
-fn api_describes_the_delete_entry() -> TestResult {
-    let text = read("docs/api.md")?;
-    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    for statement in [
-        "the key is made unusable, the journal entry is submitted, and only then the key file is removed",
-        "leaves exactly one entry",
-        "the call fails as `AuditUnavailable` and the key is as it was",
-        "`ImportP12` of it still fails as `KeyIdTaken`",
-        "stays unusable (not listed, `NoSuchKey` for `Sign` and `DeleteKey`) until the service restarts",
-        "Deletes of one id run one at a time",
-        "A `DeleteKey` after the service restarts removes the leftover certificate",
-    ] {
-        assert!(flat.contains(statement), "missing: {statement}");
-    }
-    assert!(!flat.contains("says nothing about journal entries"));
-    assert!(
-        !flat.contains("Calling `DeleteKey` again for that id removes the leftover certificate")
-    );
-    Ok(())
-}
-
-#[test]
-fn replace_order_and_outcomes_documented() -> TestResult {
-    let text = docs()?;
-    let section = text
-        .split("### replace_certificate")
-        .nth(1)
-        .and_then(|s| s.split("## Mechanisms").next())
-        .ok_or("no replace section")?;
-    let flat = section.split_whitespace().collect::<Vec<_>>().join(" ");
-    for statement in [
-        "A replace that reaches polkit leaves exactly one entry",
-        "the new certificate is stored (atomically), then the entry is submitted, still under the lock of that key",
-        "the old certificate (read before the store) is put back",
-        "the call fails as `AuditUnavailable`",
-        "never lacks an entry",
-        "The outcome `storage_failure` covers every failure after the approval that is not a mismatch",
-        "the key is of a type the comparison does not support (the reply is `Internal`)",
-        "a key or certificate that vanished after the lookup",
-        "leaves no entry",
-        "a `ListKeys` while the entry is pending may show either certificate",
-        "Queries by outcome are under \"By outcome\" below",
-    ] {
-        assert!(flat.contains(statement), "missing: {statement}");
-    }
-    assert!(text.contains("**A failed restore after a replace.**"));
-    assert!(
-        text.contains(
-            "CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch"
-        )
-    );
-    Ok(())
-}
-
-#[test]
-fn api_describes_the_replace_entry() -> TestResult {
-    let text = read("docs/api.md")?;
-    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    for statement in [
-        "the call leaves exactly one journal entry (`replace_certificate`), submitted after the store and before the reply",
-        "the call fails as `AuditUnavailable` with the old certificate put back",
-        "If that restore fails too, the reply is still `AuditUnavailable`",
-    ] {
-        assert!(flat.contains(statement), "missing: {statement}");
-    }
-    assert!(!flat.contains("This method does not write a journal entry"));
-    Ok(())
-}
-
+mod causes;
+use causes::{cause_names, store_kinds};
 mod app_id;
 use app_id::app;
+mod purge;

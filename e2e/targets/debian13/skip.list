@@ -1,1 +1,30 @@
-# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). Empty: nothing is skipped here.
+# Cases the e2e suite may skip on debian13, as `case: reason` (format: e2e/check-cases.sh). The tpm-kind cases need the swtpm mode; check-cases.sh refuses them skipped in it. The sign-* (F134) and noplain-* (F135) cases run in every mode and are never listed here; check-cases.sh refuses them skipped. The tpm-dup-* cases (F136) need a key of kind tpm: they run in swtpm and lacking, are skipped in none only, and check-cases.sh refuses them skipped in the other two. The pcr-* cases (F137) are skipped in none only, the same way. The fallback-tpmbound-* cases (F138) are skipped in every mode (deviation F134); the fallback-host-* cases run in none and are skipped in swtpm and lacking. The tpm-clear-* cases (F140) are skipped in none only, like pcr-*; check-cases.sh refuses them skipped in swtpm and lacking. The tpm-slots-* cases (F143) are skipped in none only, like pcr-*. The tpmfail-* cases (F139) run in swtpm only and are skipped in none and lacking; check-cases.sh refuses them skipped in swtpm and reported run elsewhere.
+tpm-kind-import-rsa: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
+tpm-kind-import-ec: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
+tpm-kind-api-list: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
+tpm-kind-cli-list: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
+tpm-kind-journal: only the swtpm mode gives the key the kind tpm; the other modes are proven by later features
+tpm-dup-authpolicy-empty: only a mode with a TPM gives a key of kind tpm; in none there is no TPM blob to duplicate
+tpm-dup-duplicate-fails: only a mode with a TPM gives a key of kind tpm; in none there is no TPM blob to duplicate
+tpm-dup-other-tpm: only a mode with a TPM gives a key of kind tpm; in none there is no TPM blob to duplicate
+pcr-extended-signs: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
+pcr-restarted-signs: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
+pcr-signs-every-key: only a mode with a TPM has PCRs to extend and a swtpm to restart; in none the keys are encrypted-host
+fallback-tpmbound-import: the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); storage_kind::import_encrypted_tpm (custodio-cli) covers the text, kinds_suite the kind
+fallback-tpmbound-cli-list: the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); the list row is covered by custodio-cli storage_kind
+fallback-host-import-rsa: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-import-ec: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-says-weaker-why: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+fallback-host-cli-list: only mode none gives the key the kind encrypted-host; swtpm and lacking give tpm
+tpmfail-device-unopenable: only mode swtpm: the case replaces the TPM of the run with its own failing ones and restores the swtpm; in none there is no TPM to fail, in lacking the filter is not what it uses
+tpmfail-tpm-error: only mode swtpm: the case replaces the TPM of the run with its own failing ones and restores the swtpm; in none there is no TPM to fail, in lacking the filter is not what it uses
+tpmfail-credentials-down-tpm-lacking: only mode swtpm: the case replaces the TPM of the run with its own failing ones and restores the swtpm; in none there is no TPM to fail, in lacking the filter is not what it uses
+tpmfail-credentials-down-host: only mode swtpm: the case replaces the TPM of the run with its own failing ones and restores the swtpm; in none there is no TPM to fail, in lacking the filter is not what it uses
+tpm-clear-sign-fails: only a mode with a TPM has one to clear; in none the keys are encrypted-host, which a TPM clear does not touch
+tpm-clear-keys-listed: only a mode with a TPM has one to clear; in none the keys are encrypted-host, which a TPM clear does not touch
+tpm-clear-delete: only a mode with a TPM has one to clear; in none the keys are encrypted-host, which a TPM clear does not touch
+tpm-slots-sign-rsa: only a mode with a TPM has object slots to use up; in none the keys are encrypted-host, which use no TPM object
+tpm-slots-sign-ec: only a mode with a TPM has object slots to use up; in none the keys are encrypted-host, which use no TPM object
+tpm-slots-import: only a mode with a TPM has object slots to use up; in none the keys are encrypted-host, which use no TPM object
+tpm-slots-no-leak: only a mode with a TPM has object slots to use up; in none the keys are encrypted-host, which use no TPM object
+upgrade-kinds-tpmbound: the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); the kinds, owners and certificates surviving a store opened again over one state directory are covered by the custodiod integration test state_format reload (cargo test -p custodiod --test state_format reload), not an end-to-end proof

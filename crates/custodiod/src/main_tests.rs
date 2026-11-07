@@ -30,6 +30,7 @@ mod wiring {
     use std::process::{Child, Command, Stdio};
     use std::time::Duration;
 
+    use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
     use custodiod::import::import_p12;
     use secrecy::SecretString;
     use zbus::connection::Builder;
@@ -84,6 +85,8 @@ mod wiring {
         let password = SecretString::from("test-password".to_owned());
         import_p12(
             &store,
+            &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
             rustix::process::geteuid().as_raw(),
             "ec",
             include_bytes!("../tests/fixtures/p256.p12"),
@@ -95,8 +98,14 @@ mod wiring {
             let path = "/org/freedesktop/PolicyKit1/Authority";
             polkit.object_server().at(path, Approving).await?;
             polkit.request_name("org.freedesktop.PolicyKit1").await?;
-            let conn = Builder::address(address.as_str()).build().await?;
-            serve(store, &conn, JournalSink::new(&journal)).await?;
+            let _service = start(
+                store,
+                Builder::address(address.as_str()).build(),
+                Arc::new(JournalSink::new(&journal)),
+                Arc::new(custodiod::creds::memory::MemoryCreds::host()),
+                Arc::new(custodiod::tpm::open::NoTpm),
+            )
+            .await?;
             let client = Builder::address(address.as_str()).build().await?;
             let body = ("ec", 0x1041u32, 0u32, 0u32, vec![7u8; 32]);
             client
@@ -120,6 +129,71 @@ mod wiring {
             "{text}"
         );
         assert!(text.contains("CUSTODIO_OUTCOME=signed\n"), "{text}");
+        Ok(())
+    }
+
+    /// The start-up path `main` takes, over a state that holds a key of the earlier format: the file is gone and the
+    /// name is taken when it returns, and the purge left its entry.
+    #[test]
+    fn a_legacy_key_is_purged_by_the_start_up_path() -> TestResult {
+        let mut child = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut address = String::new();
+        BufReader::new(child.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
+        let _bus = Bus(child);
+        let address = address.trim().to_owned();
+
+        let dir = tempfile::tempdir()?;
+        let journal = dir.path().join("journal.sock");
+        let socket = UnixDatagram::bind(&journal)?;
+        socket.set_read_timeout(Some(Duration::from_secs(2)))?;
+        let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
+        let uid = rustix::process::geteuid().as_raw();
+        let area = store.dir().join(uid.to_string());
+        fs::create_dir(&area)?;
+        fs::set_permissions(&area, std::os::unix::fs::PermissionsExt::from_mode(0o700))?;
+        let old = area.join("old-key");
+        fs::write(&old, [0x30, 0x81, 0x87])?;
+        fs::set_permissions(&old, std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+
+        block_on(async {
+            let service = start(
+                store,
+                Builder::address(address.as_str()).build(),
+                Arc::new(JournalSink::new(&journal)),
+                Arc::new(custodiod::creds::memory::MemoryCreds::host()),
+                Arc::new(custodiod::tpm::open::NoTpm),
+            )
+            .await?;
+            assert!(service.unique_name().is_some());
+            let client = Builder::address(address.as_str()).build().await?;
+            let reply = client
+                .call_method(
+                    Some("org.freedesktop.DBus"),
+                    "/org/freedesktop/DBus",
+                    Some("org.freedesktop.DBus"),
+                    "NameHasOwner",
+                    &(BUS_NAME,),
+                )
+                .await?;
+            assert!(reply.body().deserialize::<bool>()?);
+            Ok::<_, Box<dyn Error>>(())
+        })?;
+        assert!(
+            !old.exists(),
+            "the key of the earlier format is still there"
+        );
+        let mut buf = vec![0u8; 65536];
+        let n = socket.recv(&mut buf)?;
+        let text = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
+        assert!(text.contains("CUSTODIO_OPERATION=purge\n"), "{text}");
+        assert!(text.contains("CUSTODIO_KEY_ID=old-key\n"), "{text}");
+        assert!(
+            text.contains(&format!("CUSTODIO_OWNER_UID={uid}\n")),
+            "{text}"
+        );
         Ok(())
     }
 }

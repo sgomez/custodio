@@ -12,9 +12,7 @@ use zbus::{Connection, block_on};
 
 use super::bus::{Fixture, TestResult};
 use super::common::{PASSWORD, RSA_P12, digest, digest_info, uid};
-use super::{
-    Make, NEW, OTHER_KEY, cases, cert_path, put_rsa, replace, running_as_root, scan, start,
-};
+use super::{Make, NEW, OTHER_KEY, cases, cert_of, put_rsa, replace, running_as_root, scan, start};
 use std::sync::Arc;
 
 /// Everything an entry can show.
@@ -121,7 +119,7 @@ fn journal_sink_datagram_for_replace() -> TestResult {
             )
             .await?;
             put_rsa(&f, "k")?;
-            let old = std::fs::read(cert_path(&f, "k"))?;
+            let old = cert_of(&f, "k")?;
             let _ = replace(&f.client, "k", cert).await;
             let mut buf = vec![0u8; 65536];
             let n = socket.recv(&mut buf)?;

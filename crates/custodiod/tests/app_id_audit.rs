@@ -219,6 +219,8 @@ pub enum Fail {
 pub(crate) fn put_rsa(f: &Fixture, id: &str) -> TestResult {
     custodiod::import::import_p12(
         &f.store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         uid(),
         id,
         RSA_P12,
@@ -271,6 +273,8 @@ pub(crate) async fn drive(f: &Fixture, op: Operation, fail: Fail) -> Result<(), 
                 .await
                 .map(|_| ())
         }
+        // Start-up does it; no call asks for it.
+        Operation::Purge => return Err("a purge is not a call".to_owned()),
     };
     reply.map_err(|e| error_name(&e))
 }
@@ -298,7 +302,7 @@ pub(crate) fn snapshot(dir: &Path) -> Result<BTreeMap<String, Vec<u8>>, Box<dyn 
 #[test]
 fn app_id_cases_for_every_operation() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for case in answers()? {
                 let sink = Arc::new(Sink::default());
                 let probe = Probe::new(case.clone());
@@ -319,7 +323,7 @@ fn app_id_cases_for_every_operation() -> TestResult {
 fn app_id_without_caller_is_undetermined() -> TestResult {
     use common::NoCredentials;
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             let probe = Probe::new(AppIdOutcome::None);
             for variant in 0..2 {
                 let sink = Arc::new(Sink::default());

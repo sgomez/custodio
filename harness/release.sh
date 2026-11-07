@@ -12,7 +12,7 @@ if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
 fi
 # Features only run their own gates; the slow ones run in full once, before the release.
 log "Running just check-slow before releasing..."
-if command -v cargo >/dev/null; then just check-slow; else harness/run.sh just check-slow; fi \
+if [ -e /run/.containerenv ]; then just check-slow; else harness/run.sh just check-slow; fi \
   || die "just check-slow failed; fix it before releasing."
 
 version=$(git cliff --bumped-version 2>/dev/null)

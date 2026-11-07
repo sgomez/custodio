@@ -1,1 +1,8 @@
-# Cases the e2e suite may skip on fedora44, as `case: reason` (format: e2e/check-cases.sh). Empty: nothing is skipped here.
+# Cases the e2e suite may skip on fedora44, as `case: reason` (format: e2e/check-cases.sh). Only the cases of the upgrade from the old path are skipped here (below).
+# One target per package format runs the upgrade from the old-path package (marker file no-oldpath).
+upgrade-oldpath-version-greater: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)
+upgrade-oldpath-service-new-binary: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)
+upgrade-oldpath-state-unchanged: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)
+upgrade-oldpath-keys-listed: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)
+upgrade-oldpath-signs-with-polkit: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)
+upgrade-oldpath-no-manual-step: the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)

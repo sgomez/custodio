@@ -1,11 +1,12 @@
-# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15, M3 acceptance 14 to 16)
+# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15, M3 acceptance 14 to 16, M4 acceptance 13 to 15)
 
-This page has three parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
+This page has four parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
 Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the
 `journalctl` query). Sections 10 to 15 are the M2 steps for `fedora44`, `bazzite`, `omarchy` and
 `ubuntu2404` (the M2 acceptance 12 to 15); start at section 10. Sections 16 to 19 are the M3 steps (the M3
 acceptance 14 to 16: the client API by hand, a flatpak, Firefox and LibreOffice with a second account); start at
-section 16. Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
+section 16. Sections 20 to 23 are the M4 steps (the M4 acceptance 13 to 15: a hardware TPM, a VM without a TPM and a copy of
+the state directory); start at section 20. Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
 `custodio import` flags) say so; everything else is marked **unverified**: adjust it to your NSS,
 LibreOffice and rFirma version and write down what you changed.
 
@@ -104,7 +105,7 @@ module is unverified here. If a polkit dialog appears for a listing, write it do
 ## 4. The rFirma build
 
 Acceptance 11 needs a build of rFirma without the two workarounds of the M0 run
-(`docs/findings.md`, section 4 "Manual acceptance run (M01)"):
+(`docs/findings/M01-acceptance.md`):
 
 1. a fallback from `CKM_SHA256_RSA_PKCS` to raw `CKM_RSA_PKCS` over a `DigestInfo` (Custodio offers
    only raw mechanisms for RSA);
@@ -368,7 +369,7 @@ are checked; the `ls -Z`, `ps -eZ` and `matchpathcon` lines are **unverified** u
    still works (`pkcs11-tool --module /usr/lib/custodio/libcustodio_pkcs11.so --list-objects`). The `stat` and `ls -Z` lines need root (`/var/lib/private` is `0700 root`;
    run them under `sudo sh -c '…'` so the glob expands as root). dnf's file trigger already restored the label, so the boot path is shown on bazzite (next section).
 4. Sign with the dialog and cancel it (acceptance 12, steps 5 and 6 of the section above): the dialog appears, approving signs, cancelling fails.
-5. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+5. Record in `docs/findings/F61.md`: the date, the machine, and for each command above its result with the lines that show it.
 
 ## 12. bazzite, the .rpm layered (acceptance 13)
 
@@ -444,7 +445,7 @@ The same proof on the image-based system, where `%post` runs in a build root and
    Expected: the file exists; `unconfined_service_t`; **after the reboot** `var_lib_t` for the key files (the boot ran `systemd-tmpfiles-setup`), with the same
    mode, owner and size as before the upgrade (take the `stat` line before step 2 too and compare).
 3. The same keys still list and sign with the dialog, and a cancel fails (acceptance 12; sections 11 and 12 above): sign twice with the dialog open each time, cancel once.
-4. Record under "F61" in `docs/findings.md`: the date, the machine, and the output of each command above.
+4. Record in `docs/findings/F61.md`: the date, the machine, and for each command above its result with the lines that show it.
 
 ## 13. omarchy (acceptance 14)
 
@@ -547,7 +548,7 @@ another key). Then the `<DER>` argument forms of the commands below are the ones
    ```
 
    Expected: `b true`. If it is `false`, do the other steps of "Detection" and write down what they print.
-2. List with nothing imported. Dialog: none (`ListKeys` asks polkit nothing). Expected `a(ssay) 0`.
+2. List with nothing imported. Dialog: none (`ListKeys` asks polkit nothing). Expected `a(sssay) 0`.
 
    ```sh
    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
@@ -598,7 +599,7 @@ another key). Then the `<DER>` argument forms of the commands below are the ones
 | # (step) | Dialog seen (action) | Error or result seen | Expected | Result (pass/fail, notes) |
 |---|---|---|---|---|
 | 1 | none | | `b true` | |
-| 2 | none | | `a(ssay) 0` | |
+| 2 | none | | `a(sssay) 0` | |
 | 3 | import-certificate, cancelled | | `PolkitDenied` | |
 | 4 | import-certificate, approved | | `WrongPasswordOrBadP12` | |
 | 5 | none | | `InvalidArgs` | |
@@ -694,7 +695,7 @@ Firefox and LibreOffice still sign with a key that the person imported through t
    busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
    ```
 
-   Expected: `a(ssay) 0`, an empty list.
+   Expected: `a(sssay) 0`, an empty list.
 
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
@@ -702,7 +703,7 @@ Firefox and LibreOffice still sign with a key that the person imported through t
 | 2 | LibreOffice signs, dialog seen | valid signature | |
 | 3 | Journal comparison | none extra, none missing | |
 | 4 | Second account: token listing | no token | |
-| 5 | Second account: `ListKeys` | `a(ssay) 0` | |
+| 5 | Second account: `ListKeys` | `a(sssay) 0` | |
 
 ## 19. M3 result form
 
@@ -716,3 +717,173 @@ version ________ flatpak version ________
 | M3 16 Firefox, LibreOffice, second account (section 18) | | |
 
 Report the filled forms to the milestone approver as in section 9. Do not paste key files or passwords.
+
+## 20. M4 acceptance 13: hardware TPM
+
+On a machine with a hardware TPM. Needs root, `tpm2-tools` and the repository (the helper script below). Write the
+machine's `TPM2TOOLS_TCTI` down if it is not the default (the kernel resource manager `/dev/tpmrm0` is). The commands of
+`tpm2-tools` were run while writing this page against a software TPM (`scripts/with-swtpm.sh`); the test of this page runs
+them again there. Nothing on this page was run on a hardware TPM, a `fwupd`, a reboot, Firefox or LibreOffice
+(**unverified**): adjust and write down what you changed.
+
+1. Import an RSA 2048 and a P-256 `.p12` as in section 3 (`.p12` files of section 1, password asked on the terminal):
+
+   ```sh
+   custodio import --id rsa2048 rsa2048.p12
+   custodio import --id p256 p256.p12
+   custodio list
+   ```
+
+   Expected: each import prints the storage line below, and `custodio list` shows `kind: tpm` for both keys.
+
+   ```text
+   Storage: tpm. The key is in the TPM and cannot be copied out of it.
+   ```
+
+2. As root, with the repository as the current directory, check the stored record of each key (the state directory is
+   `/var/lib/private/custodio`, the real directory behind `/var/lib/custodio`, see `docs/install.md`):
+
+   ```sh
+   sudo -s
+   scripts/tpm-record-check.sh /var/lib/private/custodio rsa2048
+   scripts/tpm-record-check.sh /var/lib/private/custodio p256
+   ```
+
+   The helper reads the stored record, loads the key under the same parent as the service, prints `tpm2_readpublic` of
+   it and runs `tpm2_duplicate` under a policy session on `TPM2_CC_Duplicate`. Expected for each key: the line
+   `authPolicy: empty`, the line `tpm2_duplicate: failed with TPM_RC_POLICY_FAIL (0x99D)` and `tpm-record-check: pass`
+   (exit 0). Exit 1 means the check failed or a command did not work, exit 2 means bad usage or no record of kind `tpm`
+   with that id. Any other error, or any exit other than 0, is a failed step: write the message down. A `tpm2_duplicate`
+   that fails with another error is not "fails as expected".
+3. Then, in this order, three events. Before and after each one read PCR 7:
+
+   ```sh
+   tpm2_pcrread sha256:7
+   ```
+
+   - Event 1, reboot: `sudo systemctl reboot`.
+   - Event 2, upgrade to the next M4 package: the install steps of `docs/install.md` for the machine's system (section
+     "Upgrading": the same command as for a first installation).
+   - Event 3, a `fwupd` `dbx` update:
+
+     ```sh
+     fwupdmgr refresh
+     fwupdmgr get-updates
+     fwupdmgr update
+     ```
+
+     Where the update list holds no `dbx` update ("UEFI Secure Boot Forbidden Signature Database"), use the substitute
+     that changes PCR 7 (it lasts until the next reboot, so it is not a lasting change of the machine):
+
+     ```sh
+     tpm2_pcrextend 7:sha256=0000000000000000000000000000000000000000000000000000000000000001
+     ```
+
+   After the `dbx` update or the substitute, PCR 7 must differ from the value read before; if it does not,
+   the event proved nothing: write that down and do not tick the rows of this event. After a reboot or an upgrade a changed value is
+   noted, not required.
+4. After each of the three events: `custodio list` still shows both keys with `kind: tpm`, and Firefox and LibreOffice sign
+   with both keys after the polkit dialog:
+   - Firefox: follow the Firefox steps of `## 11. fedora44, SELinux enforcing (acceptance 12)` (the registration and TLS
+     client authentication) once with `rsa2048` and once with `p256`.
+   - LibreOffice: follow `## 6. LibreOffice run` ("Sign ODF documents") once with each key.
+
+| Event | Check | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| import | `custodio list`, both keys | `kind: tpm` | |
+| import | helper, both keys | `authPolicy: empty`, `TPM_RC_POLICY_FAIL`, exit 0 | |
+| reboot | PCR 7 before and after | both values written down | |
+| reboot | `custodio list` | both keys, `kind: tpm` | |
+| reboot | Firefox, both keys | dialog, then signed | |
+| reboot | LibreOffice, both keys | dialog, then valid signature | |
+| upgrade | PCR 7 before and after | both values written down | |
+| upgrade | `custodio list` | both keys, `kind: tpm` | |
+| upgrade | Firefox, both keys | dialog, then signed | |
+| upgrade | LibreOffice, both keys | dialog, then valid signature | |
+| dbx or substitute | PCR 7 before and after | the value differs | |
+| dbx or substitute | `custodio list` | both keys, `kind: tpm` | |
+| dbx or substitute | Firefox, both keys | dialog, then signed | |
+| dbx or substitute | LibreOffice, both keys | dialog, then valid signature | |
+
+## 21. M4 acceptance 14: a VM without a TPM
+
+In a virtual machine with no TPM (`ls /dev/tpm*` finds nothing). Install as in section 2 and make a `.p12` as in section 1.
+Nothing on this page was run in such a VM (**unverified**).
+
+1. Import a key and list it:
+
+   ```sh
+   custodio import --id rsa2048 rsa2048.p12
+   custodio list
+   ```
+
+2. Expected: the import prints the notice below, word for word (the text of `kind_text` in `crates/custodio-cli/src/lib.rs`):
+
+   ```text
+   Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+   ```
+
+3. Expected: `custodio list` shows the two lines below for the key: the kind, then the same reason as the import notice
+   (the `note:` line, `crates/custodio-cli/src/list.rs`). SPEC.md acceptance 14 asks that `custodio list` says the key is
+   encrypted with the host key and weaker.
+
+   ```text
+   kind: encrypted-host
+   note: This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+   ```
+
+4. Reboot (`sudo systemctl reboot`), then `custodio list` again: the key is still listed with `kind: encrypted-host`.
+5. After the reboot, sign from Firefox (`## 11. fedora44, SELinux enforcing (acceptance 12)`) or from LibreOffice
+   (`## 6. LibreOffice run`) with the key: a polkit dialog, then a signature.
+
+| # | Step | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| 1 | Import output | the notice of step 2, word for word | |
+| 2 | `custodio list` | `kind: encrypted-host` and the `note:` line of step 3 | |
+| 3 | After the reboot: `custodio list` | the key, `kind: encrypted-host` | |
+| 4 | After the reboot: sign from Firefox or LibreOffice | dialog, then signed | |
+
+## 22. M4 acceptance 15: a copy of the state directory
+
+On both machines (the hardware TPM machine of section 20 and the VM without a TPM of section 21), with the `.p12` of each
+imported key and its password. As root, with the repository as the current directory. The check ran for real on a
+fixture state directory while writing this page; on the two machines it is **unverified**.
+
+```sh
+sudo -s
+umask 077
+copy=$(mktemp -d /var/tmp/custodio-copy.XXXXXX)
+cp -a /var/lib/private/custodio/. "$copy"/
+read -rs -p 'password of the .p12: ' pw; echo
+printf '%s\n' "$pw" | scripts/check-no-plaintext.sh "$copy" rsa2048.p12
+printf '%s\n' "$pw" | scripts/check-no-plaintext.sh "$copy" p256.p12
+unset pw
+rm -rf "$copy"
+```
+
+The usage of the check is `scripts/check-no-plaintext.sh STATE_DIR P12 < password`: the password goes on standard input and
+never in an argument. Run the check for every imported `.p12` of the machine: on the VM of section 21 only the `rsa2048.p12` line, since only that key was imported there. The copy and the password must
+not reach a log, a terminal recording or a file you keep; the copy is removed by the last line. Expected: exit 0 for each `.p12`.
+Exit 1 means a match: the files are named on standard output, and the step failed (write the file names down, never
+their content). Exit 3 means the check did not run (a wrong password, a file that is not a `.p12`): it is never a pass, run
+it again. Any other exit is also a failed step.
+
+| Machine | `.p12` | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| hardware TPM | `rsa2048.p12` | exit 0 | |
+| hardware TPM | `p256.p12` | exit 0 | |
+| VM without a TPM | `rsa2048.p12` | exit 0 | |
+
+## 23. M4 result form
+
+One copy per machine. Machine ________ OS release ________ kernel ________ TPM (model, or none) ________ package versions
+(before and after the upgrade) ________
+
+| Acceptance | Pass / fail / not run | Every dialog and every error seen (notes) |
+|---|---|---|
+| M4 13 hardware TPM (section 20) | | |
+| M4 14 VM without a TPM (section 21) | | |
+| M4 15 copy of the state directory (section 22) | | |
+
+Report the filled forms to the milestone approver as in section 9. Do not paste key files, copies of the state directory or
+passwords.

@@ -1,5 +1,8 @@
-//! The client document `docs/api.md` against its three sources: the live introspection data of the
-//! service (interface `com.rfirma.Custodio1` only), `ServiceError::ALL` and the shipped `.policy` file.
+//! The client document `docs/api.md` against its sources: the live introspection data of the
+//! service (interface `com.rfirma.Custodio1` only), `ServiceError::ALL` with the `ERROR_*` constants of
+//! `custodio-client`, the storage kinds the live service returns from an import and a list (one per kind, on a
+//! private bus with `swtpm`, so this check needs `swtpm` as `api_kind` does) with the client's list of kinds, and
+//! the shipped `.policy` file.
 //! An item in a source missing from the document fails, and so does an item in the document missing
 //! from its source. Bounds other than the `.p12` size are only checked for being present.
 //!
@@ -13,6 +16,7 @@
 //! - p12 size: `N` bytes       the `.p12` bound, in `ImportP12`
 //! - certificate size: `N` bytes   the certificate bound, in `ReplaceCertificate`
 //! - property `Name`: `sig`, `access`
+//! - kind `wire-string`        one line per storage kind (the prose that explains a kind is free)
 //! - error `com.rfirma.Custodio1.Error.Name`
 //! - action `com.rfirma.custodio.name`
 //! ```
@@ -24,14 +28,23 @@ mod bus;
 #[allow(dead_code, unused_imports)]
 #[path = "audit/common.rs"]
 mod common;
+// The rig is shared with `storage_choice`; this target starts one service per storage kind with it.
+#[allow(dead_code)]
+#[path = "storage_choice/rig.rs"]
+mod rig;
+// Shared with `tpm_import`: this target does not use every helper of it.
+#[allow(dead_code)]
+#[path = "tpm_import/support.rs"]
+mod support;
 
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::sync::Arc;
 
-use custodio_client::{BUS_NAME, MAX_CERT_LEN, MAX_P12_LEN, OBJECT_PATH};
+use custodio_client::{BUS_NAME, ERROR_NAMES, KNOWN_KINDS, MAX_CERT_LEN, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
 use custodiod::error::ServiceError;
+use custodiod::store::Kind;
 
 const INTERFACE: &str = "com.rfirma.Custodio1";
 const SOURCE_MISSING: &str = "source item missing from document";
@@ -108,6 +121,7 @@ fn backticked(line: &str) -> Vec<&str> {
 struct Doc {
     methods: Items,
     errors: Items,
+    kinds: Items,
     actions: Items,
     p12_size: Option<String>,
     cert_size: Option<String>,
@@ -118,6 +132,7 @@ fn parse_doc(text: &str) -> Doc {
     let mut doc = Doc {
         methods: Items::new(),
         errors: Items::new(),
+        kinds: Items::new(),
         actions: Items::new(),
         p12_size: None,
         cert_size: None,
@@ -168,6 +183,8 @@ fn parse_doc(text: &str) -> Doc {
                 doc.methods
                     .insert(format!("property {name} {sig} {access}"));
             }
+        } else if line.starts_with("- kind ") {
+            doc.kinds.extend(ticks.first().map(|s| (*s).to_owned()));
         } else if line.starts_with("- error ") {
             doc.errors.extend(ticks.first().map(|s| (*s).to_owned()));
         } else if line.starts_with("- action ") {
@@ -198,10 +215,18 @@ fn diff(kind: &str, source: &Items, doc: &Items, out: &mut Vec<String>) {
     );
 }
 
-/// The three sources, read once.
+/// The sources, read once.
+#[derive(Clone)]
 struct Sources {
     introspection: Items,
+    /// `ServiceError::ALL`.
     errors: Items,
+    /// The `ERROR_*` constants of `custodio-client`.
+    client_errors: Items,
+    /// The kinds the live service returned from an import and a list.
+    kinds: Items,
+    /// The kinds `custodio-client` knows.
+    client_kinds: Items,
     actions: Items,
 }
 
@@ -211,6 +236,27 @@ fn differences(text: &str, sources: &Sources) -> Vec<String> {
     let mut out = Vec::new();
     diff("interface", &sources.introspection, &doc.methods, &mut out);
     diff("error", &sources.errors, &doc.errors, &mut out);
+    diff("error", &sources.client_errors, &doc.errors, &mut out);
+    diff("kind", &sources.kinds, &doc.kinds, &mut out);
+    diff("kind", &sources.client_kinds, &doc.kinds, &mut out);
+    out.extend(
+        sources
+            .errors
+            .difference(&sources.client_errors)
+            .map(|e| format!("client constant missing for service error {e}")),
+    );
+    out.extend(
+        sources
+            .client_errors
+            .difference(&sources.errors)
+            .map(|e| format!("client constant {e} is not a service error")),
+    );
+    out.extend(
+        sources
+            .kinds
+            .symmetric_difference(&sources.client_kinds)
+            .map(|k| format!("live kind and client kind differ: {k}")),
+    );
     diff("action", &sources.actions, &doc.actions, &mut out);
     for m in &doc.without_bounds {
         out.push(format!("method {m} has no bounds entry"));
@@ -230,6 +276,36 @@ fn differences(text: &str, sources: &Sources) -> Vec<String> {
         ));
     }
     out
+}
+
+/// The kinds the live service returns: one import and one list on a service per storage kind. Each reply must
+/// carry the kind the service was set up to choose.
+fn live_kinds() -> Result<Items, Box<dyn Error>> {
+    let mut seen = Items::new();
+    for kind in [Kind::Tpm, Kind::EncryptedTpm, Kind::EncryptedHost] {
+        zbus::block_on(async {
+            let k = rig::KindSvc::start(kind).await?;
+            let p12 = common::EC_SENTINEL_P12.to_vec();
+            let reply = k
+                .svc
+                .call_method("ImportP12", &("k", p12, common::SENTINEL_PASSWORD))
+                .await?;
+            let (_, imported) = reply.body().deserialize::<(String, String)>()?;
+            let reply = k.svc.call_method("ListKeys", &()).await?;
+            let rows = reply
+                .body()
+                .deserialize::<Vec<(String, String, String, Vec<u8>)>>()?;
+            let [(_, _, listed, _)] = rows.as_slice() else {
+                return Err("expected exactly one listed key".into());
+            };
+            assert_eq!(imported, kind.wire());
+            assert_eq!(listed, kind.wire());
+            seen.insert(imported);
+            seen.insert(listed.clone());
+            Ok::<_, Box<dyn Error>>(())
+        })?;
+    }
+    Ok(seen)
 }
 
 fn sources() -> Result<Sources, Box<dyn Error>> {
@@ -259,6 +335,9 @@ fn sources() -> Result<Sources, Box<dyn Error>> {
             .iter()
             .map(|e| e.error_name().to_owned())
             .collect(),
+        client_errors: ERROR_NAMES.iter().map(|&e| e.to_owned()).collect(),
+        kinds: live_kinds()?,
+        client_kinds: KNOWN_KINDS.iter().map(|&k| k.to_owned()).collect(),
         actions: policy_actions(&std::fs::read_to_string(manifest(
             "../../data/com.rfirma.custodio.policy",
         ))?),
@@ -323,6 +402,43 @@ fn edited_copies_of_the_document_fail() -> Result<(), Box<dyn Error>> {
     let first = ServiceError::ALL[0].error_name();
     let no_error = edited(&text, &format!("- error `{first}`"), "- gone");
     expect_fail(&no_error, &sources, first, SOURCE_MISSING);
+
+    // A client constant that is not a service error, and a service error the client lacks.
+    let mut client_extra = sources.clone();
+    client_extra
+        .client_errors
+        .insert("com.rfirma.Custodio1.Error.Bogus".to_owned());
+    expect_fail(&text, &client_extra, "client constant", "Error.Bogus");
+    let mut client_lacks = sources.clone();
+    client_lacks.client_errors.remove(first);
+    expect_fail(&text, &client_lacks, "client constant missing", first);
+
+    // A kind line removed, and a kind line for a kind that does not exist.
+    let no_kind = edited(&text, "- kind `encrypted-tpm`", "- gone");
+    expect_fail(&no_kind, &sources, "encrypted-tpm", SOURCE_MISSING);
+    let extra_kind = format!("{text}\n- kind `bogus-kind`\n");
+    expect_fail(&extra_kind, &sources, "bogus-kind", DOC_MISSING);
+
+    // A service double that returns a kind the document does not list (and the client does not know).
+    let mut double = sources.clone();
+    double.kinds.insert("tpm-v2".to_owned());
+    expect_fail(&text, &double, "tpm-v2", SOURCE_MISSING);
+    expect_fail(&text, &double, "live kind and client kind differ", "tpm-v2");
+
+    // A wrong signature of `ListKeys`: the old shape, without the kind.
+    let old_list = edited(&text, "- out: `a(sssay)`", "- out: `a(ssay)`");
+    expect_fail(
+        &old_list,
+        &sources,
+        "method ListKeys out #1 a(sssay)",
+        SOURCE_MISSING,
+    );
+    expect_fail(
+        &old_list,
+        &sources,
+        "method ListKeys out #1 a(ssay)",
+        DOC_MISSING,
+    );
 
     // An extra action, and the real one removed.
     let extra_action = format!("{text}\n- action `com.rfirma.custodio.bogus`\n");

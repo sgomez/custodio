@@ -31,8 +31,8 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
     [ "$nxt" != "$pkg" ] || bad "$T: N and N+1 are the same file name"
-    # the mounts and the containers: N and N+1 and the old-path fixture of F61 (every target without a no-oldpath marker)
-    mounts=2 runs=1
+    # the mounts and the containers: N, N+1 and the M3 build of F142 (its own fresh container), and the old-path fixture of F61 (every target without a no-oldpath marker)
+    mounts=3 runs=2
     [ -f "$ROOT/e2e/targets/$T/no-oldpath" ] || { mounts=$((mounts + 1)); runs=$((runs + 1)); }
     [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq "$mounts" ] || bad "$T: expected $mounts different read-only mounts: $(grep '^run ' "$tmp/log")"
     [ "$(grep -c '^run ' "$tmp/log")" -eq "$runs" ] || bad "$T: expected $runs containers, each upgrade source in a fresh one: $(grep -c '^run ' "$tmp/log")"
@@ -47,7 +47,7 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
         grep -q "exec .* bash /e2e/guest.sh $T oldpath" "$tmp/log" || bad "$T: the guest is not run in the oldpath mode"
         [ "$(grep -c "guest.sh $T oldpath" "$tmp/log")" -eq 1 ] || bad "$T: the oldpath run happened more than once"
         rl=$(grep -n "guest.sh $T oldpath" "$tmp/log" | cut -d: -f1)
-        rr=$(grep -n '^run ' "$tmp/log" | tail -n 1 | cut -d: -f1)
+        rr=$(grep -n '^run ' "$tmp/log" | cut -d: -f1 | awk -v l="$rl" '$1 < l { r = $1 } END { print r }') # the container the old-path run is in: the last one started before it
         rrm=$(grep -n '^rm ' "$tmp/log" | head -n 1 | cut -d: -f1)
         { [ "$rrm" -lt "$rr" ] && [ "$rr" -lt "$rl" ]; } || bad "$T: the oldpath run is not in its own fresh container: $(cat "$tmp/log")"
     fi
@@ -63,7 +63,7 @@ grep -q 'bash e2e/run.sh {{target}}' "$ROOT/justfile" || bad "the e2e recipe doe
 # --- the record
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     expect_ok "$T" "$T" || true
-    rec=$tmp/o/$T.record
+    rec=$tmp/o/$T.swtpm.record
     [ -f "$rec" ] || bad "no record file"
     { grep -qx "target=$T" "$rec" && grep -qx 'bus-daemon=dbus-daemon' "$rec" && grep -qx 'polkit-version=126' "$rec"; } || bad "the record lacks target, daemon or polkit version: $(cat "$rec" 2> /dev/null)"
     { grep -q 'record: bus-daemon=dbus-daemon' "$tmp/out" && grep -q 'record: polkit-version=126' "$tmp/out"; } || bad "the record is not printed"
@@ -83,7 +83,7 @@ expect_fail path-target ../targets/debian13 || true
 STUB_LOG=$tmp/log PATH="$tmp/bin:$PATH" E2E_PACKAGES="$tmp/pkgs" E2E_OUT="$tmp/o" "$ROOT/e2e/run.sh" all > "$tmp/out" 2>&1 || bad "all (real targets): failed: $(tail -n 5 "$tmp/out")"
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     grep -q "guest.sh $T" "$tmp/log" || bad "all (real targets): $T did not run"
-    [ -f "$tmp/o/$T.record" ] || bad "all (real targets): no record for $T"
+    [ -f "$tmp/o/$T.swtpm.record" ] || bad "all (real targets): no record for $T"
 done
 
 # --- all, with two fake targets copied in with no edit to any script
@@ -95,7 +95,7 @@ run_all() { : > "$tmp/log"; rm -rf "$tmp/o"; STUB_LOG=$tmp/log PATH="$tmp/bin:$P
 run_all || bad "all: failed: $(tail -n 5 "$tmp/out")"
 for t in alpha beta; do
     grep -q "guest.sh $t" "$tmp/log" || bad "all: $t did not run"
-    [ -f "$tmp/o/$t.record" ] || bad "all: no record for $t"
+    [ -f "$tmp/o/$t.swtpm.record" ] || bad "all: no record for $t"
 done
 run_all alpha || bad "a single fake target failed"
 grep -q 'guest.sh beta' "$tmp/log" && bad "only alpha was asked for, beta ran"

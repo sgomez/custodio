@@ -10,7 +10,7 @@ Custodio handled one request to sign with a stored key. There is one entry per r
 `CUSTODIO_OPERATION` is sign. `CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
-mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
+mechanism, absent when it was not known. `CUSTODIO_STORAGE_KIND` is how the key is protected (tpm, encrypted-tpm or encrypted-host), absent when the key was not read. `CUSTODIO_CAUSE` is key_lost or temporarily_unavailable on a signing failure, absent otherwise. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
 
 `CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
@@ -29,7 +29,7 @@ Custodio handled one request to sign with a stored key. There is one entry per r
 `CUSTODIO_OPERATION` is sign. `CUSTODIO_OUTCOME` holds the same result as a name. `CUSTODIO_UID` and `CUSTODIO_PID` are the
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key that was asked for. `CUSTODIO_MECHANISM` is the signature
-mechanism, absent when it was not known. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
+mechanism, absent when it was not known. `CUSTODIO_STORAGE_KIND` is how the key is protected (tpm, encrypted-tpm or encrypted-host), absent when the key was not read. `CUSTODIO_CAUSE` is key_lost or temporarily_unavailable on a signing failure, absent otherwise. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID`
 identifies this kind of entry.
 
 `CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
@@ -47,7 +47,7 @@ Custodio handled one request to import a key and certificate from a .p12 file. T
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is import. `CUSTODIO_OUTCOME` holds the result as a
 name: stored, denied, authorization_unavailable, wrong_password, unsupported_key or storage_failure. `PRIORITY` is 6 for stored, 5 for denied, 4 for authorization unavailable, a wrong password and an unsupported key, and 3 for a storage failure after approval.
-`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. The file and the
+`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. `CUSTODIO_STORAGE_KIND` is how the stored key is protected (tpm, encrypted-tpm or encrypted-host), absent when nothing was stored. `CUSTODIO_CAUSE` says why a storage failure happened (a name starting with tpm_ or credentials_, binding_mismatch, store or internal), absent otherwise. The file and the
 password are never written.
 `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
 
@@ -66,7 +66,7 @@ Custodio handled one request to import a key and certificate from a .p12 file. T
 user and process id that the bus reported for the caller; they are absent when it named none.
 `CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is import. `CUSTODIO_OUTCOME` holds the result as a
 name: stored, denied, authorization_unavailable, wrong_password, unsupported_key or storage_failure. `PRIORITY` is 6 for stored, 5 for denied, 4 for authorization unavailable, a wrong password and an unsupported key, and 3 for a storage failure after approval.
-`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. The file and the
+`CUSTODIO_KEY_TYPE` is rsa_2048 or ecdsa_p256, absent when the file did not get that far. `CUSTODIO_STORAGE_KIND` is how the stored key is protected (tpm, encrypted-tpm or encrypted-host), absent when nothing was stored. `CUSTODIO_CAUSE` says why a storage failure happened (a name starting with tpm_ or credentials_, binding_mismatch, store or internal), absent otherwise. The file and the
 password are never written.
 `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
 
@@ -143,4 +143,34 @@ The certificate is never written.
 `CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 8e1f5a6c0b3d4972a4c6d58f31b7e902 en
+Subject: Custodio key of the earlier format purged
+Defined-By: custodio
+
+Custodio removed one key of the earlier storage format when it started, before it answered any call. There is one entry per key; a key and its certificate file are one key. No request caused it, so there is no caller.
+
+`MESSAGE` says what happened, for which owner and with which key. `CUSTODIO_OWNER_UID` is the user id that owned the key. There is no `CUSTODIO_UID` or `CUSTODIO_PID`.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is purge. `CUSTODIO_OUTCOME` is purged. `PRIORITY` is 4.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` is none: no request was made, so there was no caller to look up.
+
+The entry is written before the files are removed. The key must be imported again from its .p12 file. To trust an entry, match
+the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 8e1f5a6c0b3d4972a4c6d58f31b7e902
+Subject: Custodio key of the earlier format purged
+Defined-By: custodio
+
+Custodio removed one key of the earlier storage format when it started, before it answered any call. There is one entry per key; a key and its certificate file are one key. No request caused it, so there is no caller.
+
+`MESSAGE` says what happened, for which owner and with which key. `CUSTODIO_OWNER_UID` is the user id that owned the key. There is no `CUSTODIO_UID` or `CUSTODIO_PID`.
+`CUSTODIO_KEY_ID` is the key concerned. `CUSTODIO_OPERATION` is purge. `CUSTODIO_OUTCOME` is purged. `PRIORITY` is 4.
+`SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry.
+
+`CUSTODIO_APP_ID_STATE` is none: no request was made, so there was no caller to look up.
+
+The entry is written before the files are removed. The key must be imported again from its .p12 file. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

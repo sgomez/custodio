@@ -1,12 +1,13 @@
 //! A polkit text agent (`pkttyagent`) for the CLI's own process, when the person is on a terminal.
 //!
-//! polkit has no call that tells whether an agent is registered (`docs/findings.md`, F89), so on a
+//! polkit has no call that tells whether an agent is registered (`docs/findings/F89.md`), so on a
 //! terminal the agent is always started, registered with `--fallback` for this process only:
 //! polkitd then prefers any agent of the session (`SPEC_DEVIATIONS.md`, F89). It is started around
 //! the one call that makes the service ask polkit, and stopped and reaped when the call returns.
 
 use std::io;
 
+use custodio_client::Kind;
 use secrecy::SecretString;
 
 use crate::Importer;
@@ -137,7 +138,7 @@ impl<I: Importer, S: AgentSpawner> Importer for WithAgent<I, S> {
         id: &str,
         p12: &[u8],
         password: &SecretString,
-    ) -> Result<String, ServiceFailure> {
+    ) -> Result<(String, Kind), ServiceFailure> {
         let _agent = self.guard();
         self.inner.import_p12(id, p12, password)
     }

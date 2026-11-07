@@ -31,7 +31,11 @@ const OTHER_EC_P12: &[u8] = include_bytes!("fixtures/p256-other.p12");
 /// The pairs of caller uids; the second one has root as one of the two.
 const UID_PAIRS: [(u32, u32); 2] = [(1000, 1001), (0, 1000)];
 
-type Listed = Vec<(String, String, Vec<u8>)>;
+/// The storage kind the fixture's service chooses (no TPM).
+const STORAGE_KIND: &str = "encrypted-host";
+
+type Row = (String, String, String, Vec<u8>);
+type Listed = Vec<Row>;
 
 /// Credentials from a table: the bus name of a connection gives its caller.
 #[derive(Clone, Default)]
@@ -113,7 +117,8 @@ async fn import(c: &Connection, id: &str, p12: &[u8]) -> zbus::Result<String> {
     call(c, "ImportP12", &(id, p12.to_vec(), PASSWORD))
         .await?
         .body()
-        .deserialize()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
 }
 
 async fn list(c: &Connection) -> zbus::Result<Listed> {
@@ -126,12 +131,13 @@ fn cert_of(p12: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(custodiod::import::parse_p12(p12, &SecretString::from(PASSWORD.to_owned()))?.certificate)
 }
 
-fn entry(
-    id: &str,
-    kind: &str,
-    p12: &[u8],
-) -> Result<(String, String, Vec<u8>), Box<dyn std::error::Error>> {
-    Ok((id.to_owned(), kind.to_owned(), cert_of(p12)?))
+fn entry(id: &str, kind: &str, p12: &[u8]) -> Result<Row, Box<dyn std::error::Error>> {
+    Ok((
+        id.to_owned(),
+        kind.to_owned(),
+        STORAGE_KIND.to_owned(),
+        cert_of(p12)?,
+    ))
 }
 
 #[test]
@@ -193,7 +199,7 @@ fn list_fails_closed_without_credentials() -> TestResult {
             let f = failing(which).await?;
             // Keys exist for the caller's own uid, so an empty or unfiltered list would show.
             import_with(&f, "e", EC_P12, PASSWORD).await?;
-            assert_eq!(f.store.list(uid())?.len(), 2);
+            assert_eq!(f.store.list(uid())?.len(), 1);
             let err = error_of(call(&f.client, "ListKeys", &()).await)?;
             assert_eq!(err, ERROR_AUTHORIZATION_UNAVAILABLE, "case {which}");
             assert_eq!(f.asked().len(), 0);
@@ -220,14 +226,17 @@ fn import_fails_closed_without_credentials() -> TestResult {
 }
 
 #[test]
-fn list_reports_a_key_without_readable_certificate() -> TestResult {
+fn list_reports_a_record_that_cannot_be_read() -> TestResult {
     block_on(async {
         let t = Two::start(Answer::Yes, 1000, 1001).await?;
         import(t.a(), "e", EC_P12).await?;
         import(t.a(), "r", RSA_P12).await?;
         assert_eq!(list(t.a()).await?.len(), 2);
         let area = t.f.store_dir().join("1000");
-        std::fs::remove_file(area.join("e-cert"))?;
+        // The record is cut short (its mode is kept).
+        let mut bytes = std::fs::read(area.join("e"))?;
+        bytes.truncate(24);
+        std::fs::write(area.join("e"), bytes)?;
         // An error, not a shorter list.
         assert_eq!(
             error_of(call(t.a(), "ListKeys", &()).await)?,

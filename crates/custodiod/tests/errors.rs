@@ -57,7 +57,8 @@ async fn import_call(f: &Fixture, id: &str, data: &[u8], pw: &str) -> zbus::Resu
     call(&f.client, "ImportP12", &(id, data.to_vec(), pw))
         .await?
         .body()
-        .deserialize()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
 }
 
 async fn sign_call(
@@ -319,6 +320,10 @@ fn the_wire_names_are_the_client_constants() -> TestResult {
             ERROR_KEY_ID_TAKEN,
             ERROR_NO_SUCH_KEY,
             ERROR_POLKIT_DENIED,
+            custodio_client::ERROR_CREDENTIALS_UNAVAILABLE,
+            custodio_client::ERROR_TPM_FAILED,
+            custodio_client::ERROR_KEY_LOST,
+            custodio_client::ERROR_TEMPORARILY_UNAVAILABLE,
             ERROR_UNSUPPORTED_KEY_TYPE,
             ERROR_WRONG_PASSWORD_OR_BAD_P12,
         ];

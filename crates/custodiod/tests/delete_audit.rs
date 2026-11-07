@@ -138,7 +138,7 @@ async fn sign_rsa(c: &Connection, id: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn listed(c: &Connection) -> Result<Vec<String>, Box<dyn Error>> {
-    let keys: Vec<(String, String, Vec<u8>)> =
+    let keys: Vec<(String, String, String, Vec<u8>)> =
         call(c, "ListKeys", &()).await?.body().deserialize()?;
     Ok(keys.into_iter().map(|k| k.0).collect())
 }
@@ -174,6 +174,8 @@ fn me() -> Caller {
 fn put_rsa(f: &Fixture, id: &str) -> TestResult {
     custodiod::import::import_p12(
         &f.store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         uid(),
         id,
         RSA_P12,
@@ -313,6 +315,8 @@ fn delete_refusals_leave_no_entry() -> TestResult {
         // Another uid's key with the id `other`.
         custodiod::import::import_p12(
             &f.store,
+            &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
             uid() + 1,
             "other",
             RSA_P12,
@@ -337,7 +341,7 @@ fn delete_refusals_leave_no_entry() -> TestResult {
         assert_eq!(sink.attempts(), 0);
         assert_eq!(sink.inner.operation_entries().len(), 0);
         assert_eq!(f.asked().len(), 0);
-        assert_eq!(snapshot(&area(&f))?.len(), 2);
+        assert_eq!(snapshot(&area(&f))?.len(), 1);
         Ok(())
     })
 }
@@ -393,21 +397,19 @@ fn delete_removal_failure_keeps_key_unusable() -> TestResult {
         return Ok(());
     }
     block_on(async {
-        // (i) only the certificate cannot be removed: it is replaced by a directory while polkit
-        // answers, so the key file goes (first) and `k-cert` stays. (ii) neither can: the store
-        // directory becomes read-only while polkit answers.
+        // (i) the record cannot be removed: its mode is loosened while polkit answers, which the
+        // store refuses. (ii) the store directory becomes read-only while polkit answers.
         for neither in [false, true] {
             let (f, sink) = start(Answer::Yes).await?;
             put_rsa(&f, "k")?;
             let dir = area(&f);
-            let cert = dir.join("k-cert");
+            let record = dir.join("k");
             let hook_dir = dir.clone();
             f.on_request(move || {
                 if neither {
                     let _ = set_mode(&hook_dir, 0o500);
                 } else {
-                    let _ = fs::remove_file(&cert);
-                    let _ = fs::create_dir(&cert);
+                    let _ = set_mode(&record, 0o644);
                 }
             });
             assert_eq!(

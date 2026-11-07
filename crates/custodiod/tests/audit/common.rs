@@ -76,7 +76,15 @@ pub async fn import(f: &Fixture, id: &str, p12: &[u8]) -> TestResult {
 #[allow(clippy::unused_async)]
 pub async fn import_with(f: &Fixture, id: &str, p12: &[u8], password: &str) -> TestResult {
     let password = secrecy::SecretString::from(password.to_owned());
-    custodiod::import::import_p12(&f.store, uid(), id, p12, &password)?;
+    custodiod::import::import_p12(
+        &f.store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
+        uid(),
+        id,
+        p12,
+        &password,
+    )?;
     Ok(())
 }
 

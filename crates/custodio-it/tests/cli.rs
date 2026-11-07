@@ -12,7 +12,7 @@ use custodio_cli::{
     ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, ServiceFailure, parse_args,
     read_secret_line, run_import,
 };
-use custodio_client::{BUS_NAME, MAX_P12_LEN, OBJECT_PATH};
+use custodio_client::{BUS_NAME, Kind, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
 use custodiod::credentials::BusCredentials;
 use custodiod::dbus::Custodio;
@@ -53,13 +53,15 @@ impl Importer for Recorder {
         id: &str,
         p12: &[u8],
         password: &SecretString,
-    ) -> Result<String, ServiceFailure> {
+    ) -> Result<(String, Kind), ServiceFailure> {
         self.calls.borrow_mut().push((
             id.to_owned(),
             p12.len(),
             password.expose_secret().to_owned(),
         ));
-        self.reply.clone().map_or(Ok("p256".to_owned()), Err)
+        self.reply
+            .clone()
+            .map_or(Ok(("p256".to_owned(), Kind::Tpm)), Err)
     }
 }
 
@@ -275,7 +277,10 @@ fn serve(bus: &Bus, store: Arc<KeyStore>) -> Result<zbus::Connection, Box<dyn Er
                     Approve,
                     BusCredentials::new(conn.clone()),
                     Arc::new(MemorySink::default()),
-                ),
+                )
+                .with_key_credentials(std::sync::Arc::new(
+                    custodiod::creds::memory::MemoryCreds::host(),
+                )),
             )
             .await?;
         conn.request_name(BUS_NAME).await?;

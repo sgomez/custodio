@@ -38,7 +38,7 @@ impl P12Decoder for Counting {
     }
 }
 
-type Listed = Vec<(String, String, Vec<u8>)>;
+type Listed = Vec<(String, String, String, Vec<u8>)>;
 
 struct Rig {
     f: Fixture,
@@ -62,7 +62,11 @@ impl Rig {
         let reply = call(&self.f.client, "ImportP12", &(id, p12.to_vec(), password))
             .await
             .map_err(|e| error_name(&e))?;
-        reply.body().deserialize().map_err(|e| e.to_string())
+        reply
+            .body()
+            .deserialize::<(String, String)>()
+            .map(|(key_type, _kind)| key_type)
+            .map_err(|e| e.to_string())
     }
 
     fn polkit_calls(&self) -> usize {
@@ -73,11 +77,12 @@ impl Rig {
         self.decoded.load(Ordering::SeqCst)
     }
 
-    async fn list(&self) -> Result<Vec<(String, String, Vec<u8>)>, Box<dyn Error>> {
-        let mut keys: Vec<(String, String, Vec<u8>)> = call(&self.f.client, "ListKeys", &())
-            .await?
-            .body()
-            .deserialize()?;
+    async fn list(&self) -> Result<Vec<(String, String, String, Vec<u8>)>, Box<dyn Error>> {
+        let mut keys: Vec<(String, String, String, Vec<u8>)> =
+            call(&self.f.client, "ListKeys", &())
+                .await?
+                .body()
+                .deserialize()?;
         keys.sort();
         Ok(keys)
     }
@@ -283,12 +288,12 @@ fn import_returns_the_key_type() -> TestResult {
         let listed = r.list().await?;
         let kinds: Vec<(&str, &str)> = listed
             .iter()
-            .map(|(i, k, _)| (i.as_str(), k.as_str()))
+            .map(|(i, k, _, _)| (i.as_str(), k.as_str()))
             .collect();
         assert_eq!(kinds, vec![("e", "ecdsa-p256"), ("r", "rsa2048")]);
         let cert = custodiod::import::parse_p12(EC_P12, &SecretString::from(PASSWORD.to_owned()))?
             .certificate;
-        assert_eq!(listed.first().map(|k| k.2.clone()), Some(cert));
+        assert_eq!(listed.first().map(|k| k.3.clone()), Some(cert));
         let signature = sign(&r.f.client, "e", CKM_ECDSA, &digest()).await?;
         assert_ne!(signature.len(), 0);
         Ok(())

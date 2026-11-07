@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 next() { printf '\nNext: %s\n' "$1"; exit 0; }
 
-# why_unapproved <spec|features> <file>: says why the file counts as not approved.
+# why_unapproved <spec|features|budgets> <file>: says why the file counts as not approved.
 why_unapproved() {
   if [ ! -f APPROVALS ]; then
     echo "No approval of $2 is recorded: APPROVALS does not exist (it predates approvals, or nobody ran just milestone approve)."
@@ -18,8 +18,29 @@ why_unapproved() {
   fi
 }
 
+# feature_list: the features and how many pass, approved or not.
+feature_list() {
+  [ -f features.json ] || return 0
+  jq -r '.features[] | "  \(if .passes then "[x]" else "[ ]" end) \(.id) \(.title)\(if .manual then " (manual)" else "" end)"' features.json
+  total=$(jq '[.features[] | select((.manual // false) | not)] | length' features.json)
+  done_=$(jq '[.features[] | select((.manual // false) | not) | select(.passes)] | length' features.json)
+  printf '\n%s of %s automatic features pass.\n' "$done_" "$total"
+}
+
+# unapproved_notes: one line per file that needs an approval before the loop goes on.
+unapproved_notes() {
+  local kind file
+  for kind in spec:SPEC.md features:features.json budgets:budgets.tsv; do
+    file=${kind#*:} kind=${kind%%:*}
+    [ ! -f "$file" ] || approved "$kind" || echo "$(why_unapproved "$kind" "$file") Approve it with: just milestone approve $kind"
+  done
+}
+
 if [ -e AGENT_STOP ]; then
-  echo "Stopped by you (AGENT_STOP exists)."
+  feature_list
+  printf '\nStopped by you (AGENT_STOP exists).\n'
+  notes=$(unapproved_notes)
+  [ -z "$notes" ] || printf '\nBefore you resume:\n%s\n' "$notes"
   next "just harness resume"
 fi
 if [ -e BLOCKED.md ]; then
@@ -32,6 +53,7 @@ if [ ! -f SPEC.md ]; then
   next "just harness run   (the planner writes SPEC.md)"
 fi
 if ! approved spec; then
+  feature_list; echo
   why_unapproved spec SPEC.md
   next "if SPEC.md is the spec you want: just milestone approve spec"
 fi
@@ -39,14 +61,17 @@ if [ ! -f features.json ]; then
   next "just harness run   (the initializer writes features.json)"
 fi
 if ! approved features; then
+  feature_list; echo
   why_unapproved features features.json
   next "if features.json is the list you want: just milestone approve features"
 fi
+if [ -f budgets.tsv ] && ! approved budgets; then
+  feature_list; echo
+  why_unapproved budgets budgets.tsv
+  next "if budgets.tsv has the time budgets you want: just milestone approve budgets"
+fi
 
-jq -r '.features[] | "  \(if .passes then "[x]" else "[ ]" end) \(.id) \(.title)\(if .manual then " (manual)" else "" end)"' features.json
-total=$(jq '[.features[] | select((.manual // false) | not)] | length' features.json)
-done_=$(jq '[.features[] | select((.manual // false) | not) | select(.passes)] | length' features.json)
-printf '\n%s of %s automatic features pass.\n' "$done_" "$total"
+feature_list
 
 current=$(jq -r '[.features[] | select((.manual // false) | not) | select(.passes | not)] | first | .id // empty' features.json)
 if [ -f NEXT_FINDINGS.md ]; then

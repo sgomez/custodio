@@ -4,6 +4,10 @@
 //! the clients never link the service.
 #![forbid(unsafe_code)]
 
+mod kind;
+
+pub use kind::{KNOWN_KINDS, Kind};
+
 /// Well-known bus name of the service.
 pub const BUS_NAME: &str = "com.rfirma.Custodio1";
 /// Object path of the service.
@@ -35,8 +39,36 @@ pub const ERROR_UNSUPPORTED_KEY_TYPE: &str = "com.rfirma.Custodio1.Error.Unsuppo
 pub const ERROR_CERTIFICATE_MISMATCH: &str = "com.rfirma.Custodio1.Error.CertificateMismatch";
 /// The audit entry could not be recorded, so the call was refused.
 pub const ERROR_AUDIT_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.AuditUnavailable";
+/// The TPM failed or cannot be used for an import: the key was not stored, and no weaker storage was tried.
+pub const ERROR_TPM_FAILED: &str = "com.rfirma.Custodio1.Error.TpmFailed";
+/// The credential service is unavailable or refused an import: the key was not stored.
+pub const ERROR_CREDENTIALS_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.CredentialsUnavailable";
+/// `Sign`: the stored key can no longer be used (its TPM blob does not load, or its credential
+/// cannot be decrypted). Retrying does not help; the key stays listed and can be deleted.
+pub const ERROR_KEY_LOST: &str = "com.rfirma.Custodio1.Error.KeyLost";
+/// `Sign`: the TPM or the credential service cannot be used right now. The key is intact; try again later.
+pub const ERROR_TEMPORARILY_UNAVAILABLE: &str = "com.rfirma.Custodio1.Error.TemporarilyUnavailable";
 /// The key store, a stored key or the signing operation failed.
 pub const ERROR_INTERNAL: &str = "com.rfirma.Custodio1.Error.Internal";
+
+/// Every `ERROR_*` name above, once. The contract check compares this list with the service and the document,
+/// so a name added above must be added here.
+pub const ERROR_NAMES: [&str; 14] = [
+    ERROR_INVALID_ARGS,
+    ERROR_NO_SUCH_KEY,
+    ERROR_KEY_ID_TAKEN,
+    ERROR_POLKIT_DENIED,
+    ERROR_AUTHORIZATION_UNAVAILABLE,
+    ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_UNSUPPORTED_KEY_TYPE,
+    ERROR_CERTIFICATE_MISMATCH,
+    ERROR_AUDIT_UNAVAILABLE,
+    ERROR_TPM_FAILED,
+    ERROR_CREDENTIALS_UNAVAILABLE,
+    ERROR_KEY_LOST,
+    ERROR_TEMPORARILY_UNAVAILABLE,
+    ERROR_INTERNAL,
+];
 
 #[cfg(test)]
 mod tests;

@@ -7,7 +7,7 @@ use std::fmt;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
-use secrecy::{ExposeSecret, SecretSlice, SecretString};
+use secrecy::SecretString;
 use zbus::interface;
 use zbus::message::Header;
 
@@ -15,12 +15,15 @@ use crate::app_id::AppIdOutcome;
 use crate::app_id_source::{AppIdSource, GuardedSource};
 use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
+use crate::creds::Credentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, cert_id, classify};
+use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_kind};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
-use crate::sign::{Mechanism, PssHash, sign};
-use crate::store::{KeyStore, StoreError};
+use crate::sign::{Mechanism, PssHash};
+use crate::store::{KeyStore, Kind as StorageKind, Record, StoreError};
+use crate::tpm::TpmAccess;
+use crate::tpm::open::NoTpm;
 
 pub use custodio_client::{BUS_NAME, OBJECT_PATH};
 pub use replace::parse_replace_request;
@@ -179,6 +182,9 @@ pub fn parse_import_request(
     })
 }
 
+/// One element of the `ListKeys` reply: id, key type, storage kind, DER certificate.
+pub type ListedKey = (String, String, String, Vec<u8>);
+
 fn kind_name(kind: KeyKind) -> &'static str {
     match kind {
         KeyKind::Rsa2048 => "rsa2048",
@@ -192,8 +198,14 @@ fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism
     Ok((key_id, AuditMechanism::from(mechanism)))
 }
 
-/// What a `Sign` call records: the outcome, the caller if known, and the reply.
-type Attempt = (Outcome, Option<Caller>, Result<Vec<u8>, ServiceError>);
+/// What a `Sign` call records: the outcome, the caller if known, the reply, and the storage kind of the record that
+/// was read (none when no record was read).
+type Attempt = (
+    Outcome,
+    Option<Caller>,
+    Result<Vec<u8>, ServiceError>,
+    Option<StorageKind>,
+);
 
 /// A caller the bus named: the sender, its credentials and the pidfd the bus pinned, if any.
 type Known<'a> = (&'a str, Caller, Option<OwnedFd>);
@@ -204,6 +216,10 @@ pub struct Custodio<A, C> {
     authorizer: A,
     credentials: C,
     sink: Arc<dyn AuditSink>,
+    /// The credential service that encrypts and decrypts stored keys (not the bus `credentials`).
+    key_creds: Option<Arc<dyn Credentials>>,
+    /// How the TPM is reached for an import. Without a call to [`Custodio::with_tpm`] the machine has none.
+    tpm: Arc<dyn TpmAccess>,
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
@@ -222,10 +238,28 @@ impl<A, C> Custodio<A, C> {
             authorizer,
             credentials,
             sink,
+            key_creds: None,
+            tpm: Arc::new(NoTpm),
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
         }
+    }
+
+    /// Sets the credential service that protects stored keys. Without one, an import or a signature
+    /// fails with an internal error: a key is never stored or read in the clear.
+    #[must_use]
+    pub fn with_key_credentials(mut self, creds: Arc<dyn Credentials>) -> Self {
+        self.key_creds = Some(creds);
+        self
+    }
+
+    /// Sets how the TPM is reached. The daemon passes the production access point; tests pass a software TPM or a
+    /// faulty one.
+    #[must_use]
+    pub fn with_tpm(mut self, tpm: Arc<dyn TpmAccess>) -> Self {
+        self.tpm = tpm;
+        self
     }
 
     /// Replaces the `.p12` decoder. Production uses the real parser; tests count the calls.
@@ -276,7 +310,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         // A missing key or another uid's key is refused here: no polkit call and no entry. The
         // entry would add nothing the caller does not know, and `NoSuchKey` must look the same
         // for both. See `docs/decisions.md`.
-        let Some(((outcome, caller, result), app_id)) =
+        let Some(((outcome, caller, result, kind), app_id)) =
             self.attempt(sender, &request, data).await?
         else {
             return Err(ServiceError::NoSuchKey);
@@ -286,6 +320,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             None => Entry::without_caller(key_id, Some(audit_mechanism)),
         }
         .with_app_id(app_id);
+        let entry = sign_kind::sign_details(entry, kind, &result);
         let sink = Arc::clone(&self.sink);
         match run_on_thread(move || sink.record(&entry)).await {
             Some(Ok(())) => result,
@@ -319,7 +354,7 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
             .map_err(|_| ServiceError::AuthorizationUnavailable)
     }
 
-    /// `ListKeys` after the bus handed over the sender: `(id, key type, DER certificate)` of every
+    /// `ListKeys` after the bus handed over the sender: `(id, key type, storage kind, DER certificate)` of every
     /// key of the caller. Asks no polkit.
     ///
     /// # Errors
@@ -328,28 +363,27 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     pub async fn list_keys_call(
         &self,
         sender: Option<&str>,
-    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+    ) -> Result<Vec<ListedKey>, ServiceError> {
         let owner = self.owner(sender).await?;
         let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
         let mut out = Vec::new();
         // A key a delete has made unusable is not listed, whatever is still on disk.
-        let listed = ids
-            .iter()
-            .filter(|i| !i.ends_with(CERT_SUFFIX) && !self.deletes.is_unusable(owner, i));
+        let listed = ids.iter().filter(|i| !self.deletes.is_unusable(owner, i));
         for id in listed {
-            let key = self
-                .store
-                .get(owner, id)
-                .map_err(|_| ServiceError::Internal)?;
-            let kind = classify(key.expose_secret()).map_err(|_| ServiceError::Internal)?;
-            let cert = self
-                .store
-                .get(owner, &cert_id(id))
-                .map_err(|_| ServiceError::Internal)?;
+            let record = match self.store.get(owner, id) {
+                Ok(record) => record,
+                // A key of the earlier format is not usable and not listed (the purge is F121).
+                Err(StoreError::Legacy) => continue,
+                Err(_) => return Err(ServiceError::Internal),
+            };
+            // The certificate was checked against the key when it was stored or replaced, so its
+            // key type is the key's, and listing never decrypts or touches the TPM.
+            let key_type = certificate_kind(record.certificate()).ok_or(ServiceError::Internal)?;
             out.push((
                 id.clone(),
-                kind_name(kind).to_owned(),
-                cert.expose_secret().to_vec(),
+                kind_name(key_type).to_owned(),
+                record.kind().wire().to_owned(),
+                record.certificate().to_vec(),
             ));
         }
         Ok(out)
@@ -366,7 +400,12 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
     ) -> Result<Option<(Attempt, AppIdOutcome)>, ServiceError> {
         let unavailable = || ServiceError::AuthorizationUnavailable;
         let Some((sender, caller, pidfd)) = self.known_caller(sender).await else {
-            let attempt = (Outcome::AuthorizationUnavailable, None, Err(unavailable()));
+            let attempt = (
+                Outcome::AuthorizationUnavailable,
+                None,
+                Err(unavailable()),
+                None,
+            );
             return Ok(Some((attempt, AppIdOutcome::Undetermined)));
         };
         // Only the caller's own keys are looked at. Any other store failure is reported after
@@ -390,34 +429,30 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         &self,
         sender: &str,
         caller: Caller,
-        key: Result<SecretSlice<u8>, ServiceError>,
+        key: Result<Record, ServiceError>,
         request: &SignRequest,
         data: &[u8],
     ) -> Attempt {
         let unavailable = || ServiceError::AuthorizationUnavailable;
+        let kind = key.as_ref().ok().map(Record::kind);
         match self.authorizer.authorize(sender, ACTION_ID).await {
             Ok(()) => {}
             Err(AuthError::Denied) => {
-                return (
-                    Outcome::Denied,
-                    Some(caller),
-                    Err(ServiceError::PolkitDenied),
-                );
+                let denied = Err(ServiceError::PolkitDenied);
+                return (Outcome::Denied, Some(caller), denied, kind);
             }
             Err(AuthError::BadSender | AuthError::Unavailable(_)) => {
                 let outcome = Outcome::AuthorizationUnavailable;
-                return (outcome, Some(caller), Err(unavailable()));
+                return (outcome, Some(caller), Err(unavailable()), kind);
             }
         }
-        let signed = key.and_then(|key| {
-            sign(&key, request.mechanism, data).map_err(|e| ServiceError::from(&e))
-        });
+        let signed = key.and_then(|record| self.sign_record(&record, request.mechanism, data));
         let outcome = if signed.is_ok() {
             Outcome::Signed
         } else {
             Outcome::SigningFailed
         };
-        (outcome, Some(caller), signed)
+        (outcome, Some(caller), signed, kind)
     }
 }
 
@@ -427,16 +462,16 @@ where
     A: Authorizer + Send + Sync + 'static,
     C: CallerCredentials + Send + Sync + 'static,
 {
-    /// `(key id, key type, DER certificate)` for every stored key of the caller.
+    /// `(key id, key type, storage kind, DER certificate)` for every stored key of the caller.
     async fn list_keys(
         &self,
         #[zbus(header)] header: Header<'_>,
-    ) -> Result<Vec<(String, String, Vec<u8>)>, ServiceError> {
+    ) -> Result<Vec<ListedKey>, ServiceError> {
         self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
             .await
     }
 
-    /// Imports a `.p12` as key `id` of the caller; returns the key type.
+    /// Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
     async fn import_p12(
@@ -445,7 +480,7 @@ where
         id: &str,
         p12: Vec<u8>,
         password: &str,
-    ) -> Result<String, ServiceError> {
+    ) -> Result<ImportReply, ServiceError> {
         self.import_call(
             header.sender().map(zbus::names::UniqueName::as_str),
             id,
@@ -508,6 +543,8 @@ where
 mod delete;
 mod delete_state;
 mod import;
+pub use import::ImportReply;
 mod replace;
+mod sign_kind;
 #[cfg(test)]
 mod tests;

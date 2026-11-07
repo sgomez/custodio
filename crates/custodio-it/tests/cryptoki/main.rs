@@ -27,6 +27,7 @@ use custodio_client::{BUS_NAME, OBJECT_PATH};
 use custodiod::audit::Caller;
 use custodiod::audit::MemorySink;
 use custodiod::credentials::{CallerCredentials, CredentialsError};
+use custodiod::creds::Credentials;
 use custodiod::dbus::Custodio;
 use custodiod::import::import_p12;
 use custodiod::polkit::PolkitAuthorizer;
@@ -141,10 +142,16 @@ fn lists_certificates_and_signs_through_the_service() -> TestResult {
     assert!(ok);
     let store = f.store()?;
     let owner = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata("/proc/self")?);
-    let secret = |id: &str| store.get(owner, id);
+    // The key as the service itself opens it: the credential of the record, decrypted.
+    let secret = |id: &str| -> Result<secrecy::SecretSlice<u8>, Box<dyn Error>> {
+        let record = store.get(owner, id)?;
+        let credential = record.protected().credential().ok_or("a credential")?;
+        let name = custodiod::import::credential_name(owner, id);
+        Ok(custodiod::creds::memory::MemoryCreds::host().decrypt(&name, credential)?)
+    };
     for line in lines(&stdout, "CERT") {
-        let cert = store.get(owner, &format!("{}-cert", line[0]))?;
-        assert_eq!(line[1], hex(secrecy::ExposeSecret::expose_secret(&cert)));
+        let record = store.get(owner, line[0])?;
+        assert_eq!(line[1], hex(record.certificate()));
     }
     let mut seen = 0;
     for line in lines(&stdout, "SIG") {

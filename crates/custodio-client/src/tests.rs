@@ -13,9 +13,19 @@ fn names_are_the_documented_literals() {
         (ERROR_UNSUPPORTED_KEY_TYPE, "UnsupportedKeyType"),
         (ERROR_CERTIFICATE_MISMATCH, "CertificateMismatch"),
         (ERROR_AUDIT_UNAVAILABLE, "AuditUnavailable"),
+        (ERROR_TPM_FAILED, "TpmFailed"),
+        (ERROR_CREDENTIALS_UNAVAILABLE, "CredentialsUnavailable"),
+        (ERROR_KEY_LOST, "KeyLost"),
+        (ERROR_TEMPORARILY_UNAVAILABLE, "TemporarilyUnavailable"),
         (ERROR_INTERNAL, "Internal"),
     ];
     for (name, last) in want {
         assert_eq!(name, format!("com.rfirma.Custodio1.Error.{last}"));
     }
+    let listed: Vec<&str> = want.iter().map(|(name, _)| *name).collect();
+    assert_eq!(
+        ERROR_NAMES.to_vec(),
+        listed,
+        "ERROR_NAMES lists every constant, in order"
+    );
 }

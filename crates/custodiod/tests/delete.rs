@@ -12,6 +12,7 @@ mod common;
 #[path = "audit/deadline.rs"]
 mod deadline;
 
+use custodiod::store::Record;
 use std::collections::HashMap;
 use std::future::{Future, ready};
 use std::path::{Path, PathBuf};
@@ -38,7 +39,7 @@ const ALLOW_INTERACTION: u32 = 1;
 mod concurrent;
 
 const NONE: [String; 0] = [];
-type Listed = Vec<(String, String, Vec<u8>)>;
+type Listed = Vec<(String, String, String, Vec<u8>)>;
 
 #[derive(Clone, Default)]
 struct ByName(Arc<Mutex<HashMap<String, Caller>>>);
@@ -346,19 +347,23 @@ fn delete_removes_everything() -> TestResult {
             .into_iter()
             .filter(|e| e.0.starts_with("other"))
             .collect();
-        let old_cert = std::fs::read(r.area(1000).join("k-cert"))?;
+        let cert_of = |id: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            let record = Record::decode(&std::fs::read(r.area(1000).join(id))?)?;
+            Ok(record.certificate().to_vec())
+        };
+        let old_cert = cert_of("k")?;
         let reply = call(r.a(), "DeleteKey", &("k",)).await?;
         assert!(reply.body().deserialize::<()>().is_ok());
         assert_eq!(listed_ids(r.a()).await?, ["other"]);
         let asked = r.f.asked().len();
         assert_eq!(sign_err(r.a(), "k").await, ERROR_NO_SUCH_KEY);
         assert_eq!(r.f.asked().len(), asked);
-        assert_eq!(names(&r.area(1000))?, ["other", "other-cert"]);
+        assert_eq!(names(&r.area(1000))?, ["other"]);
         assert_eq!(snapshot(&r.area(1000))?, other_files);
         // The id can be imported again, with another certificate.
         call(r.a(), "ImportP12", &("k", OTHER_EC_P12.to_vec(), PASSWORD)).await?;
         assert_eq!(sign_err(r.a(), "k").await, "ok");
-        assert_ne!(std::fs::read(r.area(1000).join("k-cert"))?, old_cert);
+        assert_ne!(cert_of("k")?, old_cert);
         Ok(())
     })
 }
@@ -418,31 +423,24 @@ fn delete_store_failures() -> TestResult {
             assert_eq!(listed_ids(r.a()).await?, NONE);
             // Take the files away by hand, so the next part starts from a clean area.
             std::fs::remove_file(area.join("k"))?;
-            std::fs::remove_file(area.join("k-cert"))?;
         }
         r.import(r.a(), "m", EC_P12, Answer::Yes).await?;
-        // The certificate is replaced by a directory while polkit answers: the key goes, the
-        // certificate cannot.
-        let cert = area.join("m-cert");
-        let c = cert.clone();
+        // The record's mode is loosened while polkit answers: the store refuses to remove it.
+        let record = area.join("m");
+        let c = record.clone();
         r.f.on_request(move || {
-            let _ = std::fs::remove_file(&c);
-            let _ = std::fs::create_dir(&c);
+            let _ = std::fs::set_permissions(&c, std::fs::Permissions::from_mode(0o644));
         });
         r.forget_asks();
         assert_eq!(delete(r.a(), "m").await, Err(ERROR_INTERNAL.to_owned()));
         *r.f.hook.lock().unwrap_or_else(PoisonError::into_inner) = None;
-        let left: Vec<_> = names(&area)?
-            .into_iter()
-            .filter(|n| n.starts_with('m'))
-            .collect();
-        assert_eq!(left, ["m-cert"]);
+        assert_eq!(names(&area)?, ["m"]);
         assert_eq!(sign_err(r.a(), "m").await, ERROR_NO_SUCH_KEY);
         assert_eq!(listed_ids(r.a()).await?, NONE);
         // The key is unusable for good (its entry said `deleted`), so a second delete finds
-        // nothing. The directory is never touched and the id stays taken.
+        // nothing. The file is never touched and the id stays taken.
         assert_eq!(delete(r.a(), "m").await, Err(ERROR_NO_SUCH_KEY.to_owned()));
-        assert!(cert.is_dir());
+        assert!(record.is_file());
         let again = call(r.a(), "ImportP12", &("m", EC_P12.to_vec(), PASSWORD)).await;
         assert_eq!(
             again.map_err(|e| error_name(&e)).err(),
@@ -453,28 +451,22 @@ fn delete_store_failures() -> TestResult {
 }
 
 #[test]
-fn delete_clears_a_leftover_certificate() -> TestResult {
+fn delete_of_a_record_that_vanished_is_no_such_key() -> TestResult {
     block_on(async {
         let r = Rig::start(Answer::Yes, 1000, 1001).await?;
         r.import(r.a(), "k", EC_P12, Answer::Yes).await?;
         r.import(&r.b, "k", EC_P12, Answer::Yes).await?;
-        // What a delete that stopped after the key leaves.
+        // The record of the first user is taken away by hand: nothing is left of the key.
         std::fs::remove_file(r.area(1000).join("k"))?;
         assert_eq!(listed_ids(r.a()).await?, NONE);
-        let again = call(r.a(), "ImportP12", &("k", EC_P12.to_vec(), PASSWORD)).await;
-        assert_eq!(
-            again.map_err(|e| error_name(&e)).err(),
-            Some(ERROR_KEY_ID_TAKEN.to_owned())
-        );
         r.forget_asks();
-        // Another user's leftover is not visible.
-        std::fs::remove_file(r.area(1001).join("k"))?;
+        assert_eq!(delete(r.a(), "k").await, Err(ERROR_NO_SUCH_KEY.to_owned()));
+        assert_eq!(r.f.asked().len(), 0);
+        // The other user's record is untouched and deletes normally.
         assert_eq!(delete(&r.b, "k").await, Ok(()));
         assert_eq!(names(&r.area(1001))?, NONE);
         assert_eq!(r.f.asked().len(), 1);
-        delete(r.a(), "k").await?;
-        assert_eq!(names(&r.area(1000))?, NONE);
-        assert_eq!(delete(r.a(), "k").await, Err(ERROR_NO_SUCH_KEY.to_owned()));
+        // The id is free again.
         call(r.a(), "ImportP12", &("k", EC_P12.to_vec(), PASSWORD)).await?;
         assert_eq!(sign_err(r.a(), "k").await, "ok");
         Ok(())
@@ -482,11 +474,16 @@ fn delete_clears_a_leftover_certificate() -> TestResult {
 }
 
 #[test]
-fn delete_of_a_key_whose_certificate_is_gone_succeeds() -> TestResult {
+fn delete_of_a_record_that_does_not_parse_succeeds() -> TestResult {
+    use std::os::unix::fs::PermissionsExt;
     block_on(async {
         let r = Rig::start(Answer::Yes, 1000, 1001).await?;
         r.import(r.a(), "k", EC_P12, Answer::Yes).await?;
-        std::fs::remove_file(r.area(1000).join("k-cert"))?;
+        let path = r.area(1000).join("k");
+        let mut bytes = std::fs::read(&path)?;
+        bytes.truncate(20);
+        std::fs::write(&path, bytes)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
         delete(r.a(), "k").await?;
         assert_eq!(names(&r.area(1000))?, NONE);
         Ok(())

@@ -21,7 +21,8 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - Every point in the feature description, and every SPEC.md requirement it touches, maps to a
   step and to concrete evidence (a named test, a command and its expected result).
 - The evidence would fail if the feature were wrong. "Tests pass" or "`just check` passes" alone
-  is not evidence.
+  is not evidence. Nor is a grep of a document's wording, headings or citations: a document is
+  proven against the code or by running what it says.
 - Each step fits in one session, and nothing outside the feature is planned.
 - Evidence that depends on the environment (a container engine, privileges, network, a device, a
   tool not pinned in mise.toml) has under Scope a command run in the dev container and its result,
@@ -29,10 +30,11 @@ The builder wrote `contracts/<id>.md` before writing any code. Read it with the 
 - The evidence is proportionate: each behaviour is proven once, at the cheapest level that would
   catch it being wrong. Evidence that another feature's description or `verify` names belongs to
   that feature.
+- Each new test or suite states what it costs in time and how it runs alongside the others.
 
 Reply `REVISE` only for a blocking point: a requirement with no evidence, evidence that would pass
-with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, or scope outside the
-feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
+with the feature wrong or fail with it right, environment-dependent evidence with no probe, a step too big for a session, a new test or
+suite with no stated cost, or scope outside the feature. Anything else (wording, tightening, nice-to-have checks) is a note: reply `APPROVED` and
 list it; the builder reads it. A note asks for more evidence only to close a way a wrong feature
 could pass, never for a second proof of the same behaviour; note evidence that is redundant, so the
 builder can drop it.
@@ -50,7 +52,7 @@ whole contract, the feature's entry in `features.json`, the parts of `SPEC.md` i
 findings the amendment cites. Approve only if all of these hold:
 
 - The reason is a fact found while building (a tool's behaviour, a test, a research finding in
-  `docs/findings.md`), not convenience.
+  `docs/findings/`), not convenience.
 - Every point of the feature and of `SPEC.md` still has evidence that would fail if the feature
   were wrong, and every ticked step is still true.
 - No gate gets weaker: no dropped flag or check, no exception or glob wider than the finding
@@ -78,13 +80,21 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    - Every step and every piece of evidence in the contract is delivered, and nothing outside it
      was started. Do not ask for evidence the contract does not list.
    - The tests exercise the behaviour: they fail if the code is wrong, they are not skipped or
-     `#[ignore]`d, and they do not just assert what the code returns.
+     `#[ignore]`d, and they do not just assert what the code returns, nor the wording of a
+     document, decision, finding or contract.
    - No gate was weakened: deleted tests, lowered thresholds, unjustified `#[allow]`, no-op
-     `just` recipes, lints removed from the workspace.
+     `just` recipes, lints removed from the workspace, `budgets.tsv` edited.
+   - The new tests cost what the contract says. Each is NEEDS_WORK: a loop that runs independent
+     units (targets, modes, files, cases) one after another, a fixed `sleep` where a condition can
+     be waited on, a test at a slower level (e2e, a container, a package) for what a unit test or
+     a script test with a stub would catch, an e2e case in `e2e/cases.list` (every target) whose
+     outcome does not depend on the distribution (SPEC, end-to-end scope).
    - The security invariants hold: every signature asks polkit, no `_keep`, key material and
      passwords never reach `Debug`, logs or errors, `unsafe` only in the PKCS#11 FFI layer.
    - New or changed entries in `docs/decisions.md` follow the rules at the top of that file; an
      entry that only describes what was built belongs in the commit instead.
+   - New or changed files in `docs/findings/` follow the rules at the top of `docs/findings.md`:
+     conclusions and the lines that prove them, no pasted whole outputs, an index line.
 
 Reply: first line exactly `PASS` or `NEEDS_WORK`, then up to 30 lines of findings, most important
 first, each with `file:line` and what to change.

@@ -72,7 +72,7 @@ fn confirming_asks_before_the_service_and_deletes_after_the_answer() -> TestResu
         )]
     );
     assert_eq!(rig.keys()?, ["keep"]);
-    // The files of the key are gone from the store, those of the other key remain.
+    // The record of the key is gone from the store, that of the other key remains.
     let files = rig.files()?;
     assert!(files.iter().all(|f| !f.starts_with("old-key")), "{files:?}");
     assert!(files.iter().any(|f| f.starts_with("keep")), "{files:?}");
@@ -134,7 +134,7 @@ fn a_denied_polkit_deletes_nothing() -> TestResult {
     let before = rig.files()?;
     assert_eq!(
         before.iter().filter(|f| f.starts_with('k')).count(),
-        2,
+        1,
         "{before:?}"
     );
     let mut run = Run::start(&rig, &delete_args("k"), &[], true, b"")?;

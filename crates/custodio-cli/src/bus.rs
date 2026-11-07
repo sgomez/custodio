@@ -1,6 +1,6 @@
 //! `ImportP12`, `ListKeys` and `DeleteKey` over D-Bus.
 
-use custodio_client::{BUS_NAME, OBJECT_PATH};
+use custodio_client::{BUS_NAME, Kind, OBJECT_PATH};
 use secrecy::{ExposeSecret, SecretString};
 use zbus::{Connection, block_on};
 
@@ -33,7 +33,7 @@ impl Importer for DbusImporter {
         id: &str,
         p12: &[u8],
         password: &SecretString,
-    ) -> Result<String, ServiceFailure> {
+    ) -> Result<(String, Kind), ServiceFailure> {
         let reply = block_on(self.connection.call_method(
             Some(BUS_NAME),
             OBJECT_PATH,
@@ -44,7 +44,8 @@ impl Importer for DbusImporter {
         .map_err(|e| failure_of(&e))?;
         reply
             .body()
-            .deserialize::<String>()
+            .deserialize::<(String, String)>()
+            .map(|(key_type, kind)| (key_type, Kind::from_wire(&kind)))
             .map_err(|_| ServiceFailure::Transport)
     }
 }
@@ -61,16 +62,9 @@ impl KeyLister for DbusImporter {
         .map_err(|e| failure_of(&e))?;
         let keys = reply
             .body()
-            .deserialize::<Vec<(String, String, Vec<u8>)>>()
+            .deserialize::<Vec<(String, String, String, Vec<u8>)>>()
             .map_err(|_| ServiceFailure::Transport)?;
-        Ok(keys
-            .into_iter()
-            .map(|(id, key_type, certificate)| KeyEntry {
-                id,
-                key_type,
-                certificate,
-            })
-            .collect())
+        Ok(keys.into_iter().map(key_entry).collect())
     }
 }
 
@@ -85,6 +79,16 @@ impl KeyDeleter for DbusImporter {
         ))
         .map(|_| ())
         .map_err(|e| failure_of(&e))
+    }
+}
+
+/// One element of the `ListKeys` reply: `(id, key type, kind, certificate)`.
+fn key_entry((id, key_type, kind, certificate): (String, String, String, Vec<u8>)) -> KeyEntry {
+    KeyEntry {
+        id,
+        key_type,
+        kind: Kind::from_wire(&kind),
+        certificate,
     }
 }
 

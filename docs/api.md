@@ -2,7 +2,8 @@
 
 The interface a client sees on the system bus. Service `com.rfirma.Custodio1`, object `/com/rfirma/Custodio1`,
 interface `com.rfirma.Custodio1`. `just api-contract` checks the items below (methods, arguments, results,
-properties, error names, polkit actions) against the running service, the error type and the shipped policy file;
+properties, error names, storage kinds, polkit actions) against the running service, the error type, the client's
+constants and the shipped policy file;
 the prose is not checked.
 
 Key ids are 1 to 59 bytes of `[A-Za-z0-9_-]` and do not end in `-cert`. Mechanisms are the PKCS#11 numbers:
@@ -74,7 +75,7 @@ flatpak, tell the person both causes and name the permission as the one to check
 
 ## Calling with gdbus
 
-The `org.freedesktop.Platform` flatpak runtime ships `gdbus` and `dbus-send`, not `busctl` (`docs/findings.md`, F102). With
+The `org.freedesktop.Platform` flatpak runtime ships `gdbus` and `dbus-send`, not `busctl` (`docs/findings/F102.md`). With
 `gdbus` the detection and a `Sign` are (`gdbus` reads the argument types from introspection; `$digest` is the GVariant
 text of the bytes, such as `[byte 0x00, byte 0x00, …]`):
 
@@ -94,21 +95,23 @@ None.
 
 ### Method `ListKeys`
 
-`(key id, key type, DER certificate)` for every key of the caller, and no other. The owner is the uid the bus
-reports for the calling connection (checked against its `ProcessFD`); no method takes an owner or a uid. The key
-type is `rsa2048` or `ecdsa-p256`, as `ImportP12` returns it. Asks no polkit. If the caller cannot be identified
+`(key id, key type, storage kind, DER certificate)` for every key of the caller, and no other. The owner is the
+uid the bus reports for the calling connection (checked against its `ProcessFD`); no method takes an owner or a
+uid. The key type is `rsa2048` or `ecdsa-p256`, as `ImportP12` returns it. The storage kind is the one stored with
+the key (see "Storage kinds"); it is read from the record, so listing never opens the TPM or the credential
+service and shows the kind of a key that can no longer be used as well. Asks no polkit. If the caller cannot be identified
 the call fails as `AuthorizationUnavailable`, never with an empty list. A key whose certificate cannot be read
 fails the call as `Internal` instead of being left out.
 
 One method gives everything a client lists (the PKCS#11 module needs nothing else), so there is no separate
 method for certificates.
 
-- out: `a(ssay)`
+- out: `a(sssay)`
 - bounds: none.
 
 ### Method `ImportP12`
 
-Imports a `.p12` as key `id` of the caller; returns the key type. A different user may use the same `id`;
+Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind that was chosen. A different user may use the same `id`;
 `KeyIdTaken` is only for the caller's own ids.
 
 The order is fixed: (1) the arguments are checked against the bounds below (`InvalidArgs`); (2) the caller is
@@ -126,7 +129,7 @@ are removed again and the call fails with `AuditUnavailable`: a key is never kep
 - in `id`: `s`
 - in `p12`: `ay`
 - in `password`: `s`
-- out: `s`
+- out: `(ss)`, the key type and the storage kind chosen for the key (see "Storage kinds").
 - bounds: `id` as above; the password is at most 1024 bytes; RSA 2048 or ECDSA P-256 with one private key and a
   certificate.
 - p12 size: `1048576` bytes at most.
@@ -213,6 +216,10 @@ that finds the key asks polkit; nothing is cached.
 - bounds: `id` as above; `data` at most 1024 bytes; `mechanism` one of the three above; `hash` is 0 unless the
   mechanism is `CKM_RSA_PKCS_PSS`, where it must be one of the three hashes; `salt_len` is 0 unless PSS.
 
+A TPM-protected key signs inside the TPM; an encrypted key is decrypted for this one signature and dropped. If the
+key can no longer be used the call fails `KeyLost`; if the TPM or the credential service is not usable right now it
+fails `TemporarilyUnavailable`. Either way the key is left as it is.
+
 ## Errors
 
 Every failure is one of these names, with a fixed message that repeats nothing the caller sent. A client library
@@ -232,7 +239,11 @@ otherwise, the call changed nothing.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256. Message `unsupported key type`.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key (`ImportP12`, `ReplaceCertificate`). Message `certificate does not match the key`.
 - error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored; a replaced certificate is put back). Message `audit unavailable`.
-- error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate). Message `internal error`.
+- error `com.rfirma.Custodio1.Error.TpmFailed`: `ImportP12` only: the TPM is present but failed or cannot be used (it could not be opened, answered with an error, or its owner hierarchy is unusable). Nothing was stored, and the key was not stored in a weaker form instead. Message `the TPM failed or cannot be used`.
+- error `com.rfirma.Custodio1.Error.CredentialsUnavailable`: `ImportP12` only: the credential service is down or refused to encrypt the key, so it was not stored. Message `the credential service is unavailable`.
+- error `com.rfirma.Custodio1.Error.KeyLost`: `Sign` only: the stored key can no longer be used, because its TPM blob does not load (the TPM was cleared or replaced, or the stored key is damaged) or its credential cannot be decrypted (the TPM was cleared, or the host key changed). Retrying does not help. Nothing is changed or deleted: the key stays listed and `DeleteKey` removes it. Message `the stored key can no longer be used`.
+- error `com.rfirma.Custodio1.Error.TemporarilyUnavailable`: `Sign`: the TPM or the credential service cannot be used right now (absent, failing, or not serving the mechanism). The key is intact and signs again once the service is back. Message `the key cannot be used right now, try again later`.
+- error `com.rfirma.Custodio1.Error.Internal`: any other failure (store, key, signing, a delete that could not remove a file, a replace that could not store the certificate or whose key cannot be decrypted, which changes nothing). Message `internal error`.
 
 ## Polkit actions
 
@@ -294,6 +305,77 @@ PKCS#11. `Sign` takes at most 1024 bytes.
 - `CKM_RSA_PKCS_PSS`: `data` is the digest, `hash` names the hash that made it (its length must match) and `salt_len` is
   the salt length. MGF1 uses the same hash. The service does the PSS padding and never hashes the message.
 
+## Storage kinds
+
+Every key has exactly one storage kind, chosen at import and never changed afterwards. `ImportP12` returns it next to
+the key type and `ListKeys` returns it for every key. The values are chosen once and only added to (see the
+compatibility rule below): a client that meets a kind it does not know shows the string as it is and does not fail.
+`just api-contract` checks this list against the kinds the running service returns and the kinds `custodio-client`
+knows.
+
+- kind `tpm`: the private key exists only inside the TPM; the state directory holds a blob that only this TPM can load.
+- kind `encrypted-tpm`: the key is a file encrypted with `systemd-creds` under a key bound to this machine's TPM.
+- kind `encrypted-host`: the key is a file encrypted with `systemd-creds` under the host key.
+
+What each protects against, and from whom:
+
+- **`tpm`** protects against copying. Nobody can take the key off the machine, not even root: a backup, a copy of
+  the disk or of `/var/lib` carries a blob the TPM of another machine cannot load. It does not stop root, or any
+  code running as the service, from asking the TPM to sign while the machine runs; polkit approves each signature.
+  Clearing or replacing the TPM destroys the key (`KeyLost` at `Sign`); keep the `.p12` to import it again.
+- **`encrypted-tpm`** protects against a copy of the files. The key is decrypted in the service's memory to sign, so
+  root, while the machine runs, can take it. A backup or a copy of the disk alone cannot be decrypted without
+  this machine's TPM. Clearing the TPM makes the key unreadable (`KeyLost`).
+- **`encrypted-host`** protects against little beyond a copy of the state directory alone. The key is decrypted in
+  the service's memory to sign, so root can take it, and the host key lives on the same disk: anyone with a backup
+  or a copy of `/var/lib` has both the encrypted key and the key to open it.
+
+When each is chosen. After polkit approves the import and the `.p12` is opened, the service picks the first that fits:
+
+1. `tpm`, when a TPM is reachable and supports the key's algorithm and every hash the mechanisms for that key type
+   need (see "TPM capabilities").
+2. `encrypted-tpm`, when a TPM is reachable but lacks one of those capabilities.
+3. `encrypted-host`, when the machine has no TPM device.
+
+Only "no TPM" and "lacks" choose a weaker kind. Any other failure ends the import with `TpmFailed` (the TPM exists but
+cannot be opened, answered with an error, or its owner hierarchy is unusable) or `CredentialsUnavailable`, stores
+nothing and never falls through to a weaker kind: a fault never makes the service silently store a key with less
+protection than the machine can give. The kind is always visible, in the import result and in `ListKeys`.
+
+## TPM capabilities
+
+The service keeps a key in the TPM only when the TPM has everything the key type needs. It asks the TPM once, with
+`TPM2_GetCapability` and `TPM2_TestParms` (nothing is created in the TPM), and sorts it into one of four results: *absent*
+(the platform exposes no TPM device), *lacks* (the TPM answered and these items are absent, each named), *ready*, or an
+*error* (a device that cannot be opened, a TPM error with its response code, or an owner hierarchy the service cannot use:
+an authorization value is set, or the hierarchy is disabled). An error is never read as absent or as lacking, and it
+wins when both apply. The list comes from `docs/findings/F107.md`, as the decisions "TPM parent" and "the service
+pads" in `docs/decisions.md` narrow it: the parent of every TPM key is an ECC P-256 primary with AES-128-CFB and a SHA-256
+name, RSA keys carry `sign|decrypt` and the service pads, P-256 keys sign with `TPM2_Sign`. SHA-384 and SHA-512 are on no
+list: a TPM without SHA-512 (the hardware TPM of F111) is *ready*.
+
+| Item | Query | Why | RSA 2048 | ECC P-256 |
+|---|---|---|---|---|
+| `algorithm ECC` | `GetCapability(ALGS)`, `0x0023` | the parent | yes | yes |
+| `curve NIST P-256` | `GetCapability(ECC_CURVES)`, `0x0003` | the parent | yes | yes |
+| `name algorithm SHA-256` | `GetCapability(ALGS)`, `0x000b` | the parent's name | yes | yes |
+| `algorithm AES` | `GetCapability(ALGS)`, `0x0006` | the parent's symmetric | yes | yes |
+| `parent template ECC P-256 AES-128-CFB` | `TestParms` | the parent | yes | yes |
+| `command CreatePrimary` | `GetCapability(COMMANDS)` | the parent | yes | yes |
+| `command Import` | `GetCapability(COMMANDS)` | importing a key | yes | yes |
+| `command Load` | `GetCapability(COMMANDS)` | loading a key | yes | yes |
+| `algorithm RSA` | `GetCapability(ALGS)`, `0x0001` | the key | yes | no |
+| `rsa2048 null scheme` | `TestParms` | the key | yes | no |
+| `command RSA_Decrypt` | `GetCapability(COMMANDS)` | the raw operation | yes | no |
+| `ECDSA with SHA-256 on P-256` | `TestParms` | the key | no | yes |
+| `command Sign` | `GetCapability(COMMANDS)` | the signature | no | yes |
+
+An item made of another is not asked and not named when that one is absent: the curve is folded into `algorithm ECC`;
+the parent template is folded into `algorithm ECC`, `curve NIST P-256` and `algorithm AES`; `rsa2048 null scheme` into
+`algorithm RSA`; `ECDSA with SHA-256 on P-256` into `algorithm ECC`, `curve NIST P-256` and `name algorithm SHA-256`.
+`TestParms` counts a combination as absent only for the response codes "type", "scheme", "hash" and "curve" (the
+parameter number and the `P` bit are ignored, so `0x1C3` is a hash); any other code is an error.
+
 ## Compatibility rule
 
 What `docs/audit.md` fixes for the journal, see [its compatibility rule](audit.md#compatibility-rule): documented names
@@ -325,10 +407,10 @@ $ openssl req -new -x509 -key other.key -subj /CN=other -days 30 -outform der -o
 
 ```console op=ListKeys
 $ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
-a(ssay) 0
+a(sssay) 0
 ```
 
-`ImportP12` takes the id, the bytes of the file and the password, and returns the key type. A refused dialog is
+`ImportP12` takes the id, the bytes of the file and the password, and returns the key type and the storage kind (`busctl` prints the two strings of the `(ss)` struct without the parentheses). A refused dialog is
 `PolkitDenied`:
 
 ```console op=ImportP12 polkit=deny action=com.rfirma.custodio.import-certificate error=PolkitDenied
@@ -361,7 +443,7 @@ The import that works:
 
 ```console op=ImportP12 polkit=approve action=com.rfirma.custodio.import-certificate
 $ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo $(wc -c < demo.p12) $(od -An -v -tu1 demo.p12) secret
-s "ecdsa-p256"
+ss "ecdsa-p256" "encrypted-host"
 ```
 
 The same id again is `KeyIdTaken`, also before polkit is asked:
@@ -375,7 +457,7 @@ Call failed: a key with this id already exists
 
 ```console op=ListKeys
 $ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
-a(ssay) 1 "demo" "ecdsa-p256" <DER>
+a(sssay) 1 "demo" "ecdsa-p256" "encrypted-host" <DER>
 ```
 
 `ReplaceCertificate` takes the id and one DER certificate for the same key. A certificate for another key is
@@ -405,7 +487,7 @@ ay 64
 $ set -- $sig; shift 2
 $ printf 'asn1=SEQUENCE:s\n[s]\nr=INTEGER:0x%s\ns=INTEGER:0x%s\n' "$(printf '%02x' "${@:1:32}")" "$(printf '%02x' "${@:33:32}")" > sig.cnf
 $ openssl asn1parse -genconf sig.cnf -noout -out sig.der
-$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys | awk '{ for (i = 6; i <= NF; i++) printf "\\%03o", $i }' | xargs -0 printf > listed.der
+$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys | awk '{ for (i = 7; i <= NF; i++) printf "\\%03o", $i }' | xargs -0 printf > listed.der
 $ openssl x509 -inform der -in listed.der -pubkey -noout > pub.pem
 $ openssl dgst -sha256 -verify pub.pem -signature sig.der message.bin
 Verified OK
@@ -435,5 +517,5 @@ Afterwards the list is empty again:
 
 ```console op=ListKeys
 $ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ListKeys
-a(ssay) 0
+a(sssay) 0
 ```

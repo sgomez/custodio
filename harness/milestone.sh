@@ -3,7 +3,7 @@
 #   harness/milestone.sh list    # closed milestones and the open one
 #   harness/milestone.sh close   # archive the finished milestone in docs/milestones/<name>
 #   harness/milestone.sh open    # start the next one on a milestone/<name> branch from main
-#   harness/milestone.sh approve spec|features   # approve what you reviewed
+#   harness/milestone.sh approve spec|features|budgets   # approve what you reviewed
 #   harness/milestone.sh pass <id>               # mark a manual feature as checked
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -135,8 +135,8 @@ pass() {
   jq -e --arg id "$id" 'any(.features[]; .id == $id and .passes)' features.json >/dev/null \
     && die "$id already passes."
   # The notes of the manual run go in their own commit, before the mark.
-  if tracked_changes; then
-    git add -u -- docs/
+  if [ -n "$(git status --porcelain -- docs/)" ]; then
+    git add -A -- docs/
     git commit -q -m "docs($id): record the manual acceptance run"
     log "Committed the docs/ changes for $id."
   fi
@@ -152,5 +152,5 @@ case "${1:-list}" in
   open) open ;;
   approve) shift; harness/approve.sh "$@" ;;
   pass) shift; pass "$@" ;;
-  *) die "Usage: just milestone [list|open|close|approve spec|approve features|pass <id>]" ;;
+  *) die "Usage: just milestone [list|open|close|approve spec|features|budgets|pass <id>]" ;;
 esac

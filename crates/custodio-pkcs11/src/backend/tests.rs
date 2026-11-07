@@ -81,11 +81,19 @@ fn other_errors_are_unavailable() {
     );
 }
 
-/// What the fake service lists: `(id, key type, certificate)`.
-fn listed() -> Vec<(String, String, Vec<u8>)> {
+/// One row of the `ListKeys` reply.
+type ListedKey = (String, String, String, Vec<u8>);
+
+/// What the fake service lists: `(id, key type, storage kind, certificate)`.
+fn listed() -> Vec<ListedKey> {
     vec![
-        ("a".into(), "rsa2048".into(), vec![1, 2, 3]),
-        ("b".into(), "ecdsa-p256".into(), vec![4, 5]),
+        ("a".into(), "rsa2048".into(), "tpm".into(), vec![1, 2, 3]),
+        (
+            "b".into(),
+            "ecdsa-p256".into(),
+            "encrypted-host".into(),
+            vec![4, 5],
+        ),
     ]
 }
 
@@ -130,7 +138,7 @@ impl FakeService {
 
 #[zbus::interface(name = "com.rfirma.Custodio1")]
 impl FakeService {
-    fn list_keys(&self) -> Result<Vec<(String, String, Vec<u8>)>, Named> {
+    fn list_keys(&self) -> Result<Vec<ListedKey>, Named> {
         if self.fail {
             return Err(Self::next_error(&self.lists));
         }
@@ -167,7 +175,7 @@ fn backend_child() -> TestResult {
     let got = DbusBackend
         .list_certificates()
         .map_err(|e| format!("{e:?}"))?;
-    let want: Vec<_> = listed().into_iter().map(|(id, _, c)| (id, c)).collect();
+    let want: Vec<_> = listed().into_iter().map(|(id, _, _, c)| (id, c)).collect();
     assert_eq!(got, want);
     println!("backend-child-checked");
     Ok(())

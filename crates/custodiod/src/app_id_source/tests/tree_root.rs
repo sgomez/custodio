@@ -2,10 +2,19 @@ use super::*;
 use scan::tree_root;
 
 #[test]
-fn tree_root_strips_the_prefix_before_system_slice() {
+fn tree_root_strips_the_prefix_before_the_last_system_slice() {
     let mount = Path::new("/sys/fs/cgroup");
-    let cases: [(&[u8], &str); 6] = [
+    let cases: [(&[u8], &str); 8] = [
         (b"0::/system.slice/custodio.service\n", "/sys/fs/cgroup"),
+        // Docker with the host's cgroup namespace: the container is itself a unit of the host's system.slice.
+        (
+            b"0::/system.slice/docker-ab12.scope/system.slice/custodio.service\n",
+            "/sys/fs/cgroup/system.slice/docker-ab12.scope",
+        ),
+        (
+            b"0::/a/system.slice/b/../system.slice/custodio.service\n",
+            "/sys/fs/cgroup",
+        ),
         (
             b"0::/abc123/system.slice/custodio.service\n",
             "/sys/fs/cgroup/abc123",

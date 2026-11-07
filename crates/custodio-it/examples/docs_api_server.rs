@@ -60,7 +60,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             control: PathBuf::from(control),
         };
         let credentials = BusCredentials::new(conn.clone());
-        let object = Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()));
+        let object = Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()))
+            .with_key_credentials(std::sync::Arc::new(
+                custodiod::creds::memory::MemoryCreds::host(),
+            ));
         conn.object_server().at(OBJECT_PATH, object).await?;
         conn.request_name(BUS_NAME).await?;
         println!("ready");

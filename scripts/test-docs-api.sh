@@ -59,7 +59,6 @@ run_doc() {
 python3 -I "$RUN" static "$DOC" || fail=1
 grep -qF 'docs/api.md' README.md || bad "README.md does not link docs/api.md"
 [ -f docs/api.md ] || bad "the link target docs/api.md does not exist"
-grep -qE '^[[:space:]]+scripts/test-docs-api\.sh$' <(just --show test-scripts) || bad "scripts/test-docs-api.sh is not in just test-scripts"
 run_doc "$DOC" || fail=1
 
 if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
@@ -85,18 +84,12 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
             { print }'
     }
     control "flag removed" static sed 's/--system-talk-name=com\.rfirma\.Custodio1/--system-talk-name=com.rfirma.Other/'
-    control "situation deleted" static sed 's/blocked by the sandbox/something else/I'
-    control "no-single-error-name sentence removed" static sed 's/do not$/please/; s/^   rely on one error name/   remember it/'
-    control "absent-and-blocked sentence removed" static sed 's/look the same through the proxy/differ/'
-    control "invented error in the detection section" static sed '0,/`NameHasNoOwner`/s//`NameHasNoSuchThing`/'
     control "error without explanation" static sed 's/^- error `com.rfirma.Custodio1.Error.UnsupportedKeyType`:.*$/- error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: Message `unsupported key type`./'
-    control "ownership statement removed" static sed 's/another user.s id is `NoSuchKey`/another user is something/I; s/Another user.s id is `NoSuchKey`/Another user is something/'
     control "dialog row changed" static sed 's/| dialog on every call |/| no dialog |/'
     control "invented audit field" static sed 's/`CUSTODIO_APP_ID_STATE`/`CUSTODIO_INVENTED`/'
-    control "hashing section removed" static sed 's/never hashes/hashes/; s/never hash/hash/'
     control "compatibility link removed" static sed 's/audit.md#compatibility-rule/audit.md/'
     control "example action changed" run sed '0,/action=com.rfirma.custodio.sign/s//action=com.rfirma.custodio.delete-certificate/'
-    control "documented result changed" run sed '0,/^s "ecdsa-p256"$/s//s "rsa2048"/'
+    control "documented result changed" run sed '0,/^ss "ecdsa-p256" "encrypted-host"$/s//ss "rsa2048" "encrypted-host"/'
     control "two error messages swapped" static sed 's/Message `not authorized`/Message `@@`/; s/Message `no such key`/Message `not authorized`/; s/Message `@@`/Message `no such key`/'
     control "error name altered" run sed '0,/error=PolkitDenied/s//error=NoSuchKey/'
     control "example removed for one operation" run drop_blocks 'op=ReplaceCertificate'

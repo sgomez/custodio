@@ -42,7 +42,7 @@ OPERATIONS = {  # operation -> (MESSAGE_ID, {outcome: (PRIORITY, start of MESSAG
         "storage_failure": ("3", "certificate replacement failed after approval, nothing changed")}),
 }
 APP_ID_STATES = ("read", "none", "undetermined")
-FIELD_OF_QUERY = ("MESSAGE_ID", "CUSTODIO_OPERATION", "CUSTODIO_UID", "CUSTODIO_KEY_ID", "CUSTODIO_APP_ID", "CUSTODIO_APP_ID_STATE", "CUSTODIO_OUTCOME")
+FIELD_OF_QUERY = ("MESSAGE_ID", "CUSTODIO_OPERATION", "CUSTODIO_UID", "CUSTODIO_KEY_ID", "CUSTODIO_APP_ID", "CUSTODIO_APP_ID_STATE", "CUSTODIO_OUTCOME", "CUSTODIO_OWNER_UID", "CUSTODIO_STORAGE_KIND", "CUSTODIO_CAUSE")
 SERVICE_UID_TEXT = "$(id -u custodio)"  # the documented placeholder of every query: the uid of the service account
 NO_SUCH_APP = "org.invalid.NoEntryHasThis"
 TAG_FIELDS = ("label", "op", "outcome", "key", "pid", "uid", "keytype")
@@ -219,6 +219,8 @@ def extract_queries(doc_text, uid, service_uid, key, app_id=NO_SUCH_APP):
 def predicted_value(line, name, entry):
     if name == "MESSAGE_ID":
         return OPERATIONS[line["op"]][0]
+    if name in ("CUSTODIO_STORAGE_KIND", "CUSTODIO_CAUSE", "CUSTODIO_OWNER_UID"):
+        return field(entry, name) if entry else None  # the ledger does not carry them: what the entry of that call says
     if name in ("CUSTODIO_APP_ID", "CUSTODIO_APP_ID_STATE"):
         if "app_state" in line:  # F95's ledger says what the entry must hold, and the query is judged by that
             return line["app_state"] if name == "CUSTODIO_APP_ID_STATE" else line.get("app_id")

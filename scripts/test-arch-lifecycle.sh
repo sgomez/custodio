@@ -5,7 +5,7 @@
 # scripts/test-arch-lifecycle-real.sh. What the stubs cannot cover: a real running systemd and bus, and pacman's own order of scripts and hooks
 # (the real test records it with sequence numbers); a real Arch system is F45 and later.
 #
-# What the hooks of systemd and dbus already do (docs/findings.md "F58"; docs/decisions.md) is NOT done by these scripts, so no call below is
+# What the hooks of systemd and dbus already do (docs/findings/F58.md; docs/decisions.md) is NOT done by these scripts, so no call below is
 # daemon-reload, the bus reload or the catalog update: 30-systemd-daemon-reload-system, dbus-reload and 25-systemd-catalog each do theirs once
 # for the unit, the bus policy and the catalog, on install, upgrade and removal, after the scripts. The account is created in pre_*: the
 # sysusers hook runs after the files, too late for the bus policy.

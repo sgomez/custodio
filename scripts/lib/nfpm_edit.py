@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | predep-add DEP | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
 """
 import sys
 
@@ -85,6 +85,9 @@ elif op == "provides-add":
     cfg["overrides"][args[0]].setdefault("provides", []).append(args[1])
 elif op == "predep-add":  # the deb's Pre-Depends (top-level deb section)
     cfg["deb"]["predepends"].append(args[0])
+elif op == "predep-set":
+    pre = cfg["deb"]["predepends"]
+    pre[pre.index(args[0])] = args[1]
 elif op == "predep-del":
     cfg["deb"]["predepends"].remove(args[0])
 elif op == "predep-to-depends":  # the dependency is only in Depends

@@ -54,7 +54,6 @@ fn concurrent_imports_leave_one_key_one_success() -> TestResult {
                 "round {round}: one KeyIdTaken"
             );
             assert!(f.store.list(uid())?.contains(&id));
-            assert!(f.store.list(uid())?.contains(&format!("{id}-cert")));
             let mut outcomes: Vec<(&str, Option<AuditKeyType>)> = sink
                 .operation_entries()
                 .iter()
@@ -70,8 +69,8 @@ fn concurrent_imports_leave_one_key_one_success() -> TestResult {
             );
             assert_eq!(sink.operation_entries().len(), 2 * (round + 1));
         }
-        // 20 ids, each a key and a certificate; nothing doubled.
-        assert_eq!(f.store.list(uid())?.len(), 40);
+        // 20 ids, each one record; nothing doubled.
+        assert_eq!(f.store.list(uid())?.len(), 20);
         Ok(())
     })
 }
@@ -107,5 +106,9 @@ async fn call_import(client: &Connection, id: &str) -> Result<String, String> {
     let reply = call(client, "ImportP12", &(id, EC_P12.to_vec(), PASSWORD))
         .await
         .map_err(|e| error_name(&e))?;
-    reply.body().deserialize().map_err(|e| e.to_string())
+    reply
+        .body()
+        .deserialize::<(String, String)>()
+        .map(|(key_type, _kind)| key_type)
+        .map_err(|e| e.to_string())
 }

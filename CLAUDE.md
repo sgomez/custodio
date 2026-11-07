@@ -19,7 +19,9 @@ Everything in this repository is in English: code, comments, docs, commit messag
    next one, even if you have context left. Tick contract steps as they are done. Change the
    rest of the contract only by an amendment the evaluator approves (`harness/builder-prompt.md`).
    A feature may take several sessions.
-3. **Tests first.** Write the failing test, then the code. Between steps run only that test and
+3. **Tests first.** Write the failing test, then the code. A test checks what the product does;
+   a document is tested only against the code or by running what it says, never by grepping its
+   wording, headings or citations, nor those of decisions, findings or contracts. Between steps run only that test and
    the tests of the code you touched (`cargo test -p <crate> <filter>`). When every step is ticked,
    run `just quick` once and the contract's evidence (and `just mutants-diff <id>` if the `verify`
    has it) until they pass; the loop runs the `verify`. Never run `just check`, `just e2e`
@@ -44,8 +46,8 @@ Everything in this repository is in English: code, comments, docs, commit messag
 
 ## Rules
 
-- Never edit `SPEC.md`, `features.json` or `APPROVALS`. A person approves the spec and the feature
-  list; only the loop marks a feature as passing.
+- Never edit `SPEC.md`, `features.json`, `budgets.tsv` or `APPROVALS`. A person approves the spec,
+  the feature list and the time budgets; only the loop marks a feature as passing.
 - Never weaken a gate to get green: no deleting or `#[ignore]`-ing tests, no lowering thresholds,
   no `#[allow(...)]` without a comment that justifies it, no turning a `just` recipe into a no-op.
 - Key material and passwords live in `secrecy` / `zeroize` types and never reach `Debug`, logs or
@@ -54,9 +56,10 @@ Everything in this repository is in English: code, comments, docs, commit messag
 - When `SPEC.md` does not decide something, choose the more conservative option. Record it in
   `docs/decisions.md` only if a later session could undo it without knowing why; follow the rules
   at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
-  the commit; research in `docs/findings.md`.
+  the commit; research in `docs/findings/<id>.md`, following the rules at the top of
+  `docs/findings.md`.
 - If a `SPEC.md` requirement cannot be met by anything this project ships, and a finding in
-  `docs/findings.md` proves it (a tool's source or a command you ran, not a guess), do not block:
+  `docs/findings/` proves it (a tool's source or a command you ran, not a guess), do not block:
   record a deviation in `SPEC_DEVIATIONS.md` (format at the top of that file), amend the contract
   to the narrowest replacement, and go on. The evaluator approves it with the amendment; a person
   reviews every deviation before the milestone closes. Never for the security rules above, nor

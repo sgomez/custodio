@@ -1,0 +1,1 @@
+the rpm upgrade from the old path runs on alma10 (the same package and scriptlets; alma10 has the older rpm and systemd)

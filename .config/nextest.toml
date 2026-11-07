@@ -1,0 +1,12 @@
+[profile.default]
+# A hung test fails after 3 minutes, its process group killed; the whole custodiod suite takes about 40 s.
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+# `just mutants`: one failing test catches the mutant, so kill the rest at once instead of waiting for the slow ones
+# below, which run last so the fast tests that catch most mutants get the CPU first.
+[profile.mutants]
+fail-fast = { max-fail = 1, terminate = "immediate" }
+
+[[profile.mutants.overrides]]
+filter = 'test(/^concurrent::/) | test(=no_plaintext_outside_memory) | test(=outcome::app_id_never_changes_the_outcome) | test(=import_failures_have_their_names) | test(=lacks::lacks_each_item)'
+priority = -10

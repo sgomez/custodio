@@ -2,6 +2,7 @@
 
 use std::pin::Pin;
 
+use custodiod::creds::memory::MemoryCreds;
 use zbus::export::futures_core::Stream;
 
 use super::*;
@@ -154,6 +155,7 @@ impl Fixture {
     /// A bus with polkit, and, if `service`, the service holding an RSA and a P-256 key. They
     /// run on their own thread: the connections only make progress while a thread is inside
     /// `block_on`, and the test thread is busy waiting for the child process.
+    #[allow(clippy::too_many_lines)] // one fixture setup that wires a bus, polkit and the service
     pub(super) fn start(approve: bool, service: bool) -> Result<Self, Box<dyn Error>> {
         let bus = Bus::start()?;
         let asked = Arc::new(Mutex::new(Vec::new()));
@@ -189,20 +191,37 @@ impl Fixture {
                 polkit.request_name("org.freedesktop.PolicyKit1").await?;
                 let mut connections = vec![polkit];
                 if service {
-                    let store = shared;
                     let password = SecretString::from(PASSWORD);
-                    import_p12(&store, owner, "rsa", RSA_P12, &password)?;
-                    import_p12(&store, owner, "ec", EC_P12, &password)?;
+                    let creds = Arc::new(MemoryCreds::host());
+                    import_p12(
+                        &shared,
+                        &*creds,
+                        &custodiod::tpm::open::NoTpm,
+                        owner,
+                        "rsa",
+                        RSA_P12,
+                        &password,
+                    )?;
+                    import_p12(
+                        &shared,
+                        &*creds,
+                        &custodiod::tpm::open::NoTpm,
+                        owner,
+                        "ec",
+                        EC_P12,
+                        &password,
+                    )?;
                     let conn = Builder::address(address.as_str()).build().await?;
                     conn.object_server()
                         .at(
                             OBJECT_PATH,
                             Custodio::new(
-                                store,
+                                shared,
                                 PolkitAuthorizer::new(conn.clone()),
                                 credentials,
                                 Arc::new(MemorySink::default()),
-                            ),
+                            )
+                            .with_key_credentials(creds),
                         )
                         .await?;
                     conn.request_name(BUS_NAME).await?;
@@ -271,7 +290,15 @@ impl Fixture {
 
     /// Imports a `.p12` for `uid` straight into the service's store.
     pub(super) fn import(&self, uid: u32, id: &str, p12: &[u8]) -> TestResult {
-        import_p12(&self.store, uid, id, p12, &SecretString::from(PASSWORD))?;
+        import_p12(
+            &self.store,
+            &custodiod::creds::memory::MemoryCreds::host(),
+            &custodiod::tpm::open::NoTpm,
+            uid,
+            id,
+            p12,
+            &SecretString::from(PASSWORD),
+        )?;
         Ok(())
     }
 

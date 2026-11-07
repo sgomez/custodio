@@ -217,6 +217,8 @@ $feature
 
 Approved contract: $c
 
+Session time limit: ${SESSION_TIMEOUT:-45m}
+
 The evaluator's notes on the contract:
 $(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)${resumed:+
 
@@ -281,7 +283,34 @@ and continue from it.}"
   # 3. Gate: verify, then evaluator
   # An attempt counts only once it has a result, so a stop mid-gate costs none.
   log "$id: verify ($verify)"
-  if ! bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1; then
+  verify_rc=0 verify_start=$SECONDS
+  touch "$STATE/verify-start"
+  bash -c "$verify" >"$LOG_DIR/$stamp-verify.log" 2>&1 || verify_rc=$?
+  reap_strays
+  printf '%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$id" "$((SECONDS - verify_start))" "$verify_rc" >> .harness/verify-times.tsv
+  # Time budgets (budgets.tsv, set by a person): checked on the times this verify wrote.
+  if (( ! verify_rc )); then
+    approved budgets \
+      || halt "budgets.tsv changed after you approved it, or was never approved. Stopping for a human." \
+        "review git diff of budgets.tsv; then just milestone approve budgets && just harness run"
+    over=''
+    for pair in e2e:target/e2e/timings.tsv script:target/script-tests/results; do
+      f=${pair#*:}
+      [ "$f" -nt "$STATE/verify-start" ] || continue
+      out=$(scripts/check-budgets.sh budgets.tsv "${pair%%:*}" "$f" 2>&1) || true
+      [ -z "$out" ] || over+="${over:+$'\n'}$out"
+    done
+    if [ -n "$over" ]; then
+      gated "$id"
+      # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
+      { printf 'The verify passed, but these runs are over their time budget (budgets.tsv):\n\n```\n%s\n```\n\n' "$over"
+        printf 'Make them faster: run independent parts at once, wait on a condition instead of a fixed sleep, prove a\n'
+        printf 'behaviour once and at the cheapest level. If one cannot be faster, write BLOCKED.md asking a person for a\n'
+        printf 'bigger budget, with the measured time and why; never edit budgets.tsv.\n'; } | findings "$id" "over budget"
+      continue
+    fi
+  fi
+  if (( verify_rc )); then
     gated "$id"
     # shellcheck disable=SC2016 # the backticks are Markdown, not command substitution
     { printf 'The verify command failed: `%s`\n\nLast lines of output:\n\n```\n' "$verify"

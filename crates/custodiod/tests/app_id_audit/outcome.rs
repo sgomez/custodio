@@ -12,7 +12,7 @@ fn app_id_on_every_outcome() -> TestResult {
             (Answer::Yes, Fail::AfterApproval),
         ];
         for (answer, fail) in runs {
-            for op in Operation::all() {
+            for op in Operation::requests() {
                 if op == Operation::Delete && fail == Fail::AfterApproval {
                     continue;
                 }
@@ -40,7 +40,7 @@ struct Result3 {
     requests: Vec<(String, u32)>,
     store: BTreeMap<String, Vec<u8>>,
     entries: Vec<Vec<(&'static str, String)>>,
-    listed: Vec<(String, String, Vec<u8>)>,
+    listed: Vec<(String, String, String, Vec<u8>)>,
     later_sign: Result<Vec<u8>, String>,
 }
 
@@ -67,7 +67,7 @@ async fn run(
     // The store as a client sees it afterwards: the list, and a later sign (RSA PKCS#1 v1.5 is
     // deterministic, so equal signatures mean the same key).
     sink.fail.store(false, Ordering::SeqCst);
-    let listed: Vec<(String, String, Vec<u8>)> = call(&f.client, "ListKeys", &())
+    let listed: Vec<(String, String, String, Vec<u8>)> = call(&f.client, "ListKeys", &())
         .await?
         .body()
         .deserialize()?;
@@ -90,7 +90,7 @@ async fn run(
 #[test]
 fn app_id_check_rejects_a_wrong_case() -> TestResult {
     zbus::block_on(async {
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for case in answers()? {
                 let sink = Arc::new(Sink::default());
                 let source = GuardedSource::new(Probe::new(case.clone()));
@@ -118,7 +118,7 @@ fn app_id_never_changes_the_outcome() -> TestResult {
             (Answer::Fail, false),
             (Answer::Yes, true),
         ];
-        for op in Operation::all() {
+        for op in Operation::requests() {
             for (answer, fail_sink) in runs {
                 let base = run(op, answer, fail_sink, None).await?;
                 for case in answers()? {

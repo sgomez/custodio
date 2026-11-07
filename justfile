@@ -40,6 +40,12 @@ lint:
     just deps-check
     scripts/check-files.sh
 
+# Runs a command against a fresh software TPM (swtpm, socket mode, state in a new temporary directory, TPM2_Startup done,
+# TPM2TOOLS_TCTI exported); stops it and removes the state whatever the outcome; exits with the command's status.
+[positional-arguments]
+with-swtpm *cmd:
+    scripts/with-swtpm.sh "$@"
+
 # Fails, naming the path, when custodio-cli or custodio-pkcs11 reaches the custodiod crate in any dependency kind (normal, build, dev).
 deps-check:
     scripts/deps_check.py
@@ -134,12 +140,16 @@ test-scripts:
     scripts/check-sysusers-sync.sh
     scripts/test-bus-check-sync.sh
     scripts/test-sysusers-sync.sh
+    scripts/check-tpm-install-sync.sh
+    scripts/test-tpm-install-sync.sh
+    scripts/test-with-swtpm.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
     scripts/test-docs-install.sh
     scripts/test-docs-manual.sh
     scripts/test-docs-manual-m3.sh
+    scripts/test-docs-manual-m4.sh
     scripts/test-install-real.sh
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
@@ -156,12 +166,31 @@ test-scripts:
     scripts/test-e2e-ops.sh
     scripts/test-e2e-rd.sh
     scripts/test-e2e-jo.sh
+    scripts/test-e2e-journal.sh
     scripts/test-e2e-appid.sh
     scripts/test-e2e-cli.sh
     scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
+    scripts/test-ci-e2e.sh
+    scripts/test-e2e-tpm-host.sh
+    scripts/test-e2e-tpm-kind.sh
+    scripts/test-e2e-sign.sh
+    scripts/test-e2e-noplain.sh
+    scripts/test-e2e-tpmdup.sh
+    scripts/test-e2e-pcr.sh
+    scripts/test-e2e-fallback.sh
+    scripts/test-e2e-tpmfail.sh
+    scripts/test-e2e-tpmclear.sh
+    scripts/test-e2e-tpmslots.sh
+    scripts/test-e2e-journalkind.sh
+    scripts/test-e2e-upgradekinds.sh
+    scripts/test-e2e-m3.sh
+    scripts/test-e2e-m3-judge.sh
+    scripts/test-e2e-m3-run.sh
+    scripts/test-e2e-jobs-host.sh
+    scripts/test-check-budgets.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
@@ -190,7 +219,7 @@ security-score threshold="10":
         exit 1
     fi
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid and PrivateUsers=yes (each once) and the security-score threshold stays 10, so the
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh
@@ -267,9 +296,21 @@ mutants *args:
     #!/usr/bin/env bash
     set -uo pipefail
     mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
+    export NEXTEST_PROFILE=mutants # .config/nextest.toml
+    # A wedged cargo build otherwise hangs the run: the test timeout does not cover builds.
+    extra=(--build-timeout 600)
+    # MUTANTS_ITERATE=1 skips mutants a previous run caught or found unviable; valid while src/ is unchanged.
+    [ "${MUTANTS_ITERATE:-}" = 1 ] && extra+=(--iterate)
     status=0
-    cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/error.rs --no-shuffle --colors never --output target/mutants "$@" || status=1
-    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "$@" || status=1
+    cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/import.rs --file crates/custodiod/src/import/choice.rs --file crates/custodiod/src/import/protect.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/dbus/sign_kind.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/store/error.rs --file crates/custodiod/src/store/files.rs --file crates/custodiod/src/store/kind.rs --file crates/custodiod/src/store/legacy.rs --file crates/custodiod/src/store/record.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/audit/cause.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/creds.rs --file crates/custodiod/src/creds/systemd.rs --file crates/custodiod/src/creds/header.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/startup.rs --file crates/custodiod/src/error.rs --file crates/custodiod/src/tpm.rs --file crates/custodiod/src/tpm/blob.rs --file crates/custodiod/src/tpm/classify.rs --file crates/custodiod/src/tpm/esys.rs --file crates/custodiod/src/tpm/esys/primary.rs --file crates/custodiod/src/tpm/import.rs --file crates/custodiod/src/tpm/sign.rs --file crates/custodiod/src/tpm/sign/block.rs --file crates/custodiod/src/tpm/sign/check.rs --file crates/custodiod/src/tpm/esys/signing.rs --file crates/custodiod/src/tpm/key.rs --file crates/custodiod/src/tpm/list.rs --file crates/custodiod/src/tpm/open.rs --file crates/custodiod/src/tpm/wrap.rs --no-shuffle --colors never --output target/mutants "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
+    # A build that ran out of disk counts as "unviable", which passes: void the run instead.
+    for out in target/mutants target/mutants-pkcs11 target/mutants-client; do
+        if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
+            echo "$out: a mutant ran out of disk space; free space and run again" >&2; status=1
+        fi
+    done
     exit "$status"
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
@@ -287,7 +328,8 @@ mutants-diff id *args:
     git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do
         git diff --no-index -- /dev/null "$f" >> "target/mutants-$id.diff" || [ $? = 1 ]
     done
-    just mutants --in-diff "target/mutants-$id.diff" "$@"
+    # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
+    just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
 
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
@@ -358,10 +400,17 @@ glibc-ceiling:
 e2e target="all": e2e-packages
     bash e2e/run.sh {{target}}
 
-# The packages the end-to-end tests install: package N, package N+1 and the old-path fixture. The one build that `e2e` and `e2e-cases` share.
+# F131: `E2E_TPM` (swtpm, the default; none; lacking) says what TPM the service sees in `e2e` and `e2e-cases`; `just e2e` with it unset runs every target with swtpm and with none.
+# The program that makes a TPM lack an algorithm (an example of custodio-it), which only the lacking mode mounts into the containers; built only for it.
+e2e-tpm-filter:
+    [ "${E2E_TPM:-swtpm}" != lacking ] || cargo build --locked -p custodio-it --example tpm-filter --release
+
+# The packages the end-to-end tests install: package N, package N+1, the old-path fixture and the M3 build of the tag v0.5.0 (target/packages-m3, kept between runs). The one build that `e2e` and `e2e-cases` share.
 e2e-packages: package
     scripts/package-next.sh
     scripts/package-oldpath.sh
+    scripts/package-m3.sh
+    just e2e-tpm-filter
 
 # Like `just e2e TARGET` for one target (not `all`), but runs the shared setup (install, service, users, key import) and only the cases whose ids equal one of the
 # given names or match one as a shell glob, e.g. `just e2e-cases debian13 pkcs11-tool-approve-rsa 'nss-*'` (quote the glob). The accounting then requires each selected
@@ -395,7 +444,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000
@@ -439,7 +488,7 @@ status:
 log:
     harness/log.sh
 
-# Milestone lifecycle: list, open, close, approve spec|features, pass <manual feature id>.
+# Milestone lifecycle: list, open, close, approve spec|features|budgets, pass <manual feature id>.
 milestone action="list" *args:
     harness/milestone.sh {{action}} {{args}}
 

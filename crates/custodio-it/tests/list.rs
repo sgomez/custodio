@@ -184,7 +184,10 @@ impl Rig {
             connections.push(block_on(async {
                 let conn = Builder::address(address.as_str()).build().await?;
                 let object =
-                    Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()));
+                    Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()))
+                        .with_key_credentials(std::sync::Arc::new(
+                            custodiod::creds::memory::MemoryCreds::host(),
+                        ));
                 conn.object_server().at(OBJECT_PATH, object).await?;
                 conn.request_name(BUS_NAME).await?;
                 Ok::<_, zbus::Error>(conn)
@@ -297,8 +300,14 @@ struct Listed {
     status: u8,
 }
 
+/// The reason `custodio list` gives under a key that is `encrypted-host` (the text of the import notice).
+const NOTE: &str = "This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.";
+
+/// The rig has no TPM, so every key it imports is `encrypted-host`.
 fn block(id: &str, kind: &str, subject: &str, until: &str) -> String {
-    format!("id: {id}\n  type: {kind}\n  subject: {subject}\n  valid until: {until}\n")
+    format!(
+        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  note: {NOTE}\n  subject: {subject}\n  valid until: {until}\n"
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {

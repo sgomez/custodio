@@ -2,7 +2,8 @@
 
 `custodiod` writes one journal entry for every request to sign, import a key, delete a key or replace a
 certificate that reaches authorization, whatever the result; `CUSTODIO_OPERATION` says which
-(`sign`, `import`, `delete` or `replace_certificate`). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
+(`sign`, `import`, `delete` or `replace_certificate`). At start-up it also writes one entry for every key of the
+earlier storage format that it removes (`purge`, see "purge" below). A request refused before that leaves no entry: invalid arguments, and a key id the caller does not have
 (missing, or another user's: `NoSuchKey`, no polkit call), and, for an import, an id the caller already has
 (`KeyIdTaken`, no polkit call). A request whose caller the bus cannot name gets an
 entry without uid and pid. This page
@@ -24,6 +25,7 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `import` | `4c7163ce45d0b9faf8e7c38d098bdb22` |
 | `delete` | `13d1a981ea8f64fc1a6f390bee7fd66c` |
 | `replace_certificate` | `336e0b53720a735afb179ebc7f779ed6` |
+| `purge` | `8e1f5a6c0b3d4972a4c6d58f31b7e902` |
 
 A journal catalog (`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains each in
 `journalctl -x`. Entries written before `CUSTODIO_OPERATION` existed are signing entries without it; the
@@ -37,14 +39,17 @@ signing `MESSAGE_ID` never changed.
 | `MESSAGE_ID` | The identifier above | always |
 | `PRIORITY` | Syslog priority; see the outcomes | always |
 | `SYSLOG_IDENTIFIER` | `custodiod` | always |
-| `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller |
-| `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller |
+| `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller; absent from `purge` entries, which have no caller |
+| `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller; omitted from `purge` entries |
+| `CUSTODIO_OWNER_UID` | User id that owned the purged key, decimal | `purge` entries only; absent for a key of the M0–M2 layout, which had no owner |
 | `CUSTODIO_KEY_ID` | Id of the key that was asked for | always |
-| `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete` or `replace_certificate` | always |
+| `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete`, `replace_certificate` or `purge` (not asked: done at start-up) | always |
 | `CUSTODIO_OUTCOME` | Result, one of the values of the operation below | always |
 | `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
 | `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
 | `CUSTODIO_APP_ID` | The flatpak app-id of the caller, validated | omitted unless `CUSTODIO_APP_ID_STATE` is `read` |
+| `CUSTODIO_STORAGE_KIND` | How the key is protected in the store: `tpm`, `encrypted-tpm` or `encrypted-host`; see "Storage kind" | import entries that stored a key, and sign entries when the key's record was read (also when the request was denied or failed); omitted otherwise, never guessed |
+| `CUSTODIO_CAUSE` | Why the request failed, one of the causes under "Causes" | import entries with the outcome `storage_failure`, and sign entries with the outcome `signing_failed` whose key is lost or temporarily unusable; omitted otherwise |
 | `CUSTODIO_KEY_TYPE` | Type of the imported key: `rsa_2048` or `ecdsa_p256` | import entries only; omitted when the file did not get far enough to have one (an unreadable file, a wrong password, a refusal before decoding) |
 
 ## Flatpak app-id
@@ -88,7 +93,7 @@ data or a signature.
 | `signed` | 6 | Authorized and signed |
 | `denied` | 5 | polkit denied the request |
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown (including a bus reply without a `ProcessFD` that names the `ProcessID`); nothing was signed |
-| `signing_failed` | 3 | Authorized, but signing failed |
+| `signing_failed` | 3 | Authorized, but signing failed; `CUSTODIO_CAUSE` says why when the key is lost or temporarily unusable |
 
 ### import
 
@@ -99,7 +104,11 @@ data or a signature.
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was stored |
 | `wrong_password` | 4 | Authorized, but the password did not open the file; nothing was stored |
 | `unsupported_key` | 4 | Authorized, but the file holds no key of a supported type; nothing was stored |
-| `storage_failure` | 3 | Authorized and decoded, but the key could not be stored |
+| `storage_failure` | 3 | Authorized and decoded, but the key could not be stored; `CUSTODIO_CAUSE` says why |
+
+An import that stored a key carries its kind in `CUSTODIO_STORAGE_KIND`. An import that stored nothing has no kind: it
+either never chose one or chose one and stored nothing, and the field is omitted rather than guessed. A failed
+import still has its `CUSTODIO_KEY_TYPE` when the file was decoded.
 
 ### delete
 
@@ -144,6 +153,76 @@ is asked (invalid arguments, no such key) leaves no entry. Replaces and deletes 
 time, and a `ListKeys` while the entry is pending may show either certificate. The entry never holds the
 old or the new certificate, only the fields above. Queries by outcome are under "By outcome" below.
 
+### purge
+
+| Outcome | Priority | Meaning |
+|---|---|---|
+| `purged` | 4 | A key of the earlier storage format, found at start-up, was removed; this entry is submitted before any of its files is removed |
+
+When `custodiod` starts and finds key files of the earlier format (no record magic; a key file named by its
+id and the same name plus `-cert`), it removes them before it takes its bus name or answers any call, and leaves one entry per
+key: the owner in `CUSTODIO_OWNER_UID`, the id in `CUSTODIO_KEY_ID`. A key and its certificate file are one entry.
+M3 kept these files in the owner's directory; M0–M2 kept them at the top of the state directory, with no owner,
+and their entries have no `CUSTODIO_OWNER_UID` (`MESSAGE` says `no owner`).
+The entry never holds file content (none is read). It is submitted before the files are removed, so a crash
+between the two can repeat the entry on the next start but never lose one. If the entry cannot be submitted, the
+key is not removed and the service does not start. A start that finds nothing of the earlier format writes
+nothing, so a second start purges nothing. The removal follows the store's rules: a symlink, a file of another
+owner or a wrong type is refused, not repaired, and the service does not start. The same ids can be imported
+again afterwards.
+
+An orphan certificate file of the earlier format (`<id>-cert` with no key file `<id>` of that format) is listed as
+the key `<id>`. If a key of the current format named `<id>` exists, the entry names an id that is still in use:
+only the old certificate file was removed and the current key is untouched.
+
+## Storage kind
+
+`CUSTODIO_STORAGE_KIND` holds the kind of the stored record, the same string `ImportP12` and `ListKeys` return (see
+`docs/api.md`). The values are only added to:
+
+| Kind | Meaning |
+|---|---|
+| `tpm` | The key is a blob wrapped by the TPM; the private key never leaves it |
+| `encrypted-tpm` | The key is encrypted by the credential service under a key bound to the TPM |
+| `encrypted-host` | The key is encrypted by the credential service under the host key |
+
+## Causes
+
+`CUSTODIO_CAUSE` is chosen from the typed error, never copied from a tool's output, a response code, a path or the
+input, so it holds one of the values below and nothing else. The values of the two operations are different, so a value
+names its operation. The priority is that of the outcome the entry has; a cause does not change it. An entry whose
+failure has no cause listed here has no `CUSTODIO_CAUSE`.
+
+### import causes
+
+For an import with the outcome `storage_failure`; nothing was stored.
+
+| Cause | Priority | Meaning |
+|---|---|---|
+| `tpm_device` | 3 | The TPM device is there and cannot be used: no resource manager, it cannot be opened, or it is gone |
+| `tpm_owner` | 3 | The owner hierarchy cannot be used: it has an authorization value or it is disabled |
+| `tpm_error` | 3 | The TPM answered with an error, or the connection failed, in a query or in the import |
+| `tpm_key` | 3 | The TPM refused the key itself: a type, size or exponent it does not take |
+| `credentials_unavailable` | 3 | The credential service is not available: the socket or the tool is missing, or it cannot encrypt here |
+| `credentials_refused` | 3 | The credential service refused the request, or made a credential that must not be kept |
+| `binding_mismatch` | 3 | The credential is bound to something else than the kind chosen |
+| `store` | 3 | The key store refused the record |
+| `internal` | 3 | A fault of the service itself: a value that does not fit, or no credential service configured |
+
+The TPM causes correspond to the D-Bus error `TpmFailed` and the credential causes and `binding_mismatch` to
+`CredentialsUnavailable`. A TPM error in the query and one in the import are both `tpm_error`.
+
+### sign causes
+
+For a signature with the outcome `signing_failed`.
+
+| Cause | Priority | Meaning |
+|---|---|---|
+| `key_lost` | 3 | The key no longer loads or decrypts (a cleared TPM, a changed host key, a damaged blob); it cannot sign again here. The D-Bus error is `KeyLost` |
+| `temporarily_unavailable` | 3 | The TPM or the credential service cannot be used now; the same request can work later. The D-Bus error is `TemporarilyUnavailable` |
+
+Any other failure after the approval (the D-Bus error `Internal`) is `signing_failed` without a cause.
+
 ## Mechanisms
 
 `CUSTODIO_MECHANISM` holds one of:
@@ -186,6 +265,12 @@ delete authorization unavailable, nothing deleted: uid 1000 pid 4242 key my-key
 delete failed after approval, key not removed: uid 1000 pid 4242 key my-key
 ```
 
+Purge:
+
+```text
+key of the earlier format purged: owner uid 1000 key my-key
+```
+
 Replace certificate:
 
 ```text
@@ -195,6 +280,8 @@ certificate replacement authorization unavailable, nothing changed: uid 1000 pid
 certificate replacement refused, certificate does not match the key: uid 1000 pid 4242 key my-key
 certificate replacement failed after approval, nothing changed: uid 1000 pid 4242 key my-key
 ```
+
+The text of `MESSAGE` does not change with the kind or the cause; they are in their own fields.
 
 When the bus names no caller, `uid unknown pid unknown` stands for the numbers, as in the last signing example.
 
@@ -213,19 +300,26 @@ All signing entries of the service:
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401
 ```
 
-By operation (`sign`, `import`, `delete` or `replace_certificate`):
+By operation (`sign`, `import`, `delete`, `replace_certificate` or `purge`):
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=delete
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=purge
 ```
 
 By the uid of the caller:
 
 ```sh
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_UID=1000
+```
+
+By the owner of a purged key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=purge CUSTODIO_OWNER_UID=1000
 ```
 
 By key:
@@ -261,11 +355,39 @@ A replace that was refused because the certificate belongs to another key:
 journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=replace_certificate CUSTODIO_OUTCOME=certificate_mismatch
 ```
 
+By storage kind (`tpm`, `encrypted-tpm` or `encrypted-host`), here the imports that stored a key under the host key:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_STORAGE_KIND=encrypted-host
+```
+
+By cause, here an import that failed because the credential service was unavailable:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_CAUSE=credentials_unavailable
+```
+
+An import that failed after approval, with the cause in the fields (add `-o json`):
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=import CUSTODIO_OUTCOME=storage_failure
+```
+
+A signature that failed because the key is lost, and one that failed for a reason that may pass:
+
+```sh
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign CUSTODIO_CAUSE=key_lost
+journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign CUSTODIO_CAUSE=temporarily_unavailable
+```
+
 ## Not guaranteed
 
 - **A crash during a delete.** The `deleted` entry is submitted before the files are removed. If
   the service dies between the two, the key is still stored although an entry says `deleted`.
   Removal after the entry is the choice that keeps a deleted key from ever lacking one.
+- **A crash during a purge.** The `purged` entry is submitted before the files are removed. If the service dies
+  between the two, the next start finds the files and writes the entry again; an entry can be repeated, a purged
+  key never lacks one.
 - **A failed restore after a replace.** If the entry cannot be submitted and the old certificate cannot
   be put back either, the call still fails as `AuditUnavailable`, but the new certificate may stay in place
   without an entry. A crash between the store and the restore has the same effect.

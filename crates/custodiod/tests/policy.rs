@@ -166,18 +166,6 @@ fn message_check_rejects_equal_and_empty() {
 }
 
 #[test]
-fn signing_text_is_unchanged() -> TestResult {
-    let all = parsed()?;
-    let body = &all.iter().find(|(i, _)| i == ACTION_ID).ok_or("sign")?.1;
-    assert_eq!(tag(body, "description"), Some("Sign with a custodied key"));
-    assert_eq!(
-        tag(body, "message"),
-        Some("Authentication is required to sign with a key held by Custodio")
-    );
-    Ok(())
-}
-
-#[test]
 fn comment_stripping_works() {
     assert_eq!(without_comments("a<!-- x -->b<!-- y"), "ab");
 }

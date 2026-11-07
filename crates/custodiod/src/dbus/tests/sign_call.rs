@@ -5,7 +5,7 @@ use super::*;
 use crate::audit::{FailingSink, MemorySink};
 use crate::credentials::CredentialsError;
 use crate::import::import_p12;
-use crate::store::StoreError;
+use crate::store::{Record, StoreError};
 
 pub(super) struct Counting {
     pub(super) result: fn() -> Result<(), AuthError>,
@@ -56,7 +56,10 @@ pub(super) fn rig(
         },
         Creds(cred_calls.clone()),
         sink.clone(),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     Ok(Rig {
         service,
         sink,
@@ -170,12 +173,21 @@ fn other_uid() -> u32 {
 /// Puts the key straight into the store, for tests whose authorizer refuses.
 pub(super) fn seed(r: &Rig, id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let password = SecretString::from("test-password".to_owned());
-    import_p12(&r.store, 11, id, P12, &password)?;
+    import_p12(
+        &r.store,
+        &crate::creds::memory::MemoryCreds::host(),
+        &crate::tpm::open::NoTpm,
+        11,
+        id,
+        P12,
+        &password,
+    )?;
     Ok(())
 }
 
 fn import(r: &Rig, id: &str) -> Result<String, ServiceError> {
     zbus::block_on(r.service.import_call(SENDER, id, P12, "test-password"))
+        .map(|(key_type, _)| key_type)
 }
 
 #[test]
@@ -184,15 +196,13 @@ fn import_stores_key_and_certificate_under_the_bus_uid() -> Result<(), Box<dyn s
     let euid = rustix::process::geteuid().as_raw();
     assert_ne!(euid, 11);
     assert_eq!(import(&r, "mine")?, "ecdsa-p256");
-    assert_ne!(r.store.get(11, "mine")?.expose_secret().len(), 0);
-    assert_ne!(r.store.get(11, &cert_id("mine"))?.expose_secret().len(), 0);
+    // One record holds the key and its certificate; the key in it is a credential, not PKCS#8.
+    let record = r.store.get(11, "mine")?;
+    assert_ne!(record.certificate().len(), 0);
+    assert!(record.protected().credential().is_some());
     for uid in [euid, 0, other_uid()] {
         assert!(matches!(
             r.store.get(uid, "mine"),
-            Err(StoreError::NotFound)
-        ));
-        assert!(matches!(
-            r.store.get(uid, &cert_id("mine")),
             Err(StoreError::NotFound)
         ));
     }
@@ -204,17 +214,22 @@ fn list_reads_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>
     let r = rig(|| Ok(()))?;
     assert_eq!(import(&r, "mine")?, "ecdsa-p256");
     // Another owner's key with a certificate, which must not show.
-    let key = r.store.get(11, "mine")?;
-    r.store.put(other_uid(), "theirs", &key)?;
-    r.store.put(other_uid(), &cert_id("theirs"), &key)?;
-    let cert = r.store.get(11, &cert_id("mine"))?;
+    let mine = r.store.get(11, "mine")?;
+    r.store.put(&Record::new(
+        other_uid(),
+        "theirs",
+        mine.kind(),
+        mine.certificate(),
+        mine.protected().clone(),
+    )?)?;
     let got = zbus::block_on(r.service.list_keys_call(SENDER))?;
     assert_eq!(
         got,
         [(
             "mine".to_owned(),
             "ecdsa-p256".to_owned(),
-            cert.expose_secret().to_vec()
+            mine.kind().wire().to_owned(),
+            mine.certificate().to_vec()
         )]
     );
     Ok(())
@@ -227,8 +242,14 @@ fn sign_uses_the_area_of_the_bus_uid() -> Result<(), Box<dyn std::error::Error>>
     let got = zbus::block_on(r.service.sign_call(SENDER, "mine", CKM_ECDSA, 0, 0, b"x"));
     assert!(got.is_ok(), "{got:?}");
     // The same key stored only under another uid is not found.
-    let key = r.store.get(11, "mine")?;
-    r.store.put(other_uid(), "theirs", &key)?;
+    let mine = r.store.get(11, "mine")?;
+    r.store.put(&Record::new(
+        other_uid(),
+        "theirs",
+        mine.kind(),
+        mine.certificate(),
+        mine.protected().clone(),
+    )?)?;
     let got = zbus::block_on(r.service.sign_call(SENDER, "theirs", CKM_ECDSA, 0, 0, b"x"));
     assert_eq!(got, Err(ServiceError::from(&StoreError::NotFound)));
     Ok(())
@@ -249,7 +270,15 @@ fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>>
     let dir = tempfile::tempdir()?;
     let store = Arc::new(KeyStore::open(dir.path().join("keys"))?);
     let password = SecretString::from("test-password".to_owned());
-    import_p12(&store, 11, "k", P12, &password)?;
+    import_p12(
+        &store,
+        &crate::creds::memory::MemoryCreds::host(),
+        &crate::tpm::open::NoTpm,
+        11,
+        "k",
+        P12,
+        &password,
+    )?;
     let service = Custodio::new(
         store,
         Counting {
@@ -258,7 +287,10 @@ fn a_failing_sink_replaces_the_error() -> Result<(), Box<dyn std::error::Error>>
         },
         Creds(Arc::default()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     let got = zbus::block_on(service.sign_call(Some(":1.1"), "k", CKM_ECDSA, 0, 0, b"x"));
     assert_eq!(got, Err(ServiceError::AuditUnavailable));
     Ok(())
@@ -281,7 +313,7 @@ impl crate::import::P12Decoder for FailingDecoder {
 type Answer = fn() -> Result<(), AuthError>;
 
 /// The reply of an import, the polkit calls and the decoder calls.
-type Imported = (Result<String, ServiceError>, usize, usize);
+type Imported = (Result<crate::dbus::ImportReply, ServiceError>, usize, usize);
 
 fn import_with(
     result: fn() -> Result<(), AuthError>,
@@ -334,7 +366,7 @@ fn import_refusals_never_decode() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 use crate::audit::{AuditKeyType, ImportOutcome, Operation};
-use crate::dbus::import::{audit_key_type, import_outcome};
+use crate::dbus::import::{audit_key_type, import_cause, import_outcome};
 use crate::import::ImportError;
 
 /// Every `ImportError`, with the outcome it is recorded as: a literal table, not the code's own rule.
@@ -410,7 +442,10 @@ fn import_without_sender_fails_closed_with_a_failing_sink() -> Result<(), Box<dy
         },
         Creds(Arc::default()),
         Arc::new(FailingSink),
-    );
+    )
+    .with_key_credentials(std::sync::Arc::new(
+        crate::creds::memory::MemoryCreds::host(),
+    ));
     let got = zbus::block_on(service.import_call(None, "k", P12, "test-password"));
     assert_eq!(got, Err(ServiceError::AuditUnavailable));
     Ok(())
@@ -441,4 +476,91 @@ fn import_refusals_of_polkit_are_recorded_with_the_caller() -> Result<(), Box<dy
         assert!(matches!(r.store.get(11, "k"), Err(StoreError::NotFound)));
     }
     Ok(())
+}
+
+/// Every `ImportError` with the cause it is recorded with: a literal table, not the code's own rule. The errors that
+/// are told apart by their outcome have none.
+#[test]
+fn every_import_error_has_its_cause() {
+    use crate::audit::ImportCause as C;
+    use crate::creds::{CredsError, HeaderError};
+    use crate::tpm::classify::{ResponseCode, TpmError};
+    use crate::tpm::import::ImportError as T;
+    use crate::tpm::key::KeyRefusal;
+    let rc = ResponseCode(0x143);
+    let table = [
+        (ImportError::TooLarge, Some(C::Internal)),
+        (ImportError::Parse("x".into()), None),
+        (ImportError::NoPrivateKey, None),
+        (ImportError::MultipleKeys, None),
+        (ImportError::NoCertificate, None),
+        (ImportError::CertificateMismatch, None),
+        (ImportError::UnsupportedKey("x".into()), None),
+        (
+            ImportError::Store(StoreError::AlreadyExists),
+            Some(C::Store),
+        ),
+        (ImportError::Store(StoreError::NotFound), Some(C::Store)),
+        (ImportError::BindingMismatch, Some(C::BindingMismatch)),
+        (
+            ImportError::Protect(CredsError::Unavailable),
+            Some(C::CredentialsUnavailable),
+        ),
+        (
+            ImportError::Protect(CredsError::BadRequest),
+            Some(C::CredentialsRefused),
+        ),
+        (
+            ImportError::Protect(CredsError::CannotDecrypt),
+            Some(C::CredentialsRefused),
+        ),
+        (
+            ImportError::Protect(CredsError::Refused(HeaderError::NullKey)),
+            Some(C::CredentialsRefused),
+        ),
+        (ImportError::Tpm(T::NoTpm), Some(C::TpmDevice)),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OpenFailed)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::ResourceManagerMissing)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::TestTctiRefused)),
+            Some(C::TpmDevice),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OwnerAuthSet)),
+            Some(C::TpmOwner),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::OwnerDisabled)),
+            Some(C::TpmOwner),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::Response(rc))),
+            Some(C::TpmError),
+        ),
+        (
+            ImportError::Tpm(T::Tpm(TpmError::Transport)),
+            Some(C::TpmError),
+        ),
+        (ImportError::Tpm(T::ParentMismatch), Some(C::TpmError)),
+        (
+            ImportError::Tpm(T::Refused(KeyRefusal::Malformed)),
+            Some(C::TpmKey),
+        ),
+        (ImportError::Tpm(T::Internal), Some(C::Internal)),
+    ];
+    for (error, want) in table {
+        assert_eq!(import_cause(&error), want, "{error}");
+        // A cause goes with the outcome that says the key was not stored, and with no other.
+        assert_eq!(
+            want.is_some(),
+            import_outcome(&error) == ImportOutcome::StorageFailure,
+            "{error}"
+        );
+    }
 }

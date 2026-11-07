@@ -2,10 +2,13 @@
 
 use std::error::Error;
 
+use custodiod::creds::Credentials;
+use custodiod::creds::memory::MemoryCreds;
 use custodiod::import::{
-    ImportError, KeyKind, MAX_P12_LEN, ParsedP12, cert_id, check_archive, import_p12, parse_p12,
+    ImportError, KeyKind, MAX_P12_LEN, ParsedP12, check_archive, credential_name, import_p12,
+    parse_p12,
 };
-use custodiod::store::KeyStore;
+use custodiod::store::{KeyStore, Protected, Record};
 use p12_keystore::{
     Certificate, KeyStore as P12KeyStore, KeyStoreEntry, LocalKeyId, Pkcs12Archive,
     Pkcs12ImportPolicy, PrivateKey, PrivateKeyBag, PrivateKeyChain,
@@ -115,6 +118,10 @@ fn rejects_oversized_input() -> TestResult {
     let big = vec![0_u8; MAX_P12_LEN + 1];
     let err = err_of(parse_p12(&big, &pw(PASSWORD)))?;
     assert!(matches!(err, ImportError::TooLarge), "{err:?}");
+    // The limit itself is allowed: it reaches the parser.
+    let limit = vec![0_u8; MAX_P12_LEN];
+    let err = err_of(parse_p12(&limit, &pw(PASSWORD)))?;
+    assert!(matches!(err, ImportError::Parse(_)), "{err:?}");
     Ok(())
 }
 
@@ -169,19 +176,30 @@ fn rejects_file_without_private_key() -> TestResult {
 fn import_stores_key_and_certificate() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    let kind = import_p12(&store, OWNER, "fnmt", &fixture("p256")?, &pw(PASSWORD))?;
+    let kind = import_p12(
+        &store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
+        OWNER,
+        "fnmt",
+        &fixture("p256")?,
+        &pw(PASSWORD),
+    )?;
     assert_eq!(kind, KeyKind::EcdsaP256);
 
     let parsed = parse("p256")?;
-    assert_eq!(
-        store.get(OWNER, "fnmt")?.expose_secret(),
-        parsed.key.expose_secret()
+    let record = store.get(OWNER, "fnmt")?;
+    // One record: the certificate in the clear, the key only as a credential that opens to the PKCS#8.
+    assert_eq!(record.certificate(), &parsed.certificate);
+    let credential = record.protected().credential().ok_or("a credential")?;
+    assert!(
+        !credential
+            .windows(16)
+            .any(|w| parsed.key.expose_secret().windows(16).any(|k| k == w))
     );
-    assert_eq!(
-        store.get(OWNER, &cert_id("fnmt"))?.expose_secret(),
-        &parsed.certificate
-    );
-    assert_eq!(store.list(OWNER)?, ["fnmt", "fnmt-cert"]);
+    let opened = MemoryCreds::host().decrypt(&credential_name(OWNER, "fnmt"), credential)?;
+    assert_eq!(opened.expose_secret(), parsed.key.expose_secret());
+    assert_eq!(store.list(OWNER)?, ["fnmt"]);
     Ok(())
 }
 
@@ -191,6 +209,8 @@ fn rejected_import_stores_nothing() -> TestResult {
     let store = KeyStore::open(dir.path().join("state"))?;
     err_of(import_p12(
         &store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("rsa3072")?,
@@ -204,9 +224,19 @@ fn rejected_import_stores_nothing() -> TestResult {
 fn import_does_not_overwrite() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    import_p12(&store, OWNER, "k", &fixture("p256")?, &pw(PASSWORD))?;
+    import_p12(
+        &store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
+        OWNER,
+        "k",
+        &fixture("p256")?,
+        &pw(PASSWORD),
+    )?;
     let err = err_of(import_p12(
         &store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("rsa2048")?,
@@ -323,13 +353,21 @@ fn counts_keys_without_local_key_id() -> TestResult {
 }
 
 #[test]
-fn failed_key_write_leaves_no_certificate() -> TestResult {
+fn failed_key_write_leaves_the_existing_record_alone() -> TestResult {
     let dir = tempfile::tempdir()?;
     let store = KeyStore::open(dir.path().join("state"))?;
-    let existing = SecretSlice::from(b"other".to_vec());
-    store.put(OWNER, "k", &existing)?;
+    let sealed = custodiod::creds::seal(
+        &MemoryCreds::host(),
+        &credential_name(OWNER, "k"),
+        &SecretSlice::from(b"other".to_vec()),
+    )?;
+    let protected = Protected::from_sealed(&sealed);
+    let existing = Record::new(OWNER, "k", protected.natural_kind(), b"cert", protected)?;
+    store.put(&existing)?;
     let err = err_of(import_p12(
         &store,
+        &custodiod::creds::memory::MemoryCreds::host(),
+        &custodiod::tpm::open::NoTpm,
         OWNER,
         "k",
         &fixture("p256")?,
@@ -337,5 +375,6 @@ fn failed_key_write_leaves_no_certificate() -> TestResult {
     ))?;
     assert!(matches!(err, ImportError::Store(_)), "{err:?}");
     assert_eq!(store.list(OWNER)?, ["k"]);
+    assert_eq!(store.get(OWNER, "k")?, existing);
     Ok(())
 }

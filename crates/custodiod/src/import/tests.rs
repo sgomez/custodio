@@ -1,50 +1,32 @@
 use super::*;
+use crate::creds::seal;
+use crate::store::Protected;
 
 #[test]
-fn the_key_is_removed_before_the_certificate() {
-    let mut seen = Vec::new();
-    let r = rollback_with("my-key", |name| {
-        seen.push(name.to_owned());
-        Ok(())
-    });
-    assert!(r.is_ok());
-    assert_eq!(seen, ["my-key", "my-key-cert"]);
-}
-
-#[test]
-fn the_certificate_stays_when_the_key_cannot_be_removed() {
-    let mut seen = Vec::new();
-    let r = rollback_with("k", |name| {
-        seen.push(name.to_owned());
-        Err(StoreError::TooLarge)
-    });
-    assert!(matches!(r, Err(StoreError::TooLarge)));
-    assert_eq!(seen, ["k"]);
-}
-
-#[test]
-fn a_certificate_failure_is_reported() {
-    let r = rollback_with("k", |name| {
-        if name == "k" {
-            Ok(())
-        } else {
-            Err(StoreError::TooLarge)
-        }
-    });
-    assert!(matches!(r, Err(StoreError::TooLarge)));
-}
-
-#[test]
-fn rollback_import_removes_both_files_and_nothing_else() -> Result<(), StoreError> {
+fn rollback_import_removes_the_record_and_nothing_else() -> Result<(), Box<dyn std::error::Error>> {
     let tmp = tempfile::tempdir()?;
     let store = KeyStore::open(tmp.path().join("s"))?;
-    let one = SecretSlice::from(vec![1_u8]);
-    for id in ["a", "a-cert", "b", "b-cert"] {
-        store.put(7, id, &one)?;
+    let creds = crate::creds::memory::MemoryCreds::host();
+    let key = SecretSlice::from(vec![1_u8]);
+    for id in ["a", "b"] {
+        let sealed = seal(&creds, &credential_name(7, id), &key)?;
+        let protected = Protected::from_sealed(&sealed);
+        let kind = protected.natural_kind();
+        store.put(&Record::new(7, id, kind, b"cert", protected)?)?;
     }
     rollback_import(&store, 7, "a")?;
-    assert_eq!(store.list(7)?, ["b", "b-cert"]);
+    assert_eq!(store.list(7)?, ["b"]);
+    // Rolling back what is not there is not an error.
+    rollback_import(&store, 7, "a")?;
+    assert_eq!(store.list(7)?, ["b"]);
     Ok(())
+}
+
+#[test]
+fn the_credential_name_binds_owner_and_id() {
+    assert_eq!(credential_name(1000, "my-key"), "custodio-1000-my-key");
+    assert_ne!(credential_name(1, "a"), credential_name(2, "a"));
+    assert_ne!(credential_name(1, "a"), credential_name(1, "b"));
 }
 
 #[test]
@@ -72,4 +54,21 @@ fn every_import_error_has_its_own_message() {
         let message = error.to_string();
         assert!(message.contains(expected), "{message:?} lacks {expected:?}");
     }
+}
+
+#[test]
+fn a_p256_curve_under_another_algorithm_is_not_an_ecdsa_key()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cert = include_bytes!("../../tests/fixtures/cert-p256-other.der");
+    assert!(cert_public_key(KeyKind::EcdsaP256, cert).is_some());
+    // id-ecPublicKey (1.2.840.10045.2.1) to 1.2.840.10045.2.2, the P-256 parameter kept.
+    let ec_public_key = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
+    let at = cert
+        .windows(ec_public_key.len())
+        .position(|w| w == ec_public_key)
+        .ok_or("no id-ecPublicKey")?;
+    let mut other = cert.to_vec();
+    *other.get_mut(at + 8).ok_or("short")? = 0x02;
+    assert_eq!(cert_public_key(KeyKind::EcdsaP256, &other), None);
+    Ok(())
 }

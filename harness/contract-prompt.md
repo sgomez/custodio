@@ -30,10 +30,27 @@ if the feature were wrong. Prove each behaviour once, at the cheapest level that
 being wrong. If another feature's description or `verify` in features.json names the same check,
 point to that feature under Scope instead of proving it here. A few negative controls show that a
 test can fail; build no mutant sets beyond what `verify` runs. Package gates, the install and
-lifecycle tests and `just e2e` run at the checkpoint features (F90, F100), not here: a
+lifecycle tests and `just e2e` run at the checkpoint features, not here: a
 requirement that only they prove is listed under Scope as proven at the checkpoint. A feature
 whose `verify` runs `just e2e-cases` proves its own cases with them. If the feature is too big for about five steps, say so under Scope and
 propose a split; do not edit features.json.
+
+Tests cost time on every later run of the loop, so say what each costs. For each new test or
+suite, Scope states how long it takes, measured or estimated from a similar one, and how it runs
+alongside the others: a unit test is parallel by default; a script test runs in parallel with the
+other script tests; an e2e case is the costliest level and only for what a cheaper level cannot
+catch. It goes in `e2e/cases.list` (every target) only when what it checks depends on the
+distribution; otherwise in `e2e/targets/debian13/cases.list` (SPEC, end-to-end scope). Independent units (targets, modes, files) run at
+once, never in a loop one after another; waits are on a condition, never a fixed `sleep`. The
+loop checks the measured times against `budgets.tsv`, which a person sets: a feature that cannot
+fit says so under Scope, and the builder asks for a bigger budget in BLOCKED.md.
+
+A builder session is cut at its time limit (45 minutes by default) and one command may run at
+most 30 minutes. Every step must fit in one session, and every command a step runs in one command.
+Measure or look up how long each long suite takes (the earlier checkpoints' logs in
+`.harness/logs/` and PROGRESS.md say), and split a suite that does not fit: `just e2e` runs one
+target and mode per command (`E2E_TPM=<mode> just e2e <target>`). No step runs the whole `verify`;
+the loop runs it as the gate.
 
 If a requirement depends on the environment (a container engine, privileges, network, a device,
 a tool not pinned in mise.toml), run the smallest command that shows the dev container can do it,

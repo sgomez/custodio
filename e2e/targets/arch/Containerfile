@@ -6,7 +6,7 @@ FROM docker.io/library/archlinux:latest
 
 # Full upgrade, never `-Sy` alone (a partial upgrade is unsupported on an image built earlier).
 RUN pacman -Syu --noconfirm --needed \
-      systemd polkit p11-kit opensc pkcs11-provider nss openssl util-linux python python-gobject procps-ng \
+      systemd polkit p11-kit opensc pkcs11-provider nss openssl util-linux python python-gobject procps-ng swtpm tpm2-tools \
     && find /var/cache/pacman -type f -delete
 
 # The agent authenticates through PAM like a real one; accept any password for the polkit service

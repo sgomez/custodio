@@ -64,14 +64,10 @@ cat > "$tmp/state.good" <<'S'
 d 998 998 700 - .
 d 998 998 700 - ./1000
 f 998 998 600 aaaa ./1000/ec1
-f 998 998 600 a1a1 ./1000/ec1-cert
 f 998 998 600 bbbb ./1000/rsa1
-f 998 998 600 b1b1 ./1000/rsa1-cert
 d 998 998 700 - ./4711
 f 998 998 600 cccc ./4711/bobonly
-f 998 998 600 c1c1 ./4711/bobonly-cert
 f 998 998 600 dddd ./4711/rsa1
-f 998 998 600 d1d1 ./4711/rsa1-cert
 S
 ok "good state" acct_state_problems "$tmp/state.good" 1000 4711 998
 
@@ -122,8 +118,8 @@ sed 's#dddd#bbbb#' "$tmp/state.good" > "$tmp/state.same"
 rejects "the same file for two owners" "hold the same file" acct_state_problems "$tmp/state.same" 1000 4711 998
 grep -v 4711 "$tmp/state.good" > "$tmp/state.nobob"
 rejects "no entries for bob" "no file ./4711/bobonly" acct_state_problems "$tmp/state.nobob" 1000 4711 998
-grep -v '4711/rsa1-cert' "$tmp/state.good" > "$tmp/state.nocert"
-rejects "a key without its certificate file" "no file ./4711/rsa1-cert" acct_state_problems "$tmp/state.nocert" 1000 4711 998
+{ cat "$tmp/state.good"; echo 'f 998 998 600 d1d1 ./4711/rsa1-cert'; } > "$tmp/state.nocert"
+rejects "a file of the earlier two-file format" "./4711/rsa1-cert is not one of bob's keys" acct_state_problems "$tmp/state.nocert" 1000 4711 998
 # signatures
 variant norequest; rm "$tmp/v-norequest/sign/bob-rsa1.requests"
 rejects "a missing request" "bob: the signature with rsa1 made 'no' requests" acct_sign_problems "$tmp/v-norequest" bob

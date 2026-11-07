@@ -16,7 +16,7 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 
 # Rootless podman maps the host user to root in the container; keep-id maps it to `dev` instead.
 # The e2e targets run systemd containers in a nested rootless podman (F45), which needs no more than: SYS_ADMIN for
-# newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings.md, F45).
+# newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings/F45.md).
 userns=() target_opts=
 if [[ $engine == *podman ]]; then userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U; fi
 hc_status=0
@@ -29,7 +29,8 @@ fi
   -v "$PWD":/work \
   -v "custodio-target:/work/target$target_opts" \
   -e CLAUDE_CODE_OAUTH_TOKEN -e HARNESS_HC_STATUS="$hc_status" \
-  -e AUTO_APPROVE -e MAX_SESSIONS -e MAX_ATTEMPTS -e MAX_CONTRACT_ROUNDS -e MAX_FEATURE_SESSIONS -e MAX_AMENDMENTS -e SESSION_TIMEOUT \
+  -e BASH_MAX_TIMEOUT_MS=1800000 \
+  -e AUTO_APPROVE -e MUTANTS_ITERATE -e MAX_SESSIONS -e MAX_ATTEMPTS -e MAX_CONTRACT_ROUNDS -e MAX_FEATURE_SESSIONS -e MAX_AMENDMENTS -e SESSION_TIMEOUT \
   -e GIT_AUTHOR_NAME="$(git config user.name)" -e GIT_AUTHOR_EMAIL="$(git config user.email)" \
   -e GIT_COMMITTER_NAME="$(git config user.name)" -e GIT_COMMITTER_EMAIL="$(git config user.email)" \
   custodio-dev "${@:-harness/pipeline.sh}"
