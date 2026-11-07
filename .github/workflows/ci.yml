@@ -94,6 +94,8 @@ jobs:
           persist-credentials: false
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -124,6 +126,8 @@ jobs:
           persist-credentials: false
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
@@ -188,6 +192,8 @@ jobs:
           fetch-depth: 0
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+      # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # The test job's cache holds the same test build; saving one here would freeze whatever the first diff compiled.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
@@ -267,8 +273,9 @@ jobs:
   # container fails the job (docker run --privileged is the first thing `just e2e` does): nothing here turns that into a pass.
   e2e:
     name: e2e ${{ matrix.target }} ${{ matrix.tpm }}
-    # The packages are built here and installed on the targets: 26.04 for tss2-sys 4.1.3, as in the package job, which checks the glibc ceiling.
-    runs-on: ubuntu-26.04
+    # The packages are built here and installed on the targets: 24.04's glibc 2.39 is the ceiling (packaging/glibc-ceiling.txt).
+    # 24.04 and not 26.04: on 26.04 the appid cases cannot find alice's app.slice in the docker guest.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -294,6 +301,19 @@ jobs:
           fetch-depth: 0 # the tag v0.5.0 (M3) is built for the upgrade-m3-* cases (scripts/package-m3.sh)
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev rpm libarchive-tools zstd python3-yaml
+      # tss-esapi needs tss2-sys 4.1.3 and 24.04 has 4.0.1: build 4.1.3 into /usr/local, which pkg-config searches first.
+      # Pinned release, checksum-verified (the SHA-512 in Fedora's sources file matches).
+      - run: |
+          sudo apt-get install -y --no-install-recommends libssl-dev
+          curl -sSfLo /tmp/tss.tgz https://github.com/tpm2-software/tpm2-tss/releases/download/4.1.3/tpm2-tss-4.1.3.tar.gz
+          echo "37f1580200ab78305d1fc872d89241aaee0c93cbe85bc559bf332737a60d3be8  /tmp/tss.tgz" | sha256sum -c -
+          tar -xzf /tmp/tss.tgz -C /tmp
+          cd /tmp/tpm2-tss-4.1.3
+          ./configure --quiet --prefix=/usr/local --disable-fapi --disable-policy --disable-doxygen-doc --with-udevrulesdir=/tmp/udev
+          make -s -j"$(nproc)"
+          sudo make -s install
+          sudo ldconfig
+          [ "$(pkg-config --modversion tss2-sys)" = 4.1.3 ]
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Our own hash replaces rust-cache's, which lists every toolchain on the runner image and changes under us.
