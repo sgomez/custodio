@@ -576,3 +576,7 @@ with an empty context.
 
 ### 2026-11-07 — F148 — manual run (agent on the person's behalf)
 - Acceptance 14 run in the lab VM `xubuntu2604` (no TPM): import and list show `encrypted-host` with the weaker notice word for word; after a reboot the key is listed and LibreOffice signs with a polkit dialog. Result in `docs/findings/F148.md`. Firefox not tried (snap).
+
+### 2026-11-07 — F149 — manual run (agent and person)
+- Acceptance 15 passes on both machines: `check-no-plaintext.sh` exit 0 on a root copy of the state directory, positive control exit 1. Result in `docs/findings/F149.md`.
+- Known issue: the TPM host held M0–M2 top-level key files (`<id>`, `<id>-cert`, plain PKCS#8) that F121's purge does not see (it scans `<uid>/` only). The person judged it minor and removed them by hand.
