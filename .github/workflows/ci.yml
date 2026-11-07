@@ -174,13 +174,51 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: just nightly
 
-  # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week.
-  # Skipped on a PR labelled skip-mutants (a milestone PR whose features each passed `just mutants-diff`; label it
-  # before the push, a re-run keeps the old labels), and on the merge of a PR, which ran it already.
+  # A gate signed off on the PR's head commit (`gh signoff <gate>`, by `just signoff` or `just release`) is not
+  # run again. Only someone with write access can sign off; a milestone PR (a milestone/ branch of this
+  # repository; a fork's head repo differs) must be signed off, as `just release` ran every mutant.
+  signoff:
+    name: signoff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      statuses: read
+    outputs:
+      mutants: ${{ steps.check.outputs.mutants }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          MILESTONE: >-
+            ${{ startsWith(github.head_ref, 'milestone/') &&
+            github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          signed() {
+            [ "$(gh api "repos/$REPO/commits/$SHA/status" \
+              --jq "[.statuses[] | select(.context == \"signoff/$1\")][0].state // \"\"")" = success ]
+          }
+          # `just release` signs off after its push: give it a few minutes.
+          tries=1
+          [ "$MILESTONE" = true ] && tries=20
+          for _ in $(seq "$tries"); do
+            if signed mutants; then echo mutants=true >> "$GITHUB_OUTPUT"; exit 0; fi
+            [ "$tries" = 1 ] || sleep 15
+          done
+          if [ "$MILESTONE" = true ]; then
+            echo "::error::$SHA has no signoff/mutants: run just release on the milestone branch"
+            exit 1
+          fi
+
+  # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week. Not when signed
+  # off (re-run this job after `just signoff` to pick it up), nor on the merge of a PR, which ran it already.
   mutants:
     name: just mutants (diff)
+    needs: [signoff]
     if: >-
-      !contains(github.event.pull_request.labels.*.name, 'skip-mutants') &&
+      always() && needs.signoff.result != 'failure' && needs.signoff.outputs.mutants != 'true' &&
       !startsWith(github.event.head_commit.message, 'Merge pull request ')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -326,7 +364,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [commits, lint, test, package, e2e, coverage, nightly, mutants]
+    needs: [commits, lint, test, package, e2e, coverage, nightly, mutants, signoff]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}

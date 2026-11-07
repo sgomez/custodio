@@ -331,6 +331,18 @@ mutants-diff id *args:
     # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
     just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
 
+# For a diff too big for CI: push first, then re-run the CI job, which skips a signed-off gate.
+# `just mutants` on the lines changed since main, then `gh signoff mutants` on HEAD (gh-signoff).
+signoff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit first: the signoff is for HEAD" >&2; exit 1; }
+    git fetch -q origin main
+    mkdir -p target
+    git diff "$(git merge-base origin/main HEAD)" HEAD > target/signoff.diff
+    just mutants --in-diff target/signoff.diff --jobs 3
+    gh signoff mutants
+
 # Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
 coverage:
@@ -497,6 +509,6 @@ milestone action="list" *args:
 harness action="run" *args:
     harness/harness.sh "$@"
 
-# Next version from the commits (git-cliff), CHANGELOG.md, release commit, tag and push.
+# Release of the closed milestone, from its branch: CHANGELOG.md, check-slow, signoff, PR, merge and version tag.
 release:
     harness/release.sh
