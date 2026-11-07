@@ -1,7 +1,7 @@
 name: Mutants diff
 
 # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week. Its own workflow, so a
-# re-run (`just signoff` does one) is this job alone. A required status check of main.
+# re-run (`just signoff mutants` does one) is this job alone. A required status check of main.
 on:
   pull_request:
   push:
@@ -32,7 +32,7 @@ jobs:
       contents: read
       statuses: read
     steps:
-      # A PR whose head commit is signed off (`gh signoff mutants`, by `just signoff` or `just release`) does not
+      # A PR whose head commit is signed off as `mutants` (`just signoff mutants`, or `just release`) does not
       # run it again; only someone with write access can sign off. A milestone PR (a milestone/ branch of this
       # repository; a fork's head repo differs) must be: `just release` ran every mutant, past this timeout.
       - id: signoff

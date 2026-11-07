@@ -39,15 +39,12 @@ jobs:
             git log -1 --format=%B "$HEAD" | npx --no-install commitlint --verbose
           fi
 
-  # A milestone PR (a milestone/ branch of this repository; a fork's head repo differs) is a release: `just release`
-  # ran `just check-slow` on its head commit and signed it off. The jobs below that check-slow covers do not run
-  # again; it must be signed off. Only someone with write access can sign off.
+  # A PR whose head commit is signed off as `ci` (`just signoff ci`, or `just release` after `just check-slow`)
+  # does not run the jobs below again, but commitlint. Only someone with write access can sign off, so a fork PR
+  # cannot. A milestone PR (a milestone/ branch of this repository; a fork's head repo differs) must be.
   signoff:
-    name: signoff
-    if: >-
-      github.event_name == 'pull_request' &&
-      startsWith(github.head_ref, 'milestone/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    name: signoff (ci)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -60,16 +57,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          MILESTONE: >-
+            ${{ startsWith(github.head_ref, 'milestone/') &&
+            github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           # `just release` signs off after its push: give it a few minutes.
-          for _ in $(seq 20); do
+          tries=1
+          [ "$MILESTONE" = true ] && tries=20
+          for _ in $(seq "$tries"); do
             state=$(gh api "repos/$REPO/commits/$SHA/status" \
-              --jq '[.statuses[] | select(.context == "signoff/check-slow")][0].state // ""')
+              --jq '[.statuses[] | select(.context == "signoff/ci")][0].state // ""')
             if [ "$state" = success ]; then echo signed=true >> "$GITHUB_OUTPUT"; exit 0; fi
-            sleep 15
+            [ "$tries" = 1 ] || sleep 15
           done
-          echo "::error::$SHA has no signoff/check-slow: run just release on the milestone branch"
-          exit 1
+          if [ "$MILESTONE" = true ]; then
+            echo "::error::$SHA has no signoff/ci: run just release on the milestone branch"
+            exit 1
+          fi
 
   lint:
     name: just lint
@@ -146,8 +150,8 @@ jobs:
   # Unit and integration tests under llvm-cov, then the CRAP gate.
   coverage:
     name: just coverage-gate
-    # Slow: main only; a PR runs the fast jobs.
-    if: github.event_name == 'push'
+    needs: [signoff]
+    if: always() && needs.signoff.result != 'failure' && needs.signoff.outputs.signed != 'true'
     env:
       # Debuginfo only slows compiling and linking here.
       CARGO_PROFILE_DEV_DEBUG: 0
@@ -176,10 +180,10 @@ jobs:
       - run: rustup component add llvm-tools-preview
       - run: just coverage-gate
 
-  nightly:
-    name: just nightly
-    # Slow: main only; a PR runs the fast jobs.
-    if: github.event_name == 'push'
+  memory-safety:
+    name: just memory-safety
+    needs: [signoff]
+    if: always() && needs.signoff.result != 'failure' && needs.signoff.outputs.signed != 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
@@ -208,7 +212,7 @@ jobs:
             crates/custodio-pkcs11/fuzz -> target
             crates/custodiod/fuzz -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: just nightly
+      - run: just memory-safety
 
   # The three packages from one nfpm file list, and the gate on their contents.
   package:
@@ -262,7 +266,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [commits, signoff, lint, test, package, coverage, nightly]
+    needs: [commits, signoff, lint, test, package, coverage, memory-safety]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
@@ -270,7 +274,7 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          # `skipped`: a main-only job on a PR, or one a milestone's signoff covers.
+          # `skipped`: a job a signoff covers.
           for r in $RESULTS; do
             case "$r" in success|skipped) ;; *) echo "job result: $r"; exit 1 ;; esac
           done
