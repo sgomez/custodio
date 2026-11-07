@@ -97,17 +97,18 @@ fn host_bound_round_trip() -> TestResult {
         client.decrypt("other", sealed.credential()).err(),
         Some(CredsError::CannotDecrypt)
     );
-    // Another uid of the namespace: the control opens its own, not the service's.
+    // Another uid of the namespace: the control opens its own, not the service's. The daemon resolves
+    // the uid through the host's passwd, and uid 1 is in every one.
     let blob = raw_blob_json(&sealed)?;
-    let (opened, text) = varlink_as_uid(42, &daemon.socket, "Decrypt", &blob)?;
+    let (opened, text) = varlink_as_uid(1, &daemon.socket, "Decrypt", &blob)?;
     assert!(!opened && text.contains("BadFormat"), "{text}");
     let (ok, text) = varlink_as_uid(
-        42,
+        1,
         &daemon.socket,
         "Encrypt",
         r#"{"name":"k","data":"TUFSSw==","scope":"user"}"#,
     )?;
-    assert!(ok, "control: uid 42 can use the daemon: {text}");
+    assert!(ok, "control: uid 1 can use the daemon: {text}");
     Ok(())
 }
 

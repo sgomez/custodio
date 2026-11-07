@@ -29,6 +29,8 @@ const NAMESPACE: [&str; 4] = [
 /// Runs the host-secret daemon on `$2` with `/var/lib/systemd` from `$1` (a directory, or `tmpfs`).
 const DAEMON: &str = r#"set -e
 mount -t tmpfs t /run/systemd
+# A host TPM the namespace cannot open fails every Encrypt (ENOTRECOVERABLE) instead of binding to the host.
+if [ -d /sys/class/tpmrm ]; then mount -t tmpfs t /sys/class/tpmrm; fi
 if [ "$1" = tmpfs ]; then mount -t tmpfs t /var/lib/systemd; else mount --bind "$1" /var/lib/systemd; fi
 exec systemd-socket-activate -a --fdname=varlink -l "$2" systemd-creds"#;
 
