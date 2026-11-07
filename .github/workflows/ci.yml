@@ -175,8 +175,13 @@ jobs:
       - run: just nightly
 
   # Only the mutants on lines this push or PR changes; mutants.yml sweeps them all every week.
+  # Skipped on a PR labelled skip-mutants (a milestone PR whose features each passed `just mutants-diff`; label it
+  # before the push, a re-run keeps the old labels), and on the merge of a PR, which ran it already.
   mutants:
     name: just mutants (diff)
+    if: >-
+      !contains(github.event.pull_request.labels.*.name, 'skip-mutants') &&
+      !startsWith(github.event.head_commit.message, 'Merge pull request ')
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
