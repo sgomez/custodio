@@ -55,14 +55,14 @@ What any client needs from the service, rFirma included. The rFirma side waits f
 - The D-Bus API documented for clients: detecting the service, import, list, delete, sign and their
   errors.
 
-## M4 — TPM
+## M4 — TPM (done)
 
 - Import keys with `TPM2_Import` (`tss-esapi`); the service keeps the wrapped blob and the
   certificate in its state directory.
 - Fall back to a file encrypted with `systemd-creds` when there is no TPM or it lacks the
   algorithm: bound to the TPM when there is one, to the host key otherwise. Weaker than
   `TPM2_Import`, because the key is decrypted in the service's memory to sign and root can take it.
-- Migration of existing file keys into the TPM.
+- No migration: keys from earlier milestones are purged, with one journal entry each.
 - Imported keys cannot leave the TPM: empty `authPolicy`, so `TPM2_Duplicate` fails. Grades and
   checks in `docs/reports/polkit-custodian-linux.md` section 8.
 - No PCR policy on the imported keys: PCR 7 also measures `dbx`, which `fwupd` updates, and a key
