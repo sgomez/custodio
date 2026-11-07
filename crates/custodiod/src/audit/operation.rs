@@ -432,10 +432,10 @@ impl OperationEntry {
         }
     }
 
-    /// A purge entry: the key `key_id` of `owner`, in the earlier format, removed at start-up. It has no caller and no
-    /// app-id (the case is `none`: no request was made).
+    /// A purge entry: the key `key_id` of `owner` (none for the M0–M2 layout), in the earlier format, removed at
+    /// start-up. It has no caller and no app-id (the case is `none`: no request was made).
     #[must_use]
-    pub const fn purge(owner: u32, key_id: KeyId) -> Self {
+    pub const fn purge(owner: Option<u32>, key_id: KeyId) -> Self {
         Self {
             kind: Kind::Purge(PurgeOutcome::Purged),
             caller: None,
@@ -443,7 +443,7 @@ impl OperationEntry {
             app_id: AppIdOutcome::None,
             storage_kind: None,
             cause: None,
-            owner: Some(owner),
+            owner,
         }
     }
 
@@ -561,12 +561,8 @@ impl OperationEntry {
             Kind::Purge(o) => {
                 let owner = self
                     .owner
-                    .map_or_else(|| "unknown".to_owned(), |u| u.to_string());
-                return format!(
-                    "{}: owner uid {owner} key {}",
-                    o.phrase(),
-                    self.key_id.as_str()
-                );
+                    .map_or_else(|| "no owner".to_owned(), |u| format!("owner uid {u}"));
+                return format!("{}: {owner} key {}", o.phrase(), self.key_id.as_str());
             }
         };
         super::message(phrase, self.caller, &self.key_id)

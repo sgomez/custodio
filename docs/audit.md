@@ -41,7 +41,7 @@ signing `MESSAGE_ID` never changed.
 | `SYSLOG_IDENTIFIER` | `custodiod` | always |
 | `CUSTODIO_UID` | User id of the calling process, decimal, as the bus reported it | absent when the bus named no caller; absent from `purge` entries, which have no caller |
 | `CUSTODIO_PID` | Process id of the calling process, decimal | omitted when the bus named no caller; omitted from `purge` entries |
-| `CUSTODIO_OWNER_UID` | User id that owned the purged key, decimal | `purge` entries only |
+| `CUSTODIO_OWNER_UID` | User id that owned the purged key, decimal | `purge` entries only; absent for a key of the M0–M2 layout, which had no owner |
 | `CUSTODIO_KEY_ID` | Id of the key that was asked for | always |
 | `CUSTODIO_OPERATION` | What was asked: `sign`, `import`, `delete`, `replace_certificate` or `purge` (not asked: done at start-up) | always |
 | `CUSTODIO_OUTCOME` | Result, one of the values of the operation below | always |
@@ -162,6 +162,8 @@ old or the new certificate, only the fields above. Queries by outcome are under 
 When `custodiod` starts and finds key files of the earlier format (no record magic; a key file named by its
 id and the same name plus `-cert`), it removes them before it takes its bus name or answers any call, and leaves one entry per
 key: the owner in `CUSTODIO_OWNER_UID`, the id in `CUSTODIO_KEY_ID`. A key and its certificate file are one entry.
+M3 kept these files in the owner's directory; M0–M2 kept them at the top of the state directory, with no owner,
+and their entries have no `CUSTODIO_OWNER_UID` (`MESSAGE` says `no owner`).
 The entry never holds file content (none is read). It is submitted before the files are removed, so a crash
 between the two can repeat the entry on the next start but never lose one. If the entry cannot be submitted, the
 key is not removed and the service does not start. A start that finds nothing of the earlier format writes

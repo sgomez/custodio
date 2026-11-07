@@ -40,9 +40,9 @@ fn legacy_files_are_recognised_not_read() -> TestResult {
     );
     assert_eq!(entries[0].files, ["old", "old-cert"]);
     assert_eq!(entries[1].files, ["orphan-cert"]);
-    assert!(entries.iter().all(|e| e.owner == OWNER));
+    assert!(entries.iter().all(|e| e.owner == Some(OWNER)));
     assert!(!format!("{entries:?}").contains("MARKER"));
-    let all: Vec<(u32, String)> = store
+    let all: Vec<(Option<u32>, String)> = store
         .legacy_all()?
         .into_iter()
         .map(|e| (e.owner, e.id))
@@ -50,9 +50,9 @@ fn legacy_files_are_recognised_not_read() -> TestResult {
     assert_eq!(
         all,
         [
-            (7, "other".to_owned()),
-            (OWNER, "old".to_owned()),
-            (OWNER, "orphan".to_owned())
+            (Some(7), "other".to_owned()),
+            (Some(OWNER), "old".to_owned()),
+            (Some(OWNER), "orphan".to_owned())
         ]
     );
     // Nothing was changed.

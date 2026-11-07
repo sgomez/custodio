@@ -191,10 +191,16 @@ impl KeyStore {
         if !valid_key_id(id) {
             return Err(StoreError::InvalidId);
         }
-        let path = self
-            .existing_area(owner)?
-            .ok_or(StoreError::NotFound)?
-            .join(id);
+        let area = self.existing_area(owner)?.ok_or(StoreError::NotFound)?;
+        self.open_in(&area, id)
+    }
+
+    /// [`Self::open_checked`] for the file `id` of a directory already checked.
+    fn open_in(&self, area: &Path, id: &str) -> Result<(PathBuf, File), StoreError> {
+        if !valid_key_id(id) {
+            return Err(StoreError::InvalidId);
+        }
+        let path = area.join(id);
         let file = match OpenOptions::new()
             .read(true)
             // NONBLOCK so a FIFO cannot hang the open; NOCTTY so a tty cannot become ours.
@@ -412,9 +418,13 @@ impl KeyStore {
     /// Whether the file `name` of `owner` starts with the magic. Reads no more than the magic.
     fn is_record(&self, owner: u32, name: &str) -> Result<bool, StoreError> {
         let (_, file) = self.open_checked(owner, name)?;
+        Self::starts_with_magic(&file)
+    }
+
+    /// Whether `file` starts with the magic. Reads no more than the magic.
+    fn starts_with_magic(file: &File) -> Result<bool, StoreError> {
         let mut head = Vec::with_capacity(record::MAGIC.len());
-        (&file)
-            .take(record::MAGIC.len() as u64)
+        file.take(record::MAGIC.len() as u64)
             .read_to_end(&mut head)?;
         Ok(head.as_slice() == record::MAGIC.as_slice())
     }

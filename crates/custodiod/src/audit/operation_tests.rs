@@ -99,7 +99,7 @@ fn ids_are_32_lower_hex_and_distinct() {
 
 #[test]
 fn a_purge_entry_names_the_owner_the_id_and_the_outcome_only() -> TestResult {
-    let e = OperationEntry::purge(1000, key()?);
+    let e = OperationEntry::purge(Some(1000), key()?);
     assert_eq!(e.owner(), Some(1000));
     assert_eq!(e.caller(), None);
     assert_eq!(e.operation(), Operation::Purge);
@@ -121,6 +121,14 @@ fn a_purge_entry_names_the_owner_the_id_and_the_outcome_only() -> TestResult {
             ("CUSTODIO_APP_ID_STATE", "none"),
         ]
     );
+    // A key of the M0–M2 layout had no owner: the entry says so and has no owner field.
+    let top = OperationEntry::purge(None, key()?);
+    assert_eq!(top.owner(), None);
+    assert_eq!(
+        get(&top.fields(), "MESSAGE"),
+        Some("key of the earlier format purged: no owner key k9".to_owned())
+    );
+    assert!(get(&top.fields(), "CUSTODIO_OWNER_UID").is_none());
     // Only a purge has an owner.
     let delete = OperationEntry::delete(DeleteOutcome::Deleted, Some(C), key()?);
     assert_eq!(delete.owner(), None);

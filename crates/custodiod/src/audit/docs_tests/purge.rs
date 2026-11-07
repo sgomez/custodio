@@ -4,7 +4,7 @@ use super::*;
 /// What the page must say of the purge entry, from the code: the outcome row with its priority, the identifier row,
 /// the owner field row, the message example and a query.
 fn purge_matches(docs: &str) -> Result<(), String> {
-    let entry = OperationEntry::purge(1000, key().map_err(|e| e.to_string())?);
+    let entry = OperationEntry::purge(Some(1000), key().map_err(|e| e.to_string())?);
     let rows = outcome_section(docs, Operation::Purge);
     let outcome = format!("| {} | {} |", token(entry.outcome_name()), entry.priority());
     if !rows.iter().any(|l| l.starts_with(&outcome)) {
@@ -35,7 +35,7 @@ fn purge_matches(docs: &str) -> Result<(), String> {
 fn purge_is_documented_and_the_check_can_fail() -> TestResult {
     let docs = docs()?;
     assert_eq!(purge_matches(&docs), Ok(()));
-    let entry = OperationEntry::purge(1000, key()?);
+    let entry = OperationEntry::purge(Some(1000), key()?);
     let outcome = format!("| {} | {} |", token("purged"), entry.priority());
     for (what, edited) in [
         ("outcome row", docs.replacen(&outcome, "| `other` | 4 |", 1)),

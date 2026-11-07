@@ -447,3 +447,40 @@ fn second_start_purges_nothing() -> TestResult {
     });
     Ok(())
 }
+
+#[test]
+fn top_level_keys_of_the_m0_to_m2_layout_are_purged_without_an_owner() -> TestResult {
+    let env = Env::start(None)?;
+    let root = env.root();
+    KeyStore::open(&root)?;
+    put_file(&root, "rsa", &key_bytes("rsa"))?;
+    put_file(&root, "rsa-cert", &cert_bytes("rsa"))?;
+    put_file(&root, "p256", &key_bytes("p256"))?;
+    legacy_key(&root, 2000, "delta", true)?;
+    let sink = Arc::new(MemorySink::default());
+    let _service = env.serve(sink.clone())?;
+    assert_eq!(names(&root)?, ["2000"]);
+    assert_eq!(names(&root.join("2000"))?, Vec::<String>::new());
+    let seen: Vec<_> = sink
+        .operation_entries()
+        .iter()
+        .map(|e| (e.owner(), e.key_id().as_str().to_owned()))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (None, "p256".to_owned()),
+            (None, "rsa".to_owned()),
+            (Some(2000), "delta".to_owned())
+        ]
+    );
+    for e in sink
+        .operation_entries()
+        .iter()
+        .filter(|e| e.owner().is_none())
+    {
+        assert!(e.fields().iter().all(|(n, _)| *n != "CUSTODIO_OWNER_UID"));
+        assert!(!format!("{:?}", e.fields()).contains("SENTINEL"));
+    }
+    Ok(())
+}

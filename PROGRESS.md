@@ -580,3 +580,7 @@ with an empty context.
 ### 2026-11-07 — F149 — manual run (agent and person)
 - Acceptance 15 passes on both machines: `check-no-plaintext.sh` exit 0 on a root copy of the state directory, positive control exit 1. Result in `docs/findings/F149.md`.
 - Known issue: the TPM host held M0–M2 top-level key files (`<id>`, `<id>-cert`, plain PKCS#8) that F121's purge does not see (it scans `<uid>/` only). The person judged it minor and removed them by hand.
+
+### 2026-11-07 — F121 — fix after F149 (with a person)
+- The purge now also removes the M0–M2 layout: key files at the top of the state directory, no owner area. Their journal entries have no `CUSTODIO_OWNER_UID` and `MESSAGE` says `no owner`; `docs/audit.md` says so. A directory at the top is never a key; the file rules apply as in an area.
+- `just quick` on the host: fmt, clippy, check-files and every test pass except `tpm_access` `absent_when_no_device` and `production_ignores_environment`, which fail the same on the previous commit (the host has `/dev/tpmrm0`). `taplo` and `shellcheck` are not on the host; no TOML or script changed.

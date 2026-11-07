@@ -97,7 +97,7 @@ fn operation_entries() -> Result<Vec<OperationEntry>, InvalidKeyId> {
     for o in ReplaceOutcome::all() {
         all.push(OperationEntry::replace_certificate(o, Some(CALLER), key()?).with_app_id(app()));
     }
-    all.push(OperationEntry::purge(1000, key()?));
+    all.push(OperationEntry::purge(Some(1000), key()?));
     Ok(all)
 }
 
