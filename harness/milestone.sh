@@ -135,8 +135,8 @@ pass() {
   jq -e --arg id "$id" 'any(.features[]; .id == $id and .passes)' features.json >/dev/null \
     && die "$id already passes."
   # The notes of the manual run go in their own commit, before the mark.
-  if tracked_changes; then
-    git add -u -- docs/
+  if [ -n "$(git status --porcelain -- docs/)" ]; then
+    git add -A -- docs/
     git commit -q -m "docs($id): record the manual acceptance run"
     log "Committed the docs/ changes for $id."
   fi
