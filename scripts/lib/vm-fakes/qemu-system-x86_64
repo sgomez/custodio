@@ -1,0 +1,170 @@
+#!/usr/bin/python3 -I
+"""A stand-in for qemu-system-x86_64 in the launcher's self-tests, with a fake guest on the -serial unix socket.
+
+Answers `-accel help` (kvm listed unless STUB_QEMU_NO_KVM=1). Otherwise records its arguments (qemu.N.args; the first line is argv[0]) and
+pid (pids) under STUB_LOG, appends a byte to the writable pflash file (the per-run OVMF vars), connects to the -chardev socket (the swtpm
+stub's) and holds it, and serves the serial socket: a login prompt, then a local bash that runs the typed lines (the launcher's own
+channel code drives it). The line `sudo systemctl poweroff` ends the stub; so does SIGTERM. Daemonizes on -daemonize.
+STUB_QEMU_FAIL=1 exits 1 at once; STUB_QEMU_DIE=1 daemonizes and exits at once; STUB_QEMU_NOLOGIN=1 never shows a login prompt;
+STUB_PASSWORD is the password it accepts.
+"""
+import os
+import select
+import signal
+import socket
+import subprocess
+import sys
+
+log = os.environ.get("STUB_LOG", "")
+args = sys.argv[1:]
+
+if args[:2] == ["-accel", "help"]:
+    print("Accelerators supported in QEMU binary:\ntcg" + ("" if os.environ.get("STUB_QEMU_NO_KVM") else "\nkvm"))
+    sys.exit(0)
+
+n = 0
+while True:
+    n += 1
+    try:
+        fd = os.open(os.path.join(log, "qemu.%d.args" % n), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        break
+    except FileExistsError:
+        continue
+with os.fdopen(fd, "w") as f:
+    f.write("\n".join([sys.argv[0]] + args) + "\n")
+if os.environ.get("STUB_QEMU_FAIL"):
+    sys.stderr.write("qemu stub: failing to start\n")
+    sys.exit(1)
+
+
+def opt(name):
+    for i, a in enumerate(args):
+        if a == name and i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def kv(s, key):
+    for x in (s or "").split(","):
+        if x.startswith(key + "="):
+            return x[len(key) + 1:]
+    return None
+
+
+serial = None
+for i, a in enumerate(args):
+    if a == "-serial" and args[i + 1].startswith("unix:"):
+        serial = args[i + 1][5:].split(",")[0]
+    if a == "-drive" and "if=pflash" in args[i + 1] and "readonly=on" not in args[i + 1]:
+        vars_file = kv(args[i + 1], "file")
+        with open(os.path.join(log, "qemu.%d.vars-before" % n), "wb") as f:  # what the launcher gave: the template's content
+            f.write(open(vars_file, "rb").read())
+        with open(vars_file, "ab") as f:  # the guest's firmware writes its variables
+            f.write(b"x")
+tpm = None
+for i, a in enumerate(args):
+    if a == "-chardev" and args[i + 1].startswith("socket,"):
+        tpm = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            tpm.connect(kv(args[i + 1], "path"))
+        except OSError as e:
+            sys.stderr.write("qemu stub: cannot connect to the swtpm socket: %s\n" % e)
+            sys.exit(1)
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+listener.bind(serial)
+listener.listen(1)
+
+if "-daemonize" in args:
+    if os.fork():
+        os._exit(0)
+    os.setsid()
+    devnull = os.open(os.devnull, os.O_RDWR)
+    os.dup2(devnull, 0)
+    os.dup2(devnull, 1)
+    # A crash of the stub itself must show: stderr goes to a file next to the argument records.
+    os.dup2(os.open(os.path.join(log, "qemu.err"), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644), 2)
+with open(os.path.join(log, "pids"), "a") as f:
+    f.write("qemu %d\n" % os.getpid())
+pidf = opt("-pidfile")
+if pidf:
+    with open(pidf, "w") as f:
+        f.write("%d\n" % os.getpid())
+signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+if os.environ.get("STUB_QEMU_DIE"):
+    os._exit(0)
+
+password = os.environ.get("STUB_PASSWORD", "custodio-throwaway-test").encode()
+nologin = bool(os.environ.get("STUB_QEMU_NOLOGIN"))
+shell = None
+logged = False
+
+
+def say(conn, data):
+    try:
+        conn.sendall(data)
+    except OSError:
+        pass  # the client left; its pending lines still run, as on a real console
+
+
+def new_shell():
+    global shell
+    if shell:
+        try:
+            os.killpg(shell.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        shell.wait()
+    shell = subprocess.Popen(["bash", "--noprofile", "--norc"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             cwd=log or None, start_new_session=True, bufsize=0)
+
+
+while True:
+    conn, _ = listener.accept()
+    pending = b""
+    state = "user" if not logged else "shell"
+    if not logged and not nologin:
+        say(conn, b"fakehost login: ")
+    while True:
+        rl = [conn] + ([shell.stdout] if shell else [])
+        r, _, _ = select.select(rl, [], [])
+        if shell and shell.stdout in r:
+            d = os.read(shell.stdout.fileno(), 65536)
+            if d:
+                say(conn, d)
+        if conn in r:
+            d = conn.recv(65536)
+            if not d:
+                break
+            pending += d
+            while True:
+                if b"\x03" in pending:
+                    pending = pending.replace(b"\x03", b"")
+                    if logged:
+                        new_shell()
+                if b"\n" not in pending:
+                    break
+                line, pending = pending.split(b"\n", 1)
+                line = line.rstrip(b"\r")
+                if nologin:
+                    continue
+                if not logged and state == "user":
+                    say(conn, b"Password: ")
+                    state = "pass"
+                elif not logged and state == "pass":
+                    if line == password:
+                        logged = True
+                        state = "shell"
+                        new_shell()
+                        say(conn, b"ubuntu@fakehost:~$ ")
+                    else:
+                        state = "user"
+                        say(conn, b"\nLogin incorrect\n\nfakehost login: ")
+                elif logged and state == "shell":
+                    if line.strip() == b"sudo systemctl poweroff":
+                        conn.close()
+                        os._exit(0)
+                    if not line.strip():
+                        say(conn, b"<<P>> ")
+                    else:
+                        shell.stdin.write(line + b"\n")
+    conn.close()

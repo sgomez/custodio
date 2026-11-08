@@ -1,0 +1,81 @@
+#!/usr/bin/python3 -I
+"""A stand-in for swtpm in the launcher's self-tests (scripts/test-vm-launch.sh, test-vm-modes.sh). It writes nothing but under STUB_LOG.
+
+Records the arguments of every `socket` start (swtpm.N.args, the first line is argv[0]; swtpm.N.state-before lists the state directory
+as found; swtpm.N.profile copies the profile file) and its pid (pids). In its state directory it leaves a marker file `marker`.
+Like the real one it listens on the --ctrl socket, daemonizes on --daemon and goes when its peer connects and disconnects.
+STUB_SWTPM_VERSION (default 0.10.2); STUB_SWTPM_NO_PROFILE=1 leaves --profile out of `socket --help`; STUB_SWTPM_FAIL=1 refuses to start.
+"""
+import os
+import signal
+import socket
+import sys
+
+log = os.environ.get("STUB_LOG", "")
+args = sys.argv[1:]
+version = os.environ.get("STUB_SWTPM_VERSION", "0.10.2")
+
+
+def opt(name):
+    for i, a in enumerate(args):
+        if a == name and i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+if args[:1] == ["--version"]:
+    print("TPM emulator version %s, Copyright (c) 2014-2022 IBM Corp. and others" % version)
+    sys.exit(0)
+if args[:2] == ["socket", "--help"] or args[:1] == ["--help"]:
+    print("--tpmstate dir=<dir>")
+    if not os.environ.get("STUB_SWTPM_NO_PROFILE"):
+        print("--profile name=<name>|profile=<json-profile>|file=<filename>|fd=<fd>[,remove-disabled=check|fips-host]")
+    sys.exit(0)
+if args[:1] != ["socket"]:
+    sys.stderr.write("swtpm stub: unexpected arguments %r\n" % args)
+    sys.exit(2)
+
+n = 0
+while True:
+    n += 1
+    try:
+        fd = os.open(os.path.join(log, "swtpm.%d.args" % n), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        break
+    except FileExistsError:
+        continue
+with os.fdopen(fd, "w") as f:
+    f.write("\n".join([sys.argv[0]] + args) + "\n")
+if os.environ.get("STUB_SWTPM_FAIL"):
+    sys.stderr.write("swtpm stub: refusing to start\n")
+    sys.exit(1)
+
+state = [x for x in (opt("--tpmstate") or "").split(",") if x.startswith("dir=")]
+state = state[0][4:] if state else ""
+with open(os.path.join(log, "swtpm.%d.state-before" % n), "w") as f:
+    f.write("\n".join(sorted(os.listdir(state))) + "\n" if state and os.path.isdir(state) else "")
+prof = opt("--profile")
+if prof and prof.startswith("file="):
+    with open(os.path.join(log, "swtpm.%d.profile" % n), "wb") as f:
+        f.write(open(prof[5:], "rb").read())
+ctrl = [x[5:] for x in (opt("--ctrl") or "").split(",") if x.startswith("path=")]
+listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+listener.bind(ctrl[0])
+listener.listen(1)
+with open(os.path.join(state, "marker"), "a") as f:
+    f.write("run %d\n" % n)
+
+if "--daemon" in args:
+    if os.fork():
+        os._exit(0)
+    os.setsid()
+pidf = opt("--pid")
+with open(os.path.join(log, "pids"), "a") as f:
+    f.write("swtpm %d\n" % os.getpid())
+if pidf and pidf.startswith("file="):
+    with open(pidf[5:], "w") as f:
+        f.write("%d\n" % os.getpid())
+signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+conn, _ = listener.accept()
+while conn.recv(4096):
+    pass
+os._exit(0)
