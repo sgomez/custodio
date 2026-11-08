@@ -17,7 +17,7 @@
         "F150"
       ],
       "verify": "f=docs/findings/F151.md && grep -q '^## F151' \"$f\" && for w in 'SHA256SUMS' 'serial' 'OVMF' 'tpm-crb' 'swtpm' 'CONFIG_TCG_CRB' '/dev/tpmrm0' 'has-tpm2' 'libtss2-rc0t64' 'NoCloud' 'power'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F151.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F152",
