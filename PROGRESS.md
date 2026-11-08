@@ -58,3 +58,9 @@ with an empty context.
 - Decisions: the lifecycle root's dpkg status lists every other Depends/Pre-Depends name as installed (version 999), so only systemd decides.
 - Not done: the contract's evidence wording ("would pass if the script ignored TSS_DLOPEN" should read "would fail") is left as is; contract text is not edited without an amendment.
 - Next session should: nothing; the loop runs the `verify`.
+
+### 2026-11-08 — F155 — attempt 1
+- Done: `creds/systemd.rs` has only the Varlink route: `SystemdCreds::new(socket)` / `system()`; the CLI run, launcher, `tpm_args`, `Failure`, the route chooser are gone (`decrypt` still reads the header first, so a bad header is `CannotDecrypt` without touching the socket). `header.rs` and `seal` untouched. Unit tests: fake-socket cases assert `Encrypt` scope `user` with no `withKey`, and exactly one `Decrypt` for a TPM header and a host header.
+- Tests: removed `descriptor.rs`, `sign_kinds/real.rs`, the `MissingLauncher` row, `the_tpm_command_line_*`, `tpm_bound_round_trip`, `cleared_tpm_cannot_decrypt`. Rebuilt: `TpmClearedUnderCredential` → `TpmCredentialLost` (`MemoryCreds::tpm()` + decrypt fails `CannotDecrypt`), `concurrent_kinds` and `tpm_lifecycle` on `MemoryCreds::tpm()` (`World::clear_tpm` also fails decrypts), `creds.rs` guard cases on a header the test builds (null key from the root CLI as a test tool only).
+- Evidence: `just quick` green; `creds` test 10 passed; `just coverage-gate` exit 0, `creds/systemd.rs` 97.63% lines, 100% functions, worst CRAP in the repo 28.1 (< 30); `just mutants-diff F155` exit 0 (3 caught, 8 unviable). Leftover grep clean (only the root-CLI PCR-7 control in `tpm_lifecycle/world.rs` names `--tpm2-device`, a test tool). `docs/install.md` untouched.
+- Not run: step 1's environment probe as a separate command; `creds` tests rely on it (host-scoped id from Varlink, no TPM in the daemon namespace) and pass.
