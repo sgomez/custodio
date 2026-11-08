@@ -251,3 +251,8 @@ with an empty context.
 - Finding 3: debug leftovers removed from `upgrade-user.sh` and `upgrade.sh`.
 - Notes: contract amended (dpkg -i, payload test in `test-e2e-vm-host.sh`, measured costs); the no-op line in the pcr driver section became two assertions.
 - `just quick` green (2m55). Verify scripts: pcr 21 s, tpmclear 9 s, upgradekinds 10 s, all exit 0.
+
+### 2026-11-08 — F163 — attempt 11 (amendment revised)
+- The VM upgrade now installs N+1 with `apt-get install -y --no-install-recommends` (`e2e/vm/install-pkg.sh`, `E2E_INSTALL` set by `guest.sh` in a VM), like N; the container keeps `install.sh`. Real `lacking 'upgrade-kinds-*'` passed (upgrade phase 35 s). Contract Scope/Cost/step 5/amendment now agree (no `dpkg -i`, no `apt upgrade`, measured seconds).
+- Owner pin 65534: judge fixtures in the upgradekinds VM section (65534 accepted, another owner refused). Not covered by a fixture: `upgrade.sh` itself choosing 65534 in a VM (real runs only).
+- `guest.sh` comment shortened (size gate). `just quick` green; test-e2e-upgradekinds and test-e2e-upgrade exit 0.

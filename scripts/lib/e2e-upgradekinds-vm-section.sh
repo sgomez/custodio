@@ -71,3 +71,20 @@ for m in swtpm lacking; do
     ! CHECK_VM=1 CHECK_TPM_MODE=$m bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$tmp/vmskip" "$tmp/out-ok" > /dev/null 2>&1 || bad "VM $m: upgrade-kinds-tpmbound skipped is accepted"
 done
 
+# the owner of the state files in a VM is pinned to 65534 (docs/findings/F163.md): the judge accepts that owner and refuses another one
+cat > "$tmp/own.good" <<'S'
+d 65534 65534 700 - .
+d 65534 65534 700 - ./1000
+d 65534 65534 700 - ./4711
+f 65534 65534 600 aaaa ./1000/ec1
+f 65534 65534 600 bbbb ./1000/rsa1
+f 65534 65534 600 cccc ./4711/bobonly
+f 65534 65534 600 dddd ./4711/rsa1
+S
+(
+    # shellcheck source=e2e/upgrade-accts-lib.sh
+    source "$ROOT/e2e/upgrade-accts-lib.sh"
+    [ -z "$(acct_state_problems "$tmp/own.good" 1000 4711 65534)" ] || bad "VM: the pinned owner 65534 is refused: $(acct_state_problems "$tmp/own.good" 1000 4711 65534 | head -n 1)"
+    sed 's#^f 65534 65534 600 cccc#f 998 998 600 cccc#' "$tmp/own.good" > "$tmp/own.bad"
+    acct_state_problems "$tmp/own.bad" 1000 4711 65534 | grep -q 'owned by 998, not custodio' || bad "VM: a key file of another owner than 65534 is accepted"
+) || bad "VM: the owner fixture failed to run"
