@@ -86,3 +86,18 @@ with an empty context.
 
 ### 2026-11-08 — F158 — attempt 2
 - Done: NEXT_FINDINGS fixed. `scripts/test-vm-image.sh` runs the seven refusals, good, two-serial and missing-serial runs at once (`wait`, results checked after), and the two mutant runs too (~1 s). Amendment (committed alone) records the signer `scripts/lib/openpgp_ed25519.py`; `docs/findings/F158.md` (+ index) records the missing `gpg-agent`. `badsig` is commented as not the pure signature control (`badsig2` is). `image.sh` places with an existence check and `mv -T`.
+
+### 2026-11-08 — F159 — attempt 1
+- Done: `e2e/vm/vm.sh` (commands `start MODE | wait | run | put | get | cycle | stop`, interface in its header), `e2e/vm/chan.py` (serial-console channel, stdlib), `e2e/vm/swtpm-path.sh`
+  (which swtpm: `$VM_SWTPM`, else `/opt/swtpm/usr/bin/swtpm` if present, else PATH; version/`--profile` check), `e2e/vm/lacking-rsa.json` (F152 commands minus `0x159`),
+  stubs in `scripts/lib/vm-fakes/` (qemu with a fake guest, swtpm), `scripts/test-vm-launch.sh` (+ `scripts/lib/vm-launch-controls.sh`, split for the 5000-token limit),
+  `scripts/test-vm-modes.sh`, both in `just test-scripts`. `harness/Containerfile` unpacks swtpm 0.10.2 (four `.deb`, `sha256sum -c` before `dpkg-deb -x`) into `/opt/swtpm`,
+  never over 0.7.1 (existing swtpm users untouched). `vm-host-check.sh` has a new `swtpm-profile` line (MISSING on 0.7.1: `just vm-host-check` fails until the rebuild); its test extended.
+  Amendment (committed alone) takes the evaluator's notes. `docs/findings/F159.md`: unpacked swtpm needs both lib dirs; a restart on the same state must omit `--profile` (PTM_INIT 0x9).
+- Timings: `test-vm-launch.sh` 9.5 s, `test-vm-modes.sh` 0.6 s; `just quick` green; `test-vm-host-check.sh` passes.
+- Step 6 (real, foreground): `/dev/kvm` opens read-write (python probe). `vm.sh start full` reached the login in 13 s; `run` output exact (no escape junk); 300 KB `put`/`get` `cmp` equal;
+  after `apt-get install tpm2-tools` a persistent handle `0x81010001` (name `000b11529b6b…0b4f0b`) was identical after `cycle` (11 s); `stop` 1.8 s; `pgrep -a 'qemu|swtpm'` against a snapshot
+  taken before: nothing new (only the F151/F152 idle ones). Checkpoint evidence for `lacking`: with swtpm 0.10.2 unpacked to a temp prefix (`VM_SWTPM_PREFIX`), `vm.sh start lacking` booted
+  (so `PTM_INIT` accepted the profile), `tpm2_getcap commands` had no `TPM2_CC_RSA_Decrypt` (0) and `TPM2_CC_Sign` (1) before and after `cycle`, P-256 listed, `tpm2_testparms rsa2048` ok; stop clean.
+  The temp copy is deleted. The first rebuilt container still needs `just vm-host-check` → exit 0.
+- Known: a power cycle restarts swtpm without `--profile` (see finding). `BLOCKED.md` asks for the container rebuild.
