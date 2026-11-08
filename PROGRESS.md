@@ -215,3 +215,9 @@ with an empty context.
 - Stub: `scripts/lib/e2e-vm-stub/vm.sh` gets `cycle`, `STUB_FAIL_CYCLE`, `STUB_FAIL_HALF`, and reports pcr cases per half. `scripts/test-e2e-pcr.sh` driver section (9 runs in parallel, controls: driver without the cycle, driver without the second half). `test-e2e-pcr.sh` now 18 s; vm-host, vm-cases, skips, vm-kinds scripts exit 0.
 - Not probed in a real guest yet (step 6): the second invocation after a real `vm.sh cycle`.
 - Next session should: step 4 (tpm-clear), then 5, 6.
+
+### 2026-11-08 — F163 — attempt 5
+- Done (step 4): `tpmclear-run.sh` has a VM branch (`E2E_VM=1`; swtpm → kind tpm, lacking → encrypted-tpm, `none` refused): no second swtpm, no drop-in, no filter; `tpm2_clear`/primary name go to the guest's `device:/dev/tpmrm0` (`TC_VM_TCTI`); the reader (F157) runs on each key after every import in lacking. The judges take the kind; the container path is unchanged. Test hooks `TC_STATE_DIR`, `TC_SCAN`. `guest.sh` passes `E2E_VM` to it.
+- `scripts/test-e2e-tpmclear.sh` VM section on fixtures (`scripts/lib/e2e-tpmclear-stub.py`: a seed TPM that `tpm2_clear` changes, real openssl signatures, keys lost per seed): 19 runs in parallel; good full/lacking, wrong kinds, reader failing/missing/control copy, mode none, no clear, sign after clear, no/wrong/secret journal entry, other text, lost key, kind change, failing delete; TCTI log proves no other TPM; `CHECK_VM` accounting. Measured 7 s total.
+- Not probed in a real guest: the sign failure of an `encrypted-tpm` key after the clear may not be `KeyLost`/`key_lost` (step 6 will show; if it differs, record it in the finding and amend).
+- Next session: step 5 (upgrade-kinds), then 6.

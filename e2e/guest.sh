@@ -281,7 +281,7 @@ phase_done tpmfail
 # signing fails with KeyLost (CKR_DEVICE_ERROR through the module) and a journal entry, the keys stay listed and can be deleted. Reported skipped in mode none (no TPM). The main TPM is never cleared;
 # the drop-in, the service and the second swtpm are put back at the end, and both keys are deleted. After tpmfail and before the upgrade.
 if phase_runs tpmclear; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmclear-run.sh || fail "tpmclear-run.sh failed"
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmclear-run.sh || fail "tpmclear-run.sh failed"
 fi
 phase_done tpmclear
 
