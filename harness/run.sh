@@ -19,6 +19,9 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 # newuidmap, /proc unmasked to mount a fresh one, and systemd mode for a writable cgroup (docs/findings/F45.md).
 userns=() target_opts=
 if [[ $engine == *podman ]]; then userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U; fi
+# The VM target needs /dev/kvm (docs/findings/F150.md). Rootless podman bind-mounts the host node; keep-groups keeps a `kvm` group access
+# through the user namespace. Without the device on this host nothing is added, and `just vm-host-check` in the container reports it.
+if [[ $engine == *podman && -e /dev/kvm ]]; then userns+=(--device /dev/kvm --group-add keep-groups); fi
 hc_status=0
 if [[ -n ${HC_TERMINAL_ID:-} ]]; then
   hc_status=1

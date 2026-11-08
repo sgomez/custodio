@@ -83,3 +83,4 @@ Rules:
 - [F147](findings/F147.md) — M4 acceptance 13 (AMD fTPM, ubuntu2604): both keys `tpm`, not duplicable, sign after reboot, upgrade and a PCR 7 extension (no `dbx` offered); Ubuntu's Firefox needs `modutil`.
 - [F148](findings/F148.md) — M4 acceptance 14 (VM without a TPM, xubuntu2604): pass; import and list print the `encrypted-host` weaker notice word for word; after a reboot LibreOffice signs with a polkit dialog.
 - [F149](findings/F149.md) — M4 acceptance 15 (TPM host and xubuntu2604): pass; a root copy of the state directory holds no private key; M0–M2 top-level key files are not purged by F121 (removed by hand).
+- [F150](findings/F150.md) — KVM for the VM target: no `/dev/kvm` in the dev container; `run.sh` adds `--device /dev/kvm --group-add keep-groups`; runners need the `runner` udev rule; trixie package paths.

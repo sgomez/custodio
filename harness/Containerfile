@@ -14,6 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       swtpm swtpm-tools tpm2-tools libtss2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# The VM target (docs/findings/F150.md): QEMU with KVM and its image tools, the OVMF firmware, the NoCloud seed tool (cloud-localds), gpgv and the
+# Ubuntu cloud image signing key to verify the cloud image. swtpm is above. `just vm-host-check` checks them.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      qemu-system-x86 qemu-utils ovmf cloud-image-utils ubuntu-keyring gpgv \
+    && rm -rf /var/lib/apt/lists/*
+
 # lintian for `just package-lint`, at the version of packaging/lint/pins.txt (a test keeps them in step) from the dated snapshot as the only
 # apt source of this install, so a point release cannot remove it. rpmlint is not installed: Debian's is not the pinned Fedora one, so the
 # gate runs rpmlint, and namcap (not packaged for Debian), in containers. podman (rootless, the host socket is never mounted) and uidmap run

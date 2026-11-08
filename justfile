@@ -118,6 +118,11 @@ script-tests:
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-hardening unit-verify bus-policy
 
+# What the VM target needs on this machine: KVM the user can open, QEMU, OVMF, swtpm, the seed tool, gpgv and the Ubuntu keyring.
+# It fails naming each missing one and never offers software emulation (docs/findings/F150.md).
+vm-host-check:
+    scripts/vm-host-check.sh
+
 # The tests of the package gates and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd, gcc).
 package-gate-test:
     scripts/test-package-scripts.sh
@@ -143,6 +148,7 @@ test-scripts:
     scripts/check-tpm-install-sync.sh
     scripts/test-tpm-install-sync.sh
     scripts/test-with-swtpm.sh
+    scripts/test-vm-host-check.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
