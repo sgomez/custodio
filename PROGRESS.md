@@ -22,3 +22,7 @@ with an empty context.
   Unconfirmed: `-accel help` listing kvm, `gpgv` package name on trixie (the check will show).
 - Not done: the rebuild (a person's); `just vm-host-check` passes only on the rebuilt container. BLOCKED.md written.
 - Next session should: after the rebuild, run `just vm-host-check`; mark host facts **verified** from the pasted output; fix the finding if KVM is absent.
+
+### 2026-11-08 — F150 — attempt 2
+- Done: container rebuilt (crun); `just vm-host-check` exits 0 here (nine OK lines). Evaluator notes checked: the self-test already uses a regular-file KVM stub and exact `MISSING <label>:` matches; the finding now says its first evidence block is the pre-rebuild container.
+- Not done: nothing; the loop runs the `verify`.
