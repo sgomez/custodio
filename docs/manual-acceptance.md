@@ -855,3 +855,114 @@ One copy per machine. Machine ________ OS release ________ kernel ________ TPM (
 
 Report the filled forms to the milestone approver as in section 9. Do not paste key files, copies of the state directory or
 passwords.
+
+## 24. M5 acceptance 17: the PCR mask on Debian 13
+
+On Debian 13 with a TPM: hardware, or a VM with a virtual TPM (the record of step 5 says which). With the repository as the
+current directory, as the user the service seals for (the user of the desktop session; never under `sudo`: the Varlink call
+seals for the user who makes it). Nothing on this page was run on Debian 13 or on a real TPM (**unverified**): the commands ran
+here only on credentials made against a software TPM, and `has-tpm2` in the development container reports `partial`. The
+question is which PCR mask systemd 257 puts in a user-scoped credential: `0x80` means PCR 7 is in it (**PCR 7 confirmed**),
+`0` means it is not (**PCR 7 refuted**). A reading from a credential that is not TPM-bound says nothing about it (step 4).
+
+1. Check the TPM stack. `libtss2-rc` must be installed (`sudo apt install libtss2-rc0t64`):
+
+   ```sh
+   systemd-analyze has-tpm2; echo "exit status $?"
+   ```
+
+   Expected, full support: the first line is `yes`, every flag and library has a `+`, `libtss2-rc.so.0` is listed, and the
+   exit status is 0:
+
+   ```text
+   yes
+   +firmware
+   +driver
+   +system
+   +subsystem
+   +libraries
+     +libtss2-esys.so.0
+     +libtss2-rc.so.0
+     +libtss2-mu.so.0
+   exit status 0
+   ```
+
+   If the first line is not `yes` (`partial` or `no`), or `libtss2-rc.so.0` has a `-`, stop the run: write the output in
+   the record and fix the TPM or the library first. Do not seal a credential on a machine without full support.
+
+2. Seal a credential through the call the service makes: `io.systemd.Credentials.Encrypt` on
+   `/run/systemd/io.systemd.Credentials`, `scope` `user`, no `withKey`, the plaintext in `data` as base64. The `blob` of the
+   reply is the credential, in the format `systemd-creds` writes:
+
+   ```sh
+   name=k; plain=foo
+   varlinkctl call --json=short unix:/run/systemd/io.systemd.Credentials io.systemd.Credentials.Encrypt "{\"name\":\"$name\",\"data\":\"$(printf %s "$plain" | base64 -w0)\",\"scope\":\"user\"}" > reply.json
+   ```
+
+   Then take the blob out of the reply:
+
+   ```sh
+   sed -n 's/.*"blob":"\([^"]*\)".*/\1/p' reply.json > pcr.cred
+   test -s pcr.cred
+   ```
+
+   Expected: no error, and `pcr.cred` is not empty. If `varlinkctl` reports an error, stop and record it. The plaintext is a
+   dummy; delete `reply.json` and `pcr.cred` when the run is done.
+
+3. Read the key identifier and the PCR mask with the harness's reader (`e2e/vm/credread.py`, F157). Its identifier table is the
+   one of `docs/findings/F153.md` (the same for systemd 257 and 259, F110), so the reading needs no version flag. Do not pass
+   `--expect-tpm-bound`: it exits 1 for any mask but 0, and on systemd 257 `0x80` is the expected answer.
+
+   ```sh
+   python3 -I e2e/vm/credread.py pcr.cred
+   ```
+
+   The documented equivalent, for a machine without the repository: it reads the identifier (bytes 0 to 15) and, for the
+   two identifiers that carry a TPM section, the PCR mask (little endian, 8 bytes at offset 48), as in `docs/findings/F153.md`:
+
+   ```sh
+   python3 -I -c '
+   import base64, struct, sys
+   d = base64.b64decode(open(sys.argv[1]).read())
+   i = d[:16].hex()
+   print("id", i, end="")
+   if i in ("93a894094874449090caf2fc93cab553", "ef4ac13679a9480ea7db68897f9f165d"):
+       print(" mask 0x%x" % struct.unpack_from("<Q", d, 48)[0], end="")
+   print()
+   ' pcr.cred
+   ```
+
+   The identifiers it prints, in hex:
+
+   | Reader name | Identifier |
+   |---|---|
+   | `host+tpm2-scoped` | `ef4ac13679a9480ea7db68897f9f165d` |
+   | `host+tpm2` | `93a894094874449090caf2fc93cab553` |
+   | `host-scoped` | `55b9ed1d38594d43a8319d2ebb332ac6` |
+   | `host` | `5a1c6a86df9d4096b1d5a65e0862f19a` |
+   | `null` | `058469daf6f54324800549da0f8ea2fb` |
+
+4. Read the result from what the reader printed. A credential that is not TPM-bound is an **invalid reading**: it says nothing
+   about PCR 7, so never record it as "PCR 7 refuted". Stop, find out why the daemon sealed without the TPM (step 1, the
+   TPM device, `journalctl -u systemd-creds*`), fix it and repeat from step 2.
+
+   | Reader prints | Result |
+   |---|---|
+   | `host+tpm2-scoped mask 0x80` | PCR 7 confirmed |
+   | `host+tpm2-scoped mask 0x0` | PCR 7 refuted |
+   | `host+tpm2-scoped mask` with any other value | recorded as found, not confirmed: write the mask down |
+   | anything else (`host-scoped`, `host`, `null`, `tpm2`, `host+tpm2`, `unknown ...`, or an error) | invalid reading, repeat |
+
+   `host-scoped` is what the daemon returns when it sees no TPM; `unknown` and exit status 1 mean the identifier is not one of
+   `docs/findings/F153.md`.
+
+5. Record in `docs/findings/F166.md` (the rules at the top of `docs/findings.md`): the date, the machine, the systemd version
+   (`systemd-analyze --version | head -1`), whether the TPM is hardware or virtual, the output of `has-tpm2`, the key
+   identifier, the PCR mask, and the result, "PCR 7 confirmed" or "refuted". An invalid reading is not a result: repeat it.
+
+| # | Step | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| 1 | `systemd-analyze has-tpm2` | `yes`, `libtss2-rc.so.0` with `+` | |
+| 2 | `varlinkctl call` Encrypt, scope `user` | a non-empty `pcr.cred` | |
+| 3 | `credread.py pcr.cred` | `host+tpm2-scoped mask 0x...` | |
+| 4 | the table | PCR 7 confirmed or refuted; anything else repeats | |
