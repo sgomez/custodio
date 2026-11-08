@@ -195,3 +195,7 @@ with an empty context.
 - Finding 1: `scripts/test-e2e-sign.sh` compares `sign.jobs()` with a fixed table written in the test (RSA-PKCS per hash, md5sha1, arbitrary, too-long; PSS salts 0/hash/max/over with 222/206/190; composed RSA; ECDSA; composed ECDSA). Controls: a copy of `sign.py` without the max salt job and one without the RSA-PKCS mechanism both differ from the table.
 - Notes: noplain reader grep now matches `np-ec: the credential ... did not pass the reader`; redundant sign grep dropped; the `sign-run.sh` wait loop breaks once `imported` exists.
 - Seconds: test-e2e-sign 6, test-e2e-noplain 2; `just quick` green.
+
+### 2026-11-08 — F163 — attempt 1
+- Done (step 1): real `lacking` guest probe, `docs/findings/F163.md`. Route A (`tpm2_clear` in the guest) works; PCR extend of 0 and 7 works; PolicyPCR fails after extension; PCRs after `vm.sh cycle` equal the first reading (deterministic); `systemd-creds` re-encrypts after the clear. Contract amended with the settled rows (the amendment is in the same commit as the step tick; evaluator should review it). Not probed: `full` mode PCR values (same OVMF). Guest needs `apt-get update` before `tpm2-tools` installs. No qemu/swtpm left.
+- Next session should: step 2 (`scripts/test-e2e-pcr.sh` VM sections first, with the equality judge), then steps 3-6.
