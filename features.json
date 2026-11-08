@@ -55,7 +55,7 @@
         "F154"
       ],
       "verify": "just quick && cargo test -p custodiod --test creds --locked && just mutants-diff F155",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F156",
