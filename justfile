@@ -176,6 +176,7 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
+    scripts/test-ci-e2e-vm.sh
     scripts/test-e2e-vm-cases.sh
     scripts/test-e2e-vm-host.sh
     scripts/test-e2e-vm-kinds.sh

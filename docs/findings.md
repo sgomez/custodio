@@ -91,3 +91,4 @@ Rules:
 - [F159](findings/F159.md) — unpacked swtpm 0.10.2 needs both library dirs on LD_LIBRARY_PATH; the lacking profile passes PTM_INIT; a restart on the same state must omit --profile (0x9 otherwise).
 - [F161](findings/F161.md) — lacking profile without RSA_Decrypt and Sign: P-256 and RSA lack, TPM, systemd-creds, ECC parent still work
 - [F163](findings/F163.md) — tpm2_clear works from the guest (also lacking); PCRs extend through /dev/tpmrm0 and return to the first reading after a power cycle (full and lacking)
+- [F164](findings/F164.md) — CI for the VM target: 26.04 ships swtpm 0.10.1 (no pinned deb), package names, KVM udev step, no whole-run time recorded (timeout 60 min)

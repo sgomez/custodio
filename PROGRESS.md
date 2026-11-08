@@ -259,3 +259,8 @@ with an empty context.
 
 ### 2026-11-08 — F163 — attempt 12
 - No findings pending; all steps ticked. Rechecked on the current tree: `just quick` green (cached ok), `scripts/test-e2e-pcr.sh`, `-tpmclear.sh`, `-upgradekinds.sh` exit 0.
+
+### 2026-11-08 — F164 — attempt 1
+- Done: `.github/workflows/e2e-vm.yml` (trigger `pull_request` only, no filter; VM jobs `vm` matrix full/lacking with `if` = same repository and `startsWith(github.head_ref, 'milestone/')`; udev KVM step, `ls -l /dev/kvm`, `just vm-host-check`, apt packages, nfpm by checksum, actions by SHA; concurrency per PR) and `scripts/test-ci-e2e-vm.sh` (in `test-scripts`; evaluates the head condition on six heads, runs the closing shell on every result; about 50 controls incl. `paths`/`labeled` filters; a fork head `milestone/x` gets RELEASE=false in the closing job (same two-part test) and passes). `e2e.yml` untouched. `actionlint`, `zizmor`, `test-ci-e2e.sh` pass; test runs in ~1.3 s.
+- **Status check for the person to make required: `e2e-vm`** (job `result` of e2e-vm.yml). It is reported on every pull request.
+- Inferred (docs/findings/F164.md, not run, no runner here): swtpm 0.10.1 on 26.04 (so no pinned deb; `vm-host-check` gates `swtpm-profile`), package names, the udev KVM step, `timeout-minutes: 60` (no whole VM run is recorded, so no measured figure). Acceptance 15's observation on the real release is a person's check.

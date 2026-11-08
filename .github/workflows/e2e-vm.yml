@@ -1,0 +1,84 @@
+name: E2E VM
+
+# The end-to-end tests in a VM (Ubuntu 26.04 under QEMU/KVM, a virtual TPM), for the release only: the pull request that `just release` opens
+# from a milestone/* branch. Every other pull request, and every push, does not start it. e2e.yml (containers) is a separate workflow.
+on:
+  pull_request:
+
+permissions: {}
+
+# A re-push to the milestone branch cancels the older run, so two VM runs do not stack.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One job per TPM mode, at once. The condition: a head branch milestone/* of THIS repository (a fork cannot name a branch milestone/x and get
+  # a KVM runner). The head reaches it only through the expression. Without /dev/kvm the job fails (vm-host-check): no software emulation.
+  vm:
+    name: e2e-vm ${{ matrix.mode }}
+    if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'milestone/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60 # no whole run is recorded yet (docs/findings/F164.md); tighten after the first release run
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [full, lacking]
+    env:
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+      MODE: ${{ matrix.mode }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the tag v0.5.0 (M3) is built for the upgrade-m3-* cases (scripts/package-m3.sh)
+      # KVM for user runner (docs/findings/F150.md).
+      - name: Enable KVM for the runner user
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # What the VM (qemu, firmware, seed tool, keyring, swtpm 0.10 from 26.04) and the package build need.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils ovmf cloud-image-utils ubuntu-keyring gpgv swtpm swtpm-tools tpm2-tools libtss2-dev rpm libarchive-tools zstd python3-yaml
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          add-rust-environment-hash-key: false
+          shared-key: package-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
+          save-if: false
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just@1.59.0
+      # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - name: Host check
+        run: |
+          ls -l /dev/kvm
+          just vm-host-check
+      - run: just e2e-vm "$MODE"
+
+  # The status check a person makes required. It runs on every pull request (a required check that is never reported blocks the merge), and
+  # on a release head (the same two-part test as the VM jobs) it fails unless both VM jobs succeeded; on another head it passes.
+  result:
+    name: e2e-vm
+    if: always()
+    needs: [vm]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RELEASE: ${{ github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'milestone/') }}
+          RESULT: ${{ needs.vm.result }}
+        run: |
+          if [ "$RELEASE" = true ]; then
+            [ "$RESULT" = success ] || { echo "e2e-vm: $RESULT"; exit 1; }
+          fi
