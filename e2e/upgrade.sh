@@ -121,7 +121,7 @@ judged "the accounts do not list their own keys, or the certificates are wrong" 
 case_run "$id-keys-listed"
 
 if uk_on; then kinds cursor || fail "no journal cursor before the signing round"; fi
-user_run sign || fail "signing after the upgrade failed"
+user_run sign || { journalctl -u custodio -n 25 --no-pager -o cat 2>&1 | cut -c1-300 >&2; fail "signing after the upgrade failed"; }
 accts sign || fail "the signatures of the two accounts failed"
 judged "alice's signatures are wrong" acct_sign_problems "$ACC" alice
 judged "bob's signatures are wrong" acct_sign_problems "$ACC" bob
