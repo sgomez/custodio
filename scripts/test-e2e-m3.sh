@@ -38,8 +38,6 @@ for T in fedora44 alma10 arch ubuntu2604; do
     [ "$(grep -c "guest.sh $T m3" "$tmp/log")" = 1 ] || bad "$T: the m3 guest run was not made exactly once"
     grep -q ':/pkg-m3/' "$tmp/log" || bad "$T: the M3 package is not mounted"
 done
-expect_ok "refusal-only" ubuntu2404 || true
-! grep -q 'guest.sh ubuntu2404 m3' "$tmp/log" || bad "a refusal-only target made the m3 run"
 STUB_FAIL_M3=fedora44 expect_fail "the m3 run fails" fedora44 || true
 grep -q 'upgrade from the M3 build' "$tmp/out" || bad "a failed m3 run was not named: $(tail -n 3 "$tmp/out")"
 # a selection: the m3 run is made when an upgrade-m3 case is selected, and only then

@@ -3,7 +3,6 @@
 # Containerfile, boots it as a privileged systemd container with the package mounted read-only, runs the shared guest.sh, then
 # checks the case accounting (check-cases.sh) and saves the record of the run (bus daemon, polkit version) under target/e2e/.
 # The packages (N, N+1 for the upgrade case and the old-path fixture) are built by the `e2e` recipe, not here.
-# A target with a refusal-only marker (F50, ubuntu2404) runs only its own cases (e2e/refusal.sh): it needs no package N+1 and no old-path package.
 # A failed target does not stop the others. The guest's E2E-PHASE lines (phase, seconds) go to target/e2e/phases.tsv.
 # F131: E2E_TPM (swtpm, the default, also when unset; none; lacking) says what TPM the service sees. Any other value, an empty one included, is refused before anything starts.
 #       `all` with E2E_TPM unset runs every target with swtpm, and with none too on a target with a tpm-none marker (debian13; never lacking): no suite reads
@@ -13,7 +12,7 @@
 # Usage: run.sh [TARGET]            all the cases of the target (or of every target)
 #        run.sh TARGET --cases NAME...   F63 (`just e2e-cases`): one target and only the cases whose ids equal a NAME or match it as a shell glob
 #                                   (the words after --cases may also come as one word, split on spaces). Every NAME must match a case the target owes (e2e/cases.list
-#                                   plus its own cases.list; a refusal-only target: its own only), else nothing is started. The guest gets the selection in
+#                                   plus its own cases.list), else nothing is started. The guest gets the selection in
 #                                   E2E_SELECT, check-cases.sh requires exactly those cases, and a guest run whose cases are not selected (oldpath) is not made.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -76,7 +75,7 @@ done
 # F63: the selected cases, in the order of the lists, before anything is started
 select_cases() { # select_cases TARGET: sets selection (ids, one per line); refuses a name or glob that matches no case the target owes
     local dir="$targets_dir/$1" universe n id hit
-    universe=$({ [ -f "$dir/refusal-only" ] || cat e2e/cases.list; [ ! -f "$dir/cases.list" ] || cat "$dir/cases.list"; } | grep -v '^[[:space:]]*\(#\|$\)' || true)
+    universe=$({ cat e2e/cases.list; [ ! -f "$dir/cases.list" ] || cat "$dir/cases.list"; } | grep -v '^[[:space:]]*\(#\|$\)' || true)
     for n in "${names[@]}"; do
         [[ $n =~ ^[][A-Za-z0-9._*?-]+$ ]] || { echo "e2e: '$n' is not a case name or a glob of case names" >&2; return 1; }
         hit=''
@@ -133,15 +132,11 @@ run_target() { # run_target TARGET MODE
     for f in Containerfile skip.list package.pattern install.sh probe.sh; do
         [ -f "$dir/$f" ] || { echo "e2e[$t]: $dir/$f is missing" >&2; return 1; }
     done
-    [ -f "$dir/refusal-only" ] || [ -f "$dir/files.sh" ] || { echo "e2e[$t]: $dir/files.sh is missing (the package's file list, for the check that the unit has no test drop-in)" >&2; return 1; }
+    [ -f "$dir/files.sh" ] || { echo "e2e[$t]: $dir/files.sh is missing (the package's file list, for the check that the unit has no test drop-in)" >&2; return 1; }
     bash e2e/check-cases.sh lint "$dir/skip.list" || return 1
     pattern=$(head -n 1 "$dir/package.pattern")
     found=$(find "$packages" -name "$pattern" | sort | tail -n 1)
     [ -n "$found" ] || { echo "e2e[$t]: no package '$pattern' in $packages (the e2e recipe builds it first)" >&2; return 1; }
-    if [ -f "$dir/refusal-only" ]; then
-        # F50: the package never installs here, so there is no N+1 and no old-path package; only the marker lifts the demand
-        [ -f "$dir/cases.list" ] || { echo "e2e[$t]: a refusal-only target needs its own cases.list" >&2; return 1; }
-    else
     found_next=$(find "$packages_next" -name "$pattern" 2> /dev/null | sort | tail -n 1)
     [ -n "$found_next" ] || { echo "e2e[$t]: no package N+1 '$pattern' in $packages_next (the e2e recipe builds it)" >&2; return 1; }
     [ "$(realpath "$found")" != "$(realpath "$found_next")" ] || { echo "e2e[$t]: N and N+1 are the same file" >&2; return 1; }
@@ -162,7 +157,6 @@ run_target() { # run_target TARGET MODE
         [ "$(realpath "$found_m3")" != "$(realpath "$f")" ] || { echo "e2e[$t]: the M3 package is the same file as N or N+1" >&2; return 1; }
     done
     ! cmp -s "$found" "$found_m3" || { echo "e2e[$t]: the M3 package has the same content as N" >&2; return 1; }
-    fi
     # F63: whether a subset needs the extra guest runs (it always does without one)
     run_oldpath=1 run_m3=1
     if [ -n "$subset" ]; then
@@ -171,7 +165,7 @@ run_target() { # run_target TARGET MODE
     fi
     # the cases of every target, and the ones of this target only
     cases=$(mktemp)
-    if [ -f "$dir/refusal-only" ]; then : > "$cases"; else cat e2e/cases.list > "$cases"; fi
+    cat e2e/cases.list > "$cases"
     [ ! -f "$dir/cases.list" ] || cat "$dir/cases.list" >> "$cases"
     echo "e2e[$t]: building the image from $dir/Containerfile"
     # the two modes of a target share the image: one build at a time per target

@@ -21,7 +21,7 @@ description: |
 rpm:
   group: System Environment/Daemons
 # The bound 257 is the first systemd with the user-scoped credential calls over Varlink that custodiod uses (docs/findings/F110.md);
-# ubuntu2404 ships 255 and is no longer installable. The .rpm and the Arch package carry the same bound.
+# Ubuntu 24.04 ships 255 and is no longer installable. The .rpm and the Arch package carry the same bound.
 # systemd is a Pre-Depends, not a Depends: preinst runs systemd-sysusers, and dpkg guarantees Depends only for postinst (docs/decisions.md).
 deb:
   predepends:
@@ -134,7 +134,7 @@ overrides:
       - dbus-system-bus
       - p11-kit
       # TPM2 Software Stack (F125): the three linked libraries, the TCTI that libtss2-tctildr loads by dlopen, and tpm-udev, which creates
-      # the `tss` group the unit names (SupplementaryGroups=tss). The same t64 names on debian13, ubuntu2404 and ubuntu2604.
+      # the `tss` group the unit names (SupplementaryGroups=tss). The same t64 names on debian13 and ubuntu2604.
       - libtss2-esys-3.0.2-0t64
       - libtss2-tctildr0t64
       - libtss2-mu-4.0.1-0t64

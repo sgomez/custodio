@@ -10,10 +10,11 @@ with the ones you downloaded.
 
 ## Supported systems
 
-Debian 13, Ubuntu 26.04, Fedora 44, RHEL/Alma 10 and Arch are maintained and tested. Ubuntu 24.04
-is supported with one extra step: its default system bus must be switched first (see
-[Ubuntu 24.04: switching to dbus-broker](#ubuntu-2404-switching-to-dbus-broker)). The package needs
-a running polkit 124 or later and a system bus that provides `ProcessFD`
+Debian 13, Ubuntu 26.04, Fedora 44, RHEL/Alma 10 and Arch are maintained and tested. Every package
+requires systemd 257 or later, for the user-scoped credential calls that the service makes over Varlink.
+Older systems, Ubuntu 24.04 among them (it has systemd 255), are not supported and are refused by the package
+manager; nothing is installed. The package also needs a running polkit 124 or later
+and a system bus that provides `ProcessFD`
 (see [Why a bus without ProcessFD is refused](#why-a-bus-without-processfd-is-refused)).
 
 ## Installing
@@ -86,12 +87,15 @@ device TCTI (`libtss2-tcti-device`) at run time to reach `/dev/tpmrm0`. The pack
 dependencies, so your package manager installs them; nothing else is needed. The `tss` group, which the
 service unit names so that the service may open the TPM, comes from the TPM package of the family
 (`tpm-udev` on Debian and Ubuntu, `tpm2-tss` on Fedora, RHEL/Alma and Arch). The `systemd` bound is what
-`systemd-creds` needs on the oldest system that shares the package (Ubuntu 24.04 has 255; the `.rpm` and
-Arch package need the user-scoped calls of 257).
+`systemd-creds` needs: every package needs the user-scoped calls of systemd 257.
 
-- deb: `libtss2-esys-3.0.2-0t64`, `libtss2-tctildr0t64`, `libtss2-mu-4.0.1-0t64`, `libtss2-tcti-device0t64`, `tpm-udev`, `systemd (>= 255)`
+- deb: `libtss2-esys-3.0.2-0t64`, `libtss2-tctildr0t64`, `libtss2-mu-4.0.1-0t64`, `libtss2-tcti-device0t64`, `libtss2-rc0t64`, `tpm-udev`, `systemd (>= 257)`
 - rpm: `tpm2-tss`, `systemd >= 257`
 - arch: `tpm2-tss`, `systemd>=257`
+
+On the `.deb`, `libtss2-rc0t64` is listed because systemd loads it by `dlopen` when it seals a credential
+to the TPM, so no link names it. Ubuntu only recommends it, so an installation without recommends would
+lack it and `systemd-creds` would fail.
 
 ## Firefox
 
@@ -136,8 +140,8 @@ The install-time check can end in four ways, and each message points to this pag
   `busctl`) or `dbus` (for `dbus-send`) and retry.
 - `the system bus could not be queried for ProcessFD`: the tool failed for a reason other than a missing
   bus. The message includes its output. Fix that, for example a bus that is stuck, and retry.
-- `the system bus does not provide ProcessFD`: switch to a bus that does. Of the supported systems only
-  Ubuntu 24.04 with its default `dbus-daemon` 1.14 is in this case.
+- `the system bus does not provide ProcessFD`: switch to a bus that does, such as `dbus-broker` or
+  `dbus-daemon` 1.16 or later. None of the supported systems is in this case with its default bus.
 
 To check by hand, on a booted system:
 
@@ -147,30 +151,6 @@ busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus \
 ```
 
 The reply must contain `"ProcessFD" h`.
-
-## Ubuntu 24.04: switching to dbus-broker
-
-Ubuntu 24.04 uses `dbus-daemon` 1.14, which has no `ProcessFD`, so the installation is refused.
-The package never switches the bus itself: switching affects the whole system and takes effect only after a
-reboot, so it is your decision. To switch:
-
-```bash
-sudo apt-get install dbus-broker
-sudo systemctl reboot
-```
-
-After the reboot, check that the bus returns `ProcessFD`:
-
-```bash
-busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus \
-    GetConnectionCredentials s org.freedesktop.DBus | grep -c '"ProcessFD" h'
-```
-
-It prints `1`. Then install the package:
-
-```bash
-sudo apt-get install ./custodio_0.1.0-1_amd64.deb
-```
 
 ## Upgrading
 

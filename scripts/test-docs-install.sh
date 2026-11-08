@@ -62,7 +62,7 @@ check() {
     # Installation per target: the command that the e2e script really ran, in the section of that system.
     local -A heading=(
         [debian13]='^#+ .*Debian 13' [ubuntu2604]='^#+ .*Ubuntu 26\.04' [fedora44]='^#+ .*Fedora 44'
-        [alma10]='^#+ .*(Alma|RHEL)' [arch]='^#+ .*Arch' [ubuntu2404]='^#+ .*Ubuntu 24\.04'
+        [alma10]='^#+ .*(Alma|RHEL)' [arch]='^#+ .*Arch'
     )
     for t in e2e/targets/*/; do
         t=$(basename "$t")
@@ -93,12 +93,20 @@ check() {
     n=$(grep -c 'docs/install.md' packaging/bus-check.sh || true)
     [ "$n" -le "${#phrases[@]}" ] || bad "packaging/bus-check.sh has $n lines pointing to docs/install.md, this test knows ${#phrases[@]} messages"
 
-    # Ubuntu 24.04 stays supported while its e2e target exists (M3 inherits M2's targets), so the switch is documented.
-    [ -d e2e/targets/ubuntu2404 ] || bad "precondition: Ubuntu 24.04 is no longer in the supported set"
-    text=$(section "$doc" '^#+ .*Ubuntu 24\.04')
-    need "$text" 'dbus-broker' "Ubuntu 24.04 section does not name dbus-broker"
-    need "$text" 'reboot' "Ubuntu 24.04 section does not say to reboot"
-    need "$text" 'busctl' "Ubuntu 24.04 section has no busctl check"
+    # The systemd floor: read from the packaging, stated in "Supported systems" with the words for unsupported and refused. No system is
+    # documented below it, so there is no heading for Ubuntu 24.04 and no section on switching the bus.
+    local floor flat
+    floor=$(sed -n 's/^[[:space:]]*- systemd (>= \([0-9][0-9]*\))[[:space:]]*$/\1/p' packaging/nfpm.yaml | head -n 1)
+    [ -n "$floor" ] || bad "cannot read the systemd floor (Pre-Depends) from packaging/nfpm.yaml"
+    text=$(section "$doc" '^#+ .*Supported systems')
+    [ -n "$text" ] || bad "no Supported systems section"
+    flat=$(printf '%s\n' "$text" | tr '\n' ' ' | tr -s ' ')
+    printf '%s\n' "$flat" | grep -Eqi -- "every package requires systemd $floor or later" || bad "Supported systems does not say that every package requires systemd $floor or later"
+    printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* not supported|not supported[^.]*Ubuntu 24\.04' || bad "Supported systems does not say that Ubuntu 24.04 is not supported"
+    printf '%s\n' "$flat" | grep -Eq -- 'refused by the package manager' || bad "Supported systems does not say that older systems are refused by the package manager"
+    printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* is supported' && bad "Supported systems lists Ubuntu 24.04 as supported"
+    [ -z "$(section "$doc" '^#+ .*Ubuntu 24\.04')" ] || bad "a section for Ubuntu 24.04 remains"
+    ! grep -qi 'switching to dbus-broker' "$doc" || bad "the dbus-broker switching section remains"
 
     # Removal and purge.
     text=$(section "$doc" '^#+ .*(Remov|Purg)')
@@ -120,6 +128,12 @@ check() {
         got=$(printf '%s\n' "$text" | grep -E "^- $fmt: " | grep -o "${bt}[^${bt}]*${bt}" | tr -d "$bt" | sort || true)
         [ "$got" = "$want" ] || bad "the $fmt line of the TPM2 Software Stack section is [${got//$'\n'/ }], the packaging declares [${want//$'\n'/ }]"
     done
+    # why the .deb lists libtss2-rc0t64 (the dlopen reason is in the paragraph that names it, outside the lists)
+    local rc
+    rc=$(python3 -I scripts/lib/tss_names.py deb packaging/nfpm.yaml | grep -- '^libtss2-rc' || true)
+    [ -n "$rc" ] || bad "packaging/nfpm.yaml no longer lists libtss2-rc in the .deb Depends; update this test"
+    printf '%s\n' "$text" | awk -v RS= -v n="$rc" 'index($0, n) && $0 !~ /(^|\n)- / { print }' | tr '\n' ' ' | grep -Eq -- 'dlopen' || bad "the TPM2 Software Stack section does not say, next to $rc, that systemd loads it by dlopen"
+    printf '%s\n' "$text" | awk -v RS= -v n="$rc" 'index($0, n) && $0 !~ /(^|\n)- / { print }' | tr '\n' ' ' | grep -Eqi -- 'recommend' || bad "the TPM2 Software Stack section does not say, next to $rc, that an install without recommends lacks it"
 
     # Upgrade.
     text=$(section "$doc" '^#+ .*Upgrad')
@@ -182,10 +196,19 @@ control 'rpm-ostree layering missing' 's/rpm-ostree install/rpm-ostree status/g'
 control 'TPM2 deb name changed' 's/libtss2-mu-4\.0\.1-0t64/libtss2-mu0/'
 control 'TPM2 rpm package changed' 's/^- rpm: \x60tpm2-tss\x60/- rpm: \x60tpm2-tss-libs\x60/'
 control 'TPM2 arch bound changed' 's/systemd>=257/systemd>=255/'
+control 'TPM2 deb libtss2-rc0t64 dropped' 's/^(- deb:.*)\x60libtss2-rc0t64\x60, /\1/'
+control 'TPM2 deb systemd bound changed' 's/systemd \(>= 257\)/systemd (>= 255)/'
+control 'dlopen reason removed' 's/dlopen/loads/g'
+control 'recommends reason removed' 's/[Rr]ecommends/suggestions/g'
+control 'floor stated as 255' 's/requires systemd 257 or later/requires systemd 255 or later/'
+control 'floor sentence removed' 's/systemd 257 or later, for/systemd, for/'
+control 'refusal sentence removed' 's/are refused by/are ignored by/'
+control 'Ubuntu 24.04 listed as supported' 's/^Debian 13, Ubuntu 26.04,/Ubuntu 24.04 is supported. Debian 13, Ubuntu 26.04,/'
 control 'TPM2 deb group package dropped' 's/, \x60tpm-udev\x60//'
+{ cat "$DOC"; printf '\n## Ubuntu 24.04: switching to dbus-broker\n\nsudo apt-get install dbus-broker\n'; } > "$tmp/doc.md"
+if check "$tmp/doc.md" "$README" 2> /dev/null; then echo "control 'dbus-broker section back': a broken document passed" >&2; exit 1; fi
 drop_section 'TPM2 section removed' '^#+ .*TPM2 Software Stack'
 drop_section 'ProcessFD section removed' '^#+ .*ProcessFD'
-control 'no reboot' 's/reboot/restart/g'
 control 'bus-check answer lacking' 's/could not be queried/failed/g'
 control 'bus-check answer lacking (no bus)' 's/no system bus is running/there is no bus/g'
 control 'path changed' 's#/var/lib/private/custodio#/var/lib/other#g'

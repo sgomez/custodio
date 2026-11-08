@@ -83,7 +83,7 @@ exec)
             # the main run reports the common cases and the target's own
             list=$C.main
             : > "$list"
-            [ -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/refusal-only" ] || cat "$STUB_ROOT/e2e/cases.list" > "$list" # F50: a refusal-only target owes none of them
+            cat "$STUB_ROOT/e2e/cases.list" > "$list"
             # F61: the cases of the upgrade from the old path run in their own container, except on a target that has none (skipped in the main run)
             if [ ! -f "${E2E_TARGETS:-$STUB_ROOT/e2e/targets}/$t/no-oldpath" ]; then grep -v '^upgrade-oldpath-' "$list" > "$list.x" || true; mv "$list.x" "$list"; fi
             # F142: the cases of the upgrade from the M3 build run in their own container

@@ -32,23 +32,6 @@ fi
 tpm_mode=${E2E_TPM:-swtpm}
 case $tpm_mode in swtpm | none | lacking) ;; *) fail "E2E_TPM='$tpm_mode' is not set up by this guest (swtpm, none or lacking)" ;; esac
 
-# A refusal-only target (F50) installs nothing: it runs the refusal case only, with no service, key, user session, upgrade or lifecycle step.
-if [ -f /e2e-target/refusal-only ]; then
-    [ "$mode" = main ] || fail "a refusal-only target has no old-package or old-path run"
-    pkg=$(find /pkg -type f | head -n 1)
-    [ -n "$pkg" ] || fail "no package is mounted in /pkg"
-    if phase_runs refusal; then
-        bash /e2e/refusal-selftest.sh || fail "the refusal self-test failed"
-        bash /e2e/refusal.sh "$pkg" || fail "refusal.sh failed"
-        phase_done refusal
-    fi
-    probe=$(bash /e2e-target/probe.sh) || fail "the probe of the bus daemon and polkit failed"
-    while IFS= read -r line; do echo "E2E-RECORD $line"; done <<< "$probe"
-    echo "E2E-RECORD tpm=$tpm_mode" # nothing is installed here, so there is no service to give a TPM to: the mode is only the one asked for
-    echo "e2e: all checks passed (refusal)"
-    exit 0
-fi
-
 start=$(date +%s) # journal checks only look at entries since here
 case $mode in oldpath) from_dir=/pkg-oldpath ;; m3) from_dir=/pkg-m3 ;; *) from_dir=/pkg ;; esac
 pkg=$(find "$from_dir" -type f | head -n 1)

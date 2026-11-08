@@ -63,7 +63,7 @@ TSS_GROUP = {"deb": "tpm-udev", "rpm": "tpm2-tss", "arch": "tpm2-tss"}
 # recommends the package (F154).
 TSS_DLOPEN = {"deb": ["libtss2-tcti-device0t64", "libtss2-rc0t64"], "rpm": [], "arch": []}
 # The systemd bound per format (docs/findings/F110.md, F154): every package requires 257, the first systemd with the user-scoped credential
-# calls over Varlink that the service uses; ubuntu2404 (255) is not supported. The deb carries it in Pre-Depends (PRE_DEPS), the others in
+# calls over Varlink that the service uses; Ubuntu 24.04 (255) is not supported. The deb carries it in Pre-Depends (PRE_DEPS), the others in
 # their dependency list.
 TSS_NEEDED = {  # soname -> package (deb, rpm, arch); check-tss-deps.sh reads these
     "libtss2-esys.so.0": ("libtss2-esys-3.0.2-0t64", "tpm2-tss", "tpm2-tss"),

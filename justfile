@@ -200,7 +200,6 @@ test-scripts:
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
-    scripts/test-e2e-refusal.sh
     scripts/test-e2e-oldpath.sh
     scripts/test-e2e-import.sh
     scripts/test-relabel.sh

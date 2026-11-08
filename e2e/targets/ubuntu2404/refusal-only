@@ -1,2 +1,0 @@
-This target runs only the refusal case (e2e/refusal.sh): the package must not install on its bus (dbus-daemon, no ProcessFD).
-The presence of this file is the marker; e2e/run.sh and e2e/guest.sh read it.

@@ -3,7 +3,7 @@
 This page has four parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
 Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the
 `journalctl` query). Sections 10 to 15 are the M2 steps for `fedora44`, `bazzite`, `omarchy` and
-`ubuntu2404` (the M2 acceptance 12 to 15); start at section 10. Sections 16 to 19 are the M3 steps (the M3
+`ubuntu2404` (the M2 acceptance 12 to 15; the `ubuntu2404` part, section 14, no longer applies: the system is not supported); start at section 10. Sections 16 to 19 are the M3 steps (the M3
 acceptance 14 to 16: the client API by hand, a flatpak, Firefox and LibreOffice with a second account); start at
 section 16. Sections 20 to 23 are the M4 steps (the M4 acceptance 13 to 15: a hardware TPM, a VM without a TPM and a copy of
 the state directory); start at section 20. Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
@@ -473,44 +473,12 @@ package file names. A polkit dialog is expected for every signature.
    Privacy & Security > Security Devices, or `modutil`)? ______________________
    The milestone approver settles the open question from this answer; do not decide it in the notes.
 
-## 14. ubuntu2404, dbus-broker (acceptance 15)
+## 14. ubuntu2404 (acceptance 15): no longer applicable
 
-Record first (section 10), before and after the switch (the bus daemon changes): `cat /etc/os-release; uname -r;
-dbus-daemon --version; pkaction --version; ls -l custodio*` (the package file names), then `dbus-broker --version` after the switch.
-
-1. Before the switch, install the `.deb`; it must be refused (`dpkg -i` runs the package's `preinst` check directly and shows its message, without resolving dependencies first):
-
-   ```sh
-   sudo dpkg -i custodio_0.1.0-1_amd64.deb
-   ```
-
-   Expected: non-zero exit and the message `does not provide ProcessFD`. The account and the state are not created:
-   `getent passwd custodio` prints nothing, and `/var/lib/custodio` does not exist. Write the output.
-2. Switch to `dbus-broker` and reboot, as in `docs/install.md` ("Ubuntu 24.04: switching to dbus-broker"):
-
-   ```sh
-   sudo apt-get install dbus-broker
-   sudo systemctl reboot
-   ```
-3. After the reboot, what to check, with the commands (checked in the F57 run). Write what broke:
-
-   | Check | Command | Expected | What broke |
-   |---|---|---|---|
-   | the desktop session | log in; `echo $XDG_SESSION_TYPE` | the desktop starts | |
-   | logind | `loginctl list-sessions` | your session is listed, `active` | |
-   | the polkit agent | run `pkexec true` in the session | the dialog appears; approved, exit 0 (GNOME's agent is in `gnome-shell`: `pgrep -a polkit` shows only `polkitd`) | |
-   | NetworkManager | `systemctl is-active NetworkManager; nmcli general status` | `active`, connected | |
-   | bus daemon | `busctl status \| head -n 3`; `systemctl status dbus-broker` | `dbus-broker` | |
-4. Install (`apt-get` here, so that any missing dependency is installed too):
-
-   ```sh
-   sudo apt-get install ./custodio_0.1.0-1_amd64.deb
-   ```
-
-   Import both keys (`custodio import`). Sign with the polkit dialog each time
-   (twice for each key) and cancel once for each: the signature fails.
-5. Whether switching to dbus-broker is acceptable on Ubuntu 24.04, from the table above: ______________________
-   The milestone approver settles the open question on refusing Ubuntu 24.04 altogether.
+Ubuntu 24.04 (`ubuntu2404`) is no longer a supported system: it has systemd 255, and every package requires systemd 257
+or later, so the package manager refuses the installation before the bus is looked at (see "Supported systems" in
+`docs/install.md`). The steps of this section (the refusal, the switch to `dbus-broker`, and signing after it) are not
+followed any more; they stay in the git history of this page. Leave the row of the result form for `ubuntu2404` as "not run".
 
 ## 15. M2 result form
 
@@ -524,7 +492,7 @@ package file names ________
 | 12 fedora44 (SELinux, Firefox, journal) | | |
 | 13 bazzite (layering, replace, OS update) | | |
 | 14 omarchy (Quickshell, Firefox) | | |
-| 15 ubuntu2404 (refusal, switch, signing) | | |
+| 15 ubuntu2404 (no longer applicable: systemd 255 is refused by the package manager) | not run | |
 
 Report the filled forms to the milestone approver as in section 9. Do not paste key files or passwords.
 
