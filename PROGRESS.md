@@ -73,3 +73,8 @@ with an empty context.
 ### 2026-11-08 — F156 — attempt 3
 - Done: NEXT_FINDINGS fixed. `scripts/test-ci-e2e.sh` has a `ghost-target` control (adds `ubuntu2404` to the e2e matrix; the script must report the unknown target); passes.
 - Kept references (named): `scripts/lib/bus-fixtures.sh` and `scripts/test-bus-check.sh:155` (fake os-release for the bus check), `scripts/test-check-budgets.sh:11-12` (its own fixture), `test-docs-manual.sh` (the n/a part). `budgets.tsv` untouched.
+
+### 2026-11-08 — F157 — attempt 1
+- Done: `e2e/vm/credread.py` (stdlib only, from F153's tables), `e2e/vm/mkcreds.sh` (7 live `systemd-creds` 257.13 fixtures in one swtpm session, each checked to decrypt), `scripts/test-vm-credread.sh` (in `just test-scripts`; ~1 s). Told-apart table, `--expect-tpm-bound`/`--systemd-version`, distinct reasons, cuts (cut points from the file's own sizes, TPM section asserted to end at 344), corrupted `iv_size`/blob size, non-base64, unknown id, negative control (mask check sed-patched out). `just quick` green; the script passes.
+- Rules: file is text if all bytes are printable ASCII/whitespace and then must strictly decode as base64 (else `malformed`); otherwise raw. Empty `--tpm2-pcrs=` gives mask 0 on 257.13 (checked). Dropped the redundant "mask ignorable" `--expect` variant beyond the one negative control.
+- Next session should: nothing; the loop runs the `verify`.

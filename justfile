@@ -148,6 +148,7 @@ test-scripts:
     scripts/check-tpm-install-sync.sh
     scripts/test-tpm-install-sync.sh
     scripts/test-with-swtpm.sh
+    scripts/test-vm-credread.sh
     scripts/test-vm-host-check.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
