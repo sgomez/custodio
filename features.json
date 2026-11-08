@@ -27,7 +27,7 @@
         "F151"
       ],
       "verify": "f=docs/findings/F152.md && grep -q '^## F152' \"$f\" && for w in 'tpm-filter' 'profile' 'RSA' 'P-256' 'systemd-creds' '/dev/tpmrm0' 'tpm2-tools' 'parent'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F152.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F153",
