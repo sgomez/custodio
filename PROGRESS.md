@@ -26,3 +26,9 @@ with an empty context.
 ### 2026-11-08 — F150 — attempt 2
 - Done: container rebuilt (crun); `just vm-host-check` exits 0 here (nine OK lines). Evaluator notes checked: the self-test already uses a regular-file KVM stub and exact `MISSING <label>:` matches; the finding now says its first evidence block is the pre-rebuild container.
 - Not done: nothing; the loop runs the `verify`.
+
+### 2026-11-08 — F151 — attempt 1
+- Done: `docs/findings/F151.md` (+ index): image/checksum URLs, serial, retention (oldest listed serial 2026-04-23), verified download with negative controls, QEMU command line, serial-console channel with `cloud-localds` seed, guest facts, `has-tpm2` before/after, power cycle with control. All contract steps ticked; `verify` greps pass, `just quick` green.
+- Decisions: channel = serial console on a unix socket (no `ssh` in the container); seed tool `cloud-localds`.
+- Known: `libtss2-rc0t64` alone leaves `has-tpm2` `partial`; esys and mu are also needed (tpm2-tools pulls them). One idle `swtpm` (pid 32088, from my first failed start) cannot be killed from the tool sandbox (`Permission denied`); it ends with the container. No qemu left; the `/tmp` dir is removed.
+- Next session should: nothing for F151; the loop runs the `verify`.
