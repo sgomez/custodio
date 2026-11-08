@@ -110,7 +110,7 @@
         "F159"
       ],
       "verify": "just quick && scripts/test-e2e-vm-cases.sh && scripts/test-e2e-skips.sh && scripts/test-e2e-vm-host.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F161",
