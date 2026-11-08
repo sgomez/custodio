@@ -40,7 +40,7 @@ grep -v '^pcr-extended-signs$' "$LIST" > "$tmp/l1"; differs "$LIST" "$tmp/l1" li
 bash "$CHK" lint "$VSKIP" || bad "skip.list does not lint"
 
 # ---- scripts
-SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh"
+SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh tpmkind-cases.sh"
 stage() { # stage DIR: copies the case scripts
     local s; mkdir -p "$1/vm"; for s in $SCRIPTS; do cp "$ROOT/e2e/$s" "$1/$s"; done
 }

@@ -19,6 +19,7 @@
 # F141: the upgrade-kinds-before, -kept and -signs cases run in every TPM mode: skipped fails the accounting in any mode; upgrade-kinds-tpmbound is skipped in every mode (SPEC_DEVIATIONS.md, F134) and refused reported run.
 # F160: CHECK_VM=1 says the run is a VM run (e2e/vm/run.sh). The VM always has a TPM, so a VM run is accounted as swtpm unless CHECK_TPM_MODE says lacking (the pcr-*, tpm-clear-*
 # cases never skipped), and fallback-tpmbound-* and upgrade-kinds-tpmbound are accepted reported run and refused reported skipped, even when a skip list names them. Unset: nothing changes.
+# F161: in a VM run (CHECK_VM) a tpm-kind-* case is refused skipped in both modes, a vm-silent-* case in the lacking mode only, whatever a skip list says.
 # Skip list format: one `case: reason` per line, the case being [A-Za-z0-9._-]+ and the reason not empty; `#` starts a comment
 # line; blank lines are ignored; a case appears once. Unused entries are reported on stderr and do not fail.
 set -euo pipefail
@@ -76,6 +77,11 @@ check() {
                 case $id in upgrade-kinds-tpmbound) echo "check-cases: case '$id' cannot be run (deviation F134) and was reported run" >&2; bad=1 ;; esac
                 case $id in fallback-tpmbound-*) echo "check-cases: case '$id' cannot be run (deviation F134) and was reported run" >&2; bad=1 ;; esac
             fi
+        fi
+        # F161: in a VM run the tpm-kind-* cases run in both modes (full: tpm; lacking: encrypted-tpm), and the vm-silent-* cases run in lacking (they need an encrypted-tpm import)
+        if [ "$kind" = skipped ] && [ -n "${CHECK_VM:-}" ]; then
+            case $id in tpm-kind-*) echo "check-cases: case '$id' must run in a VM run and was skipped" >&2; bad=1 ;; esac
+            case $id in vm-silent-*) [ "${CHECK_TPM_MODE:-}" != lacking ] || { echo "check-cases: case '$id' must run in a lacking VM run and was skipped" >&2; bad=1; } ;; esac
         fi
         if [ "$kind" = skipped ] && [ "${CHECK_TPM_MODE:-}" = swtpm ]; then
             case $id in tpm-kind-*) echo "check-cases: case '$id' needs the swtpm mode and was skipped in it" >&2; bad=1 ;; esac

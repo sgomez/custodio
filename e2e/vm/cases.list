@@ -1,7 +1,7 @@
 # Every case of a VM run (F160), one id per line. A VM run must report each exactly once, as run or skipped (check-cases.sh with CHECK_VM=1).
 # The cases of the groups sign-*, noplain-*, pcr-*, fallback-*, tpm-clear-* and upgrade-kinds-* keep the ids the container scripts report: the VM reuses
 # their scripts. What a container case of those groups does not do in a VM is named, with a reason, in omitted.list. The VM-only cases (vm-*) are judged by
-# e2e/vm/judge.sh. The cases of the later features (tpm-kind-* and others, F161 and after) are added by those features.
+# e2e/vm/judge.sh. tpm-kind-* (F161) run in both modes. The cases of the later features are added by those features.
 sign-kind-matches-mode
 sign-rsa-pkcs
 sign-rsa-pss-sha256
@@ -16,6 +16,11 @@ noplain-no-key-file
 pcr-extended-signs
 pcr-restarted-signs
 pcr-signs-every-key
+tpm-kind-import-rsa
+tpm-kind-import-ec
+tpm-kind-api-list
+tpm-kind-cli-list
+tpm-kind-journal
 fallback-tpmbound-import
 fallback-tpmbound-cli-list
 tpm-clear-sign-fails

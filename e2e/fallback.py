@@ -6,11 +6,15 @@ The kind is compared by exact value, never by a substring: "tpm" and "encrypted-
   fallback.py why FILE...              the Storage line of each import output says the key is weaker than a TPM key and the reason: this machine has no TPM
   fallback.py api FILE ID:KEYTYPE...   owner-call.py list output ("ID<TAB>TYPE<TAB>KIND"): each ID once, with KEYTYPE and kind encrypted-host
   fallback.py cli FILE ID:KEYTYPE...   `custodio list` output: the block of each ID once, with `type: KEYTYPE` and `kind: encrypted-host`
+F161: `fallback.py --mode lacking|full SUBCOMMAND ...` judges a VM run. lacking: kind encrypted-tpm, and `why` wants "weaker than a TPM key" and the reason "lacks a capability".
+full: kind tpm for every key and `why` wants no word "weaker" in any output. No --mode (or --mode none) is the container run above.
 """
 import re
 import sys
 
 KIND = "encrypted-host"
+MODE = "none"
+REASON = "no TPM"
 
 
 def read(path):
@@ -51,10 +55,14 @@ def why_problems(paths):
         if len(storage) != 1:
             out.append(f"{path}: {len(storage)} Storage lines, expected 1")
             continue
+        if MODE == "full":
+            if "weaker" in read(path):
+                out.append(f"{path}: the output speaks of a weaker kind, but the key is in the TPM")
+            continue
         if not re.search(r"\bweaker than a TPM key\b", storage[0]):
             out.append(f"{path}: the Storage text does not say the key is weaker than a TPM key")
-        if "no TPM" not in storage[0]:
-            out.append(f"{path}: the Storage text does not give the reason (no TPM)")
+        if REASON not in storage[0]:
+            out.append(f"{path}: the Storage text does not give the reason ({REASON})")
     return out
 
 
@@ -110,6 +118,14 @@ def cli_problems(path, specs):
 
 
 def main(argv):
+    global KIND, MODE, REASON
+    if argv[:1] == ["--mode"] and len(argv) >= 2:
+        if argv[1] not in ("none", "full", "lacking"):
+            sys.exit(f"fallback: unknown mode {argv[1]!r}")
+        MODE = argv[1]
+        KIND = {"none": KIND, "full": "tpm", "lacking": "encrypted-tpm"}[MODE]
+        REASON = "lacks a capability" if MODE == "lacking" else REASON
+        argv = argv[2:]
     if len(argv) == 4 and argv[0] == "import":
         problems = import_problems(*argv[1:])
     elif len(argv) >= 2 and argv[0] == "why":

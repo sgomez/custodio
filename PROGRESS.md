@@ -151,3 +151,11 @@ with an empty context.
 - Timings: `test-vm-modes.sh` passes (<10 s); guest boot+apt probe ~2 min. VM stopped, no qemu/swtpm left.
 - Note for the Cost section: the step-1 probe was a separate guest boot (~1 min of commands), not shared with step 5.
 - Next session should: steps 2-6 (kind judgements first, `test-e2e-vm-kinds.sh` failing first).
+
+### 2026-11-08 — F161 — attempt 2
+- Done (step 2): `tpmkind.py --mode swtpm|full|lacking` (no flag = container, unchanged); `fallback.py --mode none|full|lacking`; `tpmkind_judge` in `tpmkind-lib.sh` (shared by `tpmkind-run.sh` and the self-test);
+  `tpmkind-run.sh` VM branch (`E2E_VM=1`: swtpm→full, lacking→lacking + reader); `tpmkind-user.sh` waits (`TK_READ`) so root reads the credentials before the deletes; `e2e/vm/credrec.py` + `e2e/vm/cred-lib.sh`
+  (`vm_read_credential ID`, reused by F162/F163); `check-cases.sh` VM rules (tpm-kind-* never skipped in a VM run, vm-silent-* never skipped in lacking); the five ids in `e2e/vm/cases.list`;
+  `scripts/test-e2e-vm-kinds.sh` (in `just test-scripts`). Container scripts `test-e2e-tpm-kind.sh` (mutant sed adapted to `KIND`), `-skips`, `-vm-cases` pass.
+- Placeholder: `scripts/test-e2e-vm-silent.sh` exits 1 until step 4 (it is already in `just test-scripts`, so `just quick` is red until then).
+- Next session: step 3 (fallback.py VM branch of fallback-run.sh, test-e2e-fallback.sh VM section), step 4 (silent), probes (5, 6), `just quick`.

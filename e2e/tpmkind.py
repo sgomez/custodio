@@ -6,12 +6,17 @@ The kind is compared by exact value "tpm" (the wire name), never by a substring:
   tpmkind.py api FILE ID:KEYTYPE...      owner-call.py list output ("ID<TAB>TYPE<TAB>KIND"): each ID once, with KEYTYPE and kind tpm
   tpmkind.py cli FILE ID:KEYTYPE...      `custodio list` output: the block of each ID once, with `type: KEYTYPE` and `kind: tpm`
   tpmkind.py journal FILE ID...          `journalctl -o json` rows: per ID exactly one import entry of custodio.service, outcome stored, kind tpm
+F161: `tpmkind.py --mode full|lacking SUBCOMMAND ...` (a VM run; no --mode, or --mode swtpm, is the container run above). full: kind tpm for every key, nothing called weaker.
+lacking: kind encrypted-tpm for every key (RSA 2048 and P-256 alike), and the import output says the key is weaker than a TPM key and why: the TPM of this machine lacks a capability.
 """
 import json
 import re
 import sys
 
 TPM = "tpm"
+ETPM = "encrypted-tpm"
+WEAK_STORAGE = re.compile(r"Storage: encrypted-tpm\. This key is weaker than a TPM key: the TPM of this machine lacks a capability\b.*")
+KIND = TPM  # the kind every key of the run must have; set by --mode
 UNIT = "custodio.service"
 
 
@@ -23,9 +28,12 @@ def import_problems(path, key_id, key_type):
     storage = [ln for ln in lines if ln.startswith("Storage:")]
     if len(storage) != 1:
         out.append(f"{path}: {len(storage)} Storage lines, expected 1")
+    elif KIND == ETPM:
+        if not WEAK_STORAGE.fullmatch(storage[0]):
+            out.append(f"{path}: the Storage line is {storage[0]!r}, expected kind {ETPM} saying the key is weaker than a TPM key because the TPM lacks a capability")
     elif not re.fullmatch(r"Storage: tpm\. The key is in the TPM and cannot be copied out of it\.", storage[0]):
         out.append(f"{path}: the Storage line is {storage[0]!r}, expected kind tpm")
-    if any("weaker" in ln for ln in lines):
+    if KIND == TPM and any("weaker" in ln for ln in lines):
         out.append(f"{path}: the output speaks of a weaker kind")
     return out
 
@@ -52,8 +60,8 @@ def api_problems(path, specs):
             continue
         if mine[0][1] != key_type:
             out.append(f"{key_id}: key type {mine[0][1]!r}, expected {key_type!r}")
-        if mine[0][2] != TPM:
-            out.append(f"{key_id}: kind {mine[0][2]!r}, expected {TPM!r}")
+        if mine[0][2] != KIND:
+            out.append(f"{key_id}: kind {mine[0][2]!r}, expected {KIND!r}")
     return out
 
 
@@ -76,8 +84,8 @@ def cli_problems(path, specs):
             continue
         if mine[0].get("type") != key_type:
             out.append(f"{key_id}: type {mine[0].get('type')!r}, expected {key_type!r}")
-        if mine[0].get("kind") != TPM:
-            out.append(f"{key_id}: kind {mine[0].get('kind')!r}, expected {TPM!r}")
+        if mine[0].get("kind") != KIND:
+            out.append(f"{key_id}: kind {mine[0].get('kind')!r}, expected {KIND!r}")
     return out
 
 
@@ -93,12 +101,18 @@ def journal_problems(path, ids):
         e = mine[0]
         if e.get("CUSTODIO_OUTCOME") != "stored":
             out.append(f"{key_id}: outcome {e.get('CUSTODIO_OUTCOME')!r}, expected 'stored'")
-        if e.get("CUSTODIO_STORAGE_KIND") != TPM:
-            out.append(f"{key_id}: CUSTODIO_STORAGE_KIND {e.get('CUSTODIO_STORAGE_KIND')!r}, expected {TPM!r}")
+        if e.get("CUSTODIO_STORAGE_KIND") != KIND:
+            out.append(f"{key_id}: CUSTODIO_STORAGE_KIND {e.get('CUSTODIO_STORAGE_KIND')!r}, expected {KIND!r}")
     return out
 
 
 def main(argv):
+    global KIND
+    if argv[:1] == ["--mode"] and len(argv) >= 2:
+        if argv[1] not in ("swtpm", "full", "lacking"):
+            sys.exit(f"tpmkind: unknown mode {argv[1]!r}")
+        KIND = ETPM if argv[1] == "lacking" else TPM
+        argv = argv[2:]
     if len(argv) >= 4 and argv[0] == "import" and len(argv) == 4:
         problems = import_problems(*argv[1:])
     elif len(argv) >= 3 and argv[0] == "api":
