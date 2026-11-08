@@ -474,6 +474,19 @@ e2e-packages: package
 e2e-cases target +names: e2e-packages
     bash e2e/run.sh {{target}} --cases {{quote(names)}}
 
+# F160: one run of the e2e cases in a VM (Ubuntu 26.04 under QEMU/KVM, a virtual TPM): `just e2e-vm full` or `lacking` (the TPM mode, e2e/vm/vm.sh). The package is built and installed with apt
+# `--no-install-recommends`, the shared setup and every case of e2e/vm/cases.list run in the guest, and the record goes to target/e2e/vm.<mode>.record. The mode is checked before a package is built.
+e2e-vm mode: (e2e-vm-check mode) e2e-packages
+    bash e2e/vm/run.sh {{mode}}
+
+# Like `e2e-vm` for the cases whose ids equal a name or match it as a glob (e.g. `just e2e-vm-cases full 'sign-*'`); a name that matches no case of e2e/vm/cases.list is refused before anything starts.
+e2e-vm-cases mode +names: (e2e-vm-check mode quote(names)) e2e-packages
+    bash e2e/vm/run.sh {{mode}} {{quote(names)}}
+
+# The checks that come before anything is built or started (the mode, the names)
+e2e-vm-check mode names='':
+    bash e2e/vm/run.sh --check {{mode}} {{names}}
+
 # Slow checks (later features add to it): everything in `check`, the memory-safety checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.
 check-slow: check memory-safety mutants coverage-gate package-gates

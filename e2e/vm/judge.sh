@@ -65,11 +65,13 @@ vm_judge_via_device() {
     ! grep -qE -- 'socket:|swtpm|\.sock' "$2" 2> /dev/null || echo "the service holds a socket to a TPM, not the device"
 }
 
-# vm_collect_install DEB: run in the guest right after the package install and before any test tool: the facts the install-time cases judge
+# vm_collect_install DEB HAS2_OUTPUT HAS2_RC: run in the guest right after the package install and before any test tool: the facts the install-time cases judge.
+# The driver read `systemd-analyze has-tpm2` itself at that moment and passes what it saw.
 vm_collect_install() {
     local deb=$1 f=$VM_FACTS pkgs p r
     mkdir -p "$f"
-    systemd-analyze has-tpm2 > "$f/has2.out" 2>&1 && echo 0 > "$f/has2.rc" || echo $? > "$f/has2.rc"
+    printf '%s\n' "$2" > "$f/has2.out"
+    printf '%s\n' "$3" > "$f/has2.rc"
     # the first line of the output is the verdict (`yes`, `partial` or `no`)
     head -n 1 "$f/has2.out" > "$f/has2.verdict"
     grep '^Commandline:' /var/log/apt/history.log | sed 's/^Commandline: / /; s/$/ /' > "$f/apt-commandlines" || true
