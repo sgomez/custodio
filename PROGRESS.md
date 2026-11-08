@@ -38,3 +38,8 @@ with an empty context.
 - Decisions: none lasting beyond the finding.
 - Known: two idle `swtpm` (pids 32088, 96049) cannot be killed from the tool sandbox; they end with the container. The service's own capability code was not run in the guest (tpm2-tools issued the same queries).
 - Next session should: nothing for F152; the loop runs the `verify`. The VM-harness feature reads the finding (profile files, `ecc-min-size=384`, never combine with `rsa-min-size=3072`).
+
+### 2026-11-08 — F152 — attempt 2
+- Done: NEXT_FINDINGS fixed in `docs/findings/F152.md` (+ index line). (1) The api.md reading is corrected: curve and parent rows are "yes" for RSA too, so r2e/r2g (and r1b/r1c) make both key types *lacks*. (2) New boot r2h (fresh state, `swtpm` 0.10.2 profile with `Commands` minus `0x15d` `TPM2_Sign`): P-256 lacks via `command Sign`, RSA stays ready, and the kernel TPM, `systemd-creds` (root and `--user`, SRK ECC), the ECC parent and a child create/load all pass. The Decision now says P-256 gets `encrypted-tpm` by removing `Sign`, never `ecc-min-size=384`. (3) The Leftovers section quotes the real `pgrep` output and the `kill` error. The "TPM parent" decision is named. `verify` greps pass, `just quick` green.
+- Known: the two idle `swtpm` (32088, 96049) still cannot be killed from the sandbox. A profile with both `RSA_Decrypt` and `Sign` removed was not booted (marked inferred).
+- Next session should: nothing for F152; the loop runs the `verify`.
