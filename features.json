@@ -45,7 +45,7 @@
       "description": "Design 4 and Design 5, packages. Design 4. `packaging/nfpm.yaml` makes the `.deb` depend (not recommend) on `libtss2-rc0t64`, next to the TPM2 Software Stack libraries it already declares, with a comment saying systemd loads `libtss2-rc` by `dlopen` and Ubuntu only recommends it. The `.rpm` and Arch package keep `tpm2-tss`, which ships every `libtss2` library. The dependency gate (`scripts/check-tss-deps.sh` / `scripts/check_tss_deps.py`, run by `just package`) requires `libtss2-rc0t64` in the `.deb`'s Depends and fails on a `.deb` that lacks it or only recommends it; its self-test `scripts/test-check-packages-deps.sh` gains those negative controls. The `.deb`'s `Pre-Depends` on systemd rises from 255 to 257 (the comment that cites ubuntu2404 is updated); the `.rpm` and the Arch package keep `systemd >= 257`. The package gate (`scripts/check-packages.sh`, run by `just package`) checks that each of the three formats requires systemd 257 or later, and fails on a package that has no systemd requirement or allows anything older; its self-test `scripts/test-check-packages.sh` gains a negative control per format (a fixture package allowing 255). The real-dpkg lifecycle test (`scripts/test-deb-lifecycle-real.sh`) gains a case where dpkg refuses the `.deb` on a root whose systemd is 255, with a message naming the systemd version; like every lifecycle test it runs at the checkpoint, not in this `verify`.",
       "depends_on": [],
       "verify": "just quick && scripts/test-check-packages-deps.sh && scripts/test-check-packages.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F155",
