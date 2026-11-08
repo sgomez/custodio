@@ -121,3 +121,8 @@ with an empty context.
 - Not done: step 5 (the real probe: `vm.sh start full`, copy, `apt-get`, has-tpm2, judges in a real guest, copy time). Needs `just package` (cargo build) and a network route in the guest; no time left in this session. Unticked in the contract.
   Note the driver guest `run` goes through the serial channel as `ubuntu` with sudo; `sudo` presence and the `tar`/`mv` placement of the files are unproven in a real guest.
 - Next session should: do step 5 (probe), adjust the judges/driver from what it shows, then tick step 5 and run step 6 (`just quick`, the four scripts, `test-e2e-host.sh`); record the seconds (2 s each here).
+
+### 2026-11-08 — F160 — attempt 2
+- Probe (step 5, partly): `vm.sh start full` works (boot 14 s, image check 19 s, stop 90 s with a defunct qemu left until reaped). Guest has network (`curl archive.ubuntu.com` 200). Serial `put`: 300 KB in 20.7 s, 1.5 MB in 101 s (about 15 KB/s); the real `.deb` is 4.5 MB (x2) → over 10 min of copy, over the 5 min limit of the contract → `BLOCKED.md` with the options. Not probed: install, has-tpm2, judges, the TPM signal.
+- Fixed: `e2e/vm/run.sh` guard named `p11-kit` and `polkitd` as test tools but the real package depends on them (nfpm.yaml); now only pure test tools. `scripts/test-e2e-vm-host.sh`: flaky (1 in 3) because control copies were written into the e2e tree while a good run tarred it; the good runs now launch after every `mkctl`. 6 runs in a row green (about 2 s each).
+- Step 5 and 6 stay unticked.

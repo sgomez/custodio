@@ -70,9 +70,6 @@ rcof() { cat "$tmp/$1/rc" 2> /dev/null || echo none; }
 
 # ---- start everything at once
 STEPS_ORDER=('^image' '^vm start' '^vm put .*custodio_1.2.3' '^vm put .*custodio_1.2.4' '^vm put .*e2e.tar' 'apt-get update' 'install -y --no-install-recommends /pkg/custodio_1.2.3' 'systemd-analyze has-tpm2' 'install -y --no-install-recommends tpm2-tools' 'guest.sh' '^vm stop')
-E2E_OUT_DIR=$tmp/shared launch good-full "$DRV" full STUB_CASES=
-E2E_OUT_DIR=$tmp/shared launch good-lacking "$DRV" lacking STUB_CASES=
-launch good-sel "$DRV" full STUB_CASES=
 mkctl noflag 's/ --no-install-recommends \/pkg\// \/pkg\//'
 mkctl dpkgi 's/sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \/pkg\//sudo dpkg -i \/pkg\//'
 mkctl toolsfirst '/^gt 900 .*\$TOOLS/d; /gt 300 "sudo apt-get update"/i gt 900 "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $TOOLS" >> "$log" 2>\&1'
@@ -84,6 +81,10 @@ mkctl wrongmode 's/\[tpm\]=\$mode/[tpm]=lacking/'
 mkctl hostapt '/^started=/i apt-get install -y tpm2-tools >/dev/null 2>\&1 || true'
 mkctl notrap 's/^trap cleanup EXIT$/:/; s/^trap .echo "e2e-vm: interrupted.*$/:/; s/^trap .echo "e2e-vm: terminated.*$/:/'
 mkctl noaccount 's/^CHECK_VM=1 CHECK_TPM_MODE=\$tpm bash e2e\/check-cases.sh/true # /'
+# the control copies are all written before any run starts: the driver tars the e2e tree and must not see it change
+E2E_OUT_DIR=$tmp/shared launch good-full "$DRV" full STUB_CASES=
+E2E_OUT_DIR=$tmp/shared launch good-lacking "$DRV" lacking STUB_CASES=
+launch good-sel "$DRV" full STUB_CASES=
 launch c-noflag "$R/e2e/vm/run-noflag.sh" full STUB_CASES=
 launch c-dpkgi "$R/e2e/vm/run-dpkgi.sh" full STUB_CASES=
 launch c-toolsfirst "$R/e2e/vm/run-toolsfirst.sh" full STUB_CASES=
@@ -226,7 +227,7 @@ grep -q 'terminated' "$tmp/s-TERM/out.txt" || bad "s-TERM: no message naming the
 [ -s "$tmp/good-full/log" ] && ! grep -q 'tpm2-tools' "$tmp/good-full/host" 2> /dev/null || true
 for n in good-full good-lacking; do grep -q 'tpm2-tools' "$tmp/$n/log" || bad "$n: the tools install is not in the guest log"; done
 c="f-baddeb"; deps=$(dpkg-deb -f "$tmp/pkbad/custodio_1.2.3_amd64.deb" Depends); grep -qw tpm2-tools <<< "$deps" || bad "the fake .deb does not depend on tpm2-tools"
-deps=$(dpkg-deb -f "$tmp/pk/custodio_1.2.3_amd64.deb" Depends Recommends Pre-Depends || true); ! grep -qwE 'tpm2-tools|openssl|opensc|p11-kit|pkcs11-provider|libnss3-tools|python3-gi|polkitd' <<< "$deps" || bad "the fake package names a test tool"
+deps=$(dpkg-deb -f "$tmp/pk/custodio_1.2.3_amd64.deb" Depends Recommends Pre-Depends || true); ! grep -qwE 'tpm2-tools|openssl|opensc|pkcs11-provider|libnss3-tools|python3-gi' <<< "$deps" || bad "the fake package names a test tool"
 
 # ---- recipes: checks
 grep -q 'e2e-packages' "$tmp/r-full/log" && grep -q '^image' "$tmp/r-full/log" && [ "$(rcof r-full)" = 0 ] || bad "recipes: e2e-vm full: $(tail -n 3 "$tmp/r-full/out.txt")"

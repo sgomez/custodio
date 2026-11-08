@@ -64,7 +64,8 @@ deb_next=$(find "$PKG_NEXT" -name 'custodio_*.deb' 2> /dev/null | sort | tail -n
 [ -n "$deb_next" ] || die "no package N+1 custodio_*.deb in $PKG_NEXT (the e2e-packages recipe builds it)"
 [ "$(realpath "$deb")" != "$(realpath "$deb_next")" ] || die "N and N+1 are the same file"
 deps=$(dpkg-deb -f "$deb" Depends Recommends Pre-Depends) || die "cannot read the fields of $deb"
-for t in $TOOLS polkitd; do
+# p11-kit and polkitd are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
+for t in tpm2-tools openssl opensc pkcs11-provider libnss3-tools python3-gi; do
     ! grep -qw -- "$t" <<< "$deps" || die "the package depends on or recommends the test tool $t: the tools are installed in the guest only"
 done
 version=$(dpkg-deb -f "$deb" Version) || version=unknown
