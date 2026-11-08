@@ -12,7 +12,8 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-KINDS = {"swtpm": ("tpm", "tpm"), "none": ("encrypted-host",) * 2, "lacking": ("tpm", "tpm")}  # mode -> (RSA kind, EC kind), as sign.py
+KINDS = {"swtpm": ("tpm", "tpm"), "none": ("encrypted-host",) * 2, "lacking": ("tpm", "tpm"),
+         "vm-full": ("tpm", "tpm"), "vm-lacking": ("encrypted-tpm", "encrypted-tpm")}  # mode -> (RSA kind, EC kind), as sign.py (vm-*: a VM run, F162)
 KEYTYPES = {"rsa": "rsa2048", "ec": "ecdsa-p256"}
 # a PEM private key that is not encrypted: PKCS#8, PKCS#1, SEC1, DSA...
 PLAIN_HEADER = re.compile(rb"-----BEGIN (?!ENCRYPTED )[A-Z0-9 ]*PRIVATE KEY-----")
@@ -70,7 +71,11 @@ def file_problems(root):
 def kind_problems(path, mode, specs):
     if mode not in KINDS:
         sys.exit(f"noplain: unknown mode {mode}")
-    rows = [ln.split("\t") for ln in open(path, encoding="utf-8").read().split("\n") if ln]
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as e:  # F162: no list means the key was never imported; never a clean result
+        return [f"{path}: cannot be read ({e.strerror}): the key was not imported"]
+    rows = [ln.split("\t") for ln in text.split("\n") if ln]
     if any(len(r) != 3 for r in rows):
         return [f"{path}: a line is not ID<TAB>TYPE<TAB>KIND"]
     out = []

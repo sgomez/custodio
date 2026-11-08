@@ -33,6 +33,9 @@ PAYLOAD_36, PAYLOAD_ARB, PAYLOAD_LONG = 36, 100, 246
 KINDS = {  # mode -> (RSA kind, EC kind)
     "swtpm": ("tpm", "tpm"),
     "none": ("encrypted-host", "encrypted-host"),
+    # F162: a VM run (E2E_VM=1): the full mode (guest swtpm) gives tpm, the lacking mode (no RSA/ECC signing in the TPM) gives encrypted-tpm to both keys
+    "vm-full": ("tpm", "tpm"),
+    "vm-lacking": ("encrypted-tpm", "encrypted-tpm"),
     "lacking": ("tpm", "tpm"),  # the filter removes RSAPSS, which no key needs (docs/findings/F134.md); encrypted-tpm is out of reach in the container
 }
 KEYTYPES = {"rsa": "rsa2048", "ec": "ecdsa-p256"}
@@ -226,7 +229,11 @@ def case_problems(case, d):
 def kind_problems(path, mode, specs):
     if mode not in KINDS:
         sys.exit(f"sign: unknown mode {mode}")
-    rows = [ln.split("\t") for ln in open(path, encoding="utf-8").read().split("\n") if ln]
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError as e:  # F162: no list means the key was not imported; never a clean result
+        return [f"{path}: cannot be read ({e.strerror})"]
+    rows = [ln.split("\t") for ln in text.split("\n") if ln]
     if any(len(r) != 3 for r in rows):
         return [f"{path}: a line is not ID<TAB>TYPE<TAB>KIND"]
     out = []

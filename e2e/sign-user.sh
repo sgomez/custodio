@@ -25,6 +25,11 @@ for t in rsa ec; do
     openssl x509 -inform der -in "$SG/in/$t.crt.der" -pubkey -noout > "$SG/in/$t.pub.pem" || fail "no public key in the certificate of sg-$t"
 done
 timeout 60 python3 -I /e2e/owner-call.py list > "$SG/api.out" || fail "ListKeys gave no reply"
+if [ -n "${SG_READ:-}" ]; then # F162, lacking VM run: root reads the stored credentials now (sign-run.sh), before anything is signed or deleted
+    : > "$SG/imported"
+    for _ in $(seq 3000); do [ -e "$SG/read-done" ] && break; sleep 0.2; done
+    [ -e "$SG/read-done" ] || fail "root did not finish reading the credentials"
+fi
 
 requests() { wc -l < "$E2E_DIR/requests"; }
 # sign_job NAME KEY INPUT ARGS...: one pkcs11-tool process; its exit code, output and log are kept

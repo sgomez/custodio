@@ -217,14 +217,14 @@ phase_done vm-silent
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs sign; then
-    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/sign-run.sh || fail "sign-run.sh failed"
+    WORK=$work MODULE=$MODULE E2E_VM=$vm E2E_TPM=$tpm_mode bash /e2e/sign-run.sh || fail "sign-run.sh failed"
 fi
 phase_done sign
 
 # The no-plaintext cases (F135): alice imports an RSA 2048 and a P-256 key, and after each import scripts/check-no-plaintext.sh (mounted unchanged) searches the real state directory for the key in
 # every encoding; no file there may be an unencrypted private key. Every TPM mode; both keys are deleted, so the state and the counts are as before.
 if phase_runs noplain; then
-    WORK=$work E2E_TPM=$tpm_mode bash /e2e/noplain-run.sh || fail "noplain-run.sh failed"
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash /e2e/noplain-run.sh || fail "noplain-run.sh failed"
 fi
 phase_done noplain
 
