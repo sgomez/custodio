@@ -36,7 +36,7 @@ p11sign() { # key, mechanism, extra pkcs11-tool arguments
         --input-file "$WORK/data.bin" --output-file "$sig" "$@" > "$WORK/upgrade-p11.log" 2>&1
 }
 
-p11sign rsa1 RSA-PKCS || { cat "$WORK/upgrade-p11.log" >&2; fail "approved RSA signature after the upgrade failed"; }
+p11sign rsa1 RSA-PKCS || { cat "$WORK/upgrade-p11.log" >&2; ls -l "$WORK/data.bin" >&2; fail "approved RSA signature after the upgrade failed"; }
 recovered=$(openssl pkeyutl -verifyrecover -pubin -inkey "$WORK/rsa.pub" -in "$sig" 2> /dev/null | sha256sum)
 [ "$recovered" = "$(sha256sum < "$WORK/data.bin")" ] \
     || fail "the RSA signature after the upgrade does not verify against the public key"
