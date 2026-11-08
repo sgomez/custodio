@@ -256,3 +256,6 @@ with an empty context.
 - The VM upgrade now installs N+1 with `apt-get install -y --no-install-recommends` (`e2e/vm/install-pkg.sh`, `E2E_INSTALL` set by `guest.sh` in a VM), like N; the container keeps `install.sh`. Real `lacking 'upgrade-kinds-*'` passed (upgrade phase 35 s). Contract Scope/Cost/step 5/amendment now agree (no `dpkg -i`, no `apt upgrade`, measured seconds).
 - Owner pin 65534: judge fixtures in the upgradekinds VM section (65534 accepted, another owner refused). Not covered by a fixture: `upgrade.sh` itself choosing 65534 in a VM (real runs only).
 - `guest.sh` comment shortened (size gate). `just quick` green; test-e2e-upgradekinds and test-e2e-upgrade exit 0.
+
+### 2026-11-08 — F163 — attempt 12
+- No findings pending; all steps ticked. Rechecked on the current tree: `just quick` green (cached ok), `scripts/test-e2e-pcr.sh`, `-tpmclear.sh`, `-upgradekinds.sh` exit 0.
