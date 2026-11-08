@@ -37,7 +37,7 @@
         "F151"
       ],
       "verify": "f=docs/findings/F153.md && grep -q '^## F153' \"$f\" && for w in '259' 'header' 'PCR' 'null' 'host' 'tpm2' 'scoped' 'swtpm' 'systemd-creds'; do grep -qiF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F153.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F154",
