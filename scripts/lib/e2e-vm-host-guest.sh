@@ -23,7 +23,7 @@ printf 'yes\n' > "$G/facts/has2.out"; printf 'yes\n' > "$G/facts/has2.verdict"; 
 printf ' apt-get install -y --no-install-recommends /pkg/custodio_1.2.3_amd64.deb \n' > "$G/facts/apt-commandlines"; : > "$G/facts/recommends-installed"
 : > "$G/tpmrm0"; printf 'PATH=/usr/bin\0' > "$G/proc/4242/environ"; ln -s /dev/tpmrm0 "$G/proc/4242/fd/3"
 vmenv=(VM_FACTS="$G/facts" VM_UNIT="$G/unit.service" VM_UNIT_DIRS="$G/unitroot/etc $G/unitroot/run $G/unitroot/usr" VM_TPMRM="$G/tpmrm0" VM_PROC="$G/proc")
-vmids=$(grep -v '^[[:space:]]*\(#\|$\)' "$R/e2e/vm/cases.list" | grep '^vm-' | tr '\n' ' ')
+vmids=$(grep -v '^[[:space:]]*\(#\|$\)' "$R/e2e/vm/cases.list" | grep '^vm-' | grep -v '^vm-silent-' | tr '\n' ' ')
 sha_tree() { (cd "$G/unitroot" && find . -type f | sort | xargs -r sha256sum; sha256sum "$G/unit.service"); }
 guest_run() { # guest_run NAME GUEST-SCRIPT [VAR=VALUE...]: one run of the guest script in VM mode; $G/NAME.{out,trace,calls,tree}
     local n=$1 script=$2; shift 2

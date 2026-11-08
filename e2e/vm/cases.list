@@ -35,3 +35,8 @@ vm-has-tpm2-full
 vm-install-no-recommends
 vm-unit-shipped
 vm-tpm-via-device
+vm-silent-import-fails
+vm-silent-journal-cause
+vm-silent-nothing-stored
+vm-silent-no-key
+vm-silent-restored-imports

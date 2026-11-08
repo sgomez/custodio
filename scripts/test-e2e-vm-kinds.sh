@@ -142,12 +142,13 @@ for m in full lacking; do
     done
 done
 # vm-silent-*: skipped is refused in lacking, accepted in full (with the skip list entry)
-printf 'vm-silent-import-fails\n' > "$tmp/c-silent"; { cat "$cases"; echo vm-silent-import-fails; } > "$tmp/cases2"
-{ cat "$tmp/all-run"; echo 'E2E-CASE skipped vm-silent-import-fails'; } > "$tmp/out-silent"
+printf 'vm-silent-import-fails\n' > "$tmp/c-silent"; cp "$cases" "$tmp/cases2"
+sed 's/^E2E-CASE run vm-silent-import-fails$/E2E-CASE skipped vm-silent-import-fails/' "$tmp/all-run" > "$tmp/out-silent"
 printf 'vm-silent-import-fails: needs an encrypted-tpm import\n' > "$tmp/skip-silent"
 CHECK_VM=1 CHECK_TPM_MODE=lacking bash "$CHK" check "$tmp/cases2" "$tmp/skip-silent" "$tmp/out-silent" > /dev/null 2>&1 && bad "lacking: vm-silent-* skipped is accepted"
 CHECK_VM=1 CHECK_TPM_MODE=swtpm bash "$CHK" check "$tmp/cases2" "$tmp/skip-silent" "$tmp/out-silent" > /dev/null 2>&1 || bad "full: vm-silent-* skipped with a skip list entry is refused"
-CHECK_VM=1 CHECK_TPM_MODE=swtpm bash "$CHK" check "$tmp/cases2" "$E/vm/skip.list" "$tmp/out-silent" > /dev/null 2>&1 && bad "full: vm-silent-* skipped without a skip list entry is accepted"
+: > "$tmp/empty-skip"
+CHECK_VM=1 CHECK_TPM_MODE=swtpm bash "$CHK" check "$tmp/cases2" "$tmp/empty-skip" "$tmp/out-silent" > /dev/null 2>&1 && bad "full: vm-silent-* skipped without a skip list entry is accepted"
 # the container accounting: tpm-kind-* skipped in none/lacking with the skip list is as before (no CHECK_VM)
 sed 's/^E2E-CASE run \(tpm-kind-.*\)$/E2E-CASE skipped \1/' "$tmp/all-run" > "$tmp/ctr"
 grep -h '^tpm-kind' "$E/targets/debian13/skip.list" > /dev/null || bad "debian13 skip list lost the tpm-kind entries"

@@ -1,2 +1,8 @@
-# Cases a VM run may report skipped, as `case: reason` (format: e2e/check-cases.sh). Empty: everything in cases.list can run in a VM, and
-# check-cases.sh refuses fallback-tpmbound-* and upgrade-kinds-tpmbound skipped in a VM run whatever this file says.
+# Cases a VM run may report skipped, as `case: reason` (format: e2e/check-cases.sh). Everything in cases.list can run in a VM, and
+# check-cases.sh refuses fallback-tpmbound-*, upgrade-kinds-tpmbound and tpm-kind-* skipped in a VM run whatever this file says. The vm-silent-* cases need an encrypted-tpm import:
+# only the lacking mode runs them (refused skipped there, whatever this file says); the full mode reports them skipped.
+vm-silent-import-fails: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
+vm-silent-journal-cause: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
+vm-silent-nothing-stored: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
+vm-silent-no-key: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
+vm-silent-restored-imports: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
