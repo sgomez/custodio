@@ -141,7 +141,7 @@
         "F161"
       ],
       "verify": "just quick && scripts/test-e2e-pcr.sh && scripts/test-e2e-tpmclear.sh && scripts/test-e2e-upgradekinds.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F164",
