@@ -17,7 +17,11 @@
 #
 # The swtpm state directory is made fresh for each run inside DIR, is never one the caller supplies (VM_TPM_STATE is refused) and is the one
 # every power cycle of that run reuses. After `start` succeeds the caller must call `stop` (also from its own trap).
-# Settings (all optional; the self-tests use them): VM_BOOT_TIMEOUT (240), VM_KVM_DEV (/dev/kvm), VM_QEMU, VM_IMAGE_SH, VM_OVMF_CODE, VM_OVMF_VARS,
+# VM_PAYLOAD=FILE (on `start`) hands the guest a file as a third drive: raw, read-only, virtio, serial `custodio-payload`, so the guest sees
+# /dev/disk/by-id/virtio-custodio-payload and reads it with `tar -xf` (no filesystem, no mkfs, no root on the host). The serial channel is
+# 15 KB/s (BLOCKED, F160): files of megabytes travel on this drive, the channel carries commands and results. The same drive comes back after
+# `cycle`. FILE must exist and be readable (else `start` refuses before anything starts); its size should be a multiple of 512 (a tar is).
+# Settings (all optional; the self-tests use them): VM_PAYLOAD, VM_BOOT_TIMEOUT (240), VM_KVM_DEV (/dev/kvm), VM_QEMU, VM_IMAGE_SH, VM_OVMF_CODE, VM_OVMF_VARS,
 # VM_SWTPM and VM_SWTPM_PREFIX (e2e/vm/swtpm-path.sh), TMPDIR.
 # Guest account: ubuntu / custodio-throwaway-test, a throwaway credential of a VM that is never reachable from a network (user networking,
 # no port forward).
@@ -132,8 +136,9 @@ start_qemu() {
         -drive "if=pflash,format=raw,readonly=on,file=$OVMF_CODE"
         -drive "if=pflash,format=raw,file=$RUN_DIR/vars.fd"
         -drive "file=$RUN_DIR/disk.qcow2,if=virtio,format=qcow2"
-        -drive "file=$RUN_DIR/seed.img,if=virtio,format=raw,readonly=on"
-        -netdev "user,id=n0" -device "virtio-net-pci,netdev=n0"
+        -drive "file=$RUN_DIR/seed.img,if=virtio,format=raw,readonly=on")
+    if [ -f "$RUN_DIR/payload.path" ]; then a+=(-drive "file=$(< "$RUN_DIR/payload.path"),if=virtio,format=raw,readonly=on,serial=custodio-payload"); fi
+    a+=(-netdev "user,id=n0" -device "virtio-net-pci,netdev=n0"
         -chardev "socket,id=chrtpm,path=$RUN_DIR/tpm.sock" -tpmdev "emulator,id=tpm0,chardev=chrtpm" -device "tpm-crb,tpmdev=tpm0"
         -serial "unix:$RUN_DIR/serial.sock,server,nowait" -monitor none -daemonize -pidfile "$RUN_DIR/qemu.pid")
     rm -f -- "$RUN_DIR/qemu.pid" "$RUN_DIR/serial.sock"
@@ -145,13 +150,18 @@ wait_boot() {
 }
 
 cmd_start() {
-    local mode=${1-} base need image out
+    local mode=${1-} base need image out payload=
     preflight_kvm
     [ $# -le 1 ] || die "start takes one argument, the mode"
     [ -n "$mode" ] || die "no mode given: the modes are 'full' and 'lacking'"
     preflight_mode "$mode"
     [ -z "${VM_TPM_STATE+x}" ] || die "VM_TPM_STATE is set: the swtpm state is always a fresh directory of the run, never one the caller supplies"
     preflight_tools "$mode"
+    if [ -n "${VM_PAYLOAD-}" ]; then
+        [ -f "$VM_PAYLOAD" ] && [ -r "$VM_PAYLOAD" ] || die "VM_PAYLOAD '$VM_PAYLOAD' is not a readable file"
+        payload=$(realpath -- "$VM_PAYLOAD")
+        case $payload in *[,\ ]*) die "VM_PAYLOAD '$payload' has a comma or a space in its path, which QEMU's -drive option cannot take" ;; esac
+    fi
     base=${TMPDIR:-/tmp}
     base=${base%/}
     [ -d "$base" ] || die "TMPDIR $base is not a directory"
@@ -173,6 +183,7 @@ cmd_start() {
     printf 'instance-id: custodio-vm-%s\nlocal-hostname: custodio-vm\n' "${RUN_DIR##*.}" > "$RUN_DIR/meta-data"
     cloud-localds "$RUN_DIR/seed.img" "$RUN_DIR/user-data" "$RUN_DIR/meta-data"
     printf '%s\n' "$mode" > "$RUN_DIR/mode"
+    if [ -n "$payload" ]; then printf '%s\n' "$payload" > "$RUN_DIR/payload.path"; fi
     # swtpm only now, right before QEMU: an swtpm without a QEMU stays idle (docs/findings/F151.md).
     start_swtpm "$([ "$mode" = lacking ] && echo 1 || echo 0)"
     start_qemu

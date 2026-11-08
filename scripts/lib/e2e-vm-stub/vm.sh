@@ -8,6 +8,8 @@ echo "vm $op $*" >> "$STUB_LOG"
 case $op in
 start)
     [ -z "${STUB_FAIL_START:-}" ] || { echo "stub: start failed" >&2; exit 1; }
+    # the real launcher refuses a payload that is not a readable file; the stub keeps a copy, as the driver deletes its own
+    if [ -n "${VM_PAYLOAD:-}" ]; then cp -- "$VM_PAYLOAD" "$STUB_LOG.payload" || { echo "stub: no payload" >&2; exit 1; }; fi
     mkdir -p "$STUB_VMDIR/custodio-vm.AAAAAA"; echo running > "$STUB_VMDIR/custodio-vm.AAAAAA/vm.run"
     echo "VM_DIR=$STUB_VMDIR/custodio-vm.AAAAAA" ;;
 stop) echo "stop" >> "$STUB_LOG.stops"; rm -rf "$1" ;;

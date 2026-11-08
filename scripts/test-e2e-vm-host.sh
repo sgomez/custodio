@@ -69,7 +69,7 @@ order() { # order NAME PATTERN...: the patterns occur in the stub log in this or
 rcof() { cat "$tmp/$1/rc" 2> /dev/null || echo none; }
 
 # ---- start everything at once
-STEPS_ORDER=('^image' '^vm start' '^vm put .*custodio_1.2.3' '^vm put .*custodio_1.2.4' '^vm put .*e2e.tar' 'apt-get update' 'install -y --no-install-recommends /pkg/custodio_1.2.3' 'systemd-analyze has-tpm2' 'install -y --no-install-recommends tpm2-tools' 'guest.sh' '^vm stop')
+STEPS_ORDER=('^image' '^vm start' 'tar -C / --no-same-owner -xf /dev/disk/by-id/virtio-custodio-payload' 'apt-get update' 'install -y --no-install-recommends /pkg/custodio_1.2.3' 'systemd-analyze has-tpm2' 'install -y --no-install-recommends tpm2-tools' 'guest.sh' '^vm stop')
 mkctl noflag 's/ --no-install-recommends \/pkg\// \/pkg\//'
 mkctl dpkgi 's/sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \/pkg\//sudo dpkg -i \/pkg\//'
 mkctl toolsfirst '/^gt 900 .*\$TOOLS/d; /gt 300 "sudo apt-get update"/i gt 900 "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $TOOLS" >> "$log" 2>\&1'
@@ -79,6 +79,8 @@ mkctl noserial 's/for k in target tpm image_serial kernel/for k in target tpm ke
 mkctl notimes '/echo "step_/d'
 mkctl wrongmode 's/\[tpm\]=\$mode/[tpm]=lacking/'
 mkctl hostapt '/^started=/i apt-get install -y tpm2-tools >/dev/null 2>\&1 || true'
+mkctl nopayload 's/^started=\$(VM_PAYLOAD="\$tmp\/payload.tar" /started=$(/'
+mkctl putdeb '/^step boot$/a "\$VM_SH" put "\$vmdir" "\$deb" /tmp/x || true'
 mkctl notrap 's/^trap cleanup EXIT$/:/; s/^trap .echo "e2e-vm: interrupted.*$/:/; s/^trap .echo "e2e-vm: terminated.*$/:/'
 mkctl noaccount 's/^CHECK_VM=1 CHECK_TPM_MODE=\$tpm bash e2e\/check-cases.sh/true # /'
 # the control copies are all written before any run starts: the driver tars the e2e tree and must not see it change
@@ -93,6 +95,8 @@ launch c-notpm "$R/e2e/vm/run-notpm.sh" full STUB_CASES=
 launch c-noserial "$R/e2e/vm/run-noserial.sh" full STUB_CASES=
 launch c-notimes "$R/e2e/vm/run-notimes.sh" full STUB_CASES=
 launch c-wrongmode "$R/e2e/vm/run-wrongmode.sh" full STUB_CASES=
+launch c-nopayload "$R/e2e/vm/run-nopayload.sh" full STUB_CASES=
+launch c-putdeb "$R/e2e/vm/run-putdeb.sh" full STUB_CASES=
 launch c-hostapt "$R/e2e/vm/run-hostapt.sh" full STUB_CASES=
 # failure paths
 launch f-image "$DRV" full STUB_FAIL_IMAGE=1
@@ -150,6 +154,10 @@ rj r-nomatch "$R/justfile" e2e-vm-cases full 'nosuch-*' &
 rj r-ctl "$R/justfile.nocheck" e2e-vm partial &
 wait
 
+# ---- the payload: the files travel as one tar on the VM's payload drive, never with `vm put`
+# shellcheck source=scripts/lib/e2e-vm-payload.sh
+. "$ROOT/scripts/lib/e2e-vm-payload.sh"
+
 # ---- good
 for m in full lacking; do
     n=good-$m
@@ -158,6 +166,7 @@ for m in full lacking; do
     grep -q "^vm start $m\$" "$tmp/$n/log" || bad "good $m: the mode did not reach start"
     want=$([ "$m" = full ] && echo swtpm || echo lacking)
     grep -q "E2E_VM=1 E2E_TPM=$want " "$tmp/$n/log" || bad "good $m: the guest command lacks E2E_TPM=$want"
+    ck_payload "$n" || true
     ! grep -q 'dpkg -i' "$tmp/$n/log" || bad "good $m: dpkg -i"
     grep 'apt-get install' "$tmp/$n/log" | grep -v 'apt-get update' | while read -r l; do
         case $l in *"apt-get install -y --no-install-recommends "*) ;; *) echo "install without the flag: $l" >&2; echo x > "$tmp/$n/noflag" ;; esac
@@ -190,6 +199,8 @@ for c in c-tpmfull c-notpm; do grep -q "E2E_VM=1 E2E_TPM=swtpm " "$tmp/$c/log" &
 c="c-noserial"; grep -qx 'image_serial=20261105' "$tmp/shared/../$c/out/vm.full.record" && bad "control noserial: the record has the serial"
 c="c-notimes"; grep -q '^step_' "$tmp/$c/out/vm.full.record" && bad "control notimes: the record has times"
 c="c-wrongmode"; grep -qx 'tpm=full' "$tmp/$c/out/vm.full.record" && bad "control wrongmode: the record says the asked mode"
+ck_payload c-putdeb > /dev/null 2>&1 && bad "control putdeb: the payload check passed on a driver that copies a package with vm put"
+ck_payload c-nopayload > /dev/null 2>&1 && bad "control nopayload: the payload check passed on a driver that starts the VM without VM_PAYLOAD"
 c="c-hostapt"; [ -s "$tmp/$c/host" ] || bad "control hostapt: the host check did not see the local install"
 
 # ---- failure paths

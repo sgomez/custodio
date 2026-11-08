@@ -5,7 +5,7 @@
 # The mode of the VM and the expectations of the case scripts (E2E_TPM, which the guest command carries): full -> swtpm (a complete TPM),
 # lacking -> lacking (a TPM without RSA decrypt). The VM has no `none` mode.
 # Steps (each timed in target/e2e/vm.MODE.phases.tsv): image, boot, copy, install, tools, setup, one per case group, teardown (vm.sh stop).
-#   1 image.sh  2 vm.sh start MODE  3 copy N, N+1, the e2e tree and the files the container mounts  4 apt-get update and install N with --no-install-recommends,
+#   1 image.sh  2 vm.sh start MODE with the payload (N, N+1, the e2e tree and the files the container mounts, one tar on a read-only drive)  3 extract it in the guest  4 apt-get update and install N with --no-install-recommends,
 #   then read `systemd-analyze has-tpm2` (before any test tool: tpm2-tools brings the libtss2 libraries it needs, F151)  5 test tools, in the guest only, also without recommends
 #   6 e2e/guest.sh in VM mode (E2E_VM=1) on the guest, then check-cases.sh (CHECK_VM=1) on its E2E-CASE lines  7 the record. vm.sh stop on every exit.
 # The record target/e2e/vm.MODE.record (key=value; a field that could not be read is `unknown`), the log vm.MODE.log. Nothing is installed on the host.
@@ -124,25 +124,32 @@ F[image_serial]=$(printf '%s\n' "$out" | sed -n 's/^serial=//p' | head -n 1)
 [ -n "${F[image_serial]}" ] || F[image_serial]=unknown
 step image
 
-started=$("$VM_SH" start "$mode") || die "vm.sh start $mode failed"
+# ---- the payload: one plain tar of the files the guest needs, laid out as the guest finds them (the serial channel is 15 KB/s, so the files
+# travel on a read-only drive of the VM, vm.sh VM_PAYLOAD). Extracted as root with `tar -C /`, from the drive.
+pack0=$SECONDS
+stage=$tmp/stage
+mkdir -p "$stage/pkg" "$stage/pkg-next" "$stage/e2e-target" "$stage/e2e-docs" "$stage/e2e-noplain/scripts" "$stage/e2e-src"
+cp -- "$deb" "$stage/pkg/"
+cp -- "$deb_next" "$stage/pkg-next/"
+tar -C e2e --exclude=__pycache__ -cf - . | { mkdir "$stage/e2e" && tar -C "$stage/e2e" -xf -; }
+tar -C e2e/targets/debian13 -cf - . | tar -C "$stage/e2e-target" -xf -
+cp -- "$stage/e2e/vm/cases.list" "$stage/e2e-target/cases.list"
+cp -- docs/audit.md "$stage/e2e-docs/"
+cp -- scripts/check-no-plaintext.sh scripts/check_no_plaintext.py "$stage/e2e-noplain/scripts/"
+cp -- crates/custodiod/src/app_id_source.rs "$stage/e2e-src/"
+tar --owner=0 --group=0 --numeric-owner -C "$stage" -cf "$tmp/payload.tar" pkg pkg-next e2e e2e-target e2e-docs e2e-noplain e2e-src || die "packing the payload failed"
+payload_dev=/dev/disk/by-id/virtio-custodio-payload
+pack_secs=$((SECONDS - pack0))
+t0=$SECONDS
+
+started=$(VM_PAYLOAD="$tmp/payload.tar" "$VM_SH" start "$mode") || die "vm.sh start $mode failed"
 vmdir=$(printf '%s\n' "$started" | sed -n 's/^VM_DIR=//p')
 [ -n "$vmdir" ] || die "vm.sh start printed no VM_DIR"
 step boot
 
-# ---- copy: byte for byte, then placed where the case scripts look
-tar -C e2e --exclude=__pycache__ -cf "$tmp/e2e.tar" .
-tar -C e2e/targets/debian13 -cf "$tmp/target.tar" .
-"$VM_SH" put "$vmdir" "$deb" "/tmp/$(basename "$deb")" || die "copying the package N failed"
-"$VM_SH" put "$vmdir" "$deb_next" "/tmp/next-$(basename "$deb_next")" || die "copying the package N+1 failed"
-"$VM_SH" put "$vmdir" "$tmp/e2e.tar" /tmp/e2e.tar || die "copying the e2e scripts failed"
-"$VM_SH" put "$vmdir" "$tmp/target.tar" /tmp/target.tar || die "copying the target files failed"
-"$VM_SH" put "$vmdir" docs/audit.md /tmp/audit.md || die "copying docs/audit.md failed"
-"$VM_SH" put "$vmdir" scripts/check-no-plaintext.sh /tmp/check-no-plaintext.sh || die "copying check-no-plaintext.sh failed"
-"$VM_SH" put "$vmdir" scripts/check_no_plaintext.py /tmp/check_no_plaintext.py || die "copying check_no_plaintext.py failed"
-"$VM_SH" put "$vmdir" crates/custodiod/src/app_id_source.rs /tmp/app_id_source.rs || die "copying app_id_source.rs failed"
-g "sudo mkdir -p /pkg /pkg-next /e2e /e2e-target /e2e-docs /e2e-noplain/scripts /e2e-src && sudo mv /tmp/$(basename "$deb") /pkg/ && sudo mv /tmp/next-$(basename "$deb_next") /pkg-next/$(basename "$deb_next") \
-  && sudo tar -C /e2e -xf /tmp/e2e.tar && sudo tar -C /e2e-target -xf /tmp/target.tar && sudo cp /e2e/vm/cases.list /e2e-target/cases.list && sudo mv /tmp/audit.md /e2e-docs/ \
-  && sudo mv /tmp/check-no-plaintext.sh /tmp/check_no_plaintext.py /e2e-noplain/scripts/ && sudo mv /tmp/app_id_source.rs /e2e-src/" >> "$log" 2>&1 || die "placing the files in the guest failed"
+# ---- the guest reads the payload from its drive (root: the device is root's); the copy step counts the packing too
+t0=$((t0 - pack_secs))
+g "sudo tar -C / --no-same-owner -xf $payload_dev" >> "$log" 2>&1 || die "extracting the payload in the guest failed"
 step copy
 
 # ---- install the package with apt, without recommends; then, and only then, what the guest says about the TPM

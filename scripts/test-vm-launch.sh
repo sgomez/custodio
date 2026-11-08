@@ -288,6 +288,9 @@ c, _ = s.accept(); time.sleep(8)' "$sock" &
 # shellcheck source=scripts/lib/vm-launch-controls.sh
 . "$ROOT/scripts/lib/vm-launch-controls.sh"
 
+# shellcheck source=scripts/lib/vm-launch-payload.sh
+. "$ROOT/scripts/lib/vm-launch-payload.sh"
+
 # ---------------------------------------------------------------------------------------------------------------------------------
 # run everything at once
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -302,12 +305,14 @@ run scenario_signal INT
 run scenario_signal TERM
 run scenario_path
 run scenario_chan_timeout
+run scenario_payload
+run scenario_payload_missing
 run scenario_refuse nokvm-missing VM_KVM_DEV="$tmp/missing-kvm" -- start full
 run scenario_refuse nokvm-dir VM_KVM_DEV="$tmp" -- start full
 run scenario_refuse nokvm-accel STUB_QEMU_NO_KVM=1 -- start full
 run scenario_refuse accel-env VM_KVM_DEV="$tmp/missing-kvm" QEMU_ACCEL=tcg ACCEL=tcg -- start full
 run scenario_refuse accel-arg VM_KVM_DEV="$tmp/missing-kvm" -- start full --accel tcg
-for c in overlay kvm vars tpm seed statecycle statereuse exitcode strip nokvmcheck notrap notrap_sig; do run "control_$c"; done
+for c in overlay kvm vars tpm seed statecycle statereuse exitcode strip nokvmcheck notrap notrap_sig payload_rw payload_cycle payload_check; do run "control_$c"; done
 for p in "${pids[@]}"; do wait "$p" || true; done
 
 if [ -f "$tmp/res/failed" ]; then exit 1; fi
