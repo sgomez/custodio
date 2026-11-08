@@ -101,3 +101,9 @@ with an empty context.
   (so `PTM_INIT` accepted the profile), `tpm2_getcap commands` had no `TPM2_CC_RSA_Decrypt` (0) and `TPM2_CC_Sign` (1) before and after `cycle`, P-256 listed, `tpm2_testparms rsa2048` ok; stop clean.
   The temp copy is deleted. The first rebuilt container still needs `just vm-host-check` → exit 0.
 - Known: a power cycle restarts swtpm without `--profile` (see finding). `BLOCKED.md` asks for the container rebuild.
+
+### 2026-11-08 — F159 — attempt 1 (after the container rebuild)
+- Done: container rebuilt with swtpm 0.10.2 under `/opt/swtpm`; `BLOCKED.md` removed. `just vm-host-check` exit 0 (all OK, including `swtpm-profile`).
+- Evidence rerun: `just quick` exit 0; `scripts/test-vm-launch.sh` exit 0 (9.5 s); `scripts/test-vm-modes.sh` exit 0 (0.6 s).
+- Checkpoint evidence: with the rebuilt container's swtpm, `swtpm socket --tpm2 --profile file=e2e/vm/lacking-rsa.json --print-info 1` (run through `vm_swtpm_run`, which sets both lib dirs) prints the TPM spec JSON, so the profile parses; the earlier real `lacking` boot reached `PTM_INIT` (see attempt 1 above).
+- Next session should: nothing for F159; the loop runs the `verify`.
