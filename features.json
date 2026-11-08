@@ -98,7 +98,7 @@
         "F158"
       ],
       "verify": "just quick && scripts/test-vm-launch.sh && scripts/test-vm-modes.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F160",
