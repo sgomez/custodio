@@ -23,6 +23,7 @@ case_group() {
     appid-*) echo appid ;;
     cli-*) echo cli ;;
     tpm-kind-*) echo tpm-kind ;;
+    vm-*) echo vm ;; # the VM-only cases (F160), judged by the guest itself
     sign-*) echo sign ;;
     noplain-*) echo noplain ;;
     tpm-dup-*) echo tpmdup ;;
