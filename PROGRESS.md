@@ -107,3 +107,17 @@ with an empty context.
 - Evidence rerun: `just quick` exit 0; `scripts/test-vm-launch.sh` exit 0 (9.5 s); `scripts/test-vm-modes.sh` exit 0 (0.6 s).
 - Checkpoint evidence: with the rebuilt container's swtpm, `swtpm socket --tpm2 --profile file=e2e/vm/lacking-rsa.json --print-info 1` (run through `vm_swtpm_run`, which sets both lib dirs) prints the TPM spec JSON, so the profile parses; the earlier real `lacking` boot reached `PTM_INIT` (see attempt 1 above).
 - Next session should: nothing for F159; the loop runs the `verify`.
+
+### 2026-11-08 — F160 — attempt 1
+- Done: `e2e/vm/{cases.list,omitted.list,skip.list}`; `CHECK_VM=1` in `check-cases.sh` (VM run = swtpm unless lacking; tpmbound run accepted, tpmbound skipped refused whatever the skip list says; no change without the flag);
+  `scripts/test-e2e-vm-cases.sh` (2 s). `e2e/vm/judge.sh` (the five `vm-*` cases: `vm_collect_install` right after the install, live judges after the setup and after the cases, `vm_finish`);
+  `e2e/guest.sh` VM mode (`E2E_VM=1`: no install, no tpm_setup/teardown, `E2E_DIR`, `E2E_PKG_DIR`, `E2E_PKG_NEXT_DIR` overridable; key fixtures moved unchanged to `e2e/guest-fixtures.sh` to stay under 5000 tokens);
+  `case_group vm-*` in `select.sh`; driver `e2e/vm/run.sh` and recipes `e2e-vm`, `e2e-vm-cases`, `e2e-vm-check` (mode/names refused before `e2e-packages`);
+  `scripts/test-e2e-vm-host.sh` + `scripts/lib/e2e-vm-host-guest.sh` + `scripts/lib/e2e-vm-stub/` (good, failure paths, recipes, guest, vm-only, controls; 2 s). Both new scripts are in `test-scripts`.
+- Decisions: "reaches the TPM" signal = the running service has no `CUSTODIOD_TEST_SWTPM_TCTI` and holds `/dev/tpmrm0` open (`ls -l /proc/PID/fd`); NOT yet shown reliable in a real guest (the service may open the device per call) — step 5 must check and adapt `vm_judge_via_device`.
+  Guest layout: `/pkg`, `/pkg-next`, `/e2e` (tar of the tree), `/e2e-target` (debian13 files + the VM list as `cases.list`), the docs/scripts the container mounts. The guest gets `E2E_SELECT` = the selected VM cases always.
+  Test record fields: `step_<name>=seconds`; step `setup` = guest install+service+import phases; case groups sign/noplain/pcr/fallback/tpmclear/upgrade only when a case of the group was selected.
+- Steps 1-4 ticked; step 6 partly run (`just quick` green, the four scripts and every `test-e2e-*.sh` green at this commit).
+- Not done: step 5 (the real probe: `vm.sh start full`, copy, `apt-get`, has-tpm2, judges in a real guest, copy time). Needs `just package` (cargo build) and a network route in the guest; no time left in this session. Unticked in the contract.
+  Note the driver guest `run` goes through the serial channel as `ubuntu` with sudo; `sudo` presence and the `tar`/`mv` placement of the files are unproven in a real guest.
+- Next session should: do step 5 (probe), adjust the judges/driver from what it shows, then tick step 5 and run step 6 (`just quick`, the four scripts, `test-e2e-host.sh`); record the seconds (2 s each here).

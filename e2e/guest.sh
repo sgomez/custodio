@@ -6,9 +6,8 @@
 # installs this tree's package over it and reports the upgrade-m3-* cases only (e2e/upgrade-m3.sh). With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
 # it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path; one target per package format runs it) skips them
 # in the main run. Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
-# F160: with E2E_VM=1 (e2e/vm/run.sh; main run only) the machine is a VM that has the package installed by apt already and the TPM is the VM's own (/dev/tpmrm0): this script does not
-# install, does not call tpm_setup/tpm_teardown, starts no swtpm and adds no unit drop-in, and judges the VM-only cases (e2e/vm/judge.sh) after the install, after the shared setup and
-# after the cases. E2E_TPM then says what the case scripts expect (swtpm: a full TPM, lacking: no RSA decrypt). E2E_DIR (default /e2e) is where these scripts are.
+# F160: with E2E_VM=1 (e2e/vm/run.sh) the package is already installed by apt and the TPM is the VM's own: no install, no tpm_setup/tpm_teardown, no swtpm, no drop-in;
+# the VM-only cases (e2e/vm/judge.sh) are judged after the install, the setup and the cases. E2E_TPM says what the case scripts expect. E2E_DIR (default /e2e) is where select.sh, report.sh and the VM files are.
 # With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
 # needs is not run (select.sh); the setup (install, service, user, import) always is.
 set -euo pipefail
@@ -66,10 +65,10 @@ if [ -n "$vm" ]; then
 else
     # F131: the installed unit has no test drop-in; the TPM of the run (E2E_TPM) is set up after this check and undone before the next one (tpm-lib.sh)
     # shellcheck source=e2e/tpm-lib.sh
-    source "$E2E_DIR"/tpm-lib.sh
+    source /e2e/tpm-lib.sh
     # shellcheck source=e2e/report.sh
     source "$E2E_DIR"/report.sh
-    bash "$E2E_DIR"/tpm-selftest.sh || fail "the TPM self-test failed"
+    bash /e2e/tpm-selftest.sh || fail "the TPM self-test failed"
     unit_problems=$(tpm_unit_problems)
     [ -z "$unit_problems" ] || fail "the installed unit has a test drop-in before the TPM setup: $unit_problems"
     tpm_setup "$tpm_mode" || fail "the TPM setup for $tpm_mode failed"
@@ -97,7 +96,7 @@ if [ "$mode" = m3 ]; then
     work=$(mktemp -d /tmp/e2e.XXXXXX)
     chmod 755 "$work"
     chown alice "$work"
-    WORK=$work bash "$E2E_DIR"/upgrade-m3.sh "$pkg" "$pkg_next" || fail "upgrade-m3.sh failed"
+    WORK=$work bash /e2e/upgrade-m3.sh "$pkg" "$pkg_next" || fail "upgrade-m3.sh failed"
     systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the M3 build"
     phase_done upgrade
     echo "e2e: all checks passed (upgrade from the M3 build)"
@@ -108,30 +107,17 @@ id alice >/dev/null 2>&1 || useradd -m -s /bin/bash alice
 work=$(mktemp -d /tmp/e2e.XXXXXX)
 chmod 755 "$work"
 chown alice "$work" # user.sh writes the agent state and signatures here
-for kind in rsa ec; do
-    case $kind in
-        rsa) genopt=(-algorithm RSA -pkeyopt rsa_keygen_bits:2048) ;;
-        ec) genopt=(-algorithm EC -pkeyopt ec_paramgen_curve:P-256) ;;
-    esac
-    openssl genpkey "${genopt[@]}" -out "$work/$kind.key" 2>/dev/null
-    openssl req -new -x509 -key "$work/$kind.key" -subj "/CN=custodio e2e $kind" -days 30 -out "$work/$kind.crt"
-    openssl pkcs12 -export -inkey "$work/$kind.key" -in "$work/$kind.crt" -name "${kind}1" \
-        -passout pass:e2e-password -out "$work/${kind}1.p12"
-done
-# A CSR for NSS to sign with the custodied RSA key (the CSR's own key is a throwaway).
-openssl req -new -newkey rsa:2048 -nodes -keyout "$work/csr.key" -subj "/CN=e2e subject" -out "$work/csr.pem" 2>/dev/null
-openssl req -in "$work/csr.pem" -outform DER -out "$work/csr.der"
-head -c 32 /dev/urandom > "$work/data.bin"
-for kind in rsa ec; do openssl x509 -in "$work/$kind.crt" -pubkey -noout > "$work/$kind.pub"; done
-chmod 644 "$work"/*
+# shellcheck source=e2e/guest-fixtures.sh
+source "$E2E_DIR"/guest-fixtures.sh
+make_fixtures "$work"
 
 # Import as the user. Import asks polkit, so import-user.sh starts the test agent and approves in the same login session.
-su -l alice -c "WORK=$work bash $E2E_DIR/import-user.sh" || fail "import-user.sh failed"
+su -l alice -c "WORK=$work bash /e2e/import-user.sh" || fail "import-user.sh failed"
 rm -f "$work"/*.key "$work"/*.p12
 phase_done import
 
 if [ "$mode" = oldpath ]; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
+    WORK=$work MODULE=$MODULE bash /e2e/upgrade.sh "$pkg" "$pkg_next" upgrade-oldpath || fail "upgrade.sh failed (from the old-path package)"
     systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade from the old-path package"
     phase_done upgrade
     echo "e2e: all checks passed (upgrade from the old-path package)"
@@ -141,7 +127,7 @@ fi
 # User side, in a login session: `su -l` goes through PAM, so pam_systemd opens a logind session. With a selection, the steps that no selected case
 # needs are left out (select.sh); user.sh also leaves the agent state that the unavailable and journal steps read.
 if phase_runs user; then
-    su -l alice -c "WORK=$work MODULE=$MODULE bash $E2E_DIR/user.sh" || fail "user.sh failed"
+    su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/user.sh" || fail "user.sh failed"
 fi
 phase_done user
 
@@ -154,13 +140,13 @@ if phase_runs unavailable; then
     systemctl stop polkit
     systemctl mask --runtime polkit >/dev/null 2>&1
     if systemctl is-active --quiet polkit; then fail "polkit still active"; fi
-    timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash $E2E_DIR/unavailable.sh" || fail "unavailable.sh failed"
+    timeout 60 su -l alice -c "WORK=$work MODULE=$MODULE bash /e2e/unavailable.sh" || fail "unavailable.sh failed"
     restore_polkit || fail "polkit could not be restored"
     systemctl is-active --quiet polkit || fail "polkit is not active after the restore"
 fi
 phase_done unavailable
 if phase_runs journal; then
-    WORK=$work START=$start TOTAL=$total bash "$E2E_DIR"/journal-check.sh || fail "journal-check.sh failed"
+    WORK=$work START=$start TOTAL=$total bash /e2e/journal-check.sh || fail "journal-check.sh failed"
 fi
 phase_done journal
 
@@ -168,7 +154,7 @@ phase_done journal
 # change (they sign, import and delete), and before the upgrade, whose cases and the lifecycle's look at the state of the keys or at windows of
 # their own: the step deletes every key it imports. Needs nothing from the steps above but the setup.
 if phase_runs owner; then
-    WORK=$work MODULE=$MODULE START=$start bash "$E2E_DIR"/owner-run.sh || fail "owner-run.sh failed"
+    WORK=$work MODULE=$MODULE START=$start bash /e2e/owner-run.sh || fail "owner-run.sh failed"
 fi
 phase_done owner
 
@@ -176,25 +162,25 @@ phase_done owner
 # and before the upgrade, for the same reasons; polkit is stopped for a while and restored (the trap below covers every path); every key it makes it deletes.
 if phase_runs ops-polkit; then
     polkit_trap=1
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/ops-run.sh || fail "ops-run.sh failed"
+    WORK=$work MODULE=$MODULE bash /e2e/ops-run.sh || fail "ops-run.sh failed"
 fi
 phase_done ops-polkit
 
 # The replace-certificate and delete cases (F93): alice, her own session and agent approving, the CLI, the service and the PKCS#11 module. Each group makes keys of its
 # own and deletes them, so the state after is the one before; after ops-polkit and before the upgrade, for the same reasons.
 if phase_runs replace; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/rd-run.sh replace || fail "rd-run.sh replace failed"
+    WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh replace || fail "rd-run.sh replace failed"
 fi
 phase_done replace
 if phase_runs delete; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/rd-run.sh delete || fail "rd-run.sh delete failed"
+    WORK=$work MODULE=$MODULE bash /e2e/rd-run.sh delete || fail "rd-run.sh delete failed"
 fi
 phase_done delete
 
 # The journal cases of every operation (F94): alice signs, imports, deletes and replaces with known outcomes, root reads the journal of the service between two
 # marker entries. After delete and before the upgrade, for the same reasons; every key is deleted at the end, so the state and the counts are as before.
 if phase_runs journal-ops; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/jo-run.sh || fail "jo-run.sh failed"
+    WORK=$work MODULE=$MODULE bash /e2e/jo-run.sh || fail "jo-run.sh failed"
 fi
 phase_done journal-ops
 
@@ -202,7 +188,7 @@ phase_done journal-ops
 # of the journal and that nothing of the hostile names is in it. After journal-ops and before the upgrade, for the same reasons; it makes children of her
 # app.slice and removes them, imports a key and deletes it, so the state and the counts are as before.
 if phase_runs appid; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/appid-run.sh || fail "appid-run.sh failed"
+    WORK=$work MODULE=$MODULE bash /e2e/appid-run.sh || fail "appid-run.sh failed"
 fi
 phase_done appid
 
@@ -210,49 +196,49 @@ phase_done appid
 # PAM checking her password for a while. After appid and before the upgrade, for the same reasons; every key is deleted by its owner, the PAM file is restored and
 # carol removed (the trap of cli-run.sh), so the state and the counts are as before.
 if phase_runs cli; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/cli-run.sh || fail "cli-run.sh failed"
+    WORK=$work MODULE=$MODULE bash /e2e/cli-run.sh || fail "cli-run.sh failed"
 fi
 phase_done cli
 
 # The TPM kind cases (F133): alice imports an RSA 2048 and a P-256 key with the CLI and the kind they get is judged in the import result, the API's list, `custodio list` and the
 # journal; under a mode other than swtpm each case is reported skipped. After cli and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs tpm-kind; then
-    WORK=$work E2E_TPM=$tpm_mode bash "$E2E_DIR"/tpmkind-run.sh || fail "tpmkind-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmkind-run.sh || fail "tpmkind-run.sh failed"
 fi
 phase_done tpm-kind
 
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs sign; then
-    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash "$E2E_DIR"/sign-run.sh || fail "sign-run.sh failed"
+    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/sign-run.sh || fail "sign-run.sh failed"
 fi
 phase_done sign
 
 # The no-plaintext cases (F135): alice imports an RSA 2048 and a P-256 key, and after each import scripts/check-no-plaintext.sh (mounted unchanged) searches the real state directory for the key in
 # every encoding; no file there may be an unencrypted private key. Every TPM mode; both keys are deleted, so the state and the counts are as before.
 if phase_runs noplain; then
-    WORK=$work E2E_TPM=$tpm_mode bash "$E2E_DIR"/noplain-run.sh || fail "noplain-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/noplain-run.sh || fail "noplain-run.sh failed"
 fi
 phase_done noplain
 
 # The TPM-key-cannot-be-duplicated cases (F136): alice imports an RSA 2048 and a P-256 key; root reads the service's stored records, loads each key under the service's TPM with tpm2-tools,
 # and shows an empty authPolicy, a failing tpm2_duplicate and a blob that a second swtpm refuses. Reported skipped in mode none (no key is a TPM key). Both keys are deleted, so the state is as before.
 if phase_runs tpmdup; then
-    WORK=$work E2E_TPM=$tpm_mode bash "$E2E_DIR"/tpmdup-run.sh || fail "tpmdup-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmdup-run.sh || fail "tpmdup-run.sh failed"
 fi
 phase_done tpmdup
 
 # The PCR cases (F137): alice imports an RSA 2048 and a P-256 key; root extends PCRs 7, 0 and 11 on the service's TPM, restarts the TPM and the service, and every key still signs. Reported
 # skipped in mode none (no TPM). It restarts the service in the middle of the run: the steps below read the main pid fresh. Both keys are deleted.
 if phase_runs pcr; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash "$E2E_DIR"/pcr-run.sh || fail "pcr-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/pcr-run.sh || fail "pcr-run.sh failed"
 fi
 phase_done pcr
 
 # The fallback cases (F138): in mode none alice imports an RSA 2048 and a P-256 key with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so (weaker, no TPM).
 # The tpmbound cases are skipped in every mode (SPEC_DEVIATIONS.md, F134). After pcr and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs fallback; then
-    WORK=$work E2E_TPM=$tpm_mode bash "$E2E_DIR"/fallback-run.sh || fail "fallback-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/fallback-run.sh || fail "fallback-run.sh failed"
 fi
 phase_done fallback
 
@@ -260,7 +246,7 @@ phase_done fallback
 # leaves one journal entry and puts the key in no weaker kind. Only in swtpm (the cases change the TPM of the run themselves and restore it). After fallback and before the upgrade;
 # the TPM drop-in, the credential socket and the service are put back, and the keys it imports are deleted.
 if phase_runs tpmfail; then
-    WORK=$work E2E_TPM=$tpm_mode bash "$E2E_DIR"/tpmfail-run.sh || fail "tpmfail-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmfail-run.sh || fail "tpmfail-run.sh failed"
 fi
 phase_done tpmfail
 
@@ -268,7 +254,7 @@ phase_done tpmfail
 # signing fails with KeyLost (CKR_DEVICE_ERROR through the module) and a journal entry, the keys stay listed and can be deleted. Reported skipped in mode none (no TPM). The main TPM is never cleared;
 # the drop-in, the service and the second swtpm are put back at the end, and both keys are deleted. After tpmfail and before the upgrade.
 if phase_runs tpmclear; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash "$E2E_DIR"/tpmclear-run.sh || fail "tpmclear-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmclear-run.sh || fail "tpmclear-run.sh failed"
 fi
 phase_done tpmclear
 
@@ -276,7 +262,7 @@ phase_done tpmclear
 # service's own TPM socket, which has no resource manager). Reported skipped in mode none (no TPM, no slots). After tpmclear and before the upgrade; the service and the TPM are as they were
 # and all its keys are deleted.
 if phase_runs tpmslots; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash "$E2E_DIR"/tpmslots-run.sh || fail "tpmslots-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmslots-run.sh || fail "tpmslots-run.sh failed"
 fi
 phase_done tpmslots
 
@@ -284,14 +270,14 @@ phase_done tpmslots
 # entries the step caused. Old-format key files are placed for two owners and the service restarted (the purge); a record is damaged and the TPM or credential service made unavailable for
 # one signature each; everything is undone and the step's keys are deleted. After tpmslots and before the upgrade.
 if phase_runs journalkind; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash "$E2E_DIR"/journalkind-run.sh || fail "journalkind-run.sh failed"
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/journalkind-run.sh || fail "journalkind-run.sh failed"
 fi
 phase_done journalkind
 
 # The upgrade case comes last of the cases, so that it does not disturb the audit counts above: it installs N+1 over N.
 # The lifecycle cases start from the state it leaves, so they need it too.
 if phase_runs upgrade; then
-    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash "$E2E_DIR"/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
+    WORK=$work MODULE=$MODULE E2E_TPM=$tpm_mode bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 fi
 phase_done upgrade
 
@@ -305,7 +291,7 @@ fi
 
 # The removal, purge and reinstall cases come after the upgrade: they remove N+1 and install it again, from the state the upgrade left.
 if phase_runs lifecycle; then
-    WORK=$work MODULE=$MODULE bash "$E2E_DIR"/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
+    WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
 fi
 phase_done lifecycle
 
