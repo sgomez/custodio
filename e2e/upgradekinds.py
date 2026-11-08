@@ -19,7 +19,7 @@ import re
 import sys
 
 CASES = ["upgrade-kinds-before", "upgrade-kinds-kept", "upgrade-kinds-signs", "upgrade-kinds-tpmbound"]
-KINDS = {"swtpm": "tpm", "lacking": "tpm", "none": "encrypted-host"}
+KINDS = {"swtpm": "tpm", "lacking": "tpm", "none": "encrypted-host", "vm-full": "tpm", "vm-lacking": "encrypted-tpm"}  # vm-*: a VM run (F163)
 KEYS = {"alice": {"ec1": "ecdsa-p256", "rsa1": "rsa2048"}, "bob": {"bobonly": "rsa2048", "rsa1": "rsa2048"}}
 
 
@@ -152,6 +152,9 @@ def main(argv):
         return 0
     if argv[:1] == ["kind"] and n == 2:
         print(kind_of(argv[1]))
+        return 0
+    if argv[:1] == ["keys"] and n == 2 and argv[1] in KEYS:
+        print("\n".join(KEYS[argv[1]]))
         return 0
     if argv[:1] == ["listing"] and n == 3:
         problems = listing(argv[1], argv[2])

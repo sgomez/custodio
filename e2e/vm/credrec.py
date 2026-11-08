@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Takes the stored credential of an encrypted-tpm key out of the service's state directory (F161).
 
-  credrec.py STATE ID OUT   finds the record of key ID under STATE/<uid>/, requires kind encrypted-tpm, writes its raw credential to OUT.
+  credrec.py STATE ID OUT [UID]   finds the record of key ID under STATE/<uid>/ (only STATE/UID/ when UID is given), requires kind encrypted-tpm, writes its raw credential to OUT.
 
 Exit 0 on success; 1 with one line on stderr when the key has no record, two records, another kind, or an unreadable record.
 The record layout is the one of crates/custodiod/src/store/record.rs: "CUSTODIO" version(1) kind(1) owner(4) id(1+n) certificate(4+n) protected(4+n);
@@ -39,12 +39,15 @@ def parse(data):
 
 
 def main(argv):
-    if len(argv) != 3:
-        print("usage: credrec.py STATE ID OUT", file=sys.stderr)
+    if len(argv) not in (3, 4):
+        print("usage: credrec.py STATE ID OUT [UID]", file=sys.stderr)
         return 1
-    state, want, out = argv
+    state, want, out = argv[:3]
+    only_uid = argv[3] if len(argv) == 4 else None  # two users may own a key of the same id
     found = []
     for uid in sorted(os.listdir(state)):
+        if only_uid is not None and uid != only_uid:
+            continue
         d = os.path.join(state, uid)
         if not os.path.isdir(d):
             continue

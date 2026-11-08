@@ -68,6 +68,7 @@ judged "the seeded accounts are not as expected" acct_seed_problems "$ACC"
 if uk_on; then
     kinds collect before || fail "the kinds listing before the upgrade failed"
     kinds before
+    kinds reader
 fi
 snapshot_state "$STATE_LINK" > "$WORK/state.before"
 user_run list > "$WORK/listing.before" || fail "the key listing before the upgrade failed"

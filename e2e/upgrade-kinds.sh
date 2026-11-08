@@ -8,7 +8,8 @@
 #   upgrade-kinds.sh kept          judges before against after, reports upgrade-kinds-kept
 #   upgrade-kinds.sh cursor        records the journal position just before the signing round
 #   upgrade-kinds.sh signs         judges the journal entries since the cursor and the listing of PHASE round against before, reports upgrade-kinds-signs
-#   upgrade-kinds.sh tpmbound      reports upgrade-kinds-tpmbound skipped (deviation F134)
+#   upgrade-kinds.sh reader        (VM, lacking) the reader of F157 on the credential of each seeded key; a failing reader stops the run; nothing in the other modes
+#   upgrade-kinds.sh tpmbound      container: reports upgrade-kinds-tpmbound skipped (deviation F134); VM: the reader once more, after the upgrade, and reports it run
 # Needs WORK; E2E_TPM is the mode (default swtpm); E2E_TARGET_DIR is where the target's cases.list is (default /e2e-target).
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
@@ -17,6 +18,15 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$here/report.sh"
 : "${WORK:?}"
 mode=${E2E_TPM:-swtpm}
+# F163: in a VM run (E2E_VM=1) the TPM is the VM's own: swtpm is the full mode (kind tpm), lacking the lacking mode (kind encrypted-tpm, and `reader` reads each credential, F157)
+vm=${E2E_VM:-}
+if [ -n "$vm" ]; then
+    case $mode in
+    swtpm) mode='vm-full' ;;
+    lacking) mode='vm-lacking' ;;
+    *) fail "a VM run has the TPM mode swtpm or lacking, not '$mode'" ;;
+    esac
+fi
 ACC=$WORK/upgrade-acct
 K=$ACC/kinds
 uk() { python3 -I "$here/upgradekinds.py" "$@"; }
@@ -26,6 +36,18 @@ judged() {
     p=$(printf '%s\n' "$2" | sed '/^$/d')
     [ -z "$p" ] || { printf '%s\n' "$p" >&2; fail "$1: the kinds are not right (see above)"; }
     case_run "$1"
+}
+
+reader() { # the credential of every seeded key passes the reader (lacking in a VM only)
+    [ "$mode" = vm-lacking ] || return 0
+    # shellcheck source=e2e/vm/cred-lib.sh
+    source "${E2E_DIR:-/e2e}/vm/cred-lib.sh"
+    local user key
+    for user in alice bob; do
+        for key in $(uk keys "$user"); do
+            vm_read_credential "$key" "$(id -u "$user")" > /dev/null || fail "the credential of $user's $key did not pass the reader"
+        done
+    done
 }
 
 case ${1:-} in
@@ -74,8 +96,14 @@ signs)
     judged upgrade-kinds-signs "$p
 $q"
     ;;
+reader) reader ;;
 tpmbound)
+    if [ -n "$vm" ]; then
+        reader
+        case_run upgrade-kinds-tpmbound
+        exit 0
+    fi
     case_skip upgrade-kinds-tpmbound "the container cannot make the kind encrypted-tpm (SPEC_DEVIATIONS.md F134); the kinds, owners and certificates surviving a store opened again over one state directory are covered by the custodiod integration test state_format reload (cargo test -p custodiod --test state_format reload), not an end-to-end proof"
     ;;
-*) fail "usage: upgrade-kinds.sh enabled ID | collect PHASE | before | kept | cursor | signs | tpmbound" ;;
+*) fail "usage: upgrade-kinds.sh enabled ID | collect PHASE | before | kept | cursor | signs | reader | tpmbound" ;;
 esac

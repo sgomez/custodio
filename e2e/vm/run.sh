@@ -63,6 +63,11 @@ deb=$(find "$PKG" -name 'custodio_*.deb' 2> /dev/null | sort | tail -n 1)
 deb_next=$(find "$PKG_NEXT" -name 'custodio_*.deb' 2> /dev/null | sort | tail -n 1)
 [ -n "$deb_next" ] || die "no package N+1 custodio_*.deb in $PKG_NEXT (the e2e-packages recipe builds it)"
 [ "$(realpath "$deb")" != "$(realpath "$deb_next")" ] || die "N and N+1 are the same file"
+# F163: N and N+1 are both built from this tree, so N already depends on the credential library the upgrade must not be the first to need (acceptance 10)
+[ "$(dpkg-deb -f "$deb" Version)" != "$(dpkg-deb -f "$deb_next" Version)" ] || die "N and N+1 have the same version"
+for f in "$deb" "$deb_next"; do
+    grep -qw -- libtss2-rc0t64 <<< "$(dpkg-deb -f "$f" Depends)" || die "$f does not depend on libtss2-rc0t64: package N must already need it"
+done
 deps=$(dpkg-deb -f "$deb" Depends Recommends Pre-Depends) || die "cannot read the fields of $deb"
 # p11-kit and polkitd are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
 for t in tpm2-tools openssl opensc pkcs11-provider libnss3-tools python3-gi; do

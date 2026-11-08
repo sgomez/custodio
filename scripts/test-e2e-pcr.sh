@@ -288,7 +288,7 @@ cp "$ROOT/docs/audit.md" "$R/docs/"; cp "$ROOT"/scripts/check-no-plaintext.sh "$
 cp "$ROOT/crates/custodiod/src/app_id_source.rs" "$R/crates/custodiod/src/"
 for v in 1.2.3:dpk 1.2.4:dpkn; do
     d=$tmp/b-${v%%:*}; mkdir -p "$d/DEBIAN"
-    printf 'Package: custodio\nVersion: %s\nArchitecture: amd64\nMaintainer: t <t@example.org>\nDescription: fake\n' "${v%%:*}" > "$d/DEBIAN/control"
+    printf 'Package: custodio\nVersion: %s\nArchitecture: amd64\nMaintainer: t <t@example.org>\nDescription: fake\nDepends: libtss2-rc0t64\n' "${v%%:*}" > "$d/DEBIAN/control"
     dpkg-deb --root-owner-group -b "$d" "$tmp/${v##*:}/custodio_${v%%:*}_amd64.deb" > /dev/null
 done
 DRV=$R/e2e/vm/run.sh

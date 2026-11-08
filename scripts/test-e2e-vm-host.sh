@@ -23,13 +23,13 @@ cp "$ROOT/crates/custodiod/src/app_id_source.rs" "$R/crates/custodiod/src/"
 DRV=$R/e2e/vm/run.sh
 # fake packages: N, N+1, and one that depends on a test tool
 mkdeb() { # mkdeb DIR VERSION [DEPENDS]
-    local d=$tmp/b-$2${3:-} dep=''
-    [ -z "${3:-}" ] || dep="Depends: $3"
+    local d=$tmp/b-$2${3:-} dep="Depends: libtss2-rc0t64" # N depends on libtss2-rc0t64 as the real packages do (F163)
+    [ -z "${3:-}" ] || dep="Depends: ${3}"
     mkdir -p "$d/DEBIAN" "$1"
     printf 'Package: custodio\nVersion: %s\nArchitecture: amd64\nMaintainer: t <t@example.org>\nDescription: fake\n%s\n' "$2" "$dep" > "$d/DEBIAN/control"
     dpkg-deb --root-owner-group -b "$d" "$1/custodio_${2}_amd64.deb" > /dev/null
 }
-mkdeb "$tmp/pk" 1.2.3; mkdeb "$tmp/pkn" 1.2.4; mkdeb "$tmp/pkbad" 1.2.3 tpm2-tools; mkdir "$tmp/empty"
+mkdeb "$tmp/pk" 1.2.3; mkdeb "$tmp/pkn" 1.2.4; mkdeb "$tmp/pkbad" 1.2.3 libtss2-rc0t64,tpm2-tools; mkdeb "$tmp/pknodep" 1.2.3 libc6; mkdir "$tmp/empty"
 # the host's apt-get, dpkg and apt: logging stubs ahead of any real one
 mkdir "$tmp/hostbin"
 for t in apt-get dpkg apt; do printf '#!/bin/sh\necho "%s $*" >> "$HOSTLOG"\n' "$t" > "$tmp/hostbin/$t"; chmod +x "$tmp/hostbin/$t"; done
@@ -104,6 +104,7 @@ launch f-start "$DRV" full STUB_FAIL_START=1
 launch f-nopkg "$DRV" full E2E_PACKAGES="$tmp/empty"
 launch f-nonext "$DRV" full E2E_PACKAGES_NEXT="$tmp/empty"
 launch f-baddeb "$DRV" full E2E_PACKAGES="$tmp/pkbad"
+launch f-nodep "$DRV" full E2E_PACKAGES="$tmp/pknodep"
 launch f-install "$DRV" full STUB_FAIL_INSTALL=1
 launch f-has2 "$DRV" full STUB_HAS2=partial
 launch f-has2rc "$DRV" full STUB_HAS2=yes STUB_HAS2_RC=16
@@ -232,6 +233,9 @@ grep -q 'terminated' "$tmp/s-TERM/out.txt" || bad "s-TERM: no message naming the
 [ "$(rcof c-noaccount)" != 0 ] && bad "control noaccount: a missing case still failed the run"
 # host: nothing installed locally (the driver's own calls)
 for n in good-full good-lacking; do grep -q 'tpm2-tools' "$tmp/$n/log" || bad "$n: the tools install is not in the guest log"; done
+[ "$(rcof f-nodep)" != 0 ] || bad "f-nodep: a package N without the libtss2-rc0t64 dependency passed"
+grep -q 'libtss2-rc0t64' "$tmp/f-nodep/out.txt" || bad "f-nodep: the refusal does not name libtss2-rc0t64"
+grep -q 'test tool tpm2-tools' "$tmp/f-baddeb/out.txt" || bad "f-baddeb: refused for another reason than the test tool"
 c="f-baddeb"; deps=$(dpkg-deb -f "$tmp/pkbad/custodio_1.2.3_amd64.deb" Depends); grep -qw tpm2-tools <<< "$deps" || bad "the fake .deb does not depend on tpm2-tools"
 deps=$(dpkg-deb -f "$tmp/pk/custodio_1.2.3_amd64.deb" Depends Recommends Pre-Depends || true); ! grep -qwE 'tpm2-tools|openssl|opensc|pkcs11-provider|libnss3-tools|python3-gi' <<< "$deps" || bad "the fake package names a test tool"
 
