@@ -58,24 +58,26 @@ vm_judge_unit_shipped() {
     vm_judge_tcti_absent "$VM_UNIT" $(vm_dropins)
 }
 
-# vm_judge_via_device ENVFILE FDS: the running service has no test TCTI and holds /dev/tpmrm0, not a socket
+# vm_judge_via_device ENVFILE FDS: the running service has no test TCTI (the production code opens /dev/tpmrm0 for every call unless that variable
+# is set, and holds no descriptor open between calls, as the real guest showed) and holds no path to a swtpm; an open /dev/tpmrm0 is fine, not required
 vm_judge_via_device() {
     vm_judge_tcti_absent "$1"
-    grep -q -- "$(basename "$VM_TPMRM")" "$2" 2> /dev/null || echo "the service has no $VM_TPMRM open"
-    ! grep -qE -- 'socket:|swtpm|\.sock' "$2" 2> /dev/null || echo "the service holds a socket to a TPM, not the device"
+    ! grep -qE -- 'swtpm|\.sock' "$2" 2> /dev/null || echo "the service holds a socket to a TPM, not the device"
 }
 
 # vm_collect_install DEB HAS2_OUTPUT HAS2_RC: run in the guest right after the package install and before any test tool: the facts the install-time cases judge.
 # The driver read `systemd-analyze has-tpm2` itself at that moment and passes what it saw.
 vm_collect_install() {
-    local deb=$1 f=$VM_FACTS pkgs p r
+    local deb=$1 f=$VM_FACTS pkgs p r hist
     mkdir -p "$f"
     printf '%s\n' "$2" > "$f/has2.out"
     printf '%s\n' "$3" > "$f/has2.rc"
     # the first line of the output is the verdict (`yes`, `partial` or `no`)
     head -n 1 "$f/has2.out" > "$f/has2.verdict"
-    grep '^Commandline:' /var/log/apt/history.log | sed 's/^Commandline: / /; s/$/ /' > "$f/apt-commandlines" || true
-    pkgs=$(awk '/^Install:/ {gsub(/\([^)]*\)/, ""); gsub(/,/, " "); for (i = 2; i <= NF; i++) if ($i !~ /:/ || $i ~ /:amd64$/) { sub(/:amd64$/, "", $i); print $i }}' /var/log/apt/history.log | sort -u)
+    # only the apt runs that installed this package: the image's own history (its build installed with recommends) is not the install under test
+    hist=$(awk -v deb="$(basename "$deb")" 'function flush() { if (index(blk, deb)) printf "%s", blk; blk = "" } /^Start-Date:/ { flush() } { blk = blk $0 "\n" } END { flush() }' /var/log/apt/history.log)
+    printf '%s\n' "$hist" | grep '^Commandline:' | sed 's/^Commandline: / /; s/$/ /' > "$f/apt-commandlines" || true
+    pkgs=$(printf '%s\n' "$hist" | awk '/^Install:/ {gsub(/\([^)]*\)/, ""); gsub(/,/, " "); for (i = 2; i <= NF; i++) if ($i !~ /:/ || $i ~ /:amd64$/) { sub(/:amd64$/, "", $i); print $i }}' | sort -u)
     : > "$f/recommends-installed"
     for p in $pkgs; do
         # shellcheck disable=SC2020 # tr maps each of the two separators to a newline

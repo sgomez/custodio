@@ -156,11 +156,11 @@ step copy
 gt 300 "sudo apt-get update" >> "$log" 2>&1 || die "apt-get update failed in the guest"
 gt 900 "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /pkg/$(basename "$deb")" >> "$log" 2>&1 || die "apt-get install of the package failed in the guest"
 has_rc=0
-has_out=$(g "systemd-analyze has-tpm2" 2>&1) || has_rc=$?
+has_out=$(g "SYSTEMD_COLORS=0 systemd-analyze has-tpm2" 2>&1) || has_rc=$?
 has_out=$(printf '%s' "$has_out" | head -n 1)
 F[has_tpm2]="$has_out (exit $has_rc)"
 F[kernel]=$(g "uname -r" 2> /dev/null | head -n 1 || true)
-F[systemd]=$(g "systemctl --version" 2> /dev/null | head -n 1 || true)
+F[systemd]=$(g "SYSTEMD_COLORS=0 systemctl --version" 2> /dev/null | head -n 1 || true)
 for k in kernel systemd; do [ -n "${F[$k]}" ] || F[$k]=unknown; done
 g "sudo bash -c '. /e2e/vm/judge.sh; vm_collect_install /pkg/$(basename "$deb") \"$has_out\" $has_rc'" >> "$log" 2>&1 || die "collecting the install facts failed in the guest"
 step install
@@ -168,13 +168,15 @@ step install
 
 # ---- the test tools, in the guest only
 gt 900 "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $TOOLS" >> "$log" 2>&1 || die "apt-get install of the test tools failed in the guest"
+# the test agent authenticates through PAM like a real one; as in the container image, the polkit-1 service accepts any password (the decision is the agent's)
+g "printf 'auth required pam_permit.so\\naccount required pam_permit.so\\n' | sudo tee /etc/pam.d/polkit-1 > /dev/null" >> "$log" 2>&1 || die "writing the test PAM service of polkit in the guest failed"
 step tools
 
 # ---- the shared setup and the cases
 sel=$(printf '%s\n' "$selection" | tr '\n' ' ')
 guest_out=$tmp/guest.out
 rc=0
-gt 3000 "sudo env E2E_VM=1 E2E_TPM=$tpm E2E_SELECT='${sel% }' bash /e2e/guest.sh vm" 2>&1 | tee "$guest_out" | tee -a "$log" || rc=${PIPESTATUS[0]}
+gt 3000 "sudo systemd-run --pipe --wait -q --collect -E XDG_SESSION_CLASS=user env E2E_VM=1 E2E_TPM=$tpm E2E_SELECT='${sel% }' bash /e2e/guest.sh vm" 2>&1 | tee "$guest_out" | tee -a "$log" || rc=${PIPESTATUS[0]}
 # the guest's E2E-PHASE lines are the times of its steps: install, service and import are the setup; a group counts when one of its cases was selected
 setup=0
 while read -r name secs; do

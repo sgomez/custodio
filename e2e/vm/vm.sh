@@ -137,7 +137,7 @@ start_qemu() {
         -drive "if=pflash,format=raw,file=$RUN_DIR/vars.fd"
         -drive "file=$RUN_DIR/disk.qcow2,if=virtio,format=qcow2"
         -drive "file=$RUN_DIR/seed.img,if=virtio,format=raw,readonly=on")
-    if [ -f "$RUN_DIR/payload.path" ]; then a+=(-drive "file=$(< "$RUN_DIR/payload.path"),if=virtio,format=raw,readonly=on,serial=custodio-payload"); fi
+    if [ -f "$RUN_DIR/payload.path" ]; then a+=(-drive "file=$(< "$RUN_DIR/payload.path"),if=none,id=payload,format=raw,readonly=on" -device "virtio-blk-pci,drive=payload,serial=custodio-payload"); fi
     a+=(-netdev "user,id=n0" -device "virtio-net-pci,netdev=n0"
         -chardev "socket,id=chrtpm,path=$RUN_DIR/tpm.sock" -tpmdev "emulator,id=tpm0,chardev=chrtpm" -device "tpm-crb,tpmdev=tpm0"
         -serial "unix:$RUN_DIR/serial.sock,server,nowait" -monitor none -daemonize -pidfile "$RUN_DIR/qemu.pid")

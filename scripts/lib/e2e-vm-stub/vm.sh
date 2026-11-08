@@ -21,7 +21,7 @@ run)
     case $cmd in
     *"systemd-analyze has-tpm2"*) echo "${STUB_HAS2:-yes}"; exit "${STUB_HAS2_RC:-0}" ;;
     "uname -r") echo 6.14.0-stub; exit 0 ;;
-    "systemctl --version") echo "systemd 257 (257.9-stub)"; exit 0 ;;
+    *"systemctl --version") echo "systemd 257 (257.9-stub)"; exit 0 ;;
     *"apt-get install"*) [ -z "${STUB_FAIL_INSTALL:-}" ] || { echo "E: stub apt failure"; exit 100; }; exit 0 ;;
     *guest.sh*)
         if [ -n "${STUB_HOLD:-}" ]; then

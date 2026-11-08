@@ -111,5 +111,5 @@ vmcase unit-sum 'differs from the packaged one' 'echo "# edited" >> "$V/unit.ser
 vmcase tcti-unit 'CUSTODIOD_TEST_SWTPM_TCTI is set' 'echo "Environment=CUSTODIOD_TEST_SWTPM_TCTI=swtpm:path=/x" >> "$V/unit.service"; sha256sum "$V/unit.service" | cut -d" " -f1 > "$V/facts/unit.sha256"'
 vmcase tcti-dropin 'CUSTODIOD_TEST_SWTPM_TCTI is set' 'mkdir "$V/usr/custodio.service.d"; echo "Environment=CUSTODIOD_TEST_SWTPM_TCTI=x" > "$V/usr/custodio.service.d/a.conf"'
 vmcase tcti-env 'CUSTODIOD_TEST_SWTPM_TCTI is set' 'printf "CUSTODIOD_TEST_SWTPM_TCTI=swtpm:path=/x\0" > "$V/environ"'
-vmcase socket 'holds a socket' 'printf "lrwx------ 1 root root 64 Jan 1 00:00 4 -> socket:[123]\nlrwx------ 1 root root 64 Jan 1 00:00 3 -> /dev/tpmrm0\n" > "$V/fds"'
-vmcase no-device 'open' 'printf "lrwx------ 1 root root 64 Jan 1 00:00 4 -> socket:[123]\n" > "$V/fds"'
+vmcase socket 'holds a socket' 'printf "lrwx------ 1 root root 64 Jan 1 00:00 4 -> /run/swtpm/tpm.sock\n" > "$V/fds"'
+vm_fixture; : > "$V/fds"; p=$(vm_judge_all); [ -z "$p" ] || bad "vm-only: a service that holds no descriptor open between calls is judged: $p"

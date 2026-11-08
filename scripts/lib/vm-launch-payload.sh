@@ -5,7 +5,8 @@
 # shellcheck disable=SC2034 # CENV is read by control_boot in the sourcing script
 # shellcheck disable=SC2154 # tmp, VMDIR and the helpers come from the sourcing script
 
-pay_arg() { printf 'file=%s,if=virtio,format=raw,readonly=on,serial=custodio-payload' "$1"; }
+pay_arg() { printf 'file=%s,if=none,id=payload,format=raw,readonly=on' "$1"; }
+pay_dev=virtio-blk-pci,drive=payload,serial=custodio-payload
 pay_count() { args_of "$1" qemu "$2" | grep -c 'serial=custodio-payload' || true; } # WORLD N: payload drives in the Nth QEMU's arguments
 # ck_payload WORLD N FILE: exactly one payload drive, the exact argument, after a "-drive"
 ck_payload() {
@@ -13,6 +14,7 @@ ck_payload() {
     want=$(pay_arg "$3")
     [ "$(pay_count "$1" "$2")" = 1 ] || { echo "payload drives in qemu $2: $(pay_count "$1" "$2")"; return 1; }
     args_of "$1" qemu "$2" | grep -x -B1 -- "$want" | head -n 1 | grep -qx -- -drive || { echo "no '-drive $want'"; return 1; }
+    args_of "$1" qemu "$2" | grep -x -B1 -- "$pay_dev" | head -n 1 | grep -qx -- -device || { echo "no '-device $pay_dev'"; return 1; }
 }
 
 head -c 8192 /dev/urandom > "$tmp/payload.tar"
@@ -54,7 +56,7 @@ scenario_payload_missing() { # a missing file, a directory, a path QEMU cannot t
 
 # --- controls ---
 control_payload_rw() { # the drive is writable
-    mut payload_rw vm.sh 'format=raw,readonly=on,serial=custodio-payload' 'format=raw,serial=custodio-payload' || return 0
+    mut payload_rw vm.sh 'format=raw,readonly=on" -device' 'format=raw" -device' || return 0
     CENV=(VM_PAYLOAD="$tmp/payload.tar")
     control_boot payload_rw || { bad "control payload_rw: the copy did not start"; return; }
     expect_fail "writable payload" ck_payload "$CW" 1 "$tmp/payload.tar"
