@@ -1,0 +1,2 @@
+# Cases a VM run may report skipped, as `case: reason` (format: e2e/check-cases.sh). Empty: everything in cases.list can run in a VM, and
+# check-cases.sh refuses fallback-tpmbound-* and upgrade-kinds-tpmbound skipped in a VM run whatever this file says.
