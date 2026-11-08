@@ -152,7 +152,7 @@
         "F160"
       ],
       "verify": "just quick && actionlint && zizmor --offline .github/workflows && scripts/test-ci-e2e-vm.sh && scripts/test-ci-e2e.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F165",
