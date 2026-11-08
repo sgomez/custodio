@@ -1,0 +1,253 @@
+{
+  "milestone": "M5",
+  "features": [
+    {
+      "id": "F150",
+      "title": "Research: KVM for the VM target in the dev container and on CI runners",
+      "description": "Settles the open question 'KVM on the hosts'. `docs/findings/F150.md`, headed `## F150`, reports with commands and their output: whether the dev container (`harness/Containerfile`, started by `harness/run.sh` under rootless podman) can open `/dev/kvm`, whether the host has it and with what permissions, and what exactly would expose it to the container (for example a `--device /dev/kvm` in `harness/run.sh` and a group); and whether a GitHub-hosted Linux runner (the `ubuntu-26.04` runner the E2E workflow uses) offers KVM and what a job must do so the runner user may open `/dev/kvm` (verified by a run, or inferred from GitHub's documentation, marked as such). It measures nothing with software emulation unless a person asks. It ends with a line `Decision: ` naming the change for the dev container and for CI. A change to the host is a person's: if one is needed the builder writes `BLOCKED.md` with the options; a builder never switches to software emulation. Indexed in `docs/findings.md`.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F150.md && grep -q '^## F150' \"$f\" && for w in '/dev/kvm' 'harness/run.sh' 'runner' 'ubuntu-26.04' 'udev'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F150.md)' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F151",
+      "title": "VM tools in the dev container, KVM passed through, and the vm-host-check recipe",
+      "description": "The dev container (`harness/Containerfile`) installs, from the distribution and with a comment saying why, what the VM target needs that it lacks: `qemu-system-x86` (with `qemu-utils`), the OVMF firmware (`ovmf`), the NoCloud seed tool (`cloud-image-utils` for `cloud-localds`, or the ISO tool F150/F152 settle on), and the Ubuntu cloud image signing key (`ubuntu-keyring`, `/usr/share/keyrings/ubuntu-cloudimage-keyring.gpg`) for `gpgv`; `swtpm` is already there. `harness/run.sh` exposes `/dev/kvm` to the container as `docs/findings/F150.md` decided. A new recipe `just vm-host-check` (`scripts/vm-host-check.sh`) checks each requirement of the VM target (KVM openable by the current user, `qemu-system-x86_64`, the OVMF code and vars files, `swtpm`, the seed tool, `gpgv` and the keyring) and fails naming each one missing; it never offers software emulation. Its self-test `scripts/test-vm-host-check.sh` (stubbed paths, a negative control per requirement) joins `just test-scripts`. Rebuilding the dev container is a person's step: once the Containerfile and `run.sh` change is committed, the builder writes `BLOCKED.md` asking for the rebuild, and the feature passes on the rebuilt container.",
+      "depends_on": ["F150"],
+      "verify": "just quick && scripts/test-vm-host-check.sh && just vm-host-check",
+      "passes": false
+    },
+    {
+      "id": "F152",
+      "title": "Research: booting the Ubuntu 26.04 minimal cloud image with swtpm, tpm-crb and OVMF",
+      "description": "Records the boot that Design 1 relies on, done by hand in the dev container with KVM (the research may boot the VM; it records every command it ran). `docs/findings/F152.md`, headed `## F152`, gives: where the image and Ubuntu's signed checksums (`SHA256SUMS`, `SHA256SUMS.gpg`) are published, how the serial is read, and how long old serials stay on the mirror (input to the pinning choice); the QEMU command line (KVM, OVMF code and vars, `-tpmdev emulator` with `tpm-crb`, `swtpm` socket and state directory); that the guest kernel has `CONFIG_TCG_CRB=y` and `/dev/tpmrm0` appears; `systemd-analyze has-tpm2` before and after installing `libtss2-rc0t64` without recommends; the systemd and kernel versions in the guest; the channel the harness drives the guest over without any change to the product (SSH on user networking with a key from the NoCloud seed, or a serial or virtio console), with its setup; that apt reaches the archive (the image ships empty apt lists); and that a guest power cycle with the `swtpm` state kept keeps the TPM's persistent state. Ends with a line `Decision: ` naming the channel and the seed tool. Indexed in `docs/findings.md`.",
+      "depends_on": ["F151"],
+      "verify": "f=docs/findings/F152.md && grep -q '^## F152' \"$f\" && for w in 'SHA256SUMS' 'serial' 'OVMF' 'tpm-crb' 'swtpm' 'CONFIG_TCG_CRB' '/dev/tpmrm0' 'has-tpm2' 'libtss2-rc0t64' 'NoCloud' 'power'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F152.md)' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F153",
+      "title": "Research: making the virtual TPM lack a capability RSA 2048 needs",
+      "description": "Settles the open question 'How to make the virtual TPM lack an RSA capability'. `docs/findings/F153.md`, headed `## F153`, tries the candidate routes in the VM of F152 (booting by hand, commands recorded): M4's `tpm-filter` (`custodio-it` example) placed between QEMU's emulator backend and `swtpm` (control channel and data channel); an `swtpm`/`libtpms` profile that disables an algorithm, with the `swtpm` version that supports it and how the dev container and CI would get it; and any other route found. For each route that works it shows, in the guest: the capability missing as every guest process sees it (kernel, `systemd-creds`, the service's capability query of F107/F111 in `docs/api.md`, `tpm2-tools`); that the kernel's TPM (`/dev/tpmrm0`, any primary it makes for bus encryption) and `systemd-creds` sealing with 'host plus TPM' still work; that the service's ECC P-256 parent can still be created; and whether P-256 can also be made to lack a capability without breaking any of them. Ends with a line `Decision: ` naming the route, what the dev container or CI must add for it, and whether P-256 gets `encrypted-tpm`. If RSA cannot get `encrypted-tpm` without breaking the TPM for the kernel or systemd, the builder writes `BLOCKED.md` (RSA carries the RSA-PSS cases). Indexed in `docs/findings.md`.",
+      "depends_on": ["F152"],
+      "verify": "f=docs/findings/F153.md && grep -q '^## F153' \"$f\" && for w in 'tpm-filter' 'profile' 'RSA' 'P-256' 'systemd-creds' '/dev/tpmrm0' 'tpm2-tools' 'parent'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F153.md)' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F154",
+      "title": "Research: systemd 259 credential header and key identifiers",
+      "description": "Settles the open question 'The credential identifiers for systemd 259'. `docs/findings/F154.md`, headed `## F154`, reads systemd's source at the exact version the Ubuntu 26.04 guest installs (from F152) and gives, with file and line: the layout of an encrypted credential's header (where the key identifier, the PCR mask and the TPM fields lie), and the identifier of each key a credential can carry: user-scoped 'host plus TPM' (the one the service's Varlink `Encrypt` gets when the daemon finds a usable TPM), host-only and its user-scoped form, TPM-only, the forms with a TPM public key, and the null key. It then makes real credentials with `systemd-creds` and `swtpm` in the dev container, as F110 did (one TPM-bound, one host-only, one bound to PCR 7, one with the null key), and shows each identifier and PCR mask read back from them, stating the systemd version that made each. Differences from the 257 and 262 values of `docs/findings/F110.md` are listed. Nothing is copied from the service's code. Ends with a line `Decision: ` naming how the harness reader makes its fixtures. Indexed in `docs/findings.md`.",
+      "depends_on": ["F152"],
+      "verify": "f=docs/findings/F154.md && grep -q '^## F154' \"$f\" && for w in '259' 'header' 'PCR' 'null' 'host' 'tpm2' 'scoped' 'swtpm' 'systemd-creds'; do grep -qiF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F154.md)' docs/findings.md",
+      "passes": false
+    },
+    {
+      "id": "F155",
+      "title": "The .deb depends on libtss2-rc0t64",
+      "description": "Design 4. `packaging/nfpm.yaml` makes the `.deb` depend (not recommend) on `libtss2-rc0t64`, next to the TPM2 Software Stack libraries it already declares, with a comment saying systemd loads `libtss2-rc` by `dlopen` and Ubuntu only recommends it. The `.rpm` and Arch package keep `tpm2-tss`, which ships every `libtss2` library. The dependency gate (`scripts/check-tss-deps.sh` / `scripts/check_tss_deps.py`, run by `just package`) requires `libtss2-rc0t64` in the `.deb`'s Depends and fails on a `.deb` that lacks it or only recommends it; its self-test `scripts/test-check-packages-deps.sh` gains those negative controls. `docs/install.md` is updated in F159.",
+      "depends_on": [],
+      "verify": "just quick && scripts/test-check-packages-deps.sh",
+      "passes": false
+    },
+    {
+      "id": "F156",
+      "title": "Every package requires systemd 257 or later, and a gate checks it",
+      "description": "Design 5, packages. The `.deb`'s `Pre-Depends` on systemd rises from 255 to 257 (the comment that cites ubuntu2404 is updated); the `.rpm` and the Arch package keep `systemd >= 257`. The package gate (`scripts/check-packages.sh`, run by `just package`) checks that each of the three formats requires systemd 257 or later, and fails on a package that has no systemd requirement or allows anything older; its self-test `scripts/test-check-packages.sh` gains a negative control per format (a fixture package allowing 255). The real-dpkg lifecycle test (`scripts/test-deb-lifecycle-real.sh`) gains a case where dpkg refuses the `.deb` on a root whose systemd is 255, with a message naming the systemd version; like every lifecycle test it runs at the checkpoint, not in this `verify`.",
+      "depends_on": [],
+      "verify": "just quick && scripts/test-check-packages.sh",
+      "passes": false
+    },
+    {
+      "id": "F157",
+      "title": "The credential client keeps only the user-scoped Varlink route",
+      "description": "Design 5, service. The systemd 255 path of the credential client (`systemd-creds` CLI run with `--tpm2-device`, TPM alone) is removed from `custodiod` together with its tests and whatever chooses between the two routes (version probe, configuration, fallbacks). The service seals and opens credentials only through the user-scoped Varlink `Encrypt`/`Decrypt`, and keeps its header guard (nonzero PCR mask, null key, binding that does not match the kind) unchanged. No stored-credential migration is added (nothing is in use before M6). The `creds` integration tests pass with the 255 path gone, coverage and the CRAP gate hold over the code that remains, and no mutant survives on the changed lines.",
+      "depends_on": ["F156"],
+      "verify": "just quick && cargo test -p custodiod --test creds --locked && just mutants-diff F157",
+      "passes": false
+    },
+    {
+      "id": "F158",
+      "title": "Drop the ubuntu2404 end-to-end target",
+      "description": "Design 5, tests. `e2e/targets/ubuntu2404` goes, with the cases, fixtures, skip entries and selection rules that exist only for it, the `ubuntu2404` entry of the E2E workflow's matrix (`.github/workflows/e2e.yml`), and every reference to it in the e2e host scripts and their self-tests. The bus check (`ProcessFD`) and its tests stay: they test the bus, not a distribution. The glibc ceiling stays. The `ubuntu2404` row of `budgets.tsv` is left for a person (the builder never edits `budgets.tsv`). `just e2e` then runs every remaining target, as the checkpoint shows.",
+      "depends_on": ["F157"],
+      "verify": "just quick && test ! -e e2e/targets/ubuntu2404 && scripts/test-e2e-targets.sh && scripts/test-e2e-host.sh && scripts/test-e2e-skips.sh && scripts/test-ci-e2e.sh",
+      "passes": false
+    },
+    {
+      "id": "F159",
+      "title": "docs/install.md: the systemd 257 floor and libtss2-rc0t64",
+      "description": "`docs/install.md` states that every package requires systemd 257 or later and that older systems (Ubuntu 24.04 among them) are not supported and refused by the package manager; drops the Ubuntu 24.04 entry of 'Supported systems' and the section 'Ubuntu 24.04: switching to dbus-broker'; and lists `libtss2-rc0t64` in 'TPM2 Software Stack' for the `.deb` with why it is needed (systemd loads it by `dlopen`; installs without recommends otherwise lack it). `scripts/test-docs-install.sh` checks these claims against the repository (the systemd bound and the `.deb` dependencies against `packaging/nfpm.yaml`, the install commands against the remaining `e2e/targets/*/install.sh`, so its steps are the ones run), each with a negative control on a broken copy of the document.",
+      "depends_on": ["F155", "F156", "F158"],
+      "verify": "just quick && scripts/test-docs-install.sh",
+      "passes": false
+    },
+    {
+      "id": "F160",
+      "title": "Checkpoint: packages, the systemd floor and the removal of the 255 path",
+      "description": "Every suite passes over the packaging and floor changes: `just check` (lints, every Rust test, the system gates and the script tests, including the package gate tests and the lifecycle tests with the dpkg refusal on systemd 255), the API contract check, the fuzz smoke run, the container end-to-end suite on every remaining target with `swtpm` and with none where marked (tpmbound cases still reported skipped), the package gates on the built packages (the `.deb` declares `libtss2-rc0t64`; every format requires systemd 257 or later), and coverage with the CRAP gate over the code that remains after F157. A failure here is fixed in this feature.",
+      "depends_on": ["F155", "F156", "F157", "F158", "F159"],
+      "verify": "just check && just api-contract && just fuzz-smoke && just e2e && just package-gates && just coverage-gate",
+      "passes": false
+    },
+    {
+      "id": "F161",
+      "title": "The harness's own credential reader",
+      "description": "Design 2. A reader in the end-to-end harness (`e2e/vm/credread.py`, Python like the other case helpers), sharing no code with the service and built from `docs/findings/F154.md`, not from `crates/`, reads a stored `systemd-creds` credential as root and prints its key identifier (by name) and PCR mask; with `--expect-tpm-bound` it exits 0 only for the user-scoped 'host plus TPM' identifier of the given systemd version with a zero PCR mask, and fails naming the reason for a host-only key, the null key, a nonzero PCR mask, an unknown identifier or a malformed header. Its self-test `scripts/test-vm-credread.sh`, joining `just test-scripts`, runs it on credentials made by the real `systemd-creds` with `swtpm` (as F154 decided, with the script that makes them): one TPM-bound, one host-only, one bound to PCR 7 and one null-keyed, each told apart, plus truncated and corrupted controls.",
+      "depends_on": ["F154"],
+      "verify": "just quick && scripts/test-vm-credread.sh",
+      "passes": false
+    },
+    {
+      "id": "F162",
+      "title": "Download and verify the Ubuntu 26.04 minimal cloud image",
+      "description": "Design 1, image. A new recipe `just vm-image` (`e2e/vm/image.sh`) fetches the Ubuntu 26.04 minimal cloud image and Ubuntu's `SHA256SUMS` and `SHA256SUMS.gpg`, verifies the signature with `gpgv` against the Ubuntu cloud image keyring and the image against the signed checksum, and only then places it in a cache outside the repository (never committed); it prints the image serial and the checksum for the run record. A cached image is verified again before use. The pinning choice (one dated serial, or the current release image verified by signature; serial recorded either way) is recorded in `docs/decisions.md` with why. Its self-test `scripts/test-vm-image.sh`, joining `just test-scripts`, runs the script offline on local fixtures (a test key and signed sums) and shows it refuses a wrong checksum, a bad signature, a signature by another key, a missing sums file and a tampered cached image, leaving nothing in the cache.",
+      "depends_on": ["F151", "F152"],
+      "verify": "just quick && scripts/test-vm-image.sh && just vm-image",
+      "passes": false
+    },
+    {
+      "id": "F163",
+      "title": "VM launcher: QEMU with KVM, OVMF, tpm-crb and swtpm, driven over a channel",
+      "description": "Design 1, machine. `e2e/vm/vm.sh` boots a verified image (F162) as an overlay, under QEMU with KVM, OVMF code and a per-run vars copy, and a `tpm-crb` device backed by an `swtpm` on the host whose state is fresh for each run and kept across guest reboots within it. It configures the guest on first boot with a cloud-init NoCloud seed and drives it over the channel of `docs/findings/F152.md` (run a command, copy a file in and out, wait for boot, power cycle with the `swtpm` state kept, shut down), changing nothing in the product. It refuses to start without a usable `/dev/kvm` (never software emulation) and cleans up QEMU, `swtpm` and its temporary files whatever the outcome. Its self-test `scripts/test-vm-launch.sh`, joining `just test-scripts`, runs it with stub `qemu-system-x86_64` and `swtpm` and checks the command lines (KVM, OVMF, `tpm-crb`, `swtpm` state directory reused across a power cycle and fresh per run), the seed contents, the refusal without KVM and the cleanup, each with a negative control. The real boot runs at the checkpoint.",
+      "depends_on": ["F151", "F152", "F162"],
+      "verify": "just quick && scripts/test-vm-launch.sh",
+      "passes": false
+    },
+    {
+      "id": "F164",
+      "title": "VM TPM modes: full and lacking",
+      "description": "Design 1, TPM modes. The launcher takes a mode: `full` (the virtual TPM unchanged) or `lacking` (the TPM made to lack a capability RSA 2048 needs by the route of `docs/findings/F153.md`, which changes the TPM as every guest process sees it and never the service alone). Anything else is refused before a VM starts. If F153's route needs a tool the dev container lacks, this feature adds it to `harness/Containerfile` first and writes `BLOCKED.md` for the rebuild, as F151. Its self-test `scripts/test-vm-modes.sh`, joining `just test-scripts`, checks with stubs the arguments each mode gives QEMU and `swtpm` (or the filter), that `full` adds nothing, that an unknown or missing mode is refused, and that `lacking` cannot start without its route in place, each with a negative control.",
+      "depends_on": ["F153", "F163"],
+      "verify": "just quick && scripts/test-vm-modes.sh",
+      "passes": false
+    },
+    {
+      "id": "F165",
+      "title": "The VM case list and its accounting",
+      "description": "Design 1, cases. The VM target has its own case list (`e2e/vm/cases.list`): the shared setup (install, service, users, key import), the groups `sign-*`, `noplain-*`, `pcr-*`, `fallback-*`, `tpm-clear-*` and `upgrade-kinds-*`, and the VM-only checks the later features add. The existing accounting (`e2e/check-cases.sh`) checks a VM run as it checks a container run: every case of the list reported exactly once, run or skipped, an unknown, missing or duplicated case failing the run. The cases M4 always reports skipped (`fallback-tpmbound-*`, `upgrade-kinds-tpmbound`) may be reported run only in a VM run and stay refused as run in a container run. Its self-test `scripts/test-e2e-vm-cases.sh`, joining `just test-scripts`, checks the list against the case scripts and the accounting with negative controls (missing, unknown, twice, a tpmbound case run in a container); the container skips self-test still passes.",
+      "depends_on": ["F158"],
+      "verify": "just quick && scripts/test-e2e-vm-cases.sh && scripts/test-e2e-skips.sh",
+      "passes": false
+    },
+    {
+      "id": "F166",
+      "title": "The VM run: just e2e-vm, install without recommends, the shipped unit and the record",
+      "description": "Design 1, product under test and record; acceptance 1 and 2. New recipes `just e2e-vm mode` (`full` or `lacking`) and `just e2e-vm-cases mode +names` (like `e2e-cases`) build the packages (`e2e-packages`), get the verified image (F162), boot it in the mode (F163, F164), install the `.deb` with apt and `--no-install-recommends`, install the test tools (polkit test agent, `tpm2-tools`, `openssl`, the PKCS#11 consumers) in the guest only, run the shared setup and the selected cases with the existing guest scripts, and account for them (F165). VM-only cases: `/dev/tpmrm0` exists; `systemd-analyze has-tpm2` reports full support after the install; the install used no recommends; the installed unit is the shipped one with no drop-in and no `CUSTODIOD_TEST_SWTPM_TCTI`; the service reaches the TPM through `/dev/tpmrm0`. The run record, printed and saved under `target/e2e/`, names the target, the TPM mode, the image serial, the guest kernel, systemd, the package version, the `swtpm` version, `has-tpm2` in the guest and the time of each step. The VM target's time budget row is a person's (`budgets.tsv`). Its self-test `scripts/test-e2e-vm-host.sh`, joining `just test-scripts`, runs the driver against a stub VM and checks the steps, the `--no-install-recommends` install, the record fields and the failure paths, each with a negative control. The real run is at the checkpoint.",
+      "depends_on": ["F155", "F162", "F163", "F164", "F165"],
+      "verify": "just quick && scripts/test-e2e-vm-host.sh",
+      "passes": false
+    },
+    {
+      "id": "F167",
+      "title": "VM cases: the kinds in full and lacking mode, and the credential's key",
+      "description": "Acceptance 3, 4 and 5. In `full` mode, importing the RSA 2048 and the P-256 `.p12` gives kind `tpm` for both. In `lacking` mode, the RSA 2048 key gets `encrypted-tpm` in the import result, the API's list, `custodio list` and the import journal entry, and `custodio import` says the key is weaker and why (P-256 too, if F153's route allows it; otherwise P-256 is `tpm` and the case says so); `fallback-tpmbound-import` and `fallback-tpmbound-cli-list` run there and are not skipped. Every case that expects `encrypted-tpm`, in this and later features, reads the stored credential as root in the guest with the harness's reader (F161, `--expect-tpm-bound` for the guest's systemd version) and fails on a host-only or null key or a nonzero PCR mask. The fallback cases stay as they are in the containers (tpmbound reported skipped). Self-test `scripts/test-e2e-vm-kinds.sh`, joining `just test-scripts`, checks the expectations per mode with negative controls; the container fallback cases still pass.",
+      "depends_on": ["F161", "F166"],
+      "verify": "just quick && scripts/test-e2e-vm-kinds.sh && scripts/test-e2e-fallback.sh && E2E_TPM=none just e2e-cases debian13 'fallback-*' && E2E_TPM=lacking just e2e-cases debian13 'fallback-*'",
+      "passes": false
+    },
+    {
+      "id": "F168",
+      "title": "VM cases: every mechanism signs with encrypted-tpm keys, RSA-PSS included",
+      "description": "Acceptance 6. The `sign-*` cases run in the VM: each `encrypted-tpm` key signs through the PKCS#11 module with every mechanism the service offers for its type, including `CKM_RSA_PKCS_PSS` with each supported hash and the salt lengths 0, the hash length and the maximum, and every signature verifies in `openssl` with the key's certificate; `sign-kind-matches-mode` expects `encrypted-tpm` for RSA in `lacking` mode and `tpm` in `full`. Where a case script needs a VM form, the contract records the mapping. The container cases behave as in M4. `scripts/test-e2e-sign.sh` covers the VM expectations with negative controls.",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-sign.sh && just e2e-cases debian13 'sign-*' && E2E_TPM=lacking just e2e-cases debian13 'sign-*'",
+      "passes": false
+    },
+    {
+      "id": "F169",
+      "title": "VM cases: no plaintext key under encrypted-tpm",
+      "description": "Acceptance 7. The `noplain-*` cases run in the VM: after each `encrypted-tpm` import, `scripts/check-no-plaintext.sh` finds no encoding of the private key in the state directory, and no unencrypted key file exists. The container cases behave as in M4. `scripts/test-e2e-noplain.sh` covers the VM expectations with negative controls.",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-noplain.sh && E2E_TPM=lacking just e2e-cases debian13 'noplain-*'",
+      "passes": false
+    },
+    {
+      "id": "F170",
+      "title": "VM cases: encrypted-tpm keys survive a PCR change, a service restart and a power cycle",
+      "description": "Acceptance 8. The `pcr-*` cases run in the VM: after extending PCR 7 and another PCR and restarting the service, and again after a guest power cycle with the `swtpm` state kept (the VM form of 'restart `swtpm`', recorded in the contract's mapping), every `encrypted-tpm` key still signs. The container cases behave as in M4. `scripts/test-e2e-pcr.sh` covers the VM expectations with negative controls.",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-pcr.sh && E2E_TPM=lacking just e2e-cases debian13 'pcr-*'",
+      "passes": false
+    },
+    {
+      "id": "F171",
+      "title": "VM cases: signing after the TPM is cleared",
+      "description": "Acceptance 9. The `tpm-clear-*` cases run in the VM with `encrypted-tpm` keys: after the TPM is cleared (the TPM's own clear command from the guest, or a fresh `swtpm` state, as the contract settles), signing fails with the documented error and a journal entry, and the key is still listed and can be deleted. The container cases behave as in M4. `scripts/test-e2e-tpmclear.sh` covers the VM expectations with negative controls.",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-tpmclear.sh && E2E_TPM=lacking just e2e-cases debian13 'tpm-clear-*'",
+      "passes": false
+    },
+    {
+      "id": "F172",
+      "title": "VM cases: an upgrade from N to N+1 keeps encrypted-tpm keys",
+      "description": "Acceptance 10. The `upgrade-kinds-*` cases run in the VM: package N and N+1 are both built from this tree (so N already depends on `libtss2-rc0t64`), and upgrading keeps each `encrypted-tpm` key, its owner, its certificate and its kind, and the key signs afterwards; `upgrade-kinds-tpmbound` runs there and is not skipped, and the credential still passes the reader (F161) after the upgrade. In the containers it stays skipped. `scripts/test-e2e-upgradekinds.sh` covers the VM expectations with negative controls.",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-upgradekinds.sh && just e2e-cases debian13 'upgrade-kinds-*' && E2E_TPM=none just e2e-cases debian13 'upgrade-kinds-*'",
+      "passes": false
+    },
+    {
+      "id": "F173",
+      "title": "VM case: the silent fallback fails closed",
+      "description": "Design 3, acceptance 11. A VM-only case of the `lacking` run hides `libtss2-rc` from systemd without removing the package (for example with `dpkg-divert`) and restarts what needs it; an import that the TPM's capabilities send to `encrypted-tpm` then fails with `CredentialsUnavailable`, its journal entry carries the `binding_mismatch` cause, the state directory holds nothing new, and no key of any kind exists for that id. With the library restored (and what needs it restarted), the same import gives `encrypted-tpm` and passes the reader (F161). The case restores the library whatever the outcome. Self-test `scripts/test-e2e-vm-silent.sh`, joining `just test-scripts`, checks the case's judgements with negative controls (an import that succeeds while hidden, a stored file, a missing cause, a key left under another kind).",
+      "depends_on": ["F167"],
+      "verify": "just quick && scripts/test-e2e-vm-silent.sh",
+      "passes": false
+    },
+    {
+      "id": "F174",
+      "title": "Each gap of the M4 deviation maps to a VM case that ran",
+      "description": "Acceptance 12. A table in the repository (`e2e/vm/gaps.tsv`) maps each gap of the M4 F134 deviation (F134, F135, F137, F138, F140, F141 under `encrypted-tpm`, and RSA-PSS with a real TPM-sealed credential) to the VM cases that close it. A VM run in `lacking` mode fails if any mapped case is missing from the VM case list or was reported skipped, and the run record lists each gap with its cases and their results, so a person can check it from the record. Self-test `scripts/test-e2e-vm-gaps.sh`, joining `just test-scripts`, with negative controls (a gap with no case, a mapped case skipped, a mapped case not in the list).",
+      "depends_on": ["F168", "F169", "F170", "F171", "F172", "F173"],
+      "verify": "just quick && scripts/test-e2e-vm-gaps.sh",
+      "passes": false
+    },
+    {
+      "id": "F175",
+      "title": "CI runs the VM target for the release only",
+      "description": "Design 7, acceptance 15. A new workflow runs `just e2e-vm full` and `just e2e-vm lacking` on a pull request whose head is a `milestone/*` branch (the one `just release` opens), and never on another pull request or a push; it enables KVM for the runner user as `docs/findings/F150.md` says, installs what the VM needs, pins actions by commit and tools by checksum, cannot pass without the run (no `continue-on-error`, no `|| true`), and ends in one job whose name is the status check a person makes required. The container E2E workflow is unchanged for ordinary pull requests and pushes. A test of the workflow definitions, `scripts/test-ci-e2e-vm.sh` (joining `just test-scripts`), checks the trigger and the condition on the head branch, both modes, KVM and the no-pass-without-run rules, each with a negative control (a copy that runs on every pull request, on push, without a mode, or with a green fallback). `actionlint` and `zizmor` pass.",
+      "depends_on": ["F158", "F166"],
+      "verify": "just quick && actionlint && zizmor --offline .github/workflows && scripts/test-ci-e2e-vm.sh && scripts/test-ci-e2e.sh",
+      "passes": false
+    },
+    {
+      "id": "F176",
+      "title": "Written steps for reading the PCR mask on Debian 13",
+      "description": "Design 6. `docs/manual-acceptance.md` gains a section with the steps a person follows on Debian 13 with a TPM (hardware, or a VM with a virtual TPM; the record says which): confirm `systemd-analyze has-tpm2` reports full support with `libtss2-rc` installed; have the daemon seal a user-scoped credential through the same Varlink call the service makes (the exact command); read its key identifier and PCR mask with the harness's reader (F161), with the systemd 257 identifiers from `docs/findings/F110.md` or F154, or the documented equivalent; treat a credential that is not TPM-bound as an invalid reading; and record the result, the machine, the systemd version and whether the TPM is hardware or virtual in `docs/findings/F179.md`. `scripts/test-docs-manual-m5.sh`, joining `just test-scripts`, runs the page's commands where the dev container can (the reader command on F161's fixtures, the Varlink call's arguments against `varlinkctl` or the service's call) and fails on a broken copy of the page (negative control).",
+      "depends_on": ["F161"],
+      "verify": "just quick && scripts/test-docs-manual-m5.sh",
+      "passes": false
+    },
+    {
+      "id": "F177",
+      "title": "Checkpoint: the VM target, its cases, CI and the documentation",
+      "description": "Every suite passes, the VM included: `just check` (with every new host self-test of the VM harness), the API contract check, the fuzz smoke run, the container end-to-end suite on every target (tpmbound cases still reported skipped there), the package gates, coverage with the CRAP gate, and the real VM run in `full` and `lacking` modes on the verified Ubuntu 26.04 minimal image: acceptance 1 to 12 hold, every case of the VM list is reported once, every gap of F174 maps to a case that ran, and the run record carries every item of Design 1. A failure here is fixed in this feature, under the M4 rules (never by loosening a guard).",
+      "depends_on": ["F150", "F151", "F152", "F153", "F154", "F155", "F156", "F157", "F158", "F159", "F160", "F161", "F162", "F163", "F164", "F165", "F166", "F167", "F168", "F169", "F170", "F171", "F172", "F173", "F174", "F175", "F176"],
+      "verify": "just check && just api-contract && just fuzz-smoke && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": false
+    },
+    {
+      "id": "F178",
+      "title": "By hand: the VM release run becomes a required status check",
+      "description": "Design 7, acceptance 15. A person adds the status check of F175's final job to the required checks of the protected branch, so a release pull request cannot merge when the VM run fails, and confirms an ordinary pull request does not start it. Observing it on the milestone's release pull request happens at `just release`.",
+      "depends_on": ["F175", "F177"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F179",
+      "title": "Acceptance 17 by hand: the PCR mask of a credential on Debian 13",
+      "description": "A person follows the steps of F176 on Debian 13 with a TPM and records in `docs/findings/F179.md` (indexed in `docs/findings.md`) the date, the machine, whether the TPM is hardware or virtual, the systemd version, `has-tpm2`, the credential's key identifier and its PCR mask, and the result: PCR 7 confirmed or refuted. A credential that is not TPM-bound invalidates the reading and it is repeated.",
+      "depends_on": ["F176", "F177"],
+      "manual": true,
+      "passes": false
+    },
+    {
+      "id": "F180",
+      "title": "The documentation states the Debian 13 reading, and the last full run",
+      "description": "Design 6, acceptance 17 (documentation). The documents that describe the kinds and the supported systems (`docs/api.md`, 'Storage kinds', and `docs/install.md`, 'Supported systems') state the result of `docs/findings/F179.md`, citing it: if PCR 7 is confirmed, the PCR 7 binding on Debian 13 is called verified (and `encrypted-tpm` stays unavailable there with a TPM); if refuted, they say `encrypted-tpm` is available on Debian 13. Either way Alma 10 is stated as inferred from the Debian 13 reading. `docs/findings/F110.md` and its index line are corrected to match. As the milestone's last feature, every suite runs again, the VM in both modes included.",
+      "depends_on": ["F177", "F178", "F179"],
+      "verify": "git grep -qF 'F179' -- docs/api.md && git grep -qF 'F179' -- docs/install.md && just check && just api-contract && just fuzz-smoke && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": false
+    }
+  ]
+}
