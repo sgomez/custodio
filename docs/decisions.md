@@ -279,3 +279,8 @@ Format: a title and three short bullets, a couple of lines each:
   a new client reads both together.
 - Rejected: a separate `GetKind` call (a second round trip, and a race with a delete); a dict
   (`a{sv}`) reply (nothing in this API uses variants); appending the kind after the certificate.
+
+## 2026-11-08 — VM image pinned to one dated serial
+- Decision: `e2e/vm/image.sh` pins serial `20261105` (`release-<serial>/`); a cache hit is verified, never refreshed.
+- Why: a run record names one image, and a moving "newest" would change results between runs.
+- Rejected: the newest release by signature (needs a listing; the image can change under a run).

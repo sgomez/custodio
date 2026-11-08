@@ -123,6 +123,11 @@ system-gates: security-score unit-hardening unit-verify bus-policy
 vm-host-check:
     scripts/vm-host-check.sh
 
+# Downloads the pinned Ubuntu 26.04 minimal cloud image into a per-user cache outside the repository, verifies Ubuntu's signature
+# on SHA256SUMS (gpgv) and the image against it, and prints its path, serial and SHA-256. A cached image is verified again.
+vm-image:
+    e2e/vm/image.sh
+
 # The tests of the package gates and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd, gcc).
 package-gate-test:
     scripts/test-package-scripts.sh
@@ -150,6 +155,7 @@ test-scripts:
     scripts/test-with-swtpm.sh
     scripts/test-vm-credread.sh
     scripts/test-vm-host-check.sh
+    scripts/test-vm-image.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
