@@ -121,7 +121,7 @@
         "F160"
       ],
       "verify": "just quick && scripts/test-e2e-vm-kinds.sh && scripts/test-e2e-fallback.sh && scripts/test-e2e-vm-silent.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F162",
