@@ -90,9 +90,10 @@ vm_collect_install() {
 # vm_service_facts: the environment and the open files of the running service, into VM_FACTS (used by the live judges)
 vm_service_facts() {
     local pid
+    local proc=${VM_PROC:-/proc}
     pid=$(systemctl show -p MainPID --value custodio)
     [ -n "$pid" ] && [ "$pid" != 0 ] || return 1
-    cp "/proc/$pid/environ" "$VM_FACTS/service.environ" && ls -l "/proc/$pid/fd" > "$VM_FACTS/service.fds"
+    cp "$proc/$pid/environ" "$VM_FACTS/service.environ" && ls -l "$proc/$pid/fd" > "$VM_FACTS/service.fds"
 }
 
 # The cases are judged more than once (after the shared setup and after the cases); vm_note collects the problems of each case, vm_finish reports
