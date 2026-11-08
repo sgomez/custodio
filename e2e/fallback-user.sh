@@ -22,6 +22,11 @@ for t in rsa ec; do
 done
 timeout 60 python3 -I /e2e/owner-call.py list > "$FB/api.out" || fail "ListKeys gave no reply"
 timeout 60 custodio list > "$FB/cli.out" || fail "custodio list failed"
+if [ -n "${FB_READ:-}" ]; then # F161: root reads the stored credentials now (fallback-run.sh), before the keys are deleted
+    : > "$FB/imported"
+    for _ in $(seq 600); do [ -e "$FB/read-done" ] && break; sleep 0.2; done
+    [ -e "$FB/read-done" ] || fail "root did not finish reading the credentials"
+fi
 for t in rsa ec; do
     timeout 60 python3 -I /e2e/delete.py "fb-$t" > /dev/null || fail "delete of fb-$t failed"
 done

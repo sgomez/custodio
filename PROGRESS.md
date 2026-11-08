@@ -158,4 +158,7 @@ with an empty context.
   (`vm_read_credential ID`, reused by F162/F163); `check-cases.sh` VM rules (tpm-kind-* never skipped in a VM run, vm-silent-* never skipped in lacking); the five ids in `e2e/vm/cases.list`;
   `scripts/test-e2e-vm-kinds.sh` (in `just test-scripts`). Container scripts `test-e2e-tpm-kind.sh` (mutant sed adapted to `KIND`), `-skips`, `-vm-cases` pass.
 - Placeholder: `scripts/test-e2e-vm-silent.sh` exits 1 until step 4 (it is already in `just test-scripts`, so `just quick` is red until then).
-- Next session: step 3 (fallback.py VM branch of fallback-run.sh, test-e2e-fallback.sh VM section), step 4 (silent), probes (5, 6), `just quick`.
+- Done (step 3): `fallback-run.sh` VM branch (`E2E_VM=1`: tpmbound cases run in swtpm=full and lacking, host cases not reported, reader on both keys in lacking via `FB_READ` hold in `fallback-user.sh`);
+  `test-e2e-fallback.sh` VM section (judgements per mode with controls; the VM branch run with a stub `su` on fixtures, wrong mode in both directions, a failing reader, a control copy with an unjudged `case_run`).
+  Fixtures for stored records/credentials: `scripts/lib/e2e-vm-cred-fixtures.sh`. `test-e2e-fallback.sh` and `test-e2e-vm-kinds.sh` exit 0.
+- Next session: step 4 (`test-e2e-vm-silent.sh` first, then `e2e/vm/silent.sh`, ids in cases.list/skip.list, `case_group`/`phase_runs` before `vm-*`, guest.sh VM lacking), then probes (5, 6), `just quick`, timings.

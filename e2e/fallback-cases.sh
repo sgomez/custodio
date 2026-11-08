@@ -11,3 +11,4 @@ fallback_skip() {
     [ "$1" = none ] && return 0
     for c in $FALLBACK_HOST_CASES; do case_skip "$c" "E2E_TPM=$1: the key gets the kind tpm, not encrypted-host"; done
 }
+

@@ -17,8 +17,19 @@ source "$here/tpmkind-lib.sh"
 source "$here/fallback-cases.sh"
 
 mode=${E2E_TPM:-swtpm}
-fallback_skip "$mode"
-[ "$mode" = none ] || exit 0
+# F161: in a VM run (E2E_VM=1) the tpmbound cases run in both modes and the host cases are not in the VM list. full: both keys are tpm and nothing is called weaker; lacking: both are
+# encrypted-tpm, the import output says the key is weaker and why, and root reads each stored credential with the reader of F157.
+vm_mode=''
+if [ -n "${E2E_VM:-}" ]; then
+    case $mode in
+    swtpm) vm_mode=full ;;
+    lacking) vm_mode=lacking ;;
+    *) fail "a VM run has the TPM mode swtpm or lacking, not '$mode'" ;;
+    esac
+else
+    fallback_skip "$mode"
+    [ "$mode" = none ] || exit 0
+fi
 FB=$WORK/fallback
 rm -rf "${FB:?}"
 mkdir "$FB"
@@ -30,9 +41,27 @@ fx="$(fixture_problems "$FB/rsa.p12" rsa)
 $(fixture_problems "$FB/ec.p12" ec)"
 [ "$(printf '%s' "$fx" | tr -d '[:space:]')" = '' ] || fail "the fixtures are not what the cases need: $fx"
 
-timeout 600 su -l alice -c "WORK=$WORK bash /e2e/fallback-user.sh" > "$FB/alice.out" 2>&1 || { cat "$FB/alice.out" >&2; fail "alice's session failed"; }
+read_creds=''
+[ "$vm_mode" != lacking ] || read_creds=1
+if [ -n "$read_creds" ]; then
+    # shellcheck source=e2e/vm/cred-lib.sh
+    source "$here/vm/cred-lib.sh"
+    timeout 600 su -l alice -c "WORK=$WORK FB_READ=1 bash /e2e/fallback-user.sh" > "$FB/alice.out" 2>&1 &
+    alice=$!
+    problems=''
+    for _ in $(seq 600); do [ -e "$FB/imported" ] || ! kill -0 "$alice" 2> /dev/null || sleep 0.2; done
+    if [ -e "$FB/imported" ]; then
+        for id in fb-rsa fb-ec; do vm_read_credential "$id" || problems="$problems
+reader:
+$id: the credential of an encrypted-tpm key did not pass the reader"; done
+    fi
+    : > "$FB/read-done"
+    wait "$alice" || { cat "$FB/alice.out" >&2; fail "alice's session failed"; }
+else
+    timeout 600 su -l alice -c "WORK=$WORK bash /e2e/fallback-user.sh" > "$FB/alice.out" 2>&1 || { cat "$FB/alice.out" >&2; fail "alice's session failed"; }
+fi
 
-problems=''
+problems=${problems:-}
 judge() { # CASE PROBLEMS: the case is reported when it has no problem
     local case=$1 p
     p=$(printf '%s\n' "$2" | sed '/^$/d')
@@ -40,6 +69,20 @@ judge() { # CASE PROBLEMS: the case is reported when it has no problem
 $case:
 $p"; fi
 }
+if [ -n "$vm_mode" ]; then
+    fb() { python3 -I "$here/fallback.py" --mode "$vm_mode" "$@"; }
+    judge fallback-tpmbound-import "$(fb import "$FB/import-rsa.out" fb-rsa rsa2048)
+$(fb import "$FB/import-ec.out" fb-ec ecdsa-p256)
+$(fb api "$FB/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)
+$(fb why "$FB/import-rsa.out" "$FB/import-ec.out")"
+    judge fallback-tpmbound-cli-list "$(fb cli "$FB/cli.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)"
+    if grep -qE '^fb-(rsa|ec)	' "$FB/api-after.out"; then problems="$problems
+end:
+a key of the cases is still listed after the deletes"; fi
+    [ -z "$problems" ] || fail "fallback cases:$problems"
+    echo "fallback-run: passed"
+    exit 0
+fi
 fb() { python3 -I "$here/fallback.py" "$@"; }
 # the kind the service gives (ListKeys) is judged with each import, so the CLI text is never judged against a mode that gave another kind
 judge fallback-host-import-rsa "$(fb import "$FB/import-rsa.out" fb-rsa rsa2048)
