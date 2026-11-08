@@ -59,11 +59,12 @@ FORMATS = (("deb", "deb", "*.deb"), ("rpm", "rpm", "*.rpm"), ("arch", "archlinux
 TSS_GROUP = {"deb": "tpm-udev", "rpm": "tpm2-tss", "arch": "tpm2-tss"}
 # libtss2-tcti-device is loaded by dlopen (libtss2-tctildr), so no NEEDED entry names it: the deb declares it besides the three linked
 # libraries (libtss2-tctildr0t64 depends on it and on tpm-udev too, checked with apt-cache depends on debian13 and packages.ubuntu.com
-# noble); the rpm and Arch packages ship it inside tpm2-tss.
-TSS_DLOPEN = {"deb": ["libtss2-tcti-device0t64"], "rpm": [], "arch": []}
-# The systemd bound per format (docs/findings/F110.md): the .deb serves ubuntu2404 (systemd 255, plain systemd-creds CLI) and debian13, so 255
-# is its floor; the rpm (fedora44 259, alma10 257) and Arch (262) use the user-scoped Varlink calls that exist from 257. The deb carries it in
-# Pre-Depends (PRE_DEPS), the others in their dependency list.
+# noble); the rpm and Arch packages ship it inside tpm2-tss. libtss2-rc0t64 is also a dlopen one: systemd loads libtss2-rc and Ubuntu only
+# recommends the package (F154).
+TSS_DLOPEN = {"deb": ["libtss2-tcti-device0t64", "libtss2-rc0t64"], "rpm": [], "arch": []}
+# The systemd bound per format (docs/findings/F110.md, F154): every package requires 257, the first systemd with the user-scoped credential
+# calls over Varlink that the service uses; ubuntu2404 (255) is not supported. The deb carries it in Pre-Depends (PRE_DEPS), the others in
+# their dependency list.
 TSS_NEEDED = {  # soname -> package (deb, rpm, arch); check-tss-deps.sh reads these
     "libtss2-esys.so.0": ("libtss2-esys-3.0.2-0t64", "tpm2-tss", "tpm2-tss"),
     "libtss2-tctildr.so.0": ("libtss2-tctildr0t64", "tpm2-tss", "tpm2-tss"),
@@ -74,7 +75,7 @@ TSS_LIBS = {
     label: list(dict.fromkeys([names[i] for names in TSS_NEEDED.values()] + TSS_DLOPEN[label] + [TSS_GROUP[label]]))
     for i, label in enumerate(("deb", "rpm", "arch"))
 }
-SYSTEMD = {"deb": "systemd (>= 255)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
+SYSTEMD = {"deb": "systemd (>= 257)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
 
 # Dependencies every package must declare, exactly as the format writes them (whitespace normalised). libc and libgcc are
 # listed because the Rust binaries always link them; nfpm does not compute shared-library dependencies.

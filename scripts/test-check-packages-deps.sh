@@ -73,16 +73,17 @@ case_fail deb-util-linux deb: util-linux -- dep-add deb util-linux
 case_fail deb-no-p11-kit deb: p11-kit -- dep-del deb p11-kit
 # The deb's systemd is a Pre-Depends (the preinst runs systemd-sysusers): missing from both fields fails, only in Depends fails, in both
 # fails, and the two fields are not mixed up.
-case_fail deb-no-systemd deb: Pre-Depends -- predep-del 'systemd (>= 255)'
-case_fail deb-systemd-only-in-depends deb: Pre-Depends -- predep-to-depends 'systemd (>= 255)'
-case_fail deb-systemd-in-both deb: "in Depends as well" -- dep-add deb 'systemd (>= 255)'
+case_fail deb-no-systemd deb: Pre-Depends -- predep-del 'systemd (>= 257)'
+case_fail deb-systemd-only-in-depends deb: Pre-Depends -- predep-to-depends 'systemd (>= 257)'
+case_fail deb-systemd-in-both deb: "in Depends as well" -- dep-add deb 'systemd (>= 257)'
 case_fail deb-extra-predepends deb: Pre-Depends -- predep-add dbus-system-bus
 case_fail deb-no-bus deb: dbus-system-bus -- dep-del deb dbus-system-bus
 case_fail rpm-no-bus rpm: dbus -- dep-set rpm dbus dbus-daemon
 case_fail arch-no-bus arch: dbus -- dep-del archlinux dbus
 
-# systemd bounds (F110): deb 255 (ubuntu2404 uses the plain CLI), rpm and Arch 257 (the user-scoped Varlink calls of alma10, fedora44, arch).
-case_fail deb-systemd-too-old deb: Pre-Depends -- predep-set 'systemd (>= 255)' 'systemd (>= 254)'
+# systemd bounds (F154): every format requires 257 or later (the user-scoped Varlink calls, docs/findings/F110.md); 255 and unversioned fail.
+case_fail deb-systemd-too-old deb: systemd -- predep-set 'systemd (>= 257)' 'systemd (>= 255)'
+case_fail deb-systemd-unversioned deb: systemd -- predep-set 'systemd (>= 257)' systemd
 case_fail rpm-systemd-too-old rpm: systemd -- dep-set rpm 'systemd >= 257' 'systemd >= 255'
 case_fail arch-systemd-too-old arch: systemd -- dep-set archlinux 'systemd>=257' 'systemd>=255'
 case_fail rpm-systemd-unversioned rpm: systemd -- dep-set rpm 'systemd >= 257' systemd
@@ -225,6 +226,15 @@ tss_run() { # LABEL EXPECTED_STATUS NFPM BINARY WORD...
 tss_cfg() { python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$REAL" "$FX_DIR/tss-$1.yaml" "${@:2}"; }
 tss_run good 0 "$REAL" "$FX_DIR/custodiod-tss" "3 libtss2 sonames"
 tss_cfg deb dep-del deb libtss2-mu-4.0.1-0t64
+# F154: libtss2-rc0t64 (systemd loads libtss2-rc by dlopen) must be in the .deb's Depends; Recommends and Pre-Depends do not count.
+tss_cfg deb-no-rc dep-del deb libtss2-rc0t64
+tss_run deb-no-rc 1 "$FX_DIR/tss-deb-no-rc.yaml" "$FX_DIR/custodiod-tss" libtss2-rc0t64 deb
+tss_cfg deb-rc-recommends dep-del deb libtss2-rc0t64
+python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$FX_DIR/tss-deb-rc-recommends.yaml" "$FX_DIR/tss-deb-rc-recommends.yaml" recommends-add deb libtss2-rc0t64
+tss_run deb-rc-recommends 1 "$FX_DIR/tss-deb-rc-recommends.yaml" "$FX_DIR/custodiod-tss" libtss2-rc0t64 deb
+tss_cfg deb-rc-predepends dep-del deb libtss2-rc0t64
+python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$FX_DIR/tss-deb-rc-predepends.yaml" "$FX_DIR/tss-deb-rc-predepends.yaml" predep-add libtss2-rc0t64
+tss_run deb-rc-predepends 1 "$FX_DIR/tss-deb-rc-predepends.yaml" "$FX_DIR/custodiod-tss" libtss2-rc0t64 deb
 tss_run deb-no-mu 1 "$FX_DIR/tss-deb.yaml" "$FX_DIR/custodiod-tss" libtss2-mu.so.0 deb libtss2-mu-4.0.1-0t64
 tss_cfg rpm dep-del rpm tpm2-tss
 tss_run rpm-no-tss 1 "$FX_DIR/tss-rpm.yaml" "$FX_DIR/custodiod-tss" libtss2-esys.so.0 rpm tpm2-tss

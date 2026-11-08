@@ -48,3 +48,13 @@ with an empty context.
 - Done: `docs/findings/F153.md` (+ index): 259.9 source (Ubuntu patches touch no credential file), header table with offsets (id 0, TPM section 48, pk and scoped sections after, scoped header = flags only), nine key ids; 259.9 credentials made in the F151 guest (root CLI, `--user`, Varlink, null, PCR 7, pk forms) and 257.13 in the dev container, all read back and decrypted (pk forms need a signature); negative control; differences from F110 (default mask 0 vs 0x80; CLI `--user` never sends `withKey`, so with a TPM it gets `ef4ac136...`). Decision: live `systemd-creds` in the guest. All steps ticked, `verify` greps and `just quick` pass.
 - Known: scoped+pk id and 259 host-scoped-with-daemon are **inferred**. Pids 32088 and 96049 (swtpm) remain from earlier features.
 - Next session should: nothing for F153; the loop runs the `verify`.
+
+### 2026-11-08 — F154 — attempt 1
+- Done: `nfpm.yaml` (.deb Depends `libtss2-rc0t64` with comment; Pre-Depends `systemd (>= 257)`, comment gives the Varlink reason), `package_expected.py` (`TSS_DLOPEN`, `SYSTEMD`),
+  `check_tss_deps.py` now requires every `TSS_DLOPEN` package in the .deb's Depends only (Pre-Depends/Recommends do not count). New helper op `recommends-add`; the
+  existing `predep-add` covers the predepends case. `test-check-packages-deps.sh`: three direct `$TSS` cases (removed, recommends only, predepends only), `deb-systemd-too-old` (255),
+  `deb-systemd-unversioned`; 255 strings moved to 257. `test-deb-lifecycle-real.sh`: dpkg without `--force-depends` on a status with systemd 255 refuses (output names systemd and 255,
+  no custodio files); a 257 root installs. `just quick`, both verify scripts green; the real lifecycle suite passed (~6 s alone).
+- Decisions: the lifecycle root's dpkg status lists every other Depends/Pre-Depends name as installed (version 999), so only systemd decides.
+- Not done: the contract's evidence wording ("would pass if the script ignored TSS_DLOPEN" should read "would fail") is left as is; contract text is not edited without an amendment.
+- Next session should: nothing; the loop runs the `verify`.
