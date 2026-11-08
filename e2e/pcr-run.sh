@@ -23,6 +23,8 @@ if [ "$mode" = none ]; then
     pcr_skip_all "$mode"
     exit 0
 fi
+# F163: in a VM run (E2E_VM=1) the TPM is the guest's own and the restart of swtpm is a power cycle between two invocations: see pcr-vm.sh
+[ -z "${E2E_VM:-}" ] || exec bash "$here/pcr-vm.sh"
 # shellcheck source=e2e/tpmkind-lib.sh
 source "$here/tpmkind-lib.sh"
 # shellcheck source=e2e/tpm-lib.sh

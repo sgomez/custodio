@@ -6,7 +6,8 @@ evidence without a container. Each subcommand prints one problem per line and no
   pcr.py extended FIRST EXTENDED        PCRs 0, 7 and 11 (sha256, tpm2_pcrread output) are all there and each differs after the extension
   pcr.py restarted FIRST EXTENDED AFTER the PCRs read after the TPM restart equal the first reading (reset values) and differ from the extended ones
   pcr.py pid OLD NEW                    the service's main pid is a number, not 0, and not the old one
-  pcr.py keys LIST_BEFORE LIST_AFTER MODE ID:KEYTYPE...
+  pcr.py boot OLD NEW                   F163: the boot ids differ (the guest was power cycled)
+  pcr.py keys LIST_BEFORE LIST_AFTER MODE ID:KEYTYPE...   (MODE also vm-full: kind tpm, vm-lacking: kind encrypted-tpm)
                                         the keys are listed with kind tpm (modes swtpm and lacking) before and after, with the same set of (id, type, kind) rows,
                                         at least the named ones, and at least two keys of kind tpm
   pcr.py sigs DIR TAG LIST              the signatures of round TAG: for every tpm key of LIST, DIR/out/TAG-ID.{rc,sig,log} exist, the exit code is 0 and `openssl`
@@ -22,8 +23,11 @@ import subprocess
 import sys
 
 CASES = ["pcr-extended-signs", "pcr-restarted-signs", "pcr-signs-every-key"]
-PCRS = (0, 7, 11)
-TPM_MODES = ("swtpm", "lacking")
+# F163: a VM run extends PCRs 0 and 7 (PCR_INDEXES=0,7); a container run PCRs 0, 7 and 11
+PCRS = tuple(int(x) for x in os.environ.get("PCR_INDEXES", "0,7,11").split(","))
+# the kind every key must have in each mode; vm-full and vm-lacking are the modes of a VM run (E2E_VM=1, guest full or lacking)
+MODE_KIND = {"swtpm": "tpm", "lacking": "tpm", "vm-full": "tpm", "vm-lacking": "encrypted-tpm"}
+TPM_MODES = tuple(MODE_KIND)
 
 
 def read(path):
@@ -91,6 +95,15 @@ def restarted(first, ext, after):
     return out
 
 
+def boot(old, new):
+    o, n = (text(old) or "").strip(), (text(new) or "").strip()
+    if not re.fullmatch(r"[0-9a-f-]{32,36}", o) or not re.fullmatch(r"[0-9a-f-]{32,36}", n):
+        return [f"the boot ids {o!r} and {n!r} are not both boot ids"]
+    if o == n:
+        return [f"the boot id did not change ({n}): the guest was not power cycled"]
+    return []
+
+
 def pid(old, new):
     o, n = (text(old) or "").strip(), (text(new) or "").strip()
     if not o.isdigit() or int(o) == 0:
@@ -102,11 +115,11 @@ def pid(old, new):
     return []
 
 
-def enumerate_keys(path):
+def enumerate_keys(path, kind="tpm"):
     r = rows(path)
     if r is None:
         return None
-    return [(x[0], x[1]) for x in r if len(x) == 3 and x[2] == "tpm"]
+    return [(x[0], x[1]) for x in r if len(x) == 3 and x[2] == kind]
 
 
 def keys(before, after, mode, specs):
@@ -114,6 +127,7 @@ def keys(before, after, mode, specs):
         return [f"mode {mode!r} has no TPM keys to judge"]
     out = []
     sets = []
+    kind = MODE_KIND[mode]
     for name, path in (("before", before), ("after", after)):
         r = rows(path)
         if r is None:
@@ -131,10 +145,10 @@ def keys(before, after, mode, specs):
                 continue
             if mine[0][1] != kt:
                 out.append(f"{kid}: key type {mine[0][1]!r} {name} the restarts, expected {kt!r}")
-            if mine[0][2] != "tpm":
-                out.append(f"{kid}: kind {mine[0][2]!r} {name} the restarts, expected 'tpm' in mode {mode}")
-        if len([x for x in r if x[2] == "tpm"]) < 2:
-            out.append(f"fewer than two keys of kind tpm are listed {name} the restarts")
+            if mine[0][2] != kind:
+                out.append(f"{kid}: kind {mine[0][2]!r} {name} the restarts, expected {kind!r} in mode {mode}")
+        if len([x for x in r if x[2] == kind]) < 2:
+            out.append(f"fewer than two keys of kind {kind} are listed {name} the restarts")
     if len(sets) == 2 and sets[0] != sets[1]:
         gone = [x for x in sets[0] if x not in sets[1]]
         new = [x for x in sets[1] if x not in sets[0]]
@@ -147,12 +161,12 @@ def ssl(args, data=None):
     return p.returncode, p.stderr.decode(errors="replace") + p.stdout.decode(errors="replace")[:200]
 
 
-def sigs(d, tag, listfile):
-    ks = enumerate_keys(listfile)
+def sigs(d, tag, listfile, kind="tpm"):
+    ks = enumerate_keys(listfile, kind)
     if ks is None:
         return [f"{listfile}: cannot be read"]
     if len(ks) < 2:
-        return [f"{listfile}: fewer than two keys of kind tpm ({len(ks)}) to sign with"]
+        return [f"{listfile}: fewer than two keys of kind {kind} ({len(ks)}) to sign with"]
     out = []
     msg = os.path.join(d, "in", "msg.bin")
     for kid, kt in ks:
@@ -201,8 +215,8 @@ def main(argv):
     n = len(argv)
     if argv == ["cases"]:
         print("\n".join(CASES))
-    elif argv[:1] == ["enumerate"] and n == 2:
-        ks = enumerate_keys(argv[1])
+    elif argv[:1] == ["enumerate"] and n in (2, 3):
+        ks = enumerate_keys(argv[1], *argv[2:])
         if ks is None:
             print(f"{argv[1]}: cannot be read", file=sys.stderr)
             return 1
@@ -216,8 +230,10 @@ def main(argv):
         print("\n".join(pid(argv[1], argv[2])))
     elif argv[:1] == ["keys"] and n >= 5:
         print("\n".join(keys(argv[1], argv[2], argv[3], argv[4:])))
-    elif argv[:1] == ["sigs"] and n == 4:
-        print("\n".join(sigs(argv[1], argv[2], argv[3])))
+    elif argv[:1] == ["sigs"] and n in (4, 5):
+        print("\n".join(sigs(argv[1], argv[2], argv[3], *argv[4:])))
+    elif argv[:1] == ["boot"] and n == 3:
+        print("\n".join(boot(argv[1], argv[2])))
     elif argv[:1] == ["control"] and n == 6:
         print("\n".join(control(argv[1], argv[2], argv[3], argv[4], argv[5])))
     else:

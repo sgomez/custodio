@@ -163,4 +163,120 @@ expect_bad pc control 0 "$tmp/c-ok" 1 "$tmp/missing" custodio-pcr-secret
 # the restart helper refuses a mode with no TPM and the guest scripts parse
 ( source "$ROOT/e2e/tpm-lib.sh"; ! tpm_swtpm_restart none 2> /dev/null ) || bad "tpm_swtpm_restart accepts mode none"
 for f in pcr-run.sh pcr-user.sh pcr-cases.sh; do bash -n "$ROOT/e2e/$f" || bad "$f does not parse"; done
+# ---- F163: a VM run (E2E_VM=1) of pcr-run.sh on fixtures, in the two halves around a power cycle. The stub guest (scripts/lib/e2e-pcr-stub.py) is a TPM in a directory: PCRs that
+# extend, a PolicyPCR object, a `cycle` that puts the PCRs back; alice signs with real openssl keys, the reader is the real one on synthetic stored records.
+# shellcheck source=scripts/lib/e2e-vm-cred-fixtures.sh
+source "$ROOT/scripts/lib/e2e-vm-cred-fixtures.sh"
+E=$ROOT/e2e
+STUB=$ROOT/scripts/lib/e2e-pcr-stub.py
+cred "$tmp/ok.cred" ef4ac13679a9480ea7db68897f9f165d 0
+cred "$tmp/pcrmask.cred" ef4ac13679a9480ea7db68897f9f165d 0x80
+for k in pr-rsa pr-ec; do rec "$tmp/st-ok" $k 2 "$tmp/ok.cred"; done
+rec "$tmp/st-pcr" pr-rsa 2 "$tmp/ok.cred"; rec "$tmp/st-pcr" pr-ec 2 "$tmp/pcrmask.cred"
+mkdir -p "$tmp/st-none" "$tmp/stub"
+for t in tpm2_pcrread tpm2_pcrextend tpm2_createprimary tpm2_create tpm2_load tpm2_unseal tpm2_startauthsession tpm2_policypcr tpm2_flushcontext systemctl busctl su; do
+    printf '#!/usr/bin/env bash\nexec python3 -I -S %s %s "$@"\n' "$STUB" "$t" > "$tmp/stub/$t"
+    chmod +x "$tmp/stub/$t"
+done
+# half NAME HALF TPM STATE [ENV=VAL...]: one invocation of pcr-run.sh (or $RUN_COPY) in the VM form; output $tmp/NAME.HALF.out, status $tmp/NAME.HALF.rc
+half() {
+    local n=$1 h=$2 m=$3 st=$4 w rc=0
+    shift 4
+    w=$tmp/v-$n
+    mkdir -p "$w/stub" "$w/work"
+    env PATH="$tmp/stub:$PATH" WORK="$w/work" MODULE=/nonexistent E2E_SELECT_FILE=/nonexistent E2E_VM=1 E2E_TPM="$m" PCR_HALF="$h" PCR_DIR="$w/pc" STUB_STATE="$w/stub" \
+        BOOT_ID_FILE="$w/stub/boot" VM_STATE_DIR="$st" VM_CRED_DIR="$E/vm" VM_SYSTEMD_VERSION=259 "$@" bash "${RUN_COPY:-$E/pcr-run.sh}" > "$tmp/$n.$h.out" 2>&1 || rc=$?
+    echo $rc > "$tmp/$n.$h.rc"
+}
+# scen NAME TPM STATE [ENV=VAL...]: first half, the power cycle (unless NOCYCLE), second half
+scen() {
+    local n=$1 m=$2 st=$3 w
+    w=$tmp/v-$n
+    mkdir -p "$w/stub"
+    cat /proc/sys/kernel/random/uuid > "$w/stub/boot"
+    shift 3
+    half "$n" first "$m" "$st" "$@"
+    [ -n "${NOCYCLE:-}" ] || env STUB_STATE="$w/stub" "$@" python3 -I "$STUB" cycle
+    half "$n" second "$m" "$st" "$@"
+}
+# a copy of the runner without the reader call (the control: the failing reader is then ignored)
+mkdir "$tmp/ctl"
+cp "$E"/pcr-run.sh "$E"/pcr-vm.sh "$E"/pcr.py "$E"/pcr-cases.sh "$E"/report.sh "$E"/select.sh "$E"/tpmkind-lib.sh "$E"/tpm-lib.sh "$tmp/ctl/"
+cp -r "$E/vm" "$tmp/ctl/vm"
+# shellcheck disable=SC2016 # the pattern is literal text of the script
+sed -i 's/vm_read_credential "\$id"/true/' "$tmp/ctl/pcr-vm.sh"
+cmp -s "$E/pcr-vm.sh" "$tmp/ctl/pcr-vm.sh" && bad "the control copy of pcr-vm.sh without the reader call changes nothing"
+export -f half scen
+export tmp ROOT E STUB
+scen full swtpm "$tmp/st-none" STUB_KIND=tpm &
+scen lack lacking "$tmp/st-ok" STUB_KIND=encrypted-tpm &
+scen full-etpm swtpm "$tmp/st-none" STUB_KIND=encrypted-tpm &
+scen lack-tpm lacking "$tmp/st-ok" STUB_KIND=tpm &
+scen lack-host lacking "$tmp/st-ok" STUB_KIND=encrypted-host &
+scen lack-pcr lacking "$tmp/st-pcr" STUB_KIND=encrypted-tpm &
+scen lack-nocred lacking "$tmp/st-none" STUB_KIND=encrypted-tpm &
+RUN_COPY=$tmp/ctl/pcr-run.sh scen lack-noreader lacking "$tmp/st-pcr" STUB_KIND=encrypted-tpm &
+scen noext swtpm "$tmp/st-none" STUB_NOEXTEND=1 &
+scen nopid swtpm "$tmp/st-none" STUB_NOPID=1 &
+scen badsig-ext swtpm "$tmp/st-none" STUB_BADSIG=ext &
+scen sigfail-restart swtpm "$tmp/st-none" STUB_SIGFAIL=restart &
+scen badsig-cycle swtpm "$tmp/st-none" STUB_BADSIG=cycle &
+scen sigfail-cycle swtpm "$tmp/st-none" STUB_SIGFAIL=cycle &
+scen drop-cycle swtpm "$tmp/st-none" STUB_DROPKEY=cycle &
+scen kind-cycle swtpm "$tmp/st-none" STUB_KINDAFTER=cycle:encrypted-host &
+scen cyc-keep swtpm "$tmp/st-none" STUB_CYCLE=keep &
+scen cyc-other swtpm "$tmp/st-none" STUB_CYCLE=other &
+scen cyc-sameboot swtpm "$tmp/st-none" STUB_CYCLE=sameboot &
+NOCYCLE=1 scen nocycle swtpm "$tmp/st-none" &
+scen unsealed swtpm "$tmp/st-none" STUB_UNSEALALWAYS=1 &
+wait
+r() { cat "$tmp/$1.$2.rc" 2> /dev/null || echo missing; }
+ran() { grep -q "^E2E-CASE run $3\$" "$tmp/$1.$2.out"; }
+good() { # NAME: both halves pass and report the three cases once
+    [ "$(r "$1" first)" = 0 ] && [ "$(r "$1" second)" = 0 ] || { bad "VM $1: a good run fails ($(r "$1" first)/$(r "$1" second)): $(tail -n 3 "$tmp/$1.second.out" "$tmp/$1.first.out")"; return; }
+    ran "$1" first pcr-extended-signs || bad "VM $1: the first half does not report pcr-extended-signs"
+    ran "$1" second pcr-restarted-signs || bad "VM $1: the second half does not report pcr-restarted-signs"
+    ran "$1" second pcr-signs-every-key || bad "VM $1: the second half does not report pcr-signs-every-key"
+    [ "$(cat "$tmp/$1".{first,second}.out | grep -c '^E2E-CASE run ')" = 3 ] || bad "VM $1: the cases are not reported exactly once"
+}
+refused() { # NAME HALF CASE-THAT-MUST-NOT-RUN...: the half fails and the cases of the later judgement are not reported
+    local n=$1 h=$2
+    shift 2
+    [ -s "$tmp/$n.$h.out" ] || { bad "VM $n: the $h half left no output (it did not run)"; return; }
+    [ "$(r "$n" "$h")" != 0 ] || { bad "VM $n: the $h half passes on bad evidence"; return; }
+    for c in "$@"; do ! ran "$n" "$h" "$c" || bad "VM $n: $c is reported run on bad evidence"; done
+}
+good full
+good lack
+grep -q '^reader: key pr-rsa' "$tmp/lack.first.out" || bad "VM lacking: the reader was not run on pr-rsa"
+! grep -q '^reader:' "$tmp/full.first.out" || bad "VM full: the reader was called"
+refused full-etpm first pcr-extended-signs   # the wrong kind in full
+refused lack-tpm first pcr-extended-signs    # the wrong kind in lacking
+refused lack-host first pcr-extended-signs
+refused lack-pcr first                       # the credential is bound to a PCR: the reader refuses
+grep -q 'did not pass the reader' "$tmp/lack-pcr.first.out" || bad "VM lacking: a failing reader is not named"
+refused lack-nocred first                    # no stored credential
+[ "$(r lack-noreader first)" = 0 ] || true   # (the control: see below)
+grep -q '^reader:' "$tmp/lack-noreader.first.out" && bad "VM lacking: the control copy still calls the reader"
+[ "$(r lack-noreader first)" = 0 ] || bad "VM lacking: the control copy without the reader call should pass the PCR-bound credential (the test would not see a missing call)"
+refused noext first pcr-extended-signs
+refused unsealed first pcr-extended-signs
+refused badsig-ext first pcr-extended-signs
+refused nopid first pcr-extended-signs
+refused sigfail-restart first pcr-extended-signs
+refused badsig-cycle second pcr-signs-every-key
+refused sigfail-cycle second pcr-signs-every-key
+refused drop-cycle second pcr-restarted-signs
+refused kind-cycle second pcr-restarted-signs
+refused cyc-keep second pcr-restarted-signs     # the extended PCRs are still in place
+refused cyc-other second pcr-restarted-signs    # neither the extended values nor the first reading
+refused cyc-sameboot second pcr-restarted-signs # the boot id did not change
+refused nocycle second pcr-restarted-signs      # no cycle at all
+# the second half alone has nothing to check
+rm -rf "$tmp/v-alone"
+half alone second swtpm "$tmp/st-none"
+[ "$(r alone second)" != 0 ] || bad "VM: the second half passes without a first half"
+# the container run is not touched: without E2E_VM the runner does not use pcr-vm.sh
+grep -q 'E2E_VM' "$E/pcr-run.sh" || bad "pcr-run.sh does not dispatch on E2E_VM"
+bash -n "$ROOT/e2e/pcr-vm.sh" || bad "pcr-vm.sh does not parse"
 exit "$fail"

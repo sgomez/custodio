@@ -7,7 +7,8 @@
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 : "${WORK:?}" "${MODULE:?}"
-PC=$WORK/pcr
+# F163: PCR_DIR (a VM run keeps its files across the power cycle), PCR_KIND (the kind of the keys it signs with: tpm, or encrypted-tpm in the lacking VM mode), PCR_NOSIGN=1 (import only)
+PC=${PCR_DIR:-$WORK/pcr}
 export E2E_DIR=$PC/agent
 mkdir -p "$E2E_DIR" "$PC/out" "$PC/in"
 : > "$E2E_DIR/requests"
@@ -40,7 +41,7 @@ sign_round() { # TAG
             echo "$rc" > "$PC/out/$tag-$id.rc"
         ) &
         pids+=($!)
-    done < <(python3 -I /e2e/pcr.py enumerate "$PC/list-$tag.out")
+    done < <(python3 -I /e2e/pcr.py enumerate "$PC/list-$tag.out" "${PCR_KIND:-tpm}")
     for p in "${pids[@]}"; do wait "$p"; done
 }
 
@@ -49,7 +50,7 @@ import)
     for t in rsa ec; do
         timeout 60 python3 -I /e2e/import.py "$PC/$t.p12" "pr-$t" e2e-password > "$PC/import-$t.out" 2>&1 || { cat "$PC/import-$t.out" >&2; fail "import of pr-$t failed"; }
     done
-    sign_round base
+    [ -n "${PCR_NOSIGN:-}" ] || sign_round base
     ;;
 sign) [ -n "${2:-}" ] || fail "usage: pcr-user.sh sign TAG"; sign_round "$2" ;;
 delete)
