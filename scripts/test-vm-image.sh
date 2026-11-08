@@ -67,23 +67,30 @@ pgp sign one "$tmp/c-noline/release-$S1/SHA256SUMS" "$tmp/c-noline/release-$S1/S
 cp -r "$good" "$tmp/c-nosums"; rm "$tmp/c-nosums/release-$S1/SHA256SUMS"
 cp -r "$good" "$tmp/c-nosig"; rm "$tmp/c-nosig/release-$S1/SHA256SUMS.gpg"
 
-refuse() { # name base reason-regex
-    run "$1" "$2"
-    [ "$(rc_of "$1")" != 0 ] || bad "$1: exit 0, expected a refusal"
-    grep -qE "$3" "$tmp/err-$1" || bad "$1: stderr lacks /$3/: $(cat "$tmp/err-$1")"
-    [ ! -s "$tmp/out-$1" ] || bad "$1: printed a record on stdout"
-    cache_empty "$1" || bad "$1: the cache holds a file"
-}
-run_refusals() {
-    refuse badsig "$tmp/c-badsig" 'signature check failed'
-    refuse badsig2 "$tmp/c-badsig2" 'signature check failed'
-    refuse other "$tmp/c-other" 'signature check failed'
-    refuse sum "$tmp/c-sum" 'checksum mismatch'
-    refuse noline "$tmp/c-noline" 'no single line'
-    refuse nosums "$tmp/c-nosums" 'cannot fetch .*SHA256SUMS'
-    refuse nosig "$tmp/c-nosig" 'cannot fetch .*SHA256SUMS\.gpg'
-}
-run_refusals
+# The refusals are independent (own fixture, own cache): run them at once, then check the results after the wait.
+# badsig only changes a hash character, so the checksum line no longer matches either; badsig2 is the pure signature control.
+refusals=(
+    "badsig|$tmp/c-badsig|signature check failed"
+    "badsig2|$tmp/c-badsig2|signature check failed"
+    "other|$tmp/c-other|signature check failed"
+    "sum|$tmp/c-sum|checksum mismatch"
+    "noline|$tmp/c-noline|no single line"
+    "nosums|$tmp/c-nosums|cannot fetch .*SHA256SUMS"
+    "nosig|$tmp/c-nosig|cannot fetch .*SHA256SUMS\\.gpg"
+)
+# the independent good, two-serial and unpublished-serial runs go at the same time
+for r in "${refusals[@]}"; do IFS='|' read -r n base _ <<< "$r"; run "$n" "$base" & done
+run good "$good" &
+run two "$good" $S2 &
+run missing-serial "$good" 20300101 &
+wait
+for r in "${refusals[@]}"; do
+    IFS='|' read -r n _ re <<< "$r"
+    [ "$(rc_of "$n")" != 0 ] || bad "$n: exit 0, expected a refusal"
+    grep -qE "$re" "$tmp/err-$n" || bad "$n: stderr lacks /$re/: $(cat "$tmp/err-$n")"
+    [ ! -s "$tmp/out-$n" ] || bad "$n: printed a record on stdout"
+    cache_empty "$n" || bad "$n: the cache holds a file"
+done
 # the four reasons differ
 sig=$(cat "$tmp/err-badsig") sumr=$(cat "$tmp/err-sum") nol=$(cat "$tmp/err-noline") mis=$(cat "$tmp/err-nosums")
 [ "$sig" != "$sumr" ] && [ "$sig" != "$nol" ] && [ "$sig" != "$mis" ] && [ "$sumr" != "$nol" ] && [ "$sumr" != "$mis" ] \
@@ -91,7 +98,6 @@ sig=$(cat "$tmp/err-badsig") sumr=$(cat "$tmp/err-sum") nol=$(cat "$tmp/err-noli
 grep -q "release-$S1" "$tmp/err-nosums" || bad "a 404 does not name the serial"
 
 # --- good run
-run good "$good"
 [ "$(rc_of good)" = 0 ] || bad "good: exit $(rc_of good): $(cat "$tmp/err-good")"
 cmp -s "$good/release-$S1/$NAME" "$tmp/cache-good/release-$S1/$NAME" || bad "good: cached image differs from the fixture"
 want=$(sha256sum < "$good/release-$S1/$NAME" | cut -d' ' -f1)
@@ -101,11 +107,9 @@ grep -qx "path=$tmp/cache-good/release-$S1/$NAME" "$tmp/out-good" || bad "good: 
 find "$tmp/cache-good" -name '.download*' | grep -q . && bad "good: temporary directory left behind"
 
 # --- the serial selects the directory
-run two "$good" $S2
 want2=$(sha256sum < "$good/release-$S2/$NAME" | cut -d' ' -f1)
 [ "$want" != "$want2" ] || bad "the two serials have the same image"
 { grep -qx "sha256=$want2" "$tmp/out-two" && grep -qx "serial=$S2" "$tmp/out-two"; } || bad "serial 2: wrong record"
-run missing-serial "$good" 20300101
 { [ "$(rc_of missing-serial)" != 0 ] && grep -q 'release-20300101' "$tmp/err-missing-serial"; } || bad "unpublished serial not named"
 
 # --- cache re-verification
@@ -159,8 +163,9 @@ PY
 cmp -s "$IMG" "$tmp/mut/e2e/vm/image.sh" && bad "mutated copy equals the original"
 chmod +x "$tmp/mut/e2e/vm/image.sh"
 SCRIPT=$tmp/mut/e2e/vm/image.sh
+for n in badsig2 other; do run "m$n" "$tmp/c-$n" & done
+wait
 for n in badsig2 other; do
-    run "m$n" "$tmp/c-$n"
     [ "$(rc_of "m$n")" = 0 ] || bad "mutant without gpgv still refuses $n (the test would not notice)"
 done
 SCRIPT=

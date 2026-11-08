@@ -70,6 +70,7 @@ gpgv --quiet --keyring "$KEYRING" "$tmp/r/SHA256SUMS.gpg" "$tmp/r/SHA256SUMS" 2>
     || die "signature check failed: SHA256SUMS is not signed by the Ubuntu cloud image keyring"
 curl -fsS --retry 2 -o "$tmp/r/$NAME" "$url/$NAME" || die "cannot fetch $url/$NAME (is serial $SERIAL still published?)"
 verify "$tmp/r" || die "downloaded image refused"
-mv -- "$tmp/r" "$dir"
+[ ! -e "$dir" ] || die "another run placed $dir meanwhile"
+mv -T -- "$tmp/r" "$dir"
 echo "image.sh: image verified and cached" >&2
 report
