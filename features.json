@@ -162,7 +162,7 @@
         "F157"
       ],
       "verify": "just quick && scripts/test-docs-manual-m5.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F166",
