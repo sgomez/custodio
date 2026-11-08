@@ -199,3 +199,7 @@ with an empty context.
 ### 2026-11-08 — F163 — attempt 1
 - Done (step 1): real `lacking` guest probe, `docs/findings/F163.md`. Route A (`tpm2_clear` in the guest) works; PCR extend of 0 and 7 works; PolicyPCR fails after extension; PCRs after `vm.sh cycle` equal the first reading (deterministic); `systemd-creds` re-encrypts after the clear. Contract amended with the settled rows (the amendment is in the same commit as the step tick; evaluator should review it). Not probed: `full` mode PCR values (same OVMF). Guest needs `apt-get update` before `tpm2-tools` installs. No qemu/swtpm left.
 - Next session should: step 2 (`scripts/test-e2e-pcr.sh` VM sections first, with the equality judge), then steps 3-6.
+
+### 2026-11-08 — F163 — attempt 2 (NEXT_FINDINGS)
+- Fixed the three findings: ran the `full` PCR probe (same PCR values before extension and after `vm.sh cycle` as `lacking`), listed the commands in `docs/findings/F163.md`, added the index line; contract Scope rows settled (PCR 0 and 7, route A only, first reading carried in the state file) and a control for "neither extended nor first reading" added to step 2 and the evidence. No qemu/swtpm left (one defunct qemu zombie only).
+- Next session should: step 2 (`scripts/test-e2e-pcr.sh` VM sections first), once the evaluator approves the amendment.
