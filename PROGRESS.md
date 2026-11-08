@@ -244,3 +244,10 @@ with an empty context.
 - Cause of the `upgrade-kinds-signs` KeyLost: alice's `rsa1`/`ec1` are imported by the setup, before `tpm-clear-*`; the VM clear (the guest's own TPM) makes them unusable, and `upgrade` uses them. Fix: `guest.sh` keeps the setup p12 files in `$work/setup-keep` (VM only); `tpmclear-run.sh` (VM, when that directory exists) runs `tpmclear-user.sh restore` at the end (alice deletes the lost keys and imports them again), plus the reader in `lacking`. Not covered by a fixture: proven by the real runs only.
 - Real guest, `pcr-* tpm-clear-* upgrade-kinds-*`: `lacking` passed (167 s), `full` passed (165 s), all ten ids ok, no qemu/swtpm left.
 - `just quick` green. Verify scripts: test-e2e-pcr 18 s, test-e2e-tpmclear 7 s, test-e2e-upgradekinds 10 s, all exit 0.
+
+### 2026-11-08 — F163 — attempt 10 (review findings fixed)
+- Finding 1: `scripts/test-e2e-tpmclear.sh` has VM fixtures with `setup-keep` (stub `restore` in `e2e-tpmclear-stub.py`): rsa1/ec1 deleted and imported again in order, the reader runs on them in `lacking` (a bad ec1 credential fails), a failing restore delete or import fails the run, a run without `setup-keep` does not restore. Mutants (restore call removed, reader call removed) are caught.
+- Finding 2: probed in a real `lacking` guest (systemd 259.9): the state is owned 65534:65534 on disk, mode 700; recorded in `docs/findings/F163.md` (a real on-disk owner; the service accepts it; SPEC has no numeric owner rule; a person may confirm). `upgrade.sh` pins 65534 in a VM. Real `lacking 'upgrade-kinds-*'` passed after the change (1m13).
+- Finding 3: debug leftovers removed from `upgrade-user.sh` and `upgrade.sh`.
+- Notes: contract amended (dpkg -i, payload test in `test-e2e-vm-host.sh`, measured costs); the no-op line in the pcr driver section became two assertions.
+- `just quick` green (2m55). Verify scripts: pcr 21 s, tpmclear 9 s, upgradekinds 10 s, all exit 0.

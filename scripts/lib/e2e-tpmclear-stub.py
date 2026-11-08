@@ -174,6 +174,19 @@ def alice(cmdline):
             journal_add([entry(i, "delete", "deleted", "", "")])
         wr("imported", " ".join(keep))
         listing(out, keep)
+    elif cmd == "restore":
+        # the setup keys are deleted and imported again from the kept p12 files; STUB_RESTOREFAIL=delete|import makes that step fail
+        for k in ("rsa1", "ec1"):
+            if env.get("STUB_RESTOREFAIL") == "delete":
+                print(f"delete of {k} failed", file=sys.stderr)
+                return 1
+            with open(path("restore.log"), "a") as f:
+                f.write(f"delete {k}\n")
+            if env.get("STUB_RESTOREFAIL") == "import" or not os.path.exists(os.path.join(work, "setup-keep", k + ".p12")):
+                print(f"import of {k} failed", file=sys.stderr)
+                return 1
+            with open(path("restore.log"), "a") as f:
+                f.write(f"import {k}\n")
     return 0
 
 

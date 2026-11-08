@@ -212,7 +212,9 @@ E=$ROOT/e2e
 STUB=$ROOT/scripts/lib/e2e-tpmclear-stub.py
 cred "$tmp/ok.cred" ef4ac13679a9480ea7db68897f9f165d 0
 cred "$tmp/pcrmask.cred" ef4ac13679a9480ea7db68897f9f165d 0x80
-for k in tc-rsa tc-ec; do rec "$tmp/st-ok" $k 2 "$tmp/ok.cred"; done
+for k in tc-rsa tc-ec rsa1 ec1; do rec "$tmp/st-ok" $k 2 "$tmp/ok.cred"; done
+for k in tc-rsa tc-ec rsa1; do rec "$tmp/st-kpcr" $k 2 "$tmp/ok.cred"; done
+rec "$tmp/st-kpcr" ec1 2 "$tmp/pcrmask.cred"
 rec "$tmp/st-pcr" tc-rsa 2 "$tmp/ok.cred"; rec "$tmp/st-pcr" tc-ec 2 "$tmp/pcrmask.cred"
 mkdir -p "$tmp/st-none" "$tmp/stub"
 for t in tpm2_clear tpm2_createprimary tpm2_readpublic tpm2_flushcontext pkcs11-tool busctl journalctl systemctl id su scan; do
@@ -225,6 +227,8 @@ vmrun() {
     shift 3
     w=$tmp/v-$n
     mkdir -p "$w/stub" "$w/work" "$w/state"
+    # the setup keys guest.sh keeps in a VM run (F163); the runs of a name starting with nokeep have none
+    case $n in nokeep*) ;; *) mkdir -p "$w/work/setup-keep" && : > "$w/work/setup-keep/rsa1.p12" && : > "$w/work/setup-keep/ec1.p12" ;; esac
     env PATH="$tmp/stub:$PATH" WORK="$w/work" MODULE=/nonexistent E2E_SELECT_FILE=/nonexistent E2E_VM=1 E2E_TPM="$m" STUB_STATE="$w/stub" TC_STATE_DIR="$w/state" TC_SCAN="$tmp/stub/scan" \
         STUB_TCTI_LOG="$w/tcti.log" TPM2TOOLS_TCTI=must-not-be-used VM_STATE_DIR="$st" VM_CRED_DIR="$E/vm" VM_SYSTEMD_VERSION=259 "$@" bash "${RUN_COPY:-$E/tpmclear-run.sh}" > "$tmp/$n.out" 2>&1 || rc=$?
     echo $rc > "$tmp/$n.rc"
@@ -246,6 +250,10 @@ vmrun lack-pcr lacking "$tmp/st-pcr" STUB_KIND=encrypted-tpm &
 vmrun lack-nocred lacking "$tmp/st-none" STUB_KIND=encrypted-tpm &
 RUN_COPY=$tmp/ctl/tpmclear-run.sh vmrun lack-noreader lacking "$tmp/st-pcr" STUB_KIND=encrypted-tpm &
 vmrun none none "$tmp/st-none" &
+vmrun nokeep-lack lacking "$tmp/st-ok" STUB_KIND=encrypted-tpm &
+vmrun restdel swtpm "$tmp/st-none" STUB_RESTOREFAIL=delete &
+vmrun restimp swtpm "$tmp/st-none" STUB_RESTOREFAIL=import &
+vmrun lack-kpcr lacking "$tmp/st-kpcr" STUB_KIND=encrypted-tpm &
 vmrun noclear swtpm "$tmp/st-none" STUB_NOCLEAR=1 &
 vmrun signafter swtpm "$tmp/st-none" STUB_SIGNAFTER=1 &
 vmrun nojournal swtpm "$tmp/st-none" STUB_NOJOURNAL=1 &
@@ -279,6 +287,16 @@ for n in full lack; do
     ! grep -qv ' device:/dev/tpmrm0$' "$tmp/v-$n/tcti.log" || bad "VM $n: a tpm2 command used another TCTI"
     ! grep -q 'second TPM' "$tmp/$n.out" || bad "VM $n: a second TPM was started"
 done
+# F163: the setup keys are deleted and imported again after the clear (a real fault of the first real run), and the reader runs on them in lacking
+for n in full lack; do
+    [ "$(tr '\n' ' ' < "$tmp/v-$n/stub/restore.log" 2> /dev/null)" = "delete rsa1 import rsa1 delete ec1 import ec1 " ] || bad "VM $n: the setup keys rsa1 and ec1 were not deleted and imported again, in that order"
+done
+[ ! -e "$tmp/v-nokeep-lack/stub/restore.log" ] || bad "VM nokeep: restore ran without setup-keep"
+vgood nokeep-lack
+vrefused lack-kpcr
+grep -q 'reader: ec1' "$tmp/lack-kpcr.out" || bad "VM lacking: the reader was not run on the restored ec1"
+vrefused restdel
+vrefused restimp
 grep -q 'reader: tc-rsa\|key tc-rsa' "$tmp/lack.out" || bad "VM lacking: the reader was not run on tc-rsa"
 ! grep -q 'reader:' "$tmp/full.out" || bad "VM full: the reader was called"
 vrefused full-etpm tpm-clear-sign-fails

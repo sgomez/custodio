@@ -103,9 +103,9 @@ compare_state "$WORK/state.before" "$WORK/state.after" || fail "the key files ch
 echo "e2e: upgrade: the state directory is identical: $(grep -c . "$WORK/state.after") entries with sha256, owner and mode"
 if [ -z "${E2E_NO_ACCOUNTS:-}" ]; then
     read -r uid_a uid_b uid_c <<< "$(accts uids)"
-    # In a VM systemd 259 keeps the state of a PrivateUsers=yes service owned by 65534 on disk (probed), not by the account: the owner is then the one of the
-    # state directory itself, and compare_state above has already proved that it did not change.
-    if [ -n "${E2E_VM:-}" ]; then uid_c=$(stat -L -c %u "$STATE_LINK"); fi
+    # In a VM, systemd 259 keeps the state of the PrivateUsers=yes service owned by 65534 on disk, not by the account (docs/findings/F163.md): that owner is pinned,
+    # not read from the directory; compare_state above has already proved that it did not change in the upgrade.
+    if [ -n "${E2E_VM:-}" ]; then uid_c=65534; fi
     judged "the keys are not under their owners' directories" acct_state_problems "$WORK/state.after" "$uid_a" "$uid_b" "$uid_c"
 fi
 case_run "$id-state-unchanged"
@@ -121,7 +121,7 @@ judged "the accounts do not list their own keys, or the certificates are wrong" 
 case_run "$id-keys-listed"
 
 if uk_on; then kinds cursor || fail "no journal cursor before the signing round"; fi
-user_run sign || { journalctl -u custodio -n 25 --no-pager -o cat 2>&1 | cut -c1-300 >&2; fail "signing after the upgrade failed"; }
+user_run sign || fail "signing after the upgrade failed"
 accts sign || fail "the signatures of the two accounts failed"
 judged "alice's signatures are wrong" acct_sign_problems "$ACC" alice
 judged "bob's signatures are wrong" acct_sign_problems "$ACC" bob

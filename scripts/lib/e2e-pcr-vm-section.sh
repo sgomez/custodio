@@ -188,8 +188,8 @@ done
 grep -q 'power cycle of the guest failed' "$tmp/d-failcycle/out.txt" || bad "driver failcycle: the failure is not named"
 ! grep -q 'E2E_PCR_HALF=second' "$tmp/d-failcycle/log" || bad "driver failcycle: the second half ran after a failed cycle"
 # the controls are told apart
-[ "$(dcount nocycle '^vm cycle')" = 0 ] && { dorder nocycle && bad "driver control nocycle: the order check passed"; }
-[ "$(dr nocycle)" != 0 ] || true
+[ "$(dcount nocycle '^vm cycle')" = 0 ] || bad "driver control nocycle: the copy still cycles the guest"
+! dorder nocycle || bad "driver control nocycle: the order check passed"
 dorder onehalf && bad "driver control onehalf: the order check passed without a second half"
 # accounting: a pcr case skipped in a VM run is refused in both modes, even when a skip list names it
 printf '%s\n' pcr-extended-signs pcr-restarted-signs pcr-signs-every-key > "$tmp/vmcases"
