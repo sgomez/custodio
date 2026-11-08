@@ -40,7 +40,8 @@ rm -f "${VS:?}"/*.crt "$VS/ec.p12"
 chmod 644 "$VS/rsa.p12"
 fx=$(fixture_problems "$VS/rsa.p12" rsa)
 [ -z "$fx" ] || fail "the fixture is not what the cases need: $fx"
-[ "$(systemd-analyze has-tpm2 2> /dev/null || true)" = yes ] || fail "systemd-analyze has-tpm2 is not yes before the library is hidden"
+pre=$(vs_has2 || true)
+[ "$pre" = yes ] || fail "systemd-analyze has-tpm2 is not yes before the library is hidden: '$pre'"
 vs_install_trap
 
 alice() { # DIR import|delete: alice's session; the files go to DIR
@@ -56,7 +57,7 @@ h=$VS/hidden
 state_listing "$h/state-before"
 vs_hide || fail "the library could not be hidden or the service did not start without it (docs: a service that does not start is BLOCKED.md material)"
 rc=0
-systemd-analyze has-tpm2 > "$h/has2.out" 2> /dev/null || rc=$?
+vs_has2 > "$h/has2.out" || rc=$?
 echo "$rc" > "$h/has2.rc"
 echo "vm-silent: has-tpm2 while hidden: '$(cat "$h/has2.out")' exit $rc"
 cur=$(journalctl --sync; journalctl -n1 --show-cursor | sed -n 's/^-- cursor: //p')
@@ -71,7 +72,7 @@ vs_restore || fail "the library could not be put back"
 rp=$(vs_restore_ok)
 printf '%s\n' "$rp" | sed '/^$/d' > "$r/restore.problems"
 rc=0
-systemd-analyze has-tpm2 > "$r/has2.out" 2> /dev/null || rc=$?
+vs_has2 > "$r/has2.out" || rc=$?
 echo "$rc" > "$r/has2.rc"
 alice "$r" import
 rc=0

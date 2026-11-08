@@ -3,15 +3,17 @@
 # How the library is hidden: systemd loads libtss2-rc (dlopen) for TPM work: `systemd-analyze has-tpm2` is "partial" without it and `systemd-creds` cannot seal. The package stays installed; each
 # file of libtss2-rc0* that is a library (libtss2-rc.so.0*) is moved aside with `dpkg-divert --local --rename`, which dpkg knows and can undo exactly. What loads it is then restarted:
 # `systemctl daemon-reexec` (PID 1 drops what it loaded) and the service (its credential calls start fresh `systemd-creds` processes). Restoring is the reverse.
-# Overridable for the self-test: VS_LIBS (the library paths, one word each), VS_E2E (where tpmfail.py and vm/ are).
+# The files go to VS_HIDDEN_DIR under their own names (not next to the library and not named lib*.so*: ldconfig would take a renamed copy for the library and put the soname link back).
+# Overridable for the self-test: VS_HIDDEN_DIR, VS_LIBS (the library paths, one word each), VS_E2E (where tpmfail.py and vm/ are).
+VS_HIDDEN_DIR=${VS_HIDDEN_DIR:-/var/lib/custodio-e2e-hidden}
 VS_E2E=${VS_E2E:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 
 # vs_libs: the library files (real files and links) of the libtss2-rc package, one per line
 vs_libs() {
     # shellcheck disable=SC2086 # one path per word
-    if [ -n "${VS_LIBS:-}" ]; then printf "%s\n" ${VS_LIBS}; return; fi
+    if [ -n "${VS_LIBS+x}" ]; then { [ -z "${VS_LIBS}" ] || printf "%s\n" ${VS_LIBS}; return 0; }; fi
     local pkg f
-    pkg=$(dpkg-query -W -f='${Package}\n' 'libtss2-rc0*' 2> /dev/null | head -n 1)
+    pkg=$(dpkg-query -W -f='${db:Status-Abbrev}${Package}\n' 'libtss2-rc0*' 2> /dev/null | sed -n 's/^ii  *//p' | head -n 1)
     [ -n "$pkg" ] || return 1
     dpkg -L "$pkg" | while IFS= read -r f; do
         case $f in */libtss2-rc.so.*) if [ -e "$f" ] || [ -L "$f" ]; then echo "$f"; fi ;; esac
@@ -44,15 +46,16 @@ vs_restart() {
 vs_hide() {
     local f libs
     libs=$(vs_libs) && [ -n "$libs" ] || { echo "vm-silent: no libtss2-rc library found to hide" >&2; return 1; }
+    mkdir -p "$VS_HIDDEN_DIR" || return 1
     while IFS= read -r f; do
-        dpkg-divert --local --rename --divert "$f.hidden-by-e2e" --add "$f" > /dev/null || return 1
+        dpkg-divert --local --rename --divert "$VS_HIDDEN_DIR/hidden-${f##*/}" --add "$f" > /dev/null || return 1
     done <<< "$libs"
     vs_restart
 }
 
 # vs_libs_all: our diversions that are in place (the package's paths are not found once diverted, so ask dpkg for the diversions)
 vs_libs_all() {
-    dpkg-divert --list '*libtss2-rc.so.*' 2> /dev/null | sed -n 's/^local diversion of \(.*\) to .*\.hidden-by-e2e$/\1/p'
+    dpkg-divert --list '*libtss2-rc.so.*' 2> /dev/null | sed -n "s|^local diversion of \(.*\) to $VS_HIDDEN_DIR/hidden-.*\$|\1|p"
 }
 
 vs_restore() {
@@ -64,6 +67,14 @@ vs_restore() {
     vs_restart
 }
 
+# vs_has2: the first line of `systemd-analyze has-tpm2` (the real one lists the libraries below its verdict) and its exit status
+vs_has2() {
+    local o rc=0
+    o=$(systemd-analyze has-tpm2 2> /dev/null) || rc=$?
+    printf '%s\n' "${o%%$'\n'*}"
+    return "$rc"
+}
+
 # vs_restore_ok: prints the problems with the restore (empty: the libraries are back, no diversion is left, has-tpm2 says yes)
 vs_restore_ok() {
     local f out rc=0
@@ -73,7 +84,7 @@ vs_restore_ok() {
     done < <(vs_libs)
     f=$(vs_libs_all | tr '\n' ' ')
     [ -z "${f// /}" ] || echo "a diversion is left: $f"
-    out=$(systemd-analyze has-tpm2 2> /dev/null) || rc=$?
+    out=$(vs_has2) || rc=$?
     if [ "$out" != yes ] || [ "$rc" != 0 ]; then echo "systemd-analyze has-tpm2 says '$out' (exit $rc) after the restore"; fi
 }
 

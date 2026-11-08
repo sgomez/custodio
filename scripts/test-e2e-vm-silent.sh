@@ -93,7 +93,7 @@ touch "$S/lib/libtss2-rc.so.0.0.0"; ln -s libtss2-rc.so.0.0.0 "$S/lib/libtss2-rc
 stub() { printf '#!/bin/bash\necho "%s $*" >> "%s"\n%s\n' "$1" "$S/log" "$2" > "$S/bin/$1"; chmod +x "$S/bin/$1"; }
 stub dpkg-divert 'mode=; p=; d=; while [ $# -gt 0 ]; do case $1 in --add) mode=add; p=$2; shift ;; --remove) mode=rm; p=$2; shift ;; --list) mode=list; p=$2; shift ;; --divert) d=$2; shift ;; esac; shift; done
 case $mode in
-add) mv "$p" "$d"; echo "$p $d" >> '"$S/div"' ;;
+add) case ${d##*/} in lib*.so*) echo "ldconfig would bring the library back" >\&2; exit 2 ;; esac; mv "$p" "$d"; echo "$p $d" >> '"$S/div"' ;;
 rm) [ -z "${FAIL_REMOVE:-}" ] || exit 2; line=$(grep "^$p " '"$S/div"') || exit 2; mv "${line#* }" "$p"; grep -v "^$p " '"$S/div"' > '"$S/div.new"' || true; mv '"$S/div.new"' '"$S/div"' ;;
 list) while read -r a b; do echo "local diversion of $a to $b"; done < '"$S/div"' ;;
 esac'
@@ -101,10 +101,10 @@ stub ldconfig 'exit 0'
 stub busctl 'exit 0'
 stub systemctl 'case "$*" in "show -p MainPID --value custodio") cat '"$S/pid"' ;; "show -p ActiveState --value custodio") echo active ;; "restart custodio") echo $(( $(cat '"$S/pid"') + 1 )) > '"$S/pid"' ;; esac; exit 0'
 stub systemd-analyze '[ ! -s '"$S/div"' ] && echo yes || { echo partial; exit 1; }'
-VSENV=(env PATH="$S/bin:$PATH" VS_LIBS="$S/lib/libtss2-rc.so.0.0.0 $S/lib/libtss2-rc.so.0")
+VSENV=(env PATH="$S/bin:$PATH" VS_HIDDEN_DIR="$S/hid" VS_LIBS="$S/lib/libtss2-rc.so.0.0.0 $S/lib/libtss2-rc.so.0")
 harness() { printf '#!/bin/bash\nsource %s\n%s\n' "$LIB" "$2" > "$S/$1.sh"; } # NAME BODY
 back_ok() { [ -e "$S/lib/libtss2-rc.so.0.0.0" ] && [ -L "$S/lib/libtss2-rc.so.0" ] && [ ! -s "$S/div" ]; }
-reset_stub() { : > "$S/div"; rm -f "$S"/lib/*.hidden-by-e2e; touch "$S/lib/libtss2-rc.so.0.0.0"; ln -sf libtss2-rc.so.0.0.0 "$S/lib/libtss2-rc.so.0"; }
+reset_stub() { : > "$S/div"; rm -rf "$S/hid"; touch "$S/lib/libtss2-rc.so.0.0.0"; ln -sf libtss2-rc.so.0.0.0 "$S/lib/libtss2-rc.so.0"; }
 run_h() { # NAME [VAR=VALUE...]: runs the harness; its status in $S/NAME.rc
     local n=$1 rc=0
     shift
