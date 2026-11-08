@@ -8,6 +8,9 @@ KVM_DEV=${KVM_DEV:-/dev/kvm}
 OVMF_CODE=${OVMF_CODE:-/usr/share/OVMF/OVMF_CODE_4M.fd}
 OVMF_VARS=${OVMF_VARS:-/usr/share/OVMF/OVMF_VARS_4M.fd}
 KEYRING=${KEYRING:-/usr/share/keyrings/ubuntu-cloudimage-keyring.gpg}
+here=${BASH_SOURCE[0]%/*}
+# shellcheck source=e2e/vm/swtpm-path.sh
+. "$here/../e2e/vm/swtpm-path.sh"
 rc=0
 ok() { printf 'OK %s\n' "$1"; }
 missing() { printf 'MISSING %s: %s\n' "$1" "$2"; rc=1; }
@@ -34,7 +37,18 @@ fi
 
 if [ -f "$OVMF_CODE" ]; then ok ovmf-code; else missing ovmf-code "$OVMF_CODE not found (package ovmf)"; fi
 if [ -f "$OVMF_VARS" ]; then ok ovmf-vars; else missing ovmf-vars "$OVMF_VARS not found (package ovmf)"; fi
-if command -v swtpm > /dev/null; then ok swtpm; else missing swtpm "not installed (package swtpm)"; fi
+vm_swtpm_resolve
+if [ -n "$VM_SWTPM" ]; then
+    ok swtpm
+    # The lacking mode needs a profile (docs/findings/F152.md): swtpm 0.10 or newer; the container unpacks 0.10.2 under /opt/swtpm.
+    if vm_swtpm_profile_support; then
+        ok swtpm-profile
+    else
+        missing swtpm-profile "$VM_SWTPM_WHY (the lacking mode cannot start; harness/Containerfile adds 0.10.2)"
+    fi
+else
+    missing swtpm "not installed (package swtpm)"
+fi
 if command -v cloud-localds > /dev/null; then ok seed-tool; else missing seed-tool "cloud-localds not installed (package cloud-image-utils)"; fi
 if command -v gpgv > /dev/null; then ok gpgv; else missing gpgv "not installed (package gpgv)"; fi
 if [ -f "$KEYRING" ]; then ok keyring; else missing keyring "$KEYRING not found (package ubuntu-keyring)"; fi

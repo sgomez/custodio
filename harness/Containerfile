@@ -75,6 +75,22 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
       qemu-system-x86 qemu-utils ovmf cloud-image-utils ubuntu-keyring gpgv \
     && rm -rf /var/lib/apt/lists/*
+# swtpm 0.10.2 for the VM target's `lacking` mode (docs/findings/F152.md): it has --profile, the dev container's 0.7.1 does not. Unpacked into
+# its own prefix (/opt/swtpm), never installed over 0.7.1, so the existing swtpm users keep 0.7.1. The launcher e2e/vm/vm.sh finds it there.
+# The sha256 values are those of F152; a wrong one fails the build at sha256sum -c, before anything is unpacked.
+RUN set -e; d=$(mktemp -d); cd "$d"; \
+    for f in libt/libtpms/libtpms0_0.10.2-5 s/swtpm/swtpm_0.10.2-2 s/swtpm/swtpm-libs_0.10.2-2 s/swtpm/swtpm-tools_0.10.2-2; do \
+      curl -fsSLO "https://deb.debian.org/debian/pool/main/${f}_amd64.deb"; \
+    done; \
+    printf '%s\n' \
+      '348da7f5a377f18fb28a6f497c3c2bf17f1793b7abd07566784d96ce234f9861  libtpms0_0.10.2-5_amd64.deb' \
+      '57dea6dabe71ae19cb698ead6cd17501eb938f889780a9acee9e611f68a29da9  swtpm_0.10.2-2_amd64.deb' \
+      '74edc7b29b155d6f18a830a0489d3d9f16a37109a4184108f42353a146c91f82  swtpm-libs_0.10.2-2_amd64.deb' \
+      '1520e137cd06bb2fe250f527f81f433a74c07eff8b29e35b40d98f89761208e9  swtpm-tools_0.10.2-2_amd64.deb' \
+      | sha256sum -c -; \
+    for f in *.deb; do dpkg-deb -x "$f" /opt/swtpm; done; \
+    cd /; rm -rf "$d"; \
+    LD_LIBRARY_PATH=/opt/swtpm/usr/lib/x86_64-linux-gnu/swtpm:/opt/swtpm/usr/lib/x86_64-linux-gnu /opt/swtpm/usr/bin/swtpm --version | grep -q 'version 0\.10\.2'
 USER dev
 
 WORKDIR /work
