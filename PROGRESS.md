@@ -209,3 +209,9 @@ with an empty context.
 - Self-test: `scripts/test-e2e-pcr.sh` VM section on fixtures (`scripts/lib/e2e-pcr-stub.py` is a directory TPM + stub `su`/`systemctl`), 21 scenarios in parallel (good full/lacking, wrong kinds, reader failing/absent/missing-call control, no extension, pid, bad signatures, dropped key, kind change, cycle keeping/other PCRs/same boot/no cycle, second half alone). Measured 18 s (above the 2-4 s estimate; Python stub starts dominate).
 - Not done: step 3 (`run.sh`/`guest.sh` split around `vm.sh cycle` with a stub `vm.sh`; `check-cases.sh` for `pcr-*` in VM), steps 4-6.
 - Next session should: step 3, then 4, 5, 6.
+
+### 2026-11-08 — F163 — attempt 4
+- Done (step 3): `e2e/vm/run.sh` runs the guest twice when a `pcr-*` case is selected: `E2E_PCR_HALF=first` (the whole selection; `guest.sh` runs the pcr first half last, after lifecycle, so the pcr keys do not disturb the other groups), `vm.sh cycle` (step `cycle`), then `E2E_PCR_HALF=second` with only the pcr ids (`guest.sh` exits right after the service is up; no import or fixtures repeated). A failed half skips the cycle; a failed cycle dies ("power cycle of the guest failed"); VM stopped by the existing trap. The `pcr` phase seconds of both invocations are one record step. Without a pcr case nothing changes. `check-cases.sh` already refused skipped `pcr-*` under `CHECK_VM`; the self-test now proves it for both modes with a skip list (plus a format control).
+- Stub: `scripts/lib/e2e-vm-stub/vm.sh` gets `cycle`, `STUB_FAIL_CYCLE`, `STUB_FAIL_HALF`, and reports pcr cases per half. `scripts/test-e2e-pcr.sh` driver section (9 runs in parallel, controls: driver without the cycle, driver without the second half). `test-e2e-pcr.sh` now 18 s; vm-host, vm-cases, skips, vm-kinds scripts exit 0.
+- Not probed in a real guest yet (step 6): the second invocation after a real `vm.sh cycle`.
+- Next session should: step 4 (tpm-clear), then 5, 6.

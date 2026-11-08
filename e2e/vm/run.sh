@@ -176,9 +176,28 @@ step tools
 sel=$(printf '%s\n' "$selection" | tr '\n' ' ')
 guest_out=$tmp/guest.out
 rc=0
-gt 3000 "sudo systemd-run --pipe --wait -q --collect -E XDG_SESSION_CLASS=user env E2E_VM=1 E2E_TPM=$tpm E2E_SELECT='${sel% }' bash /e2e/guest.sh vm" 2>&1 | tee "$guest_out" | tee -a "$log" || rc=${PIPESTATUS[0]}
-# the guest's E2E-PHASE lines are the times of its steps: install, service and import are the setup; a group counts when one of its cases was selected
+guest() { # HALF-ENV SELECTION: one guest invocation; its output is appended to guest.out and the log
+    gt 3000 "sudo systemd-run --pipe --wait -q --collect -E XDG_SESSION_CLASS=user env E2E_VM=1 E2E_TPM=$tpm $1 E2E_SELECT='${2% }' bash /e2e/guest.sh vm" 2>&1 | tee -a "$guest_out" | tee -a "$log"
+}
+# F163: the pcr-* cases restart "swtpm" as a guest power cycle with the swtpm state kept, which a guest command cannot survive. With one of them selected the guest runs twice: the first half
+# (the whole selection; the pcr keys are made last and stay), the host's `vm.sh cycle`, and the second half (only the pcr cases; the service is up, nothing else of the setup is repeated).
+pcr_sel=$(grep '^pcr-' <<< "$selection" | tr '\n' ' ' || true)
+if [ -z "$pcr_sel" ]; then
+    guest "" "$sel" || rc=${PIPESTATUS[0]}
+else
+    guest "E2E_PCR_HALF=first" "$sel" || rc=${PIPESTATUS[0]}
+    if [ "$rc" -eq 0 ]; then
+        t0=$SECONDS
+        "$VM_SH" cycle "$vmdir" >> "$log" 2>&1 || die "the power cycle of the guest failed (vm.sh cycle)"
+        steps+=("cycle=$((SECONDS - t0))")
+        t0=$SECONDS
+        guest "E2E_PCR_HALF=second" "$pcr_sel" || rc=${PIPESTATUS[0]}
+    fi
+fi
+# the guest's E2E-PHASE lines are the times of its steps: install, service and import are the setup; a group counts when one of its cases was selected.
+# A step that both pcr invocations print is one step (their seconds add up).
 setup=0
+declare -A grp=()
 while read -r name secs; do
     case $name in
     install | service | import) setup=$((setup + secs)) ;;
@@ -187,9 +206,10 @@ while read -r name secs; do
         sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
         tpmclear) pat='^tpm-clear-' ;; upgrade) pat='^upgrade-kinds-' ;;
         esac
-        ! grep -q "$pat" <<< "$selection" || steps+=("$name=$secs") ;;
+        ! grep -q "$pat" <<< "$selection" || grp[$name]=$((${grp[$name]:-0} + secs)) ;;
     esac
 done < <(sed -n 's/^E2E-PHASE \([^ ]*\) \([0-9]*\)$/\1 \2/p' "$guest_out")
+for name in sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
 steps+=("setup=$setup")
 t0=$SECONDS
 [ "$rc" -eq 0 ] || die "the guest run failed with status $rc (see $log)"

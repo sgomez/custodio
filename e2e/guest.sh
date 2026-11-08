@@ -14,6 +14,11 @@ set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
 vm=${E2E_VM:-}
+# F163: E2E_PCR_HALF (VM only, set by e2e/vm/run.sh when a pcr-* case is selected): `first` runs the whole selection and, last of all, the first half of the pcr cases (their keys stay);
+# the host then power-cycles the guest and runs this script again with `second`: the service is up, nothing else of the setup is repeated, the second half of the pcr cases runs.
+pcr_half=${E2E_PCR_HALF:-}
+case $pcr_half in "" | first | second) ;; *) echo "e2e: FAIL: E2E_PCR_HALF='$pcr_half' is not first or second" >&2; exit 1 ;; esac
+[ -z "$pcr_half" ] || [ -n "$vm" ] || { echo "e2e: FAIL: E2E_PCR_HALF is for a VM run" >&2; exit 1; }
 case $mode in main | old | oldpath | m3) ;; *) echo "e2e: FAIL: unknown mode '$mode'" >&2; exit 1 ;; esac
 MODULE=/usr/lib/custodio/libcustodio_pkcs11.so
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
@@ -88,6 +93,16 @@ systemctl start custodio || { journalctl -u custodio --no-pager | tail -n 30 >&2
 systemctl is-active --quiet custodio || fail "custodio.service is not active"
 [ "$(systemctl show -p User --value custodio)" = custodio ] || fail "the service does not run as user custodio"
 phase_done service
+if [ "$pcr_half" = second ]; then
+    id alice > /dev/null 2>&1 || fail "alice does not exist after the power cycle: the first half did not run here"
+    work=$(mktemp -d /tmp/e2e.XXXXXX)
+    chmod 755 "$work"
+    chown alice "$work"
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE PCR_HALF=second bash /e2e/pcr-run.sh || fail "pcr-run.sh (second half) failed"
+    phase_done pcr
+    echo "e2e: all checks passed (pcr, after the power cycle)"
+    exit 0
+fi
 [ -z "$vm" ] || vm_live_cases "after the shared setup"
 
 # F142: the upgrade from the M3 build, on this fresh container: it needs the service and an account, not the keys of the steps below
@@ -237,10 +252,15 @@ phase_done tpmdup
 
 # The PCR cases (F137): alice imports an RSA 2048 and a P-256 key; root extends PCRs 7, 0 and 11 on the service's TPM, restarts the TPM and the service, and every key still signs. Reported
 # skipped in mode none (no TPM). It restarts the service in the middle of the run: the steps below read the main pid fresh. Both keys are deleted.
-if phase_runs pcr; then
-    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/pcr-run.sh || fail "pcr-run.sh failed"
+# In a VM run it comes last (below): its keys must survive the power cycle and the steps in between must not see them.
+if [ -z "$vm" ]; then
+    if phase_runs pcr; then
+        WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/pcr-run.sh || fail "pcr-run.sh failed"
+    fi
+    phase_done pcr
+elif phase_runs pcr && [ "$pcr_half" != first ]; then
+    fail "a pcr-* case is selected in a VM run without E2E_PCR_HALF=first: the power cycle is the host's (e2e/vm/run.sh)"
 fi
-phase_done pcr
 
 # The fallback cases (F138): in mode none alice imports an RSA 2048 and a P-256 key with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so (weaker, no TPM).
 # The tpmbound cases are skipped in every mode (SPEC_DEVIATIONS.md, F134). After pcr and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
@@ -301,6 +321,12 @@ if phase_runs lifecycle; then
     WORK=$work MODULE=$MODULE bash /e2e/lifecycle.sh "$pkg_next" || fail "lifecycle.sh failed"
 fi
 phase_done lifecycle
+
+# The pcr cases of a VM run (F163): first half, after everything else; the host power-cycles the guest and runs the second half.
+if [ "$pcr_half" = first ]; then
+    WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE PCR_HALF=first bash /e2e/pcr-run.sh || fail "pcr-run.sh (first half) failed"
+    phase_done pcr
+fi
 
 # The service must still be healthy and must not have logged a secret.
 systemctl is-active --quiet custodio || fail "custodio.service died during the tests"

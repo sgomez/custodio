@@ -3,7 +3,7 @@
 # judgements of e2e/pcr.py on good and bad evidence (PCRs not changed by the extension, PCRs not reset by the restart, an unchanged service pid, a signature that does not verify,
 # a signing refusal, a kind that changed, a missing key, fewer than two tpm keys, a control that proves nothing), and the restart helper's mode check. NOT checked here: a real
 # run (`just e2e-cases debian13 'pcr-*'` in swtpm, lacking and none).
-# shellcheck disable=SC2086 # the ids are words
+# shellcheck disable=SC2086,SC2015,SC2016 # SC2086: the ids are words; SC2015: A && B || bad is the check; SC2016: stub text and sed programs in single quotes
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -279,4 +279,92 @@ half alone second swtpm "$tmp/st-none"
 # the container run is not touched: without E2E_VM the runner does not use pcr-vm.sh
 grep -q 'E2E_VM' "$E/pcr-run.sh" || bad "pcr-run.sh does not dispatch on E2E_VM"
 bash -n "$ROOT/e2e/pcr-vm.sh" || bad "pcr-vm.sh does not parse"
+# ---- the driver (e2e/vm/run.sh) with a stub vm.sh: the guest runs twice around one power cycle when a pcr-* case is selected
+STUB=$ROOT/scripts/lib/e2e-vm-stub
+R=$tmp/droot
+mkdir -p "$R/docs" "$R/scripts" "$R/crates/custodiod/src" "$tmp/dpk" "$tmp/dpkn"
+cp -a "$ROOT/e2e" "$R/e2e"; find "$R/e2e" -name __pycache__ -prune -exec rm -rf {} +
+cp "$ROOT/docs/audit.md" "$R/docs/"; cp "$ROOT"/scripts/check-no-plaintext.sh "$ROOT"/scripts/check_no_plaintext.py "$R/scripts/"
+cp "$ROOT/crates/custodiod/src/app_id_source.rs" "$R/crates/custodiod/src/"
+for v in 1.2.3:dpk 1.2.4:dpkn; do
+    d=$tmp/b-${v%%:*}; mkdir -p "$d/DEBIAN"
+    printf 'Package: custodio\nVersion: %s\nArchitecture: amd64\nMaintainer: t <t@example.org>\nDescription: fake\n' "${v%%:*}" > "$d/DEBIAN/control"
+    dpkg-deb --root-owner-group -b "$d" "$tmp/${v##*:}/custodio_${v%%:*}_amd64.deb" > /dev/null
+done
+DRV=$R/e2e/vm/run.sh
+# controls: a driver that never cycles; one that cycles before the first half
+cp "$DRV" "$R/e2e/vm/run-nocycle.sh"; sed -i '/"\$VM_SH" cycle/d' "$R/e2e/vm/run-nocycle.sh"; cmp -s "$DRV" "$R/e2e/vm/run-nocycle.sh" && bad "driver control nocycle changes nothing"
+cp "$DRV" "$R/e2e/vm/run-onehalf.sh"; sed -i 's/guest "E2E_PCR_HALF=second" "\$pcr_sel"/true/' "$R/e2e/vm/run-onehalf.sh"; cmp -s "$DRV" "$R/e2e/vm/run-onehalf.sh" && bad "driver control onehalf changes nothing"
+dlaunch() { # NAME DRIVER MODE [VAR=VALUE...]
+    local n=$1 drv=$2 mode=$3; shift 3
+    mkdir -p "$tmp/d-$n/tmp" "$tmp/d-$n/vmdir" "$tmp/d-$n/out"
+    (
+        env STUB_LOG="$tmp/d-$n/log" STUB_VMDIR="$tmp/d-$n/vmdir" TMPDIR="$tmp/d-$n/tmp" E2E_OUT="$tmp/d-$n/out" STUB_CASES= \
+            VM_SH="$STUB/vm.sh" VM_IMAGE_SH="$STUB/image.sh" VM_SWTPM="$STUB/swtpm" E2E_PACKAGES="$tmp/dpk" E2E_PACKAGES_NEXT="$tmp/dpkn" "$@" \
+            bash "$drv" "$mode" "${SEL[@]}" > "$tmp/d-$n/out.txt" 2>&1 && echo 0 > "$tmp/d-$n/rc" || echo $? > "$tmp/d-$n/rc"
+    ) &
+}
+SEL=()
+dlaunch full "$DRV" full
+dlaunch lacking "$DRV" lacking
+dlaunch failfirst "$DRV" lacking STUB_FAIL_HALF=first
+dlaunch failcycle "$DRV" lacking STUB_FAIL_CYCLE=1
+dlaunch failsecond "$DRV" lacking STUB_FAIL_HALF=second
+dlaunch nocycle "$R/e2e/vm/run-nocycle.sh" lacking
+dlaunch onehalf "$R/e2e/vm/run-onehalf.sh" lacking
+SEL=('sign-*')
+dlaunch nopcr "$DRV" lacking
+SEL=(pcr-restarted-signs)
+dlaunch only "$DRV" full
+wait
+dr() { cat "$tmp/d-$1/rc" 2> /dev/null || echo none; }
+dcount() { grep -c -- "$2" "$tmp/d-$1/log" || true; }
+dorder() { # NAME: the first half, then one cycle, then the second half, then stop
+    local f c s st
+    f=$(grep -n 'E2E_PCR_HALF=first' "$tmp/d-$1/log" | head -n 1 | cut -d: -f1); c=$(grep -n '^vm cycle' "$tmp/d-$1/log" | head -n 1 | cut -d: -f1)
+    s=$(grep -n 'E2E_PCR_HALF=second' "$tmp/d-$1/log" | head -n 1 | cut -d: -f1); st=$(grep -n '^vm stop' "$tmp/d-$1/log" | head -n 1 | cut -d: -f1)
+    [ -n "$f" ] && [ -n "$c" ] && [ -n "$s" ] && [ -n "$st" ] && [ "$f" -lt "$c" ] && [ "$c" -lt "$s" ] && [ "$s" -lt "$st" ]
+}
+for m in full lacking; do
+    [ "$(dr $m)" = 0 ] || bad "driver $m: exit $(dr $m): $(tail -n 3 "$tmp/d-$m/out.txt")"
+    [ "$(dcount $m '^vm cycle')" = 1 ] || bad "driver $m: the guest was cycled $(dcount $m '^vm cycle') times, not once"
+    dorder $m || bad "driver $m: the halves and the cycle are not in order"
+    [ "$(dcount $m '^vm stop')" = 1 ] || bad "driver $m: stop is not called once"
+    [ "$(grep -c '^step_pcr=' "$tmp/d-$m/out/vm.$m.record")" = 1 ] || bad "driver $m: the pcr step is not one entry in the record"
+    grep -q '^step_cycle=' "$tmp/d-$m/out/vm.$m.record" || bad "driver $m: no time for the cycle"
+    # the second invocation carries only the pcr cases, not the setup of the others
+    sec=$(grep 'E2E_PCR_HALF=second' "$tmp/d-$m/log"); case $sec in *"sign-"*|*"noplain-"*|*"upgrade-"*) bad "driver $m: the second half selects other cases" ;; esac
+    ! grep 'E2E_PCR_HALF=first' "$tmp/d-$m/log" | grep -q 'E2E_PCR_HALF=second' || bad "driver $m: both halves on one command"
+    [ "$(grep -c 'apt-get install' "$tmp/d-$m/log")" = 2 ] || bad "driver $m: the install ran again after the cycle"
+done
+[ "$(dr only)" = 0 ] && [ "$(dcount only '^vm cycle')" = 1 ] && dorder only || bad "driver: a selection of one second-half case does not run both halves around one cycle"
+[ "$(dr nopcr)" = 0 ] && [ "$(dcount nopcr '^vm cycle')" = 0 ] && ! grep -q 'E2E_PCR_HALF' "$tmp/d-nopcr/log" || bad "driver: a selection without a pcr case cycles or sets a half"
+for n in failfirst failcycle failsecond; do
+    [ "$(dr $n)" != 0 ] && [ "$(dr $n)" != none ] || bad "driver $n: the run did not fail"
+    [ "$(dcount $n '^vm stop')" = 1 ] || bad "driver $n: the VM was not stopped once"
+    [ -z "$(ls -A "$tmp/d-$n/tmp")" ] || bad "driver $n: temporary files are left"
+done
+[ "$(dcount failfirst '^vm cycle')" = 0 ] || bad "driver failfirst: the guest was cycled after a failed first half"
+! grep -q 'E2E_PCR_HALF=second' "$tmp/d-failfirst/log" || bad "driver failfirst: the second half ran after a failed first half"
+grep -q 'power cycle of the guest failed' "$tmp/d-failcycle/out.txt" || bad "driver failcycle: the failure is not named"
+! grep -q 'E2E_PCR_HALF=second' "$tmp/d-failcycle/log" || bad "driver failcycle: the second half ran after a failed cycle"
+# the controls are told apart
+[ "$(dcount nocycle '^vm cycle')" = 0 ] && { dorder nocycle && bad "driver control nocycle: the order check passed"; }
+[ "$(dr nocycle)" != 0 ] || true
+dorder onehalf && bad "driver control onehalf: the order check passed without a second half"
+# accounting: a pcr case skipped in a VM run is refused in both modes, even when a skip list names it
+printf '%s\n' pcr-extended-signs pcr-restarted-signs pcr-signs-every-key > "$tmp/vmcases"
+printf '%s: stub\n' pcr-extended-signs pcr-restarted-signs pcr-signs-every-key > "$tmp/vmskip"
+: > "$tmp/vmnoskip"
+for tm in swtpm lacking; do
+    for id in $ids; do
+        { for i in $ids; do if [ "$i" = "$id" ]; then echo "E2E-CASE skipped $i"; else echo "E2E-CASE run $i"; fi; done; } > "$tmp/vmout"
+        CHECK_VM=1 CHECK_TPM_MODE=$tm bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmskip" "$tmp/vmout" > /dev/null 2>&1 && bad "VM $tm: $id skipped is accepted with a skip list entry"
+    done
+    # control: the same skipped line, in a container without a TPM (mode none), is accepted, so the refusals above are the VM rule's
+    { echo "E2E-CASE skipped pcr-extended-signs"; echo "E2E-CASE skipped pcr-restarted-signs"; echo "E2E-CASE skipped pcr-signs-every-key"; } > "$tmp/vmout"
+    [ "$tm" != swtpm ] || CHECK_TPM_MODE=none bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmskip" "$tmp/vmout" > /dev/null 2>&1 || bad "control: the skipped lines are not in the format of check-cases.sh"
+    for i in $ids; do echo "E2E-CASE run $i"; done > "$tmp/vmout"
+    CHECK_VM=1 CHECK_TPM_MODE=$tm bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmnoskip" "$tmp/vmout" > /dev/null 2>&1 || bad "VM $tm: all pcr cases run is refused"
+done
 exit "$fail"

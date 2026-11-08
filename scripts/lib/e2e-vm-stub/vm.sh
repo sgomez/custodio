@@ -12,6 +12,7 @@ start)
     if [ -n "${VM_PAYLOAD:-}" ]; then cp -- "$VM_PAYLOAD" "$STUB_LOG.payload" || { echo "stub: no payload" >&2; exit 1; }; fi
     mkdir -p "$STUB_VMDIR/custodio-vm.AAAAAA"; echo running > "$STUB_VMDIR/custodio-vm.AAAAAA/vm.run"
     echo "VM_DIR=$STUB_VMDIR/custodio-vm.AAAAAA" ;;
+cycle) [ -z "${STUB_FAIL_CYCLE:-}" ] || { echo "stub: cycle failed" >&2; exit 1; } ;;
 stop) echo "stop" >> "$STUB_LOG.stops"; rm -rf "$1" ;;
 put) [ -f "$2" ] || { echo "stub: no such file $2" >&2; exit 1; } ;;
 run)
@@ -28,9 +29,18 @@ run)
             touch "$STUB_HOLD/in-guest"
             for _ in $(seq 400); do [ -e "$STUB_HOLD/release" ] && break; sleep 0.05; done
         fi
+        # F163: with E2E_PCR_HALF the pcr cases are reported by half (first: pcr-extended-signs; second: the other two), and a half that STUB_FAIL_HALF names fails
+        half=$(sed -n 's/.*E2E_PCR_HALF=\([a-z]*\) .*/\1/p' <<< "$cmd")
+        [ -z "$half" ] || echo "$half" >> "$STUB_LOG.halves"
+        if [ -n "${STUB_FAIL_HALF:-}" ] && [ "$half" = "$STUB_FAIL_HALF" ]; then echo "stub: half $half failed"; exit 1; fi
         if [ -n "${STUB_CASES:-}" ]; then cat "$STUB_CASES"; else
             sel=$(sed -n "s/.*E2E_SELECT='\([^']*\)'.*/\1/p" <<< "$cmd")
-            for id in $sel; do echo "E2E-CASE run $id"; done
+            for id in $sel; do
+                case $half:$id in
+                first:pcr-restarted-signs | first:pcr-signs-every-key | second:pcr-extended-signs) continue ;;
+                esac
+                echo "E2E-CASE run $id"
+            done
         fi
         printf 'E2E-PHASE install 3\nE2E-PHASE service 2\nE2E-PHASE import 4\nE2E-PHASE sign 5\nE2E-PHASE pcr 6\nE2E-PHASE upgrade 7\n'
         exit "${STUB_GUEST_RC:-0}" ;;
