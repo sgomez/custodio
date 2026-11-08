@@ -2,20 +2,18 @@
 # Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
 # (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
-# Usage: guest.sh TARGET [oldpath|m3]. With "m3" (F142, on a fresh container) it installs the M3 build (/pkg-m3, built from the tag v0.5.0 by scripts/package-m3.sh), imports four keys with it,
-# installs this tree's package over it and reports the upgrade-m3-* cases only (e2e/upgrade-m3.sh). With "oldpath" (F61, on a fresh container) it installs the old-path fixture (/pkg-oldpath, the current package with the daemon at /usr/lib/custodio);
-# it reports the upgrade-oldpath-* cases only. A target with a no-oldpath marker (Arch has no old path; one target per package format runs it) skips them
-# in the main run. Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
-# F160: with E2E_VM=1 (e2e/vm/run.sh) the package is already installed by apt and the TPM is the VM's own: no install, no tpm_setup/tpm_teardown, no swtpm, no drop-in;
-# the VM-only cases (e2e/vm/judge.sh) are judged after the install, the setup and the cases. E2E_TPM says what the case scripts expect. E2E_DIR (default /e2e) is where select.sh, report.sh and the VM files are.
+# Usage: guest.sh TARGET [oldpath|m3]: "m3" (F142) installs the M3 build, then this tree's package over it (e2e/upgrade-m3.sh); "oldpath" (F61) installs the old-path fixture (/pkg-oldpath)
+# and reports the upgrade-oldpath-* cases only; a target with a no-oldpath marker skips them in the main run.
+# Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
+# F160: with E2E_VM=1 (e2e/vm/run.sh) apt has installed the package and the TPM is the VM's own: no install, tpm_setup, swtpm or drop-in;
+# the VM-only cases (e2e/vm/judge.sh) are judged at the end. E2E_TPM says what the case scripts expect. E2E_DIR (default /e2e) holds select.sh, report.sh and the VM files.
 # With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
 # needs is not run (select.sh); the setup (install, service, user, import) always is.
 set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
 vm=${E2E_VM:-}
-# F163: E2E_PCR_HALF (VM only, set by e2e/vm/run.sh when a pcr-* case is selected): `first` runs the whole selection and, last of all, the first half of the pcr cases (their keys stay);
-# the host then power-cycles the guest and runs this script again with `second`: the service is up, nothing else of the setup is repeated, the second half of the pcr cases runs.
+# F163: E2E_PCR_HALF (VM only, set by e2e/vm/run.sh for a pcr-* case): `first` runs the selection and, last, the first pcr half; after the host's power cycle `second` runs only the second half.
 pcr_half=${E2E_PCR_HALF:-}
 case $pcr_half in "" | first | second) ;; *) echo "e2e: FAIL: E2E_PCR_HALF='$pcr_half' is not first or second" >&2; exit 1 ;; esac
 [ -z "$pcr_half" ] || [ -n "$vm" ] || { echo "e2e: FAIL: E2E_PCR_HALF is for a VM run" >&2; exit 1; }
@@ -277,25 +275,19 @@ if phase_runs tpmfail; then
 fi
 phase_done tpmfail
 
-# The tpmclear cases (F140): the service is pointed at a second swtpm (behind the filter in lacking), alice imports an RSA 2048 and a P-256 key and signs, root clears that TPM with tpm2_clear, and
-# signing fails with KeyLost (CKR_DEVICE_ERROR through the module) and a journal entry, the keys stay listed and can be deleted. Reported skipped in mode none (no TPM). The main TPM is never cleared;
-# the drop-in, the service and the second swtpm are put back at the end, and both keys are deleted. After tpmfail and before the upgrade.
+# The tpmclear cases (F140; a VM run clears the guest's TPM, F163). After tpmfail.
 if phase_runs tpmclear; then
     WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmclear-run.sh || fail "tpmclear-run.sh failed"
 fi
 phase_done tpmclear
 
-# The tpmslots cases (F143): more signatures and imports in a row than the TPM has object slots, and no object left loaded (handles-transient and handles-loaded-session before and after, on the
-# service's own TPM socket, which has no resource manager). Reported skipped in mode none (no TPM, no slots). After tpmclear and before the upgrade; the service and the TPM are as they were
-# and all its keys are deleted.
+# The tpmslots cases (F143): more signatures and imports than the TPM has object slots. After tpmclear.
 if phase_runs tpmslots; then
     WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/tpmslots-run.sh || fail "tpmslots-run.sh failed"
 fi
 phase_done tpmslots
 
-# The journalkind cases (F144): the queries docs/audit.md gives for the storage kind, the purge entries and the failed signatures, run against the real journal and compared with the
-# entries the step caused. Old-format key files are placed for two owners and the service restarted (the purge); a record is damaged and the TPM or credential service made unavailable for
-# one signature each; everything is undone and the step's keys are deleted. After tpmslots and before the upgrade.
+# The journalkind cases (F144): the queries of docs/audit.md against the real journal. After tpmslots.
 if phase_runs journalkind; then
     WORK=$work E2E_TPM=$tpm_mode MODULE=$MODULE bash /e2e/journalkind-run.sh || fail "journalkind-run.sh failed"
 fi
