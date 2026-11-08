@@ -172,7 +172,7 @@ vmrun() { # MODE EVIDENCE-DIR [STATE-DIR]: runs the VM branch; prints its output
     work=$(mktemp -d "$tmp/work.XXXX"); mkdir -p "$tmp/stub"
     cat > "$tmp/stub/su" <<STUB
 #!/usr/bin/env bash
-cp "$ev"/*.out "$work/fallback/"; : > "$work/fallback/imported"
+cp "$ev"/*.out "$work/fallback/"; [ -n "${STUB_NOIMPORTED:-}" ] || : > "$work/fallback/imported"
 exit 0
 STUB
     chmod +x "$tmp/stub/su"
@@ -199,6 +199,9 @@ vmrun swtpm "$tmp/vl"                   # and the other
 vmrun lacking "$tmp/vl" "$tmp/st-pcr"   # the reader fails on one key
 [ "$(cat "$tmp/vmrc")" != 0 ] || bad "VM run lacking passes with a credential of a nonzero PCR mask"
 grep -q 'fb-ec' "$tmp/vmout" || bad "VM run lacking: the reader failure does not name the key"
+# alice never writes `imported`: the credentials are not read, so the run fails and says so
+STUB_NOIMPORTED=1 vmrun lacking "$tmp/vl" "$tmp/st-ok"
+{ [ "$(cat "$tmp/vmrc")" != 0 ] && grep -q 'the keys were never imported' "$tmp/vmout"; } || bad "VM run lacking passes when the keys were never imported"
 # a control copy that reports the case without judging fails the run check
 mkdir "$tmp/ctl"; cp "$ROOT"/e2e/fallback-run.sh "$ROOT"/e2e/fallback-cases.sh "$ROOT"/e2e/fallback.py "$ROOT"/e2e/tpmkind-lib.sh "$ROOT"/e2e/report.sh "$ROOT"/e2e/select.sh "$tmp/ctl/"
 cp -r "$ROOT/e2e/vm" "$tmp/ctl/vm"

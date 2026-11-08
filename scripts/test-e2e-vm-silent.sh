@@ -175,6 +175,52 @@ if cmp -s "$E/vm/silent.sh" "$tmp/silent-notrap.sh"; then bad "the control copy 
 tl2=$(grep -c '^vs_install_trap$' "$tmp/silent-notrap.sh" || true)
 [ "$tl2" = 0 ] || bad "the control copy still installs the trap"
 
+# ---- silent.sh itself, in a copy of the e2e tree with stubs for what touches the guest (su, journalctl, find, sha256sum, the reader)
+T=$tmp/tree
+mkdir -p "$T"
+cp -r "$E" "$T/e2e"
+printf '%s\n' 'vm_read_credential() { return 0; }' > "$T/e2e/vm/cred-lib.sh"
+stub su 'if [ -n "${SU_FAIL:-}" ]; then exit 1; fi
+if [ -n "${SU_BLOCK:-}" ]; then : > '"$S/ready"'; until [ -e '"$S/go"' ]; do sleep 0.05; done; fi
+exit 0'
+stub journalctl 'exit 0'
+stub find 'exit 0'
+stub sha256sum 'exit 0'
+reset_run() { reset_stub; rm -f "$S/ready" "$S/go"; : > "$S/log"; mkdir -p "$tmp/sw"; rm -rf "${tmp:?}/sw"/*; }
+silent_run() { # SCRIPT [VAR=VALUE...]: runs silent.sh in the lacking VM mode; status in $S/silent.rc
+    local sc=$1 rc=0
+    shift
+    "${VSENV[@]}" "WORK=$tmp/sw" E2E_VM=1 E2E_TPM=lacking E2E_SELECT_FILE=/nonexistent "$@" bash "$sc" > "$S/silent.out" 2> "$S/silent.err" || rc=$?
+    echo "$rc" > "$S/silent.rc"
+}
+# a judge fails midway (alice's hidden import fails): the run fails and the library is back, with the undivert and the restart in the log
+reset_run
+silent_run "$T/e2e/vm/silent.sh" SU_FAIL=1
+[ "$(cat "$S/silent.rc")" != 0 ] || bad "silent.sh: a failed session exits 0"
+back_ok || bad "silent.sh: the library is not back after a failed session ($(tail -3 "$S/silent.err"))"
+grep -q -- '--remove' "$S/log" && grep -q 'restart custodio' "$S/log" || bad "silent.sh: the log shows no undivert and restart after a failed session"
+grep -q -- '--add' "$S/log" || bad "silent.sh: the library was never hidden in the failed-session run"
+# a signal while the library is hidden (silent.sh waits for alice's session, which blocks)
+for sig in TERM INT HUP; do
+    reset_run
+    ( "${VSENV[@]}" "WORK=$tmp/sw" E2E_VM=1 E2E_TPM=lacking E2E_SELECT_FILE=/nonexistent SU_BLOCK=1 bash "$T/e2e/vm/silent.sh" > /dev/null 2>&1 ) &
+    pid=$!
+    timeout 20 bash -c "until [ -e $S/ready ]; do sleep 0.05; done" || bad "silent.sh sig$sig: never reached alice's session"
+    pkill -"$sig" -f "$T/e2e/vm/silent.sh" || true
+    : > "$S/go"
+    if wait "$pid" 2> /dev/null; then bad "silent.sh sig$sig: exited 0 after the signal"; fi
+    back_ok || bad "silent.sh sig$sig: the library is not back after the signal"
+    grep -q -- '--remove' "$S/log" || bad "silent.sh sig$sig: no undivert in the log after the signal"
+done
+# control: silent.sh without the trap, same failed session, leaves the diversion
+sed '/^vs_install_trap$/d' "$E/vm/silent.sh" > "$T/e2e/vm/silent-notrap.sh"
+cmp -s "$E/vm/silent.sh" "$T/e2e/vm/silent-notrap.sh" && bad "the control copy of silent.sh without the trap is the same file"
+reset_run
+silent_run "$T/e2e/vm/silent-notrap.sh" SU_FAIL=1
+[ "$(cat "$S/silent.rc")" != 0 ] || bad "silent.sh notrap: a failed session exits 0"
+if back_ok; then bad "silent.sh notrap: the control restored the library too (the trap is not what restores it)"; fi
+reset_stub
+
 # ---- the report in the modes that do not run the cases
 for m in swtpm lacking; do
     for vmv in '' 1; do

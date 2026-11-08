@@ -119,10 +119,6 @@ printf 'tk-rsa\trsa2048\tencrypted-tpm\n' > "$tmp/lack/api-after.out"
 E2E_SELECT_FILE=/nonexistent tpmkind_judge lacking "$tmp/lack" "" > /dev/null
 grep -q 'still listed' <<< "$TK_PROBLEMS" || bad "judge: a key left after the deletes is not reported"
 : > "$tmp/lack/api-after.out"
-# the container run does not read --mode full/lacking: the old rule
-grep -q 'tpmkind_judge "\$judge_mode"' "$E/tpmkind-run.sh" || bad "tpmkind-run.sh does not judge through tpmkind_judge with the mode it computed"
-grep -q 'judge_mode=full' "$E/tpmkind-run.sh" && grep -q 'judge_mode=lacking' "$E/tpmkind-run.sh" || bad "tpmkind-run.sh does not map the VM modes"
-grep -q 'tpmkind_skip_all "\$mode"' "$E/tpmkind-run.sh" || bad "tpmkind-run.sh lost the container skip"
 
 # ---- the accounting of a VM run
 CHK=$E/check-cases.sh
@@ -185,12 +181,44 @@ printf 'import sys\nsys.exit(2)\n' > "$tmp/nr-dir/credread.py"
 RD_DIR=$tmp/nr-dir rd good && bad "reader: a reader that exits 2 passes"
 printf 'import sys\nsys.exit(0)\n' > "$tmp/nr-dir/credread.py"
 RD_DIR=$tmp/nr-dir rd good || bad "reader: a stub reader that exits 0 fails"
-# the calls: the case script runs the helper on each key; a copy whose lacking path skips it fails the call check
-reader_called() { grep -v '^[[:space:]]*#' "$1" | grep -q 'vm_read_credential "\$id"'; }
-reader_called "$E/tpmkind-run.sh" || bad "tpmkind-run.sh does not call vm_read_credential on its keys"
-sed 's/vm_read_credential "\$id"/true/' "$E/tpmkind-run.sh" > "$tmp/nr-run.sh"
-reader_called "$tmp/nr-run.sh" && bad "the control copy without the reader call passes the call check"
-grep -q 'read_creds=1' "$E/tpmkind-run.sh" && grep -q 'lacking) judge_mode=lacking read_creds=1' "$E/tpmkind-run.sh" || bad "tpmkind-run.sh does not read the credentials in the lacking mode"
-grep -q 'TK_READ' "$E/tpmkind-user.sh" || bad "tpmkind-user.sh does not wait for the reader before the deletes"
+# tpmkind-run.sh in a VM run, on fixtures: `su` is a stub that writes alice's evidence (and `imported`) into the step's directory, `journalctl` prints the fixture journal
+tkrun() { # MODE EVIDENCE-DIR STATE-DIR: runs the VM branch; prints its output, exit status in $tmp/tkrc
+    local m=$1 ev=$2 st=$3 work
+    work=$(mktemp -d "$tmp/work.XXXX"); mkdir -p "$tmp/stub"
+    cat > "$tmp/stub/su" <<STUB
+#!/usr/bin/env bash
+cp "$ev"/*.out "$work/tpmkind/"; [ -n "\${STUB_NOIMPORTED:-}" ] || : > "$work/tpmkind/imported"
+exit 0
+STUB
+    printf '#!/usr/bin/env bash\n[ "$1" = --sync ] || cat "%s/journal.json"\n' "$ev" > "$tmp/stub/journalctl"
+    chmod +x "$tmp/stub/su" "$tmp/stub/journalctl"
+    ( PATH=$tmp/stub:$PATH WORK=$work E2E_VM=1 E2E_TPM=$m VM_STATE_DIR=$st VM_CRED_DIR=${VM_CRED_DIR:-$E/vm} VM_SYSTEMD_VERSION=259 E2E_SELECT_FILE=/nonexistent \
+        bash "${RUN_COPY:-$E/tpmkind-run.sh}" > "$tmp/tkout" 2>&1; echo $? > "$tmp/tkrc" ) || true
+}
+rec "$tmp/tk-ok" tk-rsa 2 "$tmp/ok.cred"; rec "$tmp/tk-ok" tk-ec 2 "$tmp/ok.cred"
+rec "$tmp/tk-pcr" tk-rsa 2 "$tmp/ok.cred"; rec "$tmp/tk-pcr" tk-ec 2 "$tmp/pcr.cred"
+tkrun lacking "$tmp/lack" "$tmp/tk-ok"
+[ "$(cat "$tmp/tkrc")" = 0 ] || bad "tpmkind-run lacking on good evidence fails: $(tail -5 "$tmp/tkout")"
+[ "$(grep -c '^E2E-CASE run' "$tmp/tkout")" = 5 ] || bad "tpmkind-run lacking does not report five cases run"
+tkrun swtpm "$tmp/full" "$tmp/tk-none"
+[ "$(cat "$tmp/tkrc")" = 0 ] && [ "$(grep -c '^E2E-CASE run' "$tmp/tkout")" = 5 ] || bad "tpmkind-run full on good evidence fails or does not report five cases run: $(tail -5 "$tmp/tkout")"
+tkrun lacking "$tmp/full" "$tmp/tk-ok"
+{ [ "$(cat "$tmp/tkrc")" != 0 ] && ! grep -q '^E2E-CASE run' "$tmp/tkout"; } || bad "tpmkind-run lacking on tpm evidence passes or reports a case run"
+tkrun swtpm "$tmp/lack" "$tmp/tk-none"
+{ [ "$(cat "$tmp/tkrc")" != 0 ] && ! grep -q '^E2E-CASE run' "$tmp/tkout"; } || bad "tpmkind-run full on encrypted-tpm evidence passes or reports a case run"
+tkrun lacking "$tmp/lack" "$tmp/tk-pcr"
+[ "$(cat "$tmp/tkrc")" != 0 ] || bad "tpmkind-run lacking passes with a credential of a nonzero PCR mask"
+grep -q 'tk-ec' "$tmp/tkout" || bad "tpmkind-run lacking: the reader failure does not name the key"
+tkrun lacking "$tmp/lack" "$tmp/tk-none"
+[ "$(cat "$tmp/tkrc")" != 0 ] || bad "tpmkind-run lacking passes with no stored credential"
+STUB_NOIMPORTED=1 tkrun lacking "$tmp/lack" "$tmp/tk-ok"
+{ [ "$(cat "$tmp/tkrc")" != 0 ] && grep -q 'the keys were never imported' "$tmp/tkout"; } || bad "tpmkind-run lacking passes when the keys were never imported"
+# control: a copy that never calls the reader passes the pcr state, so the run above is what catches it
+mkdir "$tmp/tkctl"; cp "$E"/tpmkind-run.sh "$E"/tpmkind-cases.sh "$E"/tpmkind-lib.sh "$E"/tpmkind-selftest.sh "$E"/tpmkind.py "$E"/report.sh "$E"/select.sh "$tmp/tkctl/" 2> /dev/null || true
+cp "$E"/fixtures.sh "$tmp/tkctl/" 2> /dev/null || true
+cp -r "$E/vm" "$tmp/tkctl/vm"
+sed -i 's/vm_read_credential "\$id"/true/' "$tmp/tkctl/tpmkind-run.sh"
+RUN_COPY=$tmp/tkctl/tpmkind-run.sh tkrun lacking "$tmp/lack" "$tmp/tk-pcr"
+[ "$(cat "$tmp/tkrc")" = 0 ] || bad "the control copy without the reader call does not pass a nonzero PCR mask: $(tail -3 "$tmp/tkout")"
 
 exit "$fail"

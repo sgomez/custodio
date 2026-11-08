@@ -54,6 +54,9 @@ if [ -n "$read_creds" ]; then
         for id in fb-rsa fb-ec; do vm_read_credential "$id" || problems="$problems
 reader:
 $id: the credential of an encrypted-tpm key did not pass the reader"; done
+    else
+        problems="$problems
+reader: the keys were never imported, the credentials were not read"
     fi
     : > "$FB/read-done"
     wait "$alice" || { cat "$FB/alice.out" >&2; fail "alice's session failed"; }

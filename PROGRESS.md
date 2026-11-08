@@ -176,3 +176,10 @@ with an empty context.
 - Real facts: with the library hidden `systemd-analyze has-tpm2` says `partial`, exit 16; `custodiod` restarts and answers Ping without it; the hidden RSA import fails with `CredentialsUnavailable`, the journal entry has `binding_mismatch`, the state is unchanged, no key of any kind; restored: `encrypted-tpm`, reader ok (mask 0x0, host+tpm2-scoped) for RSA and P-256 (tk-*, fb-* keys).
 - Runs: `just e2e-vm-cases lacking 'tpm-kind-*' 'fallback-tpmbound-*' 'vm-silent-*'` passed (1m41s; tpm-kind 22 s, vm-silent 19 s, fallback 21 s); `full 'tpm-kind-*' 'fallback-tpmbound-*'` passed (1m22s). No qemu/swtpm left. `just quick` green (3m18s). Seconds: test-e2e-vm-kinds 2, test-e2e-fallback 4, test-e2e-vm-silent 2.
 - Next session should: nothing; the loop runs the `verify`.
+
+### 2026-11-08 — F161 — attempt 5 (NEXT_FINDINGS)
+- Finding 1: `tpmkind-run.sh` and `fallback-run.sh` now record `reader: the keys were never imported, the credentials were not read` when `imported` never appears; control in both self-tests (stub `su` without `imported`; run fails).
+- Finding 2: `test-e2e-vm-kinds.sh` runs `tpmkind-run.sh` with `E2E_VM=1` on fixtures (stub `su`/`journalctl`) in both modes: good evidence, wrong mode both ways, PCR-mask credential (names `tk-ec`), no stored credential, never imported; a control copy without the reader call passes the PCR state. The text greps on mode mapping, the reader call and `TK_READ` are gone.
+- Finding 3: `test-e2e-vm-silent.sh` now runs `silent.sh` itself (copy of the e2e tree, stubs for su/journalctl/find/sha256sum/reader): a failed session, TERM/INT/HUP while hidden (library back, `--remove` and restart logged), and a no-trap copy that leaves the diversion.
+- Not done (non-blocking note): `absent_problems` with one empty list; an empty API list can be legitimate when no key exists, so it is left as is.
+- `just quick` green; vm-kinds, fallback, vm-silent, tpm-kind, skips, vm-cases scripts exit 0.
