@@ -46,7 +46,11 @@ if [ -n "$read_creds" ]; then
     source "$here/vm/cred-lib.sh"
     timeout 900 su -l alice -c "WORK=$WORK MODULE=$MODULE SG_READ=1 bash /e2e/sign-user.sh" > "$SG/alice.out" 2>&1 &
     alice=$!
-    for _ in $(seq 600); do [ -e "$SG/imported" ] || ! kill -0 "$alice" 2> /dev/null || sleep 0.2; done
+    for _ in $(seq 600); do
+        [ -e "$SG/imported" ] && break
+        kill -0 "$alice" 2> /dev/null || break
+        sleep 0.2
+    done
     if [ -e "$SG/imported" ]; then
         for id in sg-rsa sg-ec; do vm_read_credential "$id" || problems="$problems
 reader:

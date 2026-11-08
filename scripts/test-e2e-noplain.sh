@@ -161,7 +161,7 @@ for n in vfull-leak vlack-leak; do
     grep -q 'leak-' "$tmp/$n.out" || bad "$n: the scan does not name the planted file"
     grep -q '^E2E-CASE run noplain-rsa' "$tmp/$n.out" && bad "$n: noplain-rsa is reported run with the key in the state directory"
 done
-grep -q 'sg-\|np-ec' "$tmp/vlack-pcr.out" || bad "vlack-pcr: the reader failure does not name np-ec"
+grep -q 'np-ec: the credential .* did not pass the reader' "$tmp/vlack-pcr.out" || bad "vlack-pcr: the reader failure does not name np-ec"
 grep -q 'TPM mode' "$tmp/vnone.out" || bad "vnone: E2E_TPM=none in a VM run is not refused with its reason"
 [ "$(rcof vctl)" = 0 ] || bad "the control copy without the reader call does not pass the nonzero PCR mask: $(tail -n 3 "$tmp/vctl.out")"
 

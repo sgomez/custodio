@@ -30,6 +30,50 @@ for id in $ids sign-x; do [ "$(case_group "$id")" = sign ] || bad "case_group $i
 got=$( (echo sign-kind-matches-mode; python3 -I "$ROOT/e2e/sign.py" groups) | sort)
 [ "$got" = "$(printf '%s\n' $ids | sort)" ] || bad "the cases of sign.py differ from the listed ones"
 
+# the job list, against a table written here independently of sign.py (a shorter list is consistent with itself everywhere else)
+cat > "$tmp/expected-jobs" << 'EOT'
+sign-rsa-pkcs rsa-pkcs-sha256 digest:sha256
+sign-rsa-pkcs rsa-pkcs-sha384 digest:sha384
+sign-rsa-pkcs rsa-pkcs-sha512 digest:sha512
+sign-rsa-pkcs rsa-pkcs-md5sha1 recover:md5sha1.bin
+sign-rsa-pkcs rsa-pkcs-arbitrary recover:arbitrary.bin
+sign-rsa-pkcs rsa-pkcs-too-long refused
+sign-rsa-pss-sha256 pss-sha256-0 pss:sha256:0
+sign-rsa-pss-sha256 pss-sha256-hash pss:sha256:32
+sign-rsa-pss-sha256 pss-sha256-max pss:sha256:222
+sign-rsa-pss-sha256 pss-sha256-over refused
+sign-rsa-pss-sha384 pss-sha384-0 pss:sha384:0
+sign-rsa-pss-sha384 pss-sha384-hash pss:sha384:48
+sign-rsa-pss-sha384 pss-sha384-max pss:sha384:206
+sign-rsa-pss-sha384 pss-sha384-over refused
+sign-rsa-pss-sha512 pss-sha512-0 pss:sha512:0
+sign-rsa-pss-sha512 pss-sha512-hash pss:sha512:64
+sign-rsa-pss-sha512 pss-sha512-max pss:sha512:190
+sign-rsa-pss-sha512 pss-sha512-over refused
+sign-rsa-composed rsa-sha256 dgst:sha256
+sign-rsa-composed rsa-sha384 dgst:sha384
+sign-rsa-composed rsa-sha512 dgst:sha512
+sign-ec-ecdsa ecdsa-sha256 ec:sha256
+sign-ec-ecdsa ecdsa-sha384 ec:sha384
+sign-ec-ecdsa ecdsa-sha512 ec:sha512
+sign-ec-composed ecdsa-sha256-composed ecdgst:sha256
+sign-ec-composed ecdsa-sha384-composed ecdgst:sha384
+sign-ec-composed ecdsa-sha512-composed ecdgst:sha512
+EOT
+dump_jobs() { python3 -I -c 'import importlib.util,sys
+sp=importlib.util.spec_from_file_location("sg",sys.argv[1]); m=importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+for g,n,k,f,a,e in m.jobs(): print(g,n,e)' "$1"; }
+dump_jobs "$ROOT/e2e/sign.py" > "$tmp/got-jobs"
+diff -u "$tmp/expected-jobs" "$tmp/got-jobs" > /dev/null || bad "the job list of sign.py differs from the expected mechanisms and salt lengths"
+# controls: a copy of sign.py without one salt job, and one without one mechanism, must differ from the table
+sed '/for label, salt in/s/(("0", 0), ("hash", n), ("max", MAX_SALT\[h\]))/(("0", 0), ("hash", n))/' "$ROOT/e2e/sign.py" > "$tmp/sign-nosalt.py"
+sed '/"rsa-pkcs-{h}"/d' "$ROOT/e2e/sign.py" > "$tmp/sign-nomech.py"
+for c in nosalt nomech; do
+    ! cmp -s "$ROOT/e2e/sign.py" "$tmp/sign-$c.py" || bad "control $c: the mutation did not change the copy"
+    dump_jobs "$tmp/sign-$c.py" > "$tmp/got-$c" 2> /dev/null || true
+    ! diff -q "$tmp/expected-jobs" "$tmp/got-$c" > /dev/null 2>&1 || bad "control $c: the job list check accepts a list without a salt or a mechanism"
+done
+
 # accounting: as if the guest ran or skipped them, in each mode (run.sh sets CHECK_TPM_MODE)
 printf '%s\n' $ids > "$tmp/cases"
 sed 's/^/E2E-CASE run /' "$tmp/cases" > "$tmp/out-run"
@@ -108,7 +152,7 @@ for n in vfull-etpm vlack-tpm vlack-host vlack-pcr vlack-nocred vlack-noimp vful
 done
 grep -q 'sg-ec' "$tmp/vlack-pcr.out" || bad "vlack-pcr: the reader failure does not name sg-ec"
 grep -q 'never imported' "$tmp/vlack-noimp.out" || bad "vlack-noimp: the failure is not the never-imported one"
-grep -q 'pss-sha384-hash\|sign-rsa-pss-sha384' "$tmp/vfull-bad.out" || bad "vfull-bad: the failure does not name the bad signature's case"
+grep -q 'pss-sha384-hash' "$tmp/vfull-bad.out" || bad "vfull-bad: the failure does not name the bad signature's case"
 grep -q 'sign-rsa-pss-sha384' "$tmp/vfull-bad.out" && grep -q '^E2E-CASE run sign-rsa-pss-sha384' "$tmp/vfull-bad.out" && bad "vfull-bad: the bad case is reported run"
 grep -q 'TPM mode' "$tmp/vnone.out" || bad "vnone: E2E_TPM=none in a VM run is not refused with its reason"
 [ "$(rcof vctl)" = 0 ] || bad "the control copy without the reader call does not pass the nonzero PCR mask: $(tail -n 3 "$tmp/vctl.out")"

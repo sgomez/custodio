@@ -190,3 +190,8 @@ with an empty context.
 - Self-tests: `scripts/lib/e2e-sign-alice.py` is the `su` stub of sign (real openssl signatures from the run's own p12; no openssl stub). Sections run 12-14 runs in parallel: good full/lacking/container, wrong kinds, reader failure, no credential, never imported, bad signature, leak planted in state (noplain, real `check-no-plaintext.sh`), `none` in a VM, control copy without the reader call, VM accounting with `CHECK_VM=1`. Seconds: test-e2e-sign 6, test-e2e-noplain 2.
 - Real guest: `just e2e-vm-cases lacking 'sign-*' 'noplain-*'` passed (1m34s; sign 30 s, noplain 22 s), `full` passed (1m28s; sign 29 s, noplain 22 s). No qemu/swtpm left. Module path `/usr/lib/custodio/libcustodio_pkcs11.so` (guest.sh:18) is what the guest used. `just quick` green (3m21s).
 - Next session should: nothing; the loop runs the `verify`.
+
+### 2026-11-08 — F162 — attempt 2 (NEXT_FINDINGS)
+- Finding 1: `scripts/test-e2e-sign.sh` compares `sign.jobs()` with a fixed table written in the test (RSA-PKCS per hash, md5sha1, arbitrary, too-long; PSS salts 0/hash/max/over with 222/206/190; composed RSA; ECDSA; composed ECDSA). Controls: a copy of `sign.py` without the max salt job and one without the RSA-PKCS mechanism both differ from the table.
+- Notes: noplain reader grep now matches `np-ec: the credential ... did not pass the reader`; redundant sign grep dropped; the `sign-run.sh` wait loop breaks once `imported` exists.
+- Seconds: test-e2e-sign 6, test-e2e-noplain 2; `just quick` green.
