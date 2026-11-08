@@ -32,3 +32,9 @@ with an empty context.
 - Decisions: channel = serial console on a unix socket (no `ssh` in the container); seed tool `cloud-localds`.
 - Known: `libtss2-rc0t64` alone leaves `has-tpm2` `partial`; esys and mu are also needed (tpm2-tools pulls them). One idle `swtpm` (pid 32088, from my first failed start) cannot be killed from the tool sandbox (`Permission denied`); it ends with the container. No qemu left; the `/tmp` dir is removed.
 - Next session should: nothing for F151; the loop runs the `verify`.
+
+### 2026-11-08 — F152 — attempt 1
+- Done: `docs/findings/F152.md` (+ index): 10 guest boots, each with fresh `swtpm` state. Route 1 (`tpm-filter`) cannot sit under QEMU as built (`CMD_SET_DATAFD` carries an fd); with a throwaway adapter it hides capabilities only. Route 2 (`swtpm` 0.10.2 custom profile, unpacked from Debian forky `.deb` in `/tmp`) really lacks: no `0x159` RSA_Decrypt, or `rsa-min-size=3072`; P-256 via `ecc-min-size=384`. Kernel TPM, `systemd-creds` (root and `--user`) and the ECC parent pass; systemd's SRK flips ECC→RSA when P-256 goes. `rsa-min-size=3072` + P-256 removed breaks systemd. `Decision:` is route 2; container/CI add the four forky `.deb` (sha256 in the finding). All contract steps ticked; `verify` greps pass, `just quick` green. No `BLOCKED.md` (RSA gets `encrypted-tpm` without breaking the kernel or systemd).
+- Decisions: none lasting beyond the finding.
+- Known: two idle `swtpm` (pids 32088, 96049) cannot be killed from the tool sandbox; they end with the container. The service's own capability code was not run in the guest (tpm2-tools issued the same queries).
+- Next session should: nothing for F152; the loop runs the `verify`. The VM-harness feature reads the finding (profile files, `ecc-min-size=384`, never combine with `rsa-min-size=3072`).

@@ -85,3 +85,4 @@ Rules:
 - [F149](findings/F149.md) — M4 acceptance 15 (TPM host and xubuntu2604): pass; a root copy of the state directory holds no private key; M0–M2 top-level key files are not purged by F121 (removed by hand).
 - [F150](findings/F150.md) — KVM for the VM target: no `/dev/kvm` in the dev container; `run.sh` adds `--device /dev/kvm --group-add keep-groups`; runners need the `runner` udev rule; trixie package paths.
 - [F151](findings/F151.md) — VM boot (Ubuntu 26.04 minimal, swtpm, tpm-crb, OVMF): serial-console channel and `cloud-localds` seed; `libtss2-rc0t64` alone leaves `has-tpm2` partial (needs esys, mu); TPM state survives a power cycle.
+- [F152](findings/F152.md) — making the virtual TPM lack RSA: `tpm-filter` cannot sit under QEMU as built (fd on the control channel); an `swtpm` 0.10.2 custom profile (no `RSA_Decrypt`, `ecc-min-size=384`) works with the kernel, `systemd-creds` and the ECC parent; both removed with `rsa-min-size=3072` breaks systemd.
