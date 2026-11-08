@@ -131,7 +131,7 @@
         "F161"
       ],
       "verify": "just quick && scripts/test-e2e-sign.sh && scripts/test-e2e-noplain.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F163",
