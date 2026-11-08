@@ -87,7 +87,7 @@
         "F151"
       ],
       "verify": "just quick && scripts/test-vm-image.sh && just vm-image",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F159",
