@@ -76,7 +76,7 @@
         "F153"
       ],
       "verify": "just quick && scripts/test-vm-credread.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F158",
