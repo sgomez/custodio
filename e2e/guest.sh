@@ -13,7 +13,7 @@ set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
 vm=${E2E_VM:-}
-# F163: E2E_PCR_HALF (VM only, set by e2e/vm/run.sh for a pcr-* case): `first` runs the selection and, last, the first pcr half; after the host's power cycle `second` runs only the second half.
+# F163: E2E_PCR_HALF (VM only, from e2e/vm/run.sh): `first` runs the selection and, last, the first pcr half; after the power cycle `second` runs only the second.
 pcr_half=${E2E_PCR_HALF:-}
 case $pcr_half in "" | first | second) ;; *) echo "e2e: FAIL: E2E_PCR_HALF='$pcr_half' is not first or second" >&2; exit 1 ;; esac
 [ -z "$pcr_half" ] || [ -n "$vm" ] || { echo "e2e: FAIL: E2E_PCR_HALF is for a VM run" >&2; exit 1; }
@@ -126,6 +126,13 @@ make_fixtures "$work"
 
 # Import as the user. Import asks polkit, so import-user.sh starts the test agent and approves in the same login session.
 su -l alice -c "WORK=$work bash /e2e/import-user.sh" || fail "import-user.sh failed"
+# A VM run keeps the setup's p12 files: tpmclear-run.sh imports the keys again after its clear (F163).
+if [ -n "$vm" ]; then
+    mkdir -p "$work/setup-keep"
+    cp "$work/rsa1.p12" "$work/ec1.p12" "$work/setup-keep/"
+    chown -R alice "$work/setup-keep"
+    chmod 700 "$work/setup-keep"
+fi
 rm -f "$work"/*.key "$work"/*.p12
 phase_done import
 
@@ -241,8 +248,8 @@ if phase_runs noplain; then
 fi
 phase_done noplain
 
-# The TPM-key-cannot-be-duplicated cases (F136): alice imports an RSA 2048 and a P-256 key; root reads the service's stored records, loads each key under the service's TPM with tpm2-tools,
-# and shows an empty authPolicy, a failing tpm2_duplicate and a blob that a second swtpm refuses. Reported skipped in mode none (no key is a TPM key). Both keys are deleted, so the state is as before.
+# The TPM-key-cannot-be-duplicated cases (F136): root loads the stored keys under the service's TPM, shows an empty authPolicy, a failing tpm2_duplicate and a blob a second swtpm refuses.
+# Skipped in mode none. Both keys are deleted.
 if phase_runs tpmdup; then
     WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmdup-run.sh || fail "tpmdup-run.sh failed"
 fi
@@ -261,7 +268,7 @@ elif phase_runs pcr && [ "$pcr_half" != first ]; then
 fi
 
 # The fallback cases (F138): in mode none alice imports an RSA 2048 and a P-256 key with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so (weaker, no TPM).
-# The tpmbound cases are skipped in every mode (SPEC_DEVIATIONS.md, F134). After pcr and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+# (The tpmbound cases are skipped in every mode: SPEC_DEVIATIONS.md, F134.)
 if phase_runs fallback; then
     WORK=$work E2E_TPM=$tpm_mode bash /e2e/fallback-run.sh || fail "fallback-run.sh failed"
 fi

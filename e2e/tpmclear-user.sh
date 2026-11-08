@@ -80,6 +80,14 @@ delete)
     for p in "${pids[@]}"; do wait "$p"; done
     lists "$out"
     ;;
-*) fail "usage: tpmclear-user.sh import OUTDIR T... | sign TAG T... | list OUTDIR | delete OUTDIR ID..." ;;
+restore)
+    # F163, VM only: the clear made the keys of the setup unusable (rsa1, ec1); delete them and import them again from the p12 files guest.sh kept, as the setup did
+    keep=$WORK/setup-keep
+    for k in rsa1 ec1; do
+        timeout 60 python3 -I /e2e/delete.py "$k" > "$TC/restore-delete-$k.out" 2>&1 || { cat "$TC/restore-delete-$k.out" >&2; fail "the delete of the setup key $k failed"; }
+        timeout 60 python3 -I /e2e/import.py "$keep/$k.p12" "$k" e2e-password > "$TC/restore-import-$k.out" 2>&1 || { cat "$TC/restore-import-$k.out" >&2; fail "the import of the setup key $k failed"; }
+    done
+    ;;
+*) fail "usage: tpmclear-user.sh import OUTDIR T... | sign TAG T... | list OUTDIR | delete OUTDIR ID... | restore" ;;
 esac
 echo "tpmclear-user: done"

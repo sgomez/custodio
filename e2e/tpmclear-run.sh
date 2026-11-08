@@ -220,6 +220,11 @@ alice reimp-sign sign reimp rsa
 scan "$TC/scan-reimp"
 alice end delete "$TC/end" tc-rsa
 scan "$TC/scan-end"
+# F163: the clear of the guest's own TPM also made the setup's keys (rsa1, ec1) unusable, and the steps after this one use them: import them again
+if [ -n "$vm" ] && [ -d "$WORK/setup-keep" ]; then
+    alice restore restore
+    add_reader "$(read_creds rsa1 ec1)"
+fi
 
 # the end: the TPM of the run is back, the service on it
 ready=''
