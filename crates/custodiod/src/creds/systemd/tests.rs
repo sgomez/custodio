@@ -132,40 +132,8 @@ fn a_bad_reply_is_wiped_too() {
 }
 
 #[test]
-fn the_tpm_command_line_names_no_pcr_and_no_data() {
-    let args = |verb| -> Vec<String> {
-        SystemdCreds::tpm_args(verb, "k", "swtpm:path=/x")
-            .into_iter()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect()
-    };
-    assert_eq!(
-        args("encrypt"),
-        [
-            "encrypt",
-            "--name=k",
-            "--with-key=tpm2",
-            "--tpm2-pcrs=",
-            "--tpm2-device=swtpm:path=/x",
-            "-",
-            "-"
-        ]
-    );
-    assert_eq!(
-        args("decrypt"),
-        [
-            "decrypt",
-            "--name=k",
-            "--tpm2-device=swtpm:path=/x",
-            "-",
-            "-"
-        ]
-    );
-}
-
-#[test]
 fn bad_names_never_reach_the_service() {
-    let client = SystemdCreds::new("/nonexistent".into(), "/nonexistent".into(), None);
+    let client = SystemdCreds::new("/nonexistent".into());
     let secret = SecretSlice::new(Box::from(&b"x"[..]));
     assert_eq!(
         client.encrypt("a b", &secret).err(),
@@ -183,38 +151,107 @@ fn bad_names_never_reach_the_service() {
 }
 
 #[test]
-fn the_system_client_uses_the_system_socket_and_command() {
-    let client = SystemdCreds::system(Some("dev".into()));
-    assert_eq!(client.socket, PathBuf::from(SOCKET));
-    assert_eq!(client.program, PathBuf::from(PROGRAM));
-    assert_eq!(client.tpm.as_deref(), Some("dev"));
+fn the_system_client_uses_the_system_socket() {
+    assert_eq!(SystemdCreds::system().socket, PathBuf::from(SOCKET));
+}
+
+/// A header of the F153 layout: 48 bytes of id and sizes, then the TPM section starts with the PCR mask.
+fn tpm_header(mask: u64) -> Vec<u8> {
+    let mut credential = vec![7u8; 48];
+    credential.extend_from_slice(&mask.to_le_bytes());
+    credential.extend_from_slice(&[0; 8]);
+    credential
+}
+
+/// A header with the id of the scoped host key.
+fn host_header() -> Vec<u8> {
+    let mut credential = header::HOST_SCOPED_ID.to_vec();
+    credential.extend_from_slice(&[0; 40]);
+    credential
 }
 
 #[test]
-fn a_tpm_credential_is_not_sent_to_the_tpm_when_none_is_configured() {
-    // Without a configured TPM the Varlink socket is asked; with one, the command. Both are missing
-    // here, so both are unavailable (a program that cannot start is not a failed decryption).
-    let mut credential = vec![7u8; 48];
-    credential.extend_from_slice(&[0; 8]);
-    let none = SystemdCreds::new("/nonexistent".into(), "/nonexistent".into(), None);
+fn a_credential_goes_to_varlink_whatever_its_binding() {
+    // Unusable socket: unavailable, never a failed decryption, and nothing else is tried.
+    let client = SystemdCreds::new("/nonexistent".into());
     assert_eq!(
-        none.decrypt("k", &credential).err(),
+        client.decrypt("k", &tpm_header(0)).err(),
         Some(CredsError::Unavailable)
     );
-    let some = SystemdCreds::new(
-        "/nonexistent".into(),
-        "/nonexistent".into(),
-        Some("d".into()),
-    );
+    // A header that the guard refuses never gets to the socket.
     assert_eq!(
-        some.decrypt("k", &credential).err(),
-        Some(CredsError::Unavailable)
-    );
-    // A header that the guard refuses never gets to either.
-    assert_eq!(
-        none.decrypt("k", &[1, 2]).err(),
+        client.decrypt("k", &[1, 2]).err(),
         Some(CredsError::CannotDecrypt)
     );
+}
+
+/// What the client sent, and the reply it got, for one call against a server that answers `reply`.
+fn exchange(reply: &[u8], call: impl FnOnce(&SystemdCreds)) -> std::io::Result<Vec<u8>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path)?;
+    let reply = reply.to_vec();
+    let handle = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let (mut stream, _) = listener.accept()?;
+        let mut sent = Vec::new();
+        let mut chunk = [0u8; 4096];
+        while !sent.ends_with(b"\0") {
+            let n = stream.read(&mut chunk)?;
+            if n == 0 {
+                break;
+            }
+            sent.extend_from_slice(chunk.get(..n).unwrap_or_default());
+        }
+        stream.write_all(&reply)?;
+        Ok(sent)
+    });
+    call(&SystemdCreds::new(path.clone()));
+    // A client that never connected leaves the server in `accept`: wake it so the join returns.
+    let _ = std::os::unix::net::UnixStream::connect(&path);
+    handle
+        .join()
+        .map_err(|_| std::io::Error::other("server panicked"))?
+}
+
+#[test]
+fn encrypt_asks_varlink_for_the_user_scope_without_a_key_choice() -> std::io::Result<()> {
+    let secret = SecretSlice::new(Box::from(&b"foo"[..]));
+    let mut blob = None;
+    let sent = exchange(b"{\"parameters\":{\"blob\":\"Zm9vYmFy\"}}\0", |c| {
+        blob = c.encrypt("k", &secret).ok();
+    })?;
+    assert_eq!(blob.as_deref(), Some(&b"foobar"[..]));
+    let sent = String::from_utf8_lossy(&sent);
+    assert!(
+        sent.contains(r#""method":"io.systemd.Credentials.Encrypt""#),
+        "{sent}"
+    );
+    assert!(sent.contains(r#""scope":"user""#), "{sent}");
+    assert!(sent.contains(r#""data":"Zm9v""#), "{sent}");
+    assert!(!sent.contains("withKey"), "{sent}");
+    Ok(())
+}
+
+#[test]
+fn decrypt_asks_varlink_once_for_a_tpm_and_for_a_host_header() -> std::io::Result<()> {
+    for credential in [tpm_header(0), host_header()] {
+        let mut secret = None;
+        let sent = exchange(b"{\"parameters\":{\"data\":\"Zm9v\"}}\0", |c| {
+            secret = c.decrypt("k", &credential).ok();
+        })?;
+        assert_eq!(
+            secret.as_ref().map(|s| s.expose_secret().to_vec()),
+            Some(b"foo".to_vec())
+        );
+        let sent = String::from_utf8_lossy(&sent);
+        assert_eq!(
+            sent.matches("io.systemd.Credentials.Decrypt").count(),
+            1,
+            "{sent}"
+        );
+        assert!(sent.contains(r#""scope":"user""#), "{sent}");
+    }
+    Ok(())
 }
 
 /// A socket that answers the first connection with these pieces, a pause between them so that the
@@ -236,7 +273,7 @@ fn serve(
             std::thread::sleep(Duration::from_millis(25));
         }
     });
-    let client = SystemdCreds::new(path, "unused".into(), None);
+    let client = SystemdCreds::new(path);
     Ok((dir, client, handle))
 }
 

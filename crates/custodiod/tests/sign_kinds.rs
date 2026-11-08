@@ -1,5 +1,5 @@
 //! Sign, delete and replace a certificate for every storage kind (F118): the real service on a private bus with fake
-//! polkit, a software TPM, the real `systemd-creds` where a row needs it and a credential double elsewhere.
+//! polkit, a software TPM, and a credential double.
 //!
 //! The TPM and the credential service are the two access points the service takes; the lost and transient failures are
 //! made through them (a cleared `swtpm`, a damaged blob, a faulty or absent TPM, a credential that cannot be decrypted).
@@ -15,12 +15,6 @@ mod common;
 // Shared with `creds`: this target does not use every helper of it.
 #[path = "sign_kinds/case.rs"]
 mod case;
-// Shared with `creds`: this target does not use every helper of it.
-#[path = "sign_kinds/descriptor.rs"]
-mod descriptor;
-#[allow(dead_code)]
-#[path = "creds/env.rs"]
-mod env;
 #[path = "sign_kinds/failures.rs"]
 mod failures;
 #[path = "sign_kinds/kit.rs"]
@@ -29,8 +23,6 @@ mod kit;
 #[allow(dead_code)]
 #[path = "tpm_sign/oracle.rs"]
 mod oracle;
-#[path = "sign_kinds/real.rs"]
-mod real;
 // Shared with `storage_choice`: this target does not use every helper of it.
 #[allow(dead_code)]
 #[path = "storage_choice/rig.rs"]

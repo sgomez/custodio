@@ -13,7 +13,7 @@ use zbus::block_on;
 
 use crate::case::{Case, Fail};
 use crate::common::uid;
-use crate::kit::{ERR_INTERNAL, Family, ID, Storage};
+use crate::kit::{ERR_INTERNAL, Family, ID, Setup, Storage};
 use crate::rig::{SUBJECTS, TestResult};
 
 /// The signature fails closed with the failure's documented name, leaves one `signing_failed` entry, and the record is
@@ -75,8 +75,8 @@ mod lost_keys {
     }
 
     #[test]
-    fn tpm_cleared_under_tpm_bound_credential() -> TestResult {
-        block_on(row(Fail::TpmClearedUnderCredential))
+    fn tpm_bound_credential_cannot_decrypt() -> TestResult {
+        block_on(row(Fail::TpmCredentialLost))
     }
 
     #[test]
@@ -111,13 +111,6 @@ mod transient {
     #[test]
     fn credentials_down() -> TestResult {
         block_on(row(Fail::CredentialsDown))
-    }
-
-    /// A launcher for `systemd-creds` that does not exist: the command cannot start, which is the transient class and
-    /// never a signature.
-    #[test]
-    fn missing_launcher() -> TestResult {
-        block_on(row(Fail::MissingLauncher))
     }
 }
 
@@ -167,19 +160,16 @@ fn lost_keys_stay_listed_and_deletable() -> TestResult {
 fn heal_all(case: &Case) {
     let setup = &case.setup;
     setup.svc.creds.fail_decrypt_with(None);
-    if let Some(real) = &case.real {
-        real.switch.launcher_missing(false);
-    }
     setup.svc.tpm.swap(TestTcti::new(&setup.rig.tcti()));
 }
 
 /// A symptom check, not evidence: a TPM key and a TPM-bound credential signing at once on the same bus both succeed.
-/// The credential's `systemd-creds` child starts while the TPM key's signature holds the TPM connection.
+/// The credential is decrypted while the TPM key's signature holds the TPM connection.
 #[test]
 fn concurrent_kinds() -> TestResult {
     block_on(async {
         for subject in SUBJECTS {
-            let (setup, _real) = crate::real::setup(subject).await?;
+            let setup = Setup::new(Storage::EncryptedTpm, subject).await?;
             // The TPM serves everything now: the second key is a TPM key.
             assert_eq!(setup.svc.import_subject("t", subject).await?, subject.reply);
             assert_eq!(setup.svc.kind_of("t"), Some(custodiod::store::Kind::Tpm));

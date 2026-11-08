@@ -19,10 +19,8 @@ use crate::rig::{Subject, fault};
 pub enum Fail {
     /// The `swtpm` is cleared under a TPM key.
     TpmClearedUnderTpmKey,
-    /// The `swtpm` is cleared under a credential bound to it (the real `systemd-creds`).
-    TpmClearedUnderCredential,
-    /// The launcher of the real `systemd-creds` is gone.
-    MissingLauncher,
+    /// A credential bound to the TPM cannot be decrypted any more (the TPM it was bound to was cleared).
+    TpmCredentialLost,
     /// The credential cannot be decrypted any more (the host key changed).
     HostKeyChanged,
     /// The private area of the stored blob is damaged.
@@ -34,10 +32,9 @@ pub enum Fail {
 }
 
 impl Fail {
-    pub const ALL: [Fail; 9] = [
+    pub const ALL: [Fail; 8] = [
         Self::TpmClearedUnderTpmKey,
-        Self::TpmClearedUnderCredential,
-        Self::MissingLauncher,
+        Self::TpmCredentialLost,
         Self::HostKeyChanged,
         Self::DamagedBlob,
         Self::TpmAbsent,
@@ -53,7 +50,7 @@ impl Fail {
             | Self::TpmAbsent
             | Self::TpmFaulted
             | Self::TpmLacksTheMechanism => Storage::Tpm,
-            Self::TpmClearedUnderCredential | Self::MissingLauncher => Storage::EncryptedTpm,
+            Self::TpmCredentialLost => Storage::EncryptedTpm,
             Self::HostKeyChanged | Self::CredentialsDown => Storage::EncryptedHost,
         }
     }
@@ -62,7 +59,7 @@ impl Fail {
     pub fn error(self) -> &'static str {
         match self {
             Self::TpmClearedUnderTpmKey
-            | Self::TpmClearedUnderCredential
+            | Self::TpmCredentialLost
             | Self::HostKeyChanged
             | Self::DamagedBlob => ERR_KEY_LOST,
             _ => ERR_UNAVAILABLE,
@@ -75,35 +72,20 @@ impl Fail {
     }
 }
 
-/// A running scenario: the service, with the real `systemd-creds` and its `swtpm` when the row needs them.
+/// A running scenario: the service, with its `swtpm`.
 pub struct Case {
     pub setup: Setup,
     pub fail: Fail,
     pub subject: Subject,
-    /// The real `systemd-creds` and its host daemon, which live as long as the case.
-    pub real: Option<crate::real::Real>,
 }
 
 impl Case {
     pub async fn new(fail: Fail, subject: Subject) -> Result<Self, Box<dyn std::error::Error>> {
-        if !matches!(
-            fail,
-            Fail::TpmClearedUnderCredential | Fail::MissingLauncher
-        ) {
-            let setup = Setup::new(fail.storage(), subject).await?;
-            return Ok(Self {
-                setup,
-                fail,
-                subject,
-                real: None,
-            });
-        }
-        let (setup, real) = crate::real::setup(subject).await?;
+        let setup = Setup::new(fail.storage(), subject).await?;
         Ok(Self {
             setup,
             fail,
             subject,
-            real: Some(real),
         })
     }
 
@@ -111,11 +93,10 @@ impl Case {
     pub fn break_it(&self) {
         let setup = &self.setup;
         match self.fail {
-            Fail::TpmClearedUnderTpmKey | Fail::TpmClearedUnderCredential => {
+            Fail::TpmClearedUnderTpmKey => {
                 setup.rig.tpm.clear().unwrap();
             }
-            Fail::MissingLauncher => self.real.as_ref().unwrap().switch.launcher_missing(true),
-            Fail::HostKeyChanged => setup
+            Fail::TpmCredentialLost | Fail::HostKeyChanged => setup
                 .svc
                 .creds
                 .fail_decrypt_with(Some(CredsError::CannotDecrypt)),
@@ -160,7 +141,6 @@ impl Case {
                 .svc
                 .tpm
                 .swap(TestTcti::new(&self.setup.rig.tcti())),
-            Fail::MissingLauncher => self.real.as_ref().unwrap().switch.launcher_missing(false),
             _ => self.setup.svc.creds.fail_decrypt_with(None),
         }
     }
