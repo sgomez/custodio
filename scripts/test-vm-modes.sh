@@ -128,7 +128,7 @@ ck_full_exact() { # WORLD: the swtpm and QEMU arguments are the exact lists, and
     ! ls "$tmp/$1/log"/swtpm.*.profile > /dev/null 2>&1 || { echo "a profile file was read"; return 1; }
     ! grep -qx -- '--profile' "$tmp/$1/log/swtpm.1.args" || { echo "--profile given"; return 1; }
 }
-ck_profile() { # WORLD: file= profile, F152's commands minus 0x159 exactly, rsa and P-256 kept, 0x15d kept
+ck_profile() { # WORLD: file= profile, F152's commands minus 0x159 (RSA_Decrypt) and 0x15d (Sign) exactly, rsa and P-256 kept
     local w=$1 a p
     a=$(sed '1d' "$tmp/$w/log/swtpm.1.args")
     printf '%s\n' "$a" | grep -A1 -x -- '--profile' | tail -n1 | grep -q '^file=' || { echo "the profile is not passed as file="; return 1; }
@@ -147,11 +147,11 @@ def cmds(s):
 DEFAULT = "0x11f-0x122,0x124-0x12e,0x130-0x140,0x142-0x159,0x15b-0x15e,0x160-0x165,0x167-0x174,0x176-0x178,0x17a-0x193,0x197,0x199-0x19c"
 text = open(sys.argv[1]).read()
 p = json.loads(text)
-got, want = cmds(p["Commands"]), cmds(DEFAULT) - {0x159}
+got, want = cmds(p["Commands"]), cmds(DEFAULT) - {0x159, 0x15D}
 if got != want:
-    sys.exit("Commands differ from the default minus 0x159: missing %s extra %s" % (sorted(map(hex, want - got)), sorted(map(hex, got - want))))
-if 0x159 in got or 0x15D not in got:
-    sys.exit("0x159 must be absent and 0x15d present")
+    sys.exit("Commands differ from the default minus 0x159 and 0x15d: missing %s extra %s" % (sorted(map(hex, want - got)), sorted(map(hex, got - want))))
+if 0x159 in got or 0x15D in got:
+    sys.exit("0x159 (RSA_Decrypt) and 0x15d (Sign) must both be absent")
 algs = set(p["Algorithms"].split(","))
 if "rsa" not in algs or "ecc-nist-p256" not in algs:
     sys.exit("Algorithms lost rsa or ecc-nist-p256")
@@ -257,10 +257,30 @@ control_always_profile() {
     LAUNCHER=$(ctl alwaysprofile) boot c-always full || { bad "control always-profile: the copy did not start"; return; }
     expect_fail "always the profile" ck_full_exact c-always
 }
-control_drop_sign() {
-    mut dropsign lacking-rsa.json '0x15b-0x15e' '0x15b-0x15c,0x15e' || return 0
-    LAUNCHER=$(ctl dropsign) boot c-sign lacking || { bad "control drop-sign: the copy did not start"; return; }
-    expect_fail "profile also drops 0x15d" ck_profile c-sign
+control_keep_sign() {
+    mut keepsign lacking-rsa.json '0x15b-0x15c,0x15e' '0x15b-0x15e' || return 0
+    LAUNCHER=$(ctl keepsign) boot c-sign lacking || { bad "control keep-sign: the copy did not start"; return; }
+    expect_fail "profile keeps 0x15d" ck_profile c-sign
+}
+control_drop_other() {
+    mut dropother lacking-rsa.json '0x160-0x165' '0x161-0x165' || return 0
+    LAUNCHER=$(ctl dropother) boot c-other-cmd lacking || { bad "control drop-other: the copy did not start"; return; }
+    expect_fail "profile drops another command" ck_profile c-other-cmd
+}
+control_ecc384() {
+    mut ecc384 lacking-rsa.json 'ecc-min-size=192' 'ecc-min-size=384' || return 0
+    LAUNCHER=$(ctl ecc384) boot c-ecc384 lacking || { bad "control ecc384: the copy did not start"; return; }
+    expect_fail "profile has ecc-min-size=384" ck_profile c-ecc384
+}
+control_rsa3072() {
+    mut rsa3072 lacking-rsa.json 'rsa-min-size=1024' 'rsa-min-size=3072' || return 0
+    LAUNCHER=$(ctl rsa3072) boot c-rsa3072 lacking || { bad "control rsa3072: the copy did not start"; return; }
+    expect_fail "profile has rsa-min-size=3072" ck_profile c-rsa3072
+}
+control_drop_alg() {
+    mut dropalg lacking-rsa.json 'ecc-nist-p256,' '' || return 0
+    LAUNCHER=$(ctl dropalg) boot c-dropalg lacking || { bad "control drop-alg: the copy did not start"; return; }
+    expect_fail "profile drops ecc-nist-p256" ck_profile c-dropalg
 }
 control_keep_decrypt() {
     mut keepdecrypt lacking-rsa.json '0x142-0x158' '0x142-0x159' || return 0
@@ -297,7 +317,7 @@ run scenario_route old-version 'swtpm.*0\.7\.1|0\.7\.1' STUB_SWTPM_VERSION=0.7.1
 run scenario_route no-profile-flag '--profile|profile' STUB_SWTPM_NO_PROFILE=1
 run scenario_route_file nofile
 run scenario_route_file empty
-for c in missing_mode always_profile drop_sign keep_decrypt other_swtpm no_version_check; do run "control_$c"; done
+for c in missing_mode always_profile keep_sign drop_other ecc384 rsa3072 drop_alg keep_decrypt other_swtpm no_version_check; do run "control_$c"; done
 for p in "${pids[@]}"; do wait "$p" || true; done
 
 if [ -f "$tmp/res/failed" ]; then exit 1; fi

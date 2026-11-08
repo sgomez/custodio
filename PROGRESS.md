@@ -145,3 +145,9 @@ with an empty context.
 ### 2026-11-08 — F160 — attempt 4 (NEXT_FINDINGS)
 - Fixed: the good-run payload check in `scripts/test-e2e-vm-host.sh` now fails the test (`r=$(ck_payload) || bad`). Removed the dead `chkc` and two no-op `|| true` lines. `just quick` green; the three verify scripts exit 0.
 - Not done (notes, non-blocking): `noflag`/`dpkgi` controls still check the log, not the good-run check.
+
+### 2026-11-08 — F161 — attempt 1
+- Done (step 1 only): `e2e/vm/lacking-rsa.json` drops `0x15d` too; `scripts/test-vm-modes.sh` `ck_profile` requires both `0x159`/`0x15d` absent; controls keep_sign, drop_other, ecc384, rsa3072, drop_alg, keep_decrypt (old drop_sign flipped into keep_sign). `vm.sh` header updated. Real `lacking` guest probe in `docs/findings/F161.md`: has-tpm2 yes, root systemd-creds, ECC parent+child work, `tpm2_sign` refused; P-256 stays `encrypted-tpm`. `--user --with-key=tpm2` fails in full mode too (systemd rule).
+- Timings: `test-vm-modes.sh` passes (<10 s); guest boot+apt probe ~2 min. VM stopped, no qemu/swtpm left.
+- Note for the Cost section: the step-1 probe was a separate guest boot (~1 min of commands), not shared with step 5.
+- Next session should: steps 2-6 (kind judgements first, `test-e2e-vm-kinds.sh` failing first).

@@ -6,7 +6,7 @@
 # refuses before starting anything.
 #
 #   vm.sh start MODE        boot a new VM and wait for its login; MODE is `full` (the virtual TPM unchanged) or `lacking` (swtpm with the
-#                           profile e2e/vm/lacking-rsa.json: no TPM2_RSA_Decrypt, so RSA 2048 is not usable; docs/findings/F152.md).
+#                           profile e2e/vm/lacking-rsa.json: no TPM2_RSA_Decrypt (RSA 2048 unusable) and no TPM2_Sign (P-256 unusable); docs/findings/F152.md).
 #                           Prints `VM_DIR=<dir>` on success; every later command takes that directory. On failure nothing is left behind.
 #   vm.sh wait DIR          wait until the guest answers at a shell
 #   vm.sh run DIR [-t S] CMD  run the shell string CMD in the guest as `ubuntu`: output (stdout and stderr together) on stdout, the exit

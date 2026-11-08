@@ -89,3 +89,4 @@ Rules:
 - [F153](findings/F153.md) — systemd 259.9 credential header and key ids: id at 0, TPM section at 48 (PCR mask le64), scoped header holds only flags; user-scoped host+tpm2 `ef4ac136...`; default mask 0 (257: 0x80); null refused in user scope.
 - [F158](findings/F158.md) — no `gpg-agent` in the dev container, so `gpg` cannot sign or make keys; test fixtures use `scripts/lib/openpgp_ed25519.py`, which `gpgv` accepts.
 - [F159](findings/F159.md) — unpacked swtpm 0.10.2 needs both library dirs on LD_LIBRARY_PATH; the lacking profile passes PTM_INIT; a restart on the same state must omit --profile (0x9 otherwise).
+- [F161](findings/F161.md) — lacking profile without RSA_Decrypt and Sign: P-256 and RSA lack, TPM, systemd-creds, ECC parent still work
