@@ -141,3 +141,7 @@ with an empty context.
 - "Reaches the TPM" signal: the service does NOT hold `/dev/tpmrm0` open between calls, and `socket:` matches dbus. Reliable signal: no `CUSTODIOD_TEST_SWTPM_TCTI` in the service's environ (production code opens `/dev/tpmrm0` on every call otherwise, `tpm/open.rs`) and no swtpm/`.sock` path among its fds; an open device is accepted, not required. Fixtures updated.
 - Step 6: `just quick` green (2m48s); `test-e2e-vm-cases.sh` 3 s, `test-e2e-vm-host.sh` 2 s, `test-e2e-skips.sh` <1 s, `test-e2e-host.sh` 13 s, `test-vm-launch.sh` 9 s: all exit 0.
 - Next session should: nothing; the loop runs the `verify`.
+
+### 2026-11-08 — F160 — attempt 4 (NEXT_FINDINGS)
+- Fixed: the good-run payload check in `scripts/test-e2e-vm-host.sh` now fails the test (`r=$(ck_payload) || bad`). Removed the dead `chkc` and two no-op `|| true` lines. `just quick` green; the three verify scripts exit 0.
+- Not done (notes, non-blocking): `noflag`/`dpkgi` controls still check the log, not the good-run check.

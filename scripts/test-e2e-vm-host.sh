@@ -166,7 +166,7 @@ for m in full lacking; do
     grep -q "^vm start $m\$" "$tmp/$n/log" || bad "good $m: the mode did not reach start"
     want=$([ "$m" = full ] && echo swtpm || echo lacking)
     grep -q "E2E_VM=1 E2E_TPM=$want " "$tmp/$n/log" || bad "good $m: the guest command lacks E2E_TPM=$want"
-    ck_payload "$n" || true
+    r=$(ck_payload "$n" 2>&1) || bad "good $m: payload: $r"
     ! grep -q 'dpkg -i' "$tmp/$n/log" || bad "good $m: dpkg -i"
     grep 'apt-get install' "$tmp/$n/log" | grep -v 'apt-get update' | while read -r l; do
         case $l in *"apt-get install -y --no-install-recommends "*) ;; *) echo "install without the flag: $l" >&2; echo x > "$tmp/$n/noflag" ;; esac
@@ -189,9 +189,6 @@ done
 grep -q '^tpm=lacking$' "$tmp/shared/vm.lacking.record" && grep -q '^tpm=full$' "$tmp/shared/vm.full.record" || bad "good: the two modes did not each write their own record"
 grep -q "E2E_SELECT='sign-kind-matches-mode" "$tmp/good-full/log" || bad "good: the guest command carries no selection"
 # ---- controls of good
-chkc() { # chkc NAME DESCRIPTION: the control run must fail the check named
-    :
-}
 c="c-noflag"; grep 'apt-get install' "$tmp/$c/log" | grep -q 'install -y /pkg/' || bad "control noflag: the log shows the flag still (the control is not a control)"
 c="c-dpkgi"; grep -q 'dpkg -i' "$tmp/$c/log" || bad "control dpkgi: the log shows no dpkg -i"
 c="c-toolsfirst"; o=$(order "$c" "${STEPS_ORDER[@]}") && bad "control toolsfirst: the order check passed"
@@ -231,11 +228,9 @@ for sig in INT TERM; do fp "s-$sig" "" 1; done
 grep -q 'interrupted' "$tmp/s-INT/out.txt" || bad "s-INT: no message naming the signal"
 grep -q 'terminated' "$tmp/s-TERM/out.txt" || bad "s-TERM: no message naming the signal"
 # controls of the failure paths
-[ "$(stops c-notrap)" = 0 ] || true
 [ "$(stops c-notrap)" != 1 ] || bad "control notrap: the VM was still stopped"
 [ "$(rcof c-noaccount)" != 0 ] && bad "control noaccount: a missing case still failed the run"
 # host: nothing installed locally (the driver's own calls)
-[ -s "$tmp/good-full/log" ] && ! grep -q 'tpm2-tools' "$tmp/good-full/host" 2> /dev/null || true
 for n in good-full good-lacking; do grep -q 'tpm2-tools' "$tmp/$n/log" || bad "$n: the tools install is not in the guest log"; done
 c="f-baddeb"; deps=$(dpkg-deb -f "$tmp/pkbad/custodio_1.2.3_amd64.deb" Depends); grep -qw tpm2-tools <<< "$deps" || bad "the fake .deb does not depend on tpm2-tools"
 deps=$(dpkg-deb -f "$tmp/pk/custodio_1.2.3_amd64.deb" Depends Recommends Pre-Depends || true); ! grep -qwE 'tpm2-tools|openssl|opensc|pkcs11-provider|libnss3-tools|python3-gi' <<< "$deps" || bad "the fake package names a test tool"
