@@ -92,3 +92,4 @@ Rules:
 - [F161](findings/F161.md) — lacking profile without RSA_Decrypt and Sign: P-256 and RSA lack, TPM, systemd-creds, ECC parent still work
 - [F163](findings/F163.md) — tpm2_clear works from the guest (also lacking); PCRs extend through /dev/tpmrm0 and return to the first reading after a power cycle (full and lacking)
 - [F164](findings/F164.md) — CI for the VM target: 26.04 ships swtpm 0.10.1 (no pinned deb), package names, KVM udev step, no whole-run time recorded (timeout 60 min)
+- [F166](findings/F166.md) — M5 acceptance 17 on Debian 13.7 (systemd 257.13, virtual TPM): a user-scoped credential is `host+tpm2-scoped` with PCR mask `0x80`, PCR 7 confirmed; a minimal install needs libtss2-esys and -mu too

@@ -860,12 +860,13 @@ passwords.
 
 On Debian 13 with a TPM: hardware, or a VM with a virtual TPM (the record of step 5 says which). With the repository as the
 current directory, as the user the service seals for (the user of the desktop session; never under `sudo`: the Varlink call
-seals for the user who makes it). Nothing on this page was run on Debian 13 or on a real TPM (**unverified**): the commands ran
-here only on credentials made against a software TPM, and `has-tpm2` in the development container reports `partial`. The
+seals for the user who makes it). Run on Debian 13.7 with a virtual TPM (`docs/findings/F166.md`), never on a hardware TPM
+(**unverified** there). The
 question is which PCR mask systemd 257 puts in a user-scoped credential: `0x80` means PCR 7 is in it (**PCR 7 confirmed**),
 `0` means it is not (**PCR 7 refuted**). A reading from a credential that is not TPM-bound says nothing about it (step 4).
 
-1. Check the TPM stack. `libtss2-rc` must be installed (`sudo apt install libtss2-rc0t64`):
+1. Check the TPM stack. `libtss2-esys`, `libtss2-rc` and `libtss2-mu` must be installed; a minimal Debian 13 has none of them
+   (`sudo apt install libtss2-esys-3.0.2-0t64 libtss2-rc0t64 libtss2-mu-4.0.1-0t64`):
 
    ```sh
    systemd-analyze has-tpm2; echo "exit status $?"
