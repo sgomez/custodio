@@ -270,3 +270,7 @@ with an empty context.
 - Done: section 24 of `docs/manual-acceptance.md` (M5 acceptance 17; unverified; steps 1-5, tables for the reader's results and identifiers). `scripts/test-docs-manual-m5.sh` + `scripts/lib/docs-manual-m5-check.py`, listed in `just test-scripts`: runs the page's has-tpm2, Varlink call (socket path substituted by the stub's; name `k`, data `foo` are literal on the page), extraction, reader on the mkcreds fixtures (+ a mask-1 and an unknown-id copy) judged by the page's table, and the hand-read command; the recipe-lists-script check; 19 controls (incl. `partial` accepted, quote saying partial, libtss2-rc marked missing). `CONTROL_WHY=1` shows why each control failed. Measured ~1.4 s.
 - Not done / person's: `docs/findings/F166.md` and the real Debian 13 run (F166).
 - `just quick` green (2m50); the script exits 0.
+
+### 2026-11-09 — F167 — attempt 1
+- Contract amended (real test names; no new `Protect` test). `docs/api.md` "Storage kinds" and `docs/install.md` "Supported systems" state the F166 reading (PCR 7 verified on Debian 13, `encrypted-tpm` unavailable with a TPM, `CredentialsUnavailable`; Alma 10 inferred). `docs/findings/F110.md` and its index line corrected.
+- Checks: `scripts/docs_api_run.py static` and `scripts/test-docs-install.sh` read the kind from the kind list, the error from the `Protect(_)` arm of `error.rs`, the floor from `nfpm.yaml`; negative controls for a wrong error, kind and floor. Install script exit 0, `test-docs-api.sh` ok.

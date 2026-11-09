@@ -102,6 +102,18 @@ check() {
     [ -n "$text" ] || bad "no Supported systems section"
     flat=$(printf '%s\n' "$text" | tr '\n' ' ' | tr -s ' ')
     printf '%s\n' "$flat" | grep -Eqi -- "every package requires systemd $floor or later" || bad "Supported systems does not say that every package requires systemd $floor or later"
+    # The Debian 13 reading (F166): the paragraph on Debian 13 names the floor, the kind that is unavailable (taken from the
+    # kind list of docs/api.md) and the error the code returns for a refused credential (taken from error.rs).
+    local kind err deb
+    # shellcheck disable=SC2016 # the backticks are literal markdown
+    kind=$(sed -n 's/^- kind `\(encrypted-[a-z-]*\)`: .*TPM.*/\1/p' docs/api.md | head -n 1)
+    err=$(sed -n 's/.*ImportError::Protect(_)[^=]*=> Self::\([A-Za-z]*\).*/\1/p' crates/custodiod/src/error.rs | head -n 1)
+    [ -n "$kind" ] && [ -n "$err" ] || bad "cannot read the TPM-bound file kind from docs/api.md or the Protect error from error.rs"
+    deb=$(printf '%s\n' "$text" | awk -v RS= '/Debian 13 /&&/PCR 7/' | tr '\n' ' ' | tr -s ' ')
+    [ -n "$deb" ] || bad "Supported systems has no paragraph on the PCR 7 reading of Debian 13"
+    for w in "systemd $floor" "\`$kind\`" "\`$err\`"; do
+        printf '%s\n' "$deb" | grep -qF -- "$w" || bad "the Debian 13 paragraph of Supported systems does not name $w"
+    done
     printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* not supported|not supported[^.]*Ubuntu 24\.04' || bad "Supported systems does not say that Ubuntu 24.04 is not supported"
     printf '%s\n' "$flat" | grep -Eq -- 'refused by the package manager' || bad "Supported systems does not say that older systems are refused by the package manager"
     printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* is supported' && bad "Supported systems lists Ubuntu 24.04 as supported"
@@ -202,6 +214,9 @@ control 'dlopen reason removed' 's/dlopen/loads/g'
 control 'recommends reason removed' 's/[Rr]ecommends/suggestions/g'
 control 'floor stated as 255' 's/requires systemd 257 or later/requires systemd 255 or later/'
 control 'floor sentence removed' 's/systemd 257 or later, for/systemd, for/'
+control 'Debian 13 floor changed' '/^On Debian 13/,/^$/ s/systemd 257/systemd 255/g'
+control 'Debian 13 error changed' '/PCR 7/,/^$/ s/\x60CredentialsUnavailable\x60/\x60TpmFailed\x60/'
+control 'Debian 13 kind changed' '/PCR 7/,/^$/ s/\x60encrypted-tpm\x60/\x60tpm\x60/'
 control 'refusal sentence removed' 's/are refused by/are ignored by/'
 control 'Ubuntu 24.04 listed as supported' 's/^Debian 13, Ubuntu 26.04,/Ubuntu 24.04 is supported. Debian 13, Ubuntu 26.04,/'
 control 'TPM2 deb group package dropped' 's/, \x60tpm-udev\x60//'

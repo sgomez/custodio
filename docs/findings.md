@@ -62,7 +62,7 @@ Rules:
 - [F107](findings/F107.md) — TPM mechanism parity: way (b) (service pads, `TPM2_RSA_Decrypt` raw) serves every RSA mechanism at the cost of `decrypt`; P-256 needs SHA-256 only; `TpmFilter` simulates lacks.
 - [F108](findings/F108.md) — TPM in e2e containers: `swtpm` on a unix socket under `/tmp` (state `/var/tmp`) reached through a test-only `/run` drop-in; host AppArmor confines `swtpm`; no vTPM proxy.
 - [F109](findings/F109.md) — `/dev/tpmrm0` under the unit: keep `PrivateDevices=yes`, add `DeviceAllow=/dev/tpmrm0 rw`, `BindPaths=-/dev/tpmrm0`, `SupplementaryGroups=tss` (0.7); package must provide `tss`.
-- [F110](findings/F110.md) — `systemd-creds` without root: Varlink `user` scope, no `withKey`, read back PCR mask at byte 48 and refuse nonzero/null; 255 and 257 are deviations; Decrypt error = cannot decrypt.
+- [F110](findings/F110.md) — `systemd-creds` without root: Varlink `user` scope, no `withKey`, read back PCR mask at byte 48 and refuse nonzero/null; 255 and 257 are deviations (257 PCR 7 verified on Debian 13 by F166, Alma 10 inferred from it); Decrypt error = cannot decrypt.
 - [F111](findings/F111.md) — F106/F107 probes on an STM hardware TPM: SHA-512 absent (way (b) still `ready`), P-256 primary 494 ms, RSA 3.7 s, `0x81000001` held by a foreign key.
 - [F113](findings/F113.md) — `TPM2_Import` wrap: outer wrap to the P-256 parent (ECDH seed, KDFa, AES-128-CFB, HMAC) with no session and no new crate; imported keys cannot be duplicated.
 - [F117](findings/F117.md) — test children and `swtpm`: TSS TCTI sockets leak into forked children (no CLOEXEC); spawn through `closed_fds`; AppArmor blocks signals to `swtpm`; the service's `systemd-creds` spawn is fixed in F118.

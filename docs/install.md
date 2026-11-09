@@ -17,6 +17,10 @@ manager; nothing is installed. The package also needs a running polkit 124 or la
 and a system bus that provides `ProcessFD`
 (see [Why a bus without ProcessFD is refused](#why-a-bus-without-processfd-is-refused)).
 
+On Debian 13 (systemd 257) with a TPM, the credential service binds a user-scoped credential to PCR 7, verified in
+[`docs/findings/F166.md`](findings/F166.md), so the service refuses it and the kind `encrypted-tpm` is unavailable: an
+import ends in `CredentialsUnavailable`. RHEL/Alma 10 (also systemd 257) is inferred from that reading, not run.
+
 ## Installing
 
 Use the tool of your system, so that dependencies are resolved from your distribution.
