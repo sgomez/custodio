@@ -182,7 +182,7 @@
         "F166"
       ],
       "verify": "just quick && scripts/test-docs-install.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F168",
