@@ -7,4 +7,4 @@
 
 Question: restore a delegated, writable cgroup subtree for the `dev` user in the dev container (or tell me another way to boot systemd containers). Options: (a) fix the dev container's cgroup delegation; (b) run the container targets on another host.
 
-Also pending after this: budget rows for `vm full` (measured 8m23) and `vm lacking` (7m10), which the loop's time check does not read (`budgets.tsv` has an `ubuntu2404` row left for a person to remove). Steps done: 1, 2, VM full+lacking, gap evidence, package-gates. Not run: `just coverage`, `just crap` (next session).
+Also pending after this: budget rows for `vm full` (measured 8m23) and `vm lacking` (7m10), which the loop's time check does not read (`budgets.tsv` has an `ubuntu2404` row left for a person to remove). Steps done: 1, 2, VM full+lacking, gap evidence, package-gates. `just coverage` and `just crap` also pass.
