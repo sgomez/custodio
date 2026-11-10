@@ -76,7 +76,7 @@ close() {
     if [ -e "$f" ]; then git mv "$f" "$dest/"; fi
   done
   git commit -q -m "docs: close milestone $name"
-  log "Closed $name, archived in $dest. Next: just milestone open"
+  log "Closed $name, archived in $dest. Next: just release"
 }
 
 open() {
