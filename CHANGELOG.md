@@ -52,6 +52,8 @@
 - *(harness)* Give the dev container's cgroup back to dev for nested systemd
 - *(harness)* Point just status and milestone close to close, then release
 - *(F168)* Read the vm gap table from e2e/vm/gaps.md, not the contract
+- *(harness)* Keep bash as pid 1 in the dev container so orphans are reaped
+- *(F168)* Avoid a sigpipe race in the case-script check of test-e2e-vm-cases
 
 ### 📚 Documentation
 
