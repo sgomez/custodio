@@ -283,3 +283,7 @@ with an empty context.
 - Step 5 (VM, real runs): `just e2e-vm full` exit 0 in 8m23 (`check-cases: 38 cases accounted for`, `e2e-vm[full]: passed`); `just e2e-vm lacking` exit 0 in 7m10 (same). Longer than the 4-6 min estimate. These times are seen only here: the loop's time check reads `timings.tsv`, not the VM phases.
 - Step 6 (gap evidence): `e2e/vm/gap-map.sh target/e2e/vm.lacking.log` and `vm.full.log` both `gap-map: ok` (every mapped case run once; reader lines present in lacking, none in full). `grep -c unknown` of both records → 0. lacking record steps: image 1, boot 13, copy 0, install 124, tools 32, cycle 12, sign 29, noplain 23, pcr 28, fallback 22, tpmclear 54, upgrade 35, setup 12, teardown 1. Record keys: target, tpm, image_serial 20261105, kernel, systemd, package_version, swtpm_version, has_tpm2=yes (exit 0).
 - `just package-gates` exit 0 (2m55). `just coverage` exit 0 (2m27), `just crap` exit 0 (1 s).
+
+### 2026-11-10 — F168 — attempt 2
+- BLOCKED.md answered (harness/run.sh chowns /sys/fs/cgroup to dev). `timeout 1750 just e2e` exit 0 (wall 692s, 6 runs at once): alma10, arch, debian13, fedora44, ubuntu2604 (swtpm) and debian13 (none) passed; `check-cases: 160 cases accounted for`. Step 3 ticked.
+- The vm full/lacking budget rows are already in `budgets.tsv` (commit 182e524). Left: the Final step (rerun from a cleared `target/e2e/`, re-count the Evidence).
