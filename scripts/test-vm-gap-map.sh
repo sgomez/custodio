@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F168: e2e/vm/gap-map.sh, the reader of the gap table of contracts/F168.md. Fixtures are temp files, never edited copies of the real contract.
+# F168: e2e/vm/gap-map.sh, the reader of the gap table of e2e/vm/gaps.md. Fixtures are temp files, never edited copies of the real table.
 # Each negative control is one change to a good input; the same check must fail on it.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -10,11 +10,11 @@ fail=0
 bad() { echo "test-vm-gap-map: $*" >&2; fail=1; }
 
 # the real table against the real lists
-bash "$GM" > /dev/null 2>&1 || bad "the real contract does not pass against the real lists"
+bash "$GM" > /dev/null 2>&1 || bad "the real table does not pass against the real lists"
 
 # fixtures: table, case list, skip list, logs
 table() { # table FILE [grep -v pattern]: the real table, minus one row
-    { echo '```gap-table'; awk '/^```gap-table$/{on=1;next} /^```$/{on=0} on' "$ROOT/contracts/F168.md" | grep -v "${2:-^\$}" || true; echo '```'; } > "$1"
+    { echo '```gap-table'; awk '/^```gap-table$/{on=1;next} /^```$/{on=0} on' "$ROOT/e2e/vm/gaps.md" | grep -v "${2:-^\$}" || true; echo '```'; } > "$1"
 }
 table "$tmp/good.md"
 cases=$tmp/cases.list; skip=$tmp/skip.list
@@ -23,7 +23,7 @@ grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/e2e/vm/cases.list" > "$cases"
 mklog() { # mklog FILE reader(0|1): every mapped case once, the rest of the list run too
     { sed "s/^/E2E-CASE run /" "$cases"; [ "$2" = 1 ] && echo "reader: key sg-rsa: ok"; echo "check-cases: 38 cases accounted for"; } > "$1"
 }
-run() { GAP_CONTRACT=$1 GAP_CASES=${GAP_CASES:-$cases} GAP_SKIP=${GAP_SKIP:-$skip} bash "$GM" "${@:2}" > "$tmp/out" 2>&1; }
+run() { GAP_TABLE=$1 GAP_CASES=${GAP_CASES:-$cases} GAP_SKIP=${GAP_SKIP:-$skip} bash "$GM" "${@:2}" > "$tmp/out" 2>&1; }
 ok() { run "$@" || bad "good input fails ($*): $(tail -n 3 "$tmp/out")"; }
 ko() { local why=$1; shift; if run "$@"; then bad "control passes: $why"; elif ! grep -q "$why" "$tmp/out"; then bad "control fails for another reason ($why): $(cat "$tmp/out")"; fi; }
 

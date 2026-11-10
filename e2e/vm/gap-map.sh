@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# F168: the gap table of contracts/F168.md (SPEC acceptance 12) against the VM case list and, given a run log, against what the run reported.
+# F168: the gap table of e2e/vm/gaps.md (SPEC acceptance 12) against the VM case list and, given a run log, against what the run reported.
 #   gap-map.sh                 the fenced `gap-table` block is well formed: one row per gap F134 F135 F137 F138 F140 F141 plus the PSS row, every mapped
 #                              case is in cases.list and none is on skip.list
 #   gap-map.sh LOG [MODE]      also: every mapped case is reported `E2E-CASE run` exactly once in LOG; in lacking the log has `reader: key` lines, in full none
 #                              (MODE full|lacking, default read from the name vm.<mode>.log)
-# Overrides for the self-test: GAP_CONTRACT, GAP_CASES, GAP_SKIP.
+# Overrides for the self-test: GAP_TABLE, GAP_CASES, GAP_SKIP.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-CONTRACT=${GAP_CONTRACT:-$ROOT/contracts/F168.md}
+TABLE=${GAP_TABLE:-$ROOT/e2e/vm/gaps.md}
 CASES=${GAP_CASES:-$ROOT/e2e/vm/cases.list}
 SKIP=${GAP_SKIP:-$ROOT/e2e/vm/skip.list}
 LOG=${1:-} MODE=${2:-}
 fail=0
 bad() { echo "gap-map: $*" >&2; fail=1; }
-for f in "$CONTRACT" "$CASES" "$SKIP"; do [ -f "$f" ] || { echo "gap-map: $f: no such file" >&2; exit 2; }; done
+for f in "$TABLE" "$CASES" "$SKIP"; do [ -f "$f" ] || { echo "gap-map: $f: no such file" >&2; exit 2; }; done
 
-rows=$(awk '/^```gap-table$/{on=1;next} /^```$/{on=0} on' "$CONTRACT")
-[ -n "$rows" ] || { echo "gap-map: no gap-table block in $CONTRACT" >&2; exit 2; }
+rows=$(awk '/^```gap-table$/{on=1;next} /^```$/{on=0} on' "$TABLE")
+[ -n "$rows" ] || { echo "gap-map: no gap-table block in $TABLE" >&2; exit 2; }
 ids=$(grep -v '^[[:space:]]*\(#\|$\)' "$CASES")
 skips=$({ grep -v '^[[:space:]]*\(#\|$\)' "$SKIP" || true; } | sed 's/:.*//')
 
