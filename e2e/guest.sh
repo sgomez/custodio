@@ -302,7 +302,7 @@ phase_done journalkind
 
 # The upgrade case comes last, so it does not disturb the audit counts above; the lifecycle cases start from its state.
 if phase_runs upgrade; then
-    if [ -n "$vm" ]; then export E2E_INSTALL=/e2e/vm/install-pkg.sh; fi # apt, as run.sh installs N
+    if [ -n "$vm" ]; then export E2E_INSTALL=/e2e/vm/install-pkg.sh; fi # same install as N
     env WORK="$work" MODULE="$MODULE" E2E_VM="$vm" E2E_TPM="$tpm_mode" bash /e2e/upgrade.sh "$pkg" "$pkg_next" || fail "upgrade.sh failed"
 fi
 phase_done upgrade
