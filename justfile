@@ -179,6 +179,7 @@ test-scripts:
     scripts/test-e2e-skips.sh
     scripts/test-ci-e2e-vm.sh
     scripts/test-e2e-vm-cases.sh
+    scripts/test-vm-gap-map.sh
     scripts/test-e2e-vm-host.sh
     scripts/test-e2e-vm-kinds.sh
     scripts/test-e2e-vm-silent.sh
