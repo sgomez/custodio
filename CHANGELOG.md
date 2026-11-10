@@ -51,6 +51,7 @@
 - *(F168)* Keep the package-tool word out of the guest.sh comment
 - *(harness)* Give the dev container's cgroup back to dev for nested systemd
 - *(harness)* Point just status and milestone close to close, then release
+- *(F168)* Read the vm gap table from e2e/vm/gaps.md, not the contract
 
 ### 📚 Documentation
 
