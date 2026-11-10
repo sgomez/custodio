@@ -21,7 +21,9 @@ nightly=$(sed -n 's/^nightly_toolchain := "\(.*\)"$/\1/p' justfile)
 userns=() target_opts='' prelude=()
 if [[ $engine == *podman ]]; then
   userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U
-  prelude=(bash -c 'sudo chown -R dev:dev /sys/fs/cgroup && exec "$@"' _)
+  # bash stays PID 1, not exec'd: it reaps daemonized orphans (the VM stubs); `just` would leave them zombies, and
+  # systemd=always refuses --init.
+  prelude=(bash -c 'sudo chown -R dev:dev /sys/fs/cgroup || exit; "$@"; exit' _)
 fi
 # The VM target needs /dev/kvm (docs/findings/F150.md). Rootless podman bind-mounts the host node; keep-groups keeps a `kvm` group access
 # through the user namespace. Without the device on this host nothing is added, and `just vm-host-check` in the container reports it.
