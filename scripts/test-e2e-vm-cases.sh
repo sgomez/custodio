@@ -50,7 +50,8 @@ check_scripts() { # check_scripts DIR LIST: prints the problems
     gen=$( { python3 -I "$d/sign.py" groups; python3 -I "$d/upgradekinds.py" cases; } 2>&1 )
     for id in $(ids "$l"); do
         grep -qxF -- "$id" <<< "$gen" && continue
-        for s in $SCRIPTS; do grep -v '^[[:space:]]*#' "$d/$s" | grep -qw -- "$id" && continue 2; done
+        # Not a pipe: under pipefail, grep -q's early exit gives the writer SIGPIPE and a found id would read as missing.
+        for s in $SCRIPTS; do grep -qw -- "$id" <(grep -v '^[[:space:]]*#' "$d/$s") && continue 2; done
         echo "no case script reports $id"
     done
     for id in $(grep -v '^[[:space:]]*#' "$d/vm/judge.sh" | grep -oE '\bvm-[a-z0-9]+(-[a-z0-9]+)*\b' | sort -u); do
