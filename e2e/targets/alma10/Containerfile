@@ -7,7 +7,7 @@ FROM docker.io/library/almalinux:10
 RUN dnf install -y --setopt=install_weak_deps=False \
       systemd systemd-pam dbus polkit p11-kit opensc pkcs11-provider \
       nss-tools openssl util-linux python3 python3-gobject-base procps-ng swtpm swtpm-tools tpm2-tools \
-    && dnf clean all
+    && dnf clean packages && dnf makecache
 
 # The AlmaLinux container image masks systemd-logind (a booted AlmaLinux does not), and the test needs logind sessions.
 RUN rm -f /etc/systemd/system/systemd-logind.service
