@@ -287,3 +287,7 @@ with an empty context.
 ### 2026-11-10 — F168 — attempt 2
 - BLOCKED.md answered (harness/run.sh chowns /sys/fs/cgroup to dev). `timeout 1750 just e2e` exit 0 (wall 692s, 6 runs at once): alma10, arch, debian13, fedora44, ubuntu2604 (swtpm) and debian13 (none) passed; `check-cases: 160 cases accounted for`. Step 3 ticked.
 - The vm full/lacking budget rows are already in `budgets.tsv` (commit 182e524). Left: the Final step (rerun from a cleared `target/e2e/`, re-count the Evidence).
+
+### 2026-11-10 — F168 — attempt 3 (final step)
+- No product, e2e or VM-harness file changed since the runs of attempts 1-2 (diff from 53e4f31: only gap-map, its self-test, justfile line, harness/run.sh cgroup chown, budgets, APPROVALS), so those records stay valid and were not rerun (time limit). Recounted: 6 container records (swtpm x5, none x1; check-cases 103/160/112 accounted, tpmbound cases skipped on the debian13 list), 2 `vm.*.record` with `grep -c unknown` → 0, both VM logs `check-cases: 38 cases accounted for`, `gap-map: ok` on both. `just quick` exit 0.
+- Evaluator notes: the VM times (full 8m23, lacking 7m10) are seen only here; the loop's time check reads `timings.tsv`, not `vm.<mode>.phases.tsv`. `budgets.tsv` still has an `ubuntu2404` row, left for the person. Only `e2e/targets/debian13` lists the tpmbound cases, so "skipped" applies there. The record's completeness is checked by hand (`grep -c unknown` → 0). Network probe: archive.ubuntu.com HTTP 200 (attempt 1).
