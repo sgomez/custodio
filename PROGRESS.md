@@ -294,3 +294,8 @@ with an empty context.
 
 ### 2026-11-10 — F168 — attempt 4 (budget finding)
 - NEXT_FINDINGS: alma10 812 s over 540. Phases: `m3-install` 424 s (the other targets 0-13 s). Reran `E2E_TPM=swtpm just e2e alma10` alone: ~840 s, `install` 599 s, all checks passed. Probe `dnf -v makecache` in the image: BaseOS metadata 55 MB at the mirror's speed (68 s that time). External mirror variance, not a case; no code changed. BLOCKED.md written with the options.
+
+### 2026-11-10 — F168 — attempt 5 (budget finding fixed)
+- Applied the person's answer (f143cfc): alma10 and fedora44 images keep the dnf metadata (`dnf clean packages && dnf makecache`), `install.sh` uses `--setopt=metadata_expire=never`. No budget edit.
+- Measured with the rebuilt images, alone: `E2E_TPM=swtpm just e2e alma10` exit 0, 352 s (budget 540; was 812); `just e2e fedora44` exit 0, 307 s (budget 570). Both passed all cases.
+- `just quick` exit 0. Nothing else changed since attempts 1-3, whose records stay valid.
