@@ -329,3 +329,27 @@ fn a_top_level_file_that_breaks_a_rule_stops_the_listing() -> TestResult {
     assert!(fs::symlink_metadata(store.dir().join("link"))?.is_symlink());
     Ok(())
 }
+
+#[test]
+fn a_top_level_symlink_named_as_a_key_stops_the_listing() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    let outside = tmp.path().join("target");
+    fs::write(&outside, b"target")?;
+    std::os::unix::fs::symlink(&outside, store.dir().join("link"))?;
+    assert!(matches!(
+        store.legacy_all(),
+        Err(StoreError::BadFileType(_))
+    ));
+    Ok(())
+}
+
+#[test]
+fn a_top_level_name_that_is_no_key_id_is_not_a_key() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let store = KeyStore::open(tmp.path().join("s"))?;
+    root_file(&store, "rsa")?;
+    root_file(&store, "notes.txt")?;
+    assert_eq!(store.legacy_all()?, [root_entry("rsa", &["rsa"])]);
+    Ok(())
+}

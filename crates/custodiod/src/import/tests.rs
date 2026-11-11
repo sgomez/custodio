@@ -72,3 +72,22 @@ fn a_p256_curve_under_another_algorithm_is_not_an_ecdsa_key()
     assert_eq!(cert_public_key(KeyKind::EcdsaP256, &other), None);
     Ok(())
 }
+
+#[test]
+fn an_rsa_key_under_another_algorithm_is_not_an_rsa2048_key()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cert = include_bytes!("../../tests/fixtures/cert-rsa2048-other.der");
+    assert!(cert_public_key(KeyKind::Rsa2048, cert).is_some());
+    // rsaEncryption (1.2.840.113549.1.1.1) to id-RSASSA-PSS (1.2.840.113549.1.1.10): the same SEQUENCE(n, e).
+    let rsa_encryption = [
+        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    ];
+    let at = cert
+        .windows(rsa_encryption.len())
+        .position(|w| w == rsa_encryption)
+        .ok_or("no rsaEncryption")?;
+    let mut other = cert.to_vec();
+    *other.get_mut(at + 10).ok_or("short")? = 0x0a;
+    assert_eq!(cert_public_key(KeyKind::Rsa2048, &other), None);
+    Ok(())
+}
