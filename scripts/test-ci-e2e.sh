@@ -123,8 +123,13 @@ for n, j in w["jobs"].items():
     if n.startswith("e2e"):
         j["env"] = {k: v for k, v in (j.get("env") or {}).items() if k != "E2E_TPM"}
 save("no-variable", w)
+w = copy.deepcopy(wf)
+for n, j in w["jobs"].items():
+    if n.startswith("e2e"):
+        j["strategy"]["matrix"]["target"] = list(j["strategy"]["matrix"]["target"]) + ["ubuntu2404"]
+save("ghost-target", w)
 PY
-for c in no-none none-everywhere green echo not-needed no-variable; do
+for c in no-none none-everywhere green echo not-needed no-variable ghost-target; do
     [ -n "$(problems "$tmp/$c.yml")" ] || bad "control: the workflow variant '$c' was accepted"
 done
 exit "$fail"

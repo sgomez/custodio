@@ -62,7 +62,7 @@ Rules:
 - [F107](findings/F107.md) — TPM mechanism parity: way (b) (service pads, `TPM2_RSA_Decrypt` raw) serves every RSA mechanism at the cost of `decrypt`; P-256 needs SHA-256 only; `TpmFilter` simulates lacks.
 - [F108](findings/F108.md) — TPM in e2e containers: `swtpm` on a unix socket under `/tmp` (state `/var/tmp`) reached through a test-only `/run` drop-in; host AppArmor confines `swtpm`; no vTPM proxy.
 - [F109](findings/F109.md) — `/dev/tpmrm0` under the unit: keep `PrivateDevices=yes`, add `DeviceAllow=/dev/tpmrm0 rw`, `BindPaths=-/dev/tpmrm0`, `SupplementaryGroups=tss` (0.7); package must provide `tss`.
-- [F110](findings/F110.md) — `systemd-creds` without root: Varlink `user` scope, no `withKey`, read back PCR mask at byte 48 and refuse nonzero/null; 255 and 257 are deviations; Decrypt error = cannot decrypt.
+- [F110](findings/F110.md) — `systemd-creds` without root: Varlink `user` scope, no `withKey`, read back PCR mask at byte 48 and refuse nonzero/null; 255 and 257 are deviations (257 PCR 7 verified on Debian 13 by F166, Alma 10 inferred from it); Decrypt error = cannot decrypt.
 - [F111](findings/F111.md) — F106/F107 probes on an STM hardware TPM: SHA-512 absent (way (b) still `ready`), P-256 primary 494 ms, RSA 3.7 s, `0x81000001` held by a foreign key.
 - [F113](findings/F113.md) — `TPM2_Import` wrap: outer wrap to the P-256 parent (ECDH seed, KDFa, AES-128-CFB, HMAC) with no session and no new crate; imported keys cannot be duplicated.
 - [F117](findings/F117.md) — test children and `swtpm`: TSS TCTI sockets leak into forked children (no CLOEXEC); spawn through `closed_fds`; AppArmor blocks signals to `swtpm`; the service's `systemd-creds` spawn is fixed in F118.
@@ -83,3 +83,13 @@ Rules:
 - [F147](findings/F147.md) — M4 acceptance 13 (AMD fTPM, ubuntu2604): both keys `tpm`, not duplicable, sign after reboot, upgrade and a PCR 7 extension (no `dbx` offered); Ubuntu's Firefox needs `modutil`.
 - [F148](findings/F148.md) — M4 acceptance 14 (VM without a TPM, xubuntu2604): pass; import and list print the `encrypted-host` weaker notice word for word; after a reboot LibreOffice signs with a polkit dialog.
 - [F149](findings/F149.md) — M4 acceptance 15 (TPM host and xubuntu2604): pass; a root copy of the state directory holds no private key; M0–M2 top-level key files are not purged by F121 (removed by hand).
+- [F150](findings/F150.md) — KVM for the VM target: no `/dev/kvm` in the dev container; `run.sh` adds `--device /dev/kvm --group-add keep-groups`; runners need the `runner` udev rule; trixie package paths.
+- [F151](findings/F151.md) — VM boot (Ubuntu 26.04 minimal, swtpm, tpm-crb, OVMF): serial-console channel and `cloud-localds` seed; `libtss2-rc0t64` alone leaves `has-tpm2` partial (needs esys, mu); TPM state survives a power cycle.
+- [F152](findings/F152.md) — making the virtual TPM lack RSA: `tpm-filter` cannot sit under QEMU as built (fd on the control channel); an `swtpm` 0.10.2 custom profile works with the kernel, `systemd-creds` and the ECC parent: without `RSA_Decrypt` RSA lacks, without `Sign` P-256 lacks; removing the P-256 curve (`ecc-min-size=384`) breaks the parent and, with `rsa-min-size=3072`, systemd.
+- [F153](findings/F153.md) — systemd 259.9 credential header and key ids: id at 0, TPM section at 48 (PCR mask le64), scoped header holds only flags; user-scoped host+tpm2 `ef4ac136...`; default mask 0 (257: 0x80); null refused in user scope.
+- [F158](findings/F158.md) — no `gpg-agent` in the dev container, so `gpg` cannot sign or make keys; test fixtures use `scripts/lib/openpgp_ed25519.py`, which `gpgv` accepts.
+- [F159](findings/F159.md) — unpacked swtpm 0.10.2 needs both library dirs on LD_LIBRARY_PATH; the lacking profile passes PTM_INIT; a restart on the same state must omit --profile (0x9 otherwise).
+- [F161](findings/F161.md) — lacking profile without RSA_Decrypt and Sign: P-256 and RSA lack, TPM, systemd-creds, ECC parent still work
+- [F163](findings/F163.md) — tpm2_clear works from the guest (also lacking); PCRs extend through /dev/tpmrm0 and return to the first reading after a power cycle (full and lacking)
+- [F164](findings/F164.md) — CI for the VM target: 26.04 ships swtpm 0.10.1 (no pinned deb), package names, KVM udev step, no whole-run time recorded (timeout 60 min)
+- [F166](findings/F166.md) — M5 acceptance 17 on Debian 13.7 (systemd 257.13, virtual TPM): a user-scoped credential is `host+tpm2-scoped` with PCR mask `0x80`, PCR 7 confirmed; a minimal install needs libtss2-esys and -mu too

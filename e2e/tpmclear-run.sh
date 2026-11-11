@@ -20,6 +20,17 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=e2e/tpmclear-cases.sh
 source "$here/tpmclear-cases.sh"
 mode=${E2E_TPM:-swtpm}
+# F163: in a VM run (E2E_VM=1) the TPM is the guest's own (kernel resource manager, $TC_VM_TCTI) and is the one cleared (route A of docs/findings/F163.md): no second swtpm, no
+# drop-in, no filter. swtpm is the full mode (kind tpm), lacking the lacking mode (kind encrypted-tpm; root reads each credential with the reader of F157 after every import).
+kind=tpm
+vm=${E2E_VM:-}
+if [ -n "$vm" ]; then
+    case $mode in
+    swtpm) ;;
+    lacking) kind=encrypted-tpm ;;
+    *) echo "e2e: FAIL: a VM run has the TPM mode swtpm or lacking, not '$mode'" >&2; exit 1 ;;
+    esac
+fi
 if [ "$mode" = none ]; then
     tpmclear_skip_all "$mode"
     exit 0
@@ -28,9 +39,13 @@ fi
 source "$here/tpmkind-lib.sh"
 # shellcheck source=e2e/tpm-lib.sh
 source "$here/tpm-lib.sh"
-# shellcheck source=e2e/tpmfail-lib.sh
-source "$here/tpmfail-lib.sh"
-for tool in tpm2_clear tpm2_createprimary tpm2_readpublic tpm2_flushcontext tpm2_getcap tpm2_testparms swtpm swtpm_setup swtpm_ioctl openssl python3 busctl journalctl find sha256sum pkcs11-tool; do
+if [ -z "$vm" ]; then
+    # shellcheck source=e2e/tpmfail-lib.sh
+    source "$here/tpmfail-lib.sh"
+fi
+tools="tpm2_clear tpm2_createprimary tpm2_readpublic tpm2_flushcontext openssl python3 busctl journalctl find sha256sum pkcs11-tool"
+[ -n "$vm" ] || tools="$tools tpm2_getcap tpm2_testparms swtpm swtpm_setup swtpm_ioctl"
+for tool in $tools; do
     command -v "$tool" > /dev/null || fail "$tool is not installed"
 done
 TC=$WORK/tpmclear
@@ -46,7 +61,7 @@ head -c 1000 /dev/urandom > "$TC/in/msg.bin"
 chmod -R a+rX "$TC"
 chmod 1777 "$TC" "$TC/in" "$TC/out"
 tcj() { python3 -I "$here/tpmclear.py" "$@"; }
-state=$(readlink -f /var/lib/custodio)
+state=$(readlink -f "${TC_STATE_DIR:-/var/lib/custodio}") # TC_STATE_DIR, TC_SCAN: the host test points them at fixtures
 [ -d "$state" ] || fail "the state directory $state does not exist"
 uid=$(id -u alice)
 KEYS=(tc-rsa tc-ec)
@@ -61,6 +76,7 @@ TC_SOCK=$TPM_DIR/clear.sock
 TC_UP=$TPM_DIR/clear-up.sock
 TC_STATE=/var/tmp/custodio-e2e-tpmclear-state
 TC_TCTI=swtpm:path=$TC_SOCK
+[ -z "$vm" ] || TC_TCTI=${TC_VM_TCTI:-device:/dev/tpmrm0}
 second_stop() {
     local pid ctrl
     pid=$(cat "$TC_STATE/filter.pid" 2> /dev/null || true)
@@ -100,14 +116,23 @@ dirty=''
 on_exit() {
     local rc=$?
     if [ -n "$dirty" ]; then tf_point "$TPM_SOCK" > /dev/null 2>&1 || true; fi
-    second_stop
+    [ -n "$vm" ] || second_stop
     exit "$rc"
 }
 trap on_exit EXIT
-mkdir -p "$TC_STATE"
-second_start || fail "the second TPM did not start"
-second_observe
-echo "tpmclear: second TPM up ($mode), observed"
+if [ -z "$vm" ]; then
+    mkdir -p "$TC_STATE"
+    second_start || fail "the second TPM did not start"
+    second_observe
+    echo "tpmclear: second TPM up ($mode), observed"
+fi
+read_creds() { # ID...: the reader (F157) on the credential of each key, in lacking of a VM run only; prints the problems
+    [ "$kind" = encrypted-tpm ] || return 0
+    # shellcheck source=e2e/vm/cred-lib.sh
+    source "$here/vm/cred-lib.sh"
+    local id
+    for id in "$@"; do vm_read_credential "$id" >&2 || echo "reader: $id: the credential of an encrypted-tpm key did not pass the reader"; done
+}
 
 SRK_ATTRS='fixedtpm|fixedparent|sensitivedataorigin|userwithauth|noda|restricted|decrypt'
 primary_name() { # FILE: the name (hex) of a primary under the owner hierarchy made with one fixed template and no unique data, on the second TPM; only the seed can change it
@@ -129,7 +154,7 @@ state_listing() { # FILE: names, types, modes, sizes and checksums of everything
 }
 scan() { # FILE: the stored records (uid, id, kind, parent name)
     mkdir -p "$TC/rec"
-    python3 -I "$here/tpmdup.py" scan "$state" "$TC/rec" > "$1" || fail "the records could not be read"
+    ${TC_SCAN:-python3 -I "$here/tpmdup.py" scan} "$state" "$TC/rec" > "$1" || fail "the records could not be read"
 }
 cursor() { journalctl --sync; journalctl -n1 --show-cursor | sed -n 's/^-- cursor: //p'; }
 journal_since() { # CURSOR FILE
@@ -137,6 +162,11 @@ journal_since() { # CURSOR FILE
     journalctl --after-cursor="$1" _SYSTEMD_UNIT=custodio.service -o json --no-pager > "$2"
 }
 problems=''
+add_reader() { # PROBLEMS of the reader (they belong to no case)
+    [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ] || problems="$problems
+reader:
+$1"
+}
 judge() { # CASE PROBLEMS: the case is reported when it has no problem
     local p
     p=$(printf '%s\n' "$2" | sed '/^$/d')
@@ -146,9 +176,12 @@ $p"; fi
 }
 
 # the service uses the second TPM from here on; both keys are imported and sign
-dirty=1
-tf_point "$TC_SOCK"
+if [ -z "$vm" ]; then
+    dirty=1
+    tf_point "$TC_SOCK"
+fi
 alice import import "$TC/imp" rsa ec
+add_reader "$(read_creds "${KEYS[@]}")"
 state_listing "$TC/state-imported"
 alice pre sign pre rsa ec
 state_listing "$TC/state-signed"
@@ -182,23 +215,33 @@ scan "$TC/scan-deleted"
 
 # the recovery: the same id imported again works on the new seed, signs, and is deleted
 alice reimport import "$TC/reimp" rsa
+add_reader "$(read_creds tc-rsa)"
 alice reimp-sign sign reimp rsa
 scan "$TC/scan-reimp"
 alice end delete "$TC/end" tc-rsa
 scan "$TC/scan-end"
+# F163: the clear of the guest's own TPM also made the setup's keys (rsa1, ec1) unusable, and the steps after this one use them: import them again
+if [ -n "$vm" ] && [ -d "$WORK/setup-keep" ]; then
+    alice restore restore
+    add_reader "$(read_creds rsa1 ec1)"
+fi
 
 # the end: the TPM of the run is back, the service on it
-tf_point "$TPM_SOCK"
-dirty=''
-second_stop
 ready=''
-tpm_observe "$mode" > /dev/null 2> "$TC/observe.err" || ready="the unit's TPM is not the mode's: $(head -n 2 "$TC/observe.err")"
+if [ -z "$vm" ]; then
+    tf_point "$TPM_SOCK"
+    dirty=''
+    second_stop
+    tpm_observe "$mode" > /dev/null 2> "$TC/observe.err" || ready="the unit's TPM is not the mode's: $(head -n 2 "$TC/observe.err")"
+fi
 systemctl is-active --quiet custodio || ready="$ready
 the service is not active after the restore"
 busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 org.freedesktop.DBus.Peer Ping > /dev/null 2>&1 || ready="$ready
 the service does not answer Ping after the restore"
-! pgrep -f "dir=$TC_STATE" > /dev/null || ready="$ready
+if [ -z "$vm" ]; then
+    ! pgrep -f "dir=$TC_STATE" > /dev/null || ready="$ready
 the second swtpm is still running"
+fi
 
 # judgements
 O=$TC/out
@@ -208,7 +251,7 @@ sign_ok() { # TAG ID TYPE
 }
 common="$(tcj rc "$TC/clear.rc" tpm2_clear)
 $(tcj owner "$TC/name-before" "$TC/name-after")
-$(tcj listed "$TC/imp/list.out" tpm "${KEYS[@]}")"
+$(tcj listed "$TC/imp/list.out" "$kind" "${KEYS[@]}")"
 fails=''
 for r in a1 a2; do
     for id in "${KEYS[@]}"; do
@@ -217,38 +260,38 @@ $(tcj dbus "$O/$r-$id.dbus" KeyLost)
 $(tcj p11fail "$O/$r-$id.rc" "$O/$r-$id.log")"
     done
     fails="$fails
-$(tcj journal "$TC/journal-$r.json" "$uid" tpm "$(cat "$O/$r.count")" "$IDS" "${SECRETS[@]}")"
+$(tcj journal "$TC/journal-$r.json" "$uid" "$kind" "$(cat "$O/$r.count")" "$IDS" "${SECRETS[@]}")"
 done
 pre=''
 for id in "${KEYS[@]}"; do pre="$pre
 $(sign_ok pre "$id")"; done
 reimp="$(sign_ok reimp tc-rsa)
-$(tcj listed "$TC/reimp/list.out" tpm tc-rsa)"
+$(tcj listed "$TC/reimp/list.out" "$kind" tc-rsa)"
 judge tpm-clear-sign-fails "$common
 $pre
 $fails
 $reimp
 $(tcj state "$TC/state-imported" "$TC/state-signed")"
 judge tpm-clear-keys-listed "$common
-$(tcj listed "$TC/after-clear/list.out" tpm "${KEYS[@]}")
+$(tcj listed "$TC/after-clear/list.out" "$kind" "${KEYS[@]}")
 $(tcj samelist "$TC/imp/list.out" "$TC/after-clear/list.out" "${KEYS[@]}")
-$(tcj clilist "$TC/after-clear/cli.out" tpm "${KEYS[@]}")
+$(tcj clilist "$TC/after-clear/cli.out" "$kind" "${KEYS[@]}")
 $(tcj state "$TC/state-signed" "$TC/state-after-sign")
-$(tcj records "$TC/scan-before" present tpm "${KEYS[@]}")
-$(tcj records "$TC/scan-after" present tpm "${KEYS[@]}")"
+$(tcj records "$TC/scan-before" present "$kind" "${KEYS[@]}")
+$(tcj records "$TC/scan-after" present "$kind" "${KEYS[@]}")"
 dels=''
 for id in "${KEYS[@]}"; do dels="$dels
 $(tcj rc "$TC/del/delete-$id.rc" "delete $id")"; done
 judge tpm-clear-delete "$common
 $dels
 $(tcj gone "$TC/del/list.out" "${KEYS[@]}")
-$(tcj records "$TC/scan-deleted" absent tpm "${KEYS[@]}")
+$(tcj records "$TC/scan-deleted" absent "$kind" "${KEYS[@]}")
 $(tcj deljournal "$TC/journal-delete.json" "$uid" "${KEYS[@]}")
 $reimp
-$(tcj records "$TC/scan-reimp" present tpm tc-rsa)
+$(tcj records "$TC/scan-reimp" present "$kind" tc-rsa)
 $(tcj rc "$TC/end/delete-tc-rsa.rc" "delete of the re-imported tc-rsa")
 $(tcj gone "$TC/end/list.out" "${KEYS[@]}")
-$(tcj records "$TC/scan-end" absent tpm "${KEYS[@]}")"
+$(tcj records "$TC/scan-end" absent "$kind" "${KEYS[@]}")"
 [ -z "$ready" ] || problems="$problems
 end:
 $ready"

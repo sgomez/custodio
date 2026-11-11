@@ -26,7 +26,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     block_on(async {
         // An import chooses TPM, encrypted TPM-bound or encrypted host-bound from what this access point finds.
         let tpm: Arc<dyn TpmAccess> = Arc::from(from_environment());
-        let key_credentials = Arc::new(SystemdCreds::system(None));
+        let key_credentials = Arc::new(SystemdCreds::system());
         // The earlier format is purged, then the object is served and the name taken: `start` is the only path.
         let _connection = start(
             store,

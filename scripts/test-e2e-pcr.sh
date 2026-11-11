@@ -3,12 +3,13 @@
 # judgements of e2e/pcr.py on good and bad evidence (PCRs not changed by the extension, PCRs not reset by the restart, an unchanged service pid, a signature that does not verify,
 # a signing refusal, a kind that changed, a missing key, fewer than two tpm keys, a control that proves nothing), and the restart helper's mode check. NOT checked here: a real
 # run (`just e2e-cases debian13 'pcr-*'` in swtpm, lacking and none).
-# shellcheck disable=SC2086 # the ids are words
+# shellcheck disable=SC2086,SC2015,SC2016 # SC2086: the ids are words; SC2015: A && B || bad is the check; SC2016: stub text and sed programs in single quotes
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
+# shellcheck disable=SC2034 # fail is read by the sourced VM section
 bad() { echo "test-e2e-pcr: $*" >&2; fail=1; }
 D=$ROOT/e2e/targets/debian13
 ids="pcr-extended-signs pcr-restarted-signs pcr-signs-every-key"
@@ -163,4 +164,5 @@ expect_bad pc control 0 "$tmp/c-ok" 1 "$tmp/missing" custodio-pcr-secret
 # the restart helper refuses a mode with no TPM and the guest scripts parse
 ( source "$ROOT/e2e/tpm-lib.sh"; ! tpm_swtpm_restart none 2> /dev/null ) || bad "tpm_swtpm_restart accepts mode none"
 for f in pcr-run.sh pcr-user.sh pcr-cases.sh; do bash -n "$ROOT/e2e/$f" || bad "$f does not parse"; done
-exit "$fail"
+# shellcheck disable=SC1091 # the section is a part of this script, linted on its own as shellcheck shell=bash
+source "$ROOT/scripts/lib/e2e-pcr-vm-section.sh"

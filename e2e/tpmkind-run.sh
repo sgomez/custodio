@@ -17,7 +17,17 @@ source "$here/tpmkind-cases.sh"
 bash "$here/tpmkind-selftest.sh" || fail "the tpm-kind self-test failed"
 
 mode=${E2E_TPM:-swtpm}
-if [ "$mode" != swtpm ]; then
+# F161: in a VM run (E2E_VM=1) the TPM is the VM's own: swtpm is the full mode (kind tpm), lacking is the lacking mode (kind encrypted-tpm, read back with the reader of F157). A container
+# run keeps its rule: only swtpm runs the cases.
+judge_mode=swtpm
+read_creds=''
+if [ -n "${E2E_VM:-}" ]; then
+    case $mode in
+    swtpm) judge_mode=full ;;
+    lacking) judge_mode=lacking read_creds=1 ;;
+    *) fail "a VM run has the TPM mode swtpm or lacking, not '$mode'" ;;
+    esac
+elif [ "$mode" != swtpm ]; then
     tpmkind_skip_all "$mode"
     exit 0
 fi
@@ -29,37 +39,41 @@ tk_make "$TK"
 rm -f "$TK"/*.crt
 chmod 644 "$TK"/*
 problems=''
-judge() { # CASE PROBLEMS: the case is reported when it has no problem
-    local case=$1 p
-    p=$(printf '%s\n' "$2" | sed '/^$/d')
-    if [ -z "$p" ]; then case_run "$case"; else problems="$problems
-$case:
-$p"; fi
-}
 fx="$(fixture_problems "$TK/rsa.p12" rsa)
 $(fixture_problems "$TK/ec.p12" ec)"
 [ "$(printf '%s' "$fx" | tr -d '[:space:]')" = '' ] || fail "the fixtures are not what the cases need: $fx"
 
 since=$(date +%s)
-timeout 600 su -l alice -c "WORK=$WORK bash /e2e/tpmkind-user.sh" > "$TK/alice.out" 2>&1 || { cat "$TK/alice.out" >&2; fail "alice's session failed"; }
+# With the reader (lacking, VM) alice waits after her list until root has read the stored credentials, then deletes the keys (tpmkind-user.sh, TK_READ).
+if [ -n "$read_creds" ]; then
+    # shellcheck source=e2e/vm/cred-lib.sh
+    source "$here/vm/cred-lib.sh"
+    timeout 600 su -l alice -c "WORK=$WORK TK_READ=1 bash /e2e/tpmkind-user.sh" > "$TK/alice.out" 2>&1 &
+    alice=$!
+    for _ in $(seq 600); do [ -e "$TK/imported" ] || ! kill -0 "$alice" 2> /dev/null || sleep 0.2; done
+    if [ -e "$TK/imported" ]; then
+        for id in tk-rsa tk-ec; do vm_read_credential "$id" || problems="$problems
+reader:
+$id: the credential of an encrypted-tpm key did not pass the reader"; done
+    else
+        problems="$problems
+reader: the keys were never imported, the credentials were not read"
+    fi
+    : > "$TK/read-done"
+    wait "$alice" || { cat "$TK/alice.out" >&2; fail "alice's session failed"; }
+else
+    timeout 600 su -l alice -c "WORK=$WORK bash /e2e/tpmkind-user.sh" > "$TK/alice.out" 2>&1 || { cat "$TK/alice.out" >&2; fail "alice's session failed"; }
+fi
 
 jp=''
 for _ in $(seq 60); do
     journalctl --sync
     journalctl --since "@$since" -o json --no-pager > "$TK/journal.json"
-    jp=$(python3 -I "$here/tpmkind.py" journal "$TK/journal.json" tk-rsa tk-ec) || true
+    jp=$(python3 -I "$here/tpmkind.py" --mode "$judge_mode" journal "$TK/journal.json" tk-rsa tk-ec) || true
     [ -z "$jp" ] && break
     sleep 0.5
 done
-tk() { python3 -I "$here/tpmkind.py" "$@"; }
-judge tpm-kind-import-rsa "$(tk import "$TK/import-rsa.out" tk-rsa rsa2048)"
-judge tpm-kind-import-ec "$(tk import "$TK/import-ec.out" tk-ec ecdsa-p256)"
-judge tpm-kind-api-list "$(tk api "$TK/api.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)"
-judge tpm-kind-cli-list "$(tk cli "$TK/cli.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)"
-judge tpm-kind-journal "$jp"
-# state left as found: the keys are gone
-if grep -qE '^tk-(rsa|ec)	' "$TK/api-after.out"; then problems="$problems
-end:
-a key of the cases is still listed after the deletes"; fi
+tpmkind_judge "$judge_mode" "$TK" "$jp"
+problems="$problems$TK_PROBLEMS"
 [ -z "$problems" ] || fail "tpm-kind cases:$problems"
 echo "tpmkind-run: passed"

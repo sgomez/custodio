@@ -64,16 +64,15 @@ grep -q 'E2E_SELECT=purge-service-stopped .*custodio-e2e-debian13-swtpm-[0-9]* b
 expect_ok own-case-oldpath debian13 --cases 'upgrade-oldpath-no-manual-step' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 2 ] || bad "oldpath case: expected the main and the old-path container"
 grep -q 'guest.sh debian13 oldpath$' "$tmp/log" || bad "oldpath case: no old-path run"
-expect_fail own-case-other-target ubuntu2604 --cases 'refusal-*' || true
-grep -q "refusal-\*" "$tmp/out" || bad "own-case-other-target: the glob is not named: $(tail -n 3 "$tmp/out")"
+expect_fail own-case-other-target arch --cases 'purge-*' || true
+grep -q "purge-\*" "$tmp/out" || bad "own-case-other-target: the glob is not named: $(tail -n 3 "$tmp/out")"
 # an Arch target has no old-path run: its cases are skipped in the main run and accounted there
 expect_ok arch-oldpath arch --cases 'upgrade-oldpath-*' || true
 [ "$(grep -c '^run ' "$tmp/log")" -eq 1 ] || bad "arch-oldpath: more than one container"
 grep -q '6 cases accounted for' "$tmp/out" || bad "arch-oldpath: $(tail -n 3 "$tmp/out")"
 # every target with a shared case, and the no-subset run unchanged
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
-    [ ! -f "$ROOT/e2e/targets/$T/refusal-only" ] || continue
-    expect_ok "subset $T" "$T" --cases nss-approve || true
+        expect_ok "subset $T" "$T" --cases nss-approve || true
     grep -q '1 cases accounted for' "$tmp/out" || bad "subset $T: $(tail -n 3 "$tmp/out")"
 done
 # the accounting of a subset: the selection reaches `check`
@@ -85,13 +84,6 @@ STUB_DUP=nss-deny expect_fail subset-dup debian13 --cases nss-approve nss-deny |
 grep -q "'nss-deny' reported twice" "$tmp/out" || bad "subset-dup: $(tail -n 3 "$tmp/out")"
 STUB_SKIP=nss-deny expect_fail subset-skip debian13 --cases nss-deny || true
 grep -q "'nss-deny' was skipped and is not on the skip list" "$tmp/out" || bad "subset-skip: $(tail -n 3 "$tmp/out")"
-# a refusal-only target: its own ids run, a shared id is refused as matching nothing
-expect_fail refusal-shared ubuntu2404 --cases nss-approve || true
-grep -q "no case matches 'nss-approve'" "$tmp/out" || bad "refusal-shared: $(tail -n 3 "$tmp/out")"
-[ ! -s "$tmp/log" ] || bad "refusal-shared: the engine was called"
-expect_ok refusal-own ubuntu2404 --cases 'refusal-no-*' || true
-grep -q 'E2E_SELECT=refusal-no-custodio-file custodio' "$tmp/log" || bad "refusal-own: $(sel_guest)"
-grep -q '1 cases accounted for' "$tmp/out" || bad "refusal-own: $(tail -n 3 "$tmp/out")"
 
 # refused before anything starts: no build, run or exec, and the offending name in the message
 refused() { # refused NAME NEEDLE ARGS...

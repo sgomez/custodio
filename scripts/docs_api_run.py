@@ -155,6 +155,21 @@ def static(doc_path):
     if len(set(msgs.values())) != len(msgs):
         bad.append("two errors share a message, so busctl cannot tell them apart")
 
+    # Storage kinds: the Debian 13 paragraph names the kind that is unavailable there and the error the code returns.
+    kinds = section(doc, r"^#+ Storage kinds")
+    kind_names = re.findall(r"^- kind `([\w-]+)`: .*TPM", kinds, re.M)
+    tpm_file = [k for k in kind_names if k.startswith("encrypted-")]
+    err = re.search(r"ImportError::Protect\(_\)[^=]*=> Self::(\w+)", src)
+    deb = next((squash(p) for p in re.split(r"\n\s*\n", kinds) if "Debian 13" in p), None)
+    if len(tpm_file) != 1 or not err:
+        bad.append("cannot derive the TPM-bound file kind or the Protect error from the document and error.rs")
+    elif deb is None:
+        bad.append("Storage kinds has no paragraph on Debian 13")
+    else:
+        for what in (tpm_file[0], err.group(1)):
+            if f"`{what}`" not in deb:
+                bad.append(f"the Debian 13 paragraph of Storage kinds does not name `{what}`")
+
     # Ownership.
     own = squash(section(doc, r"^#+ Ownership"))
     if not own:

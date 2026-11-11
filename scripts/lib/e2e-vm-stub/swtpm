@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+[ "${1:-}" != --version ] || echo "TPM emulator version 0.10.2-stub, Copyright"

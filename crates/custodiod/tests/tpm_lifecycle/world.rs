@@ -12,8 +12,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use custodiod::creds::systemd::SystemdCreds;
-use custodiod::creds::{Binding, header};
+use custodiod::creds::memory::MemoryCreds;
+use custodiod::creds::{Binding, CredsError, header};
 use custodiod::store::Kind;
 use custodiod::tpm::open::TestTcti;
 
@@ -60,21 +60,21 @@ pub const KEYS: [Key; 4] = [
 
 pub type Listed = Vec<(String, String, String, Vec<u8>)>;
 
-/// The service with its four keys, the `swtpm` behind it and the real credential tool.
+/// The service with its four keys, the `swtpm` behind it and the real credential tool (only to make PCR-bound
+/// credentials as a test tool; the service seals with in-memory TPM credentials).
 pub struct World {
     pub rig: Rig,
     pub svc: Svc,
     pub daemon: Daemon,
 }
 
-/// The `swtpm`, the real `systemd-creds` bound to it, and a service that imported the four keys through the bus. The
+/// The `swtpm`, in-memory TPM credentials, and a service that imported the four keys through the bus. The
 /// `tpm` keys are imported while the TPM serves everything, the `encrypted-tpm` ones while it lacks `Import`.
 pub async fn world() -> Res<World> {
     let rig = Rig::new()?;
     let daemon = Daemon::start()?;
-    let client = SystemdCreds::new(daemon.socket.clone(), daemon.wrapper(), Some(rig.tcti()));
     let tpm = Counting::new(TestTcti::new(&rig.tcti()));
-    let svc = Svc::start(tpm, SpyCreds::new(client), Answer::Yes).await?;
+    let svc = Svc::start(tpm, SpyCreds::new(MemoryCreds::tpm()), Answer::Yes).await?;
     for key in KEYS.iter().filter(|k| k.kind == Kind::Tpm) {
         let got = svc
             .import(key.id, key.subject.p12, SENTINEL_PASSWORD)
@@ -156,6 +156,16 @@ impl World {
                 )
             })
             .collect()
+    }
+
+    /// Clears the `swtpm`. A credential bound to it can no longer be opened, which the in-memory credentials cannot show
+    /// by themselves: they are told to fail every decryption as `CannotDecrypt`, the answer of the daemon.
+    pub fn clear_tpm(&self) -> Res<()> {
+        self.rig.tpm.clear()?;
+        self.svc
+            .creds
+            .fail_decrypt_with(Some(CredsError::CannotDecrypt));
+        Ok(())
     }
 
     pub fn pcrs(&self) -> BTreeMap<u32, String> {
@@ -245,13 +255,11 @@ pub fn extend_all(rig: &Rig) {
     }
 }
 
-/// Whether `credential` is a TPM credential of the real tool with an empty PCR mask: the header names a TPM key (not
-/// the host key, not the null key), the mask at offset 48 is zero, and the sealed key is there.
-pub fn is_real_tpm_credential(credential: &[u8]) -> bool {
+/// Whether `credential` is a TPM credential with an empty PCR mask: the header names a TPM key (not the host key, not
+/// the null key), the mask at offset 48 is zero, and the sealed key follows.
+pub fn is_tpm_credential(credential: &[u8]) -> bool {
     let mask: Option<[u8; 8]> = credential.get(48..56).and_then(|b| b.try_into().ok());
-    header::inspect(credential) == Ok(Binding::Tpm)
-        && mask == Some([0; 8])
-        && credential.len() > 150
+    header::inspect(credential) == Ok(Binding::Tpm) && mask == Some([0; 8]) && credential.len() > 56
 }
 
 /// The message `docs/api.md` documents for an error: the text after "Message" in its bullet.

@@ -1,5 +1,5 @@
 //! The journal names the storage kind and the cause of a failure (F120): the real service on a private bus with fake
-//! polkit, a software TPM, the real `systemd-creds` where a row needs it and a credential double elsewhere, and the
+//! polkit, a software TPM, and a credential double, and the
 //! in-memory sink. The entries are read as typed values, as the fields they produce, and as the datagram the
 //! `JournalSink` sends.
 //!
@@ -17,10 +17,6 @@ mod case;
 #[allow(dead_code, unused_imports)]
 #[path = "audit/common.rs"]
 mod common;
-// Shared with `creds`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "creds/env.rs"]
-mod env;
 #[path = "kind_audit/import.rs"]
 mod import;
 // Shared with `sign_kinds`: this target does not use every helper of it.
@@ -33,10 +29,6 @@ mod kit;
 mod oracle;
 #[path = "kind_audit/queries.rs"]
 mod queries;
-// Shared with `sign_kinds`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "sign_kinds/real.rs"]
-mod real;
 // Shared with `storage_choice`: this target does not use every helper of it.
 #[allow(dead_code)]
 #[path = "storage_choice/rig.rs"]

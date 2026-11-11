@@ -48,6 +48,10 @@ if [ -e BLOCKED.md ]; then
   next "just harness unblock \"<your answer>\" (an agent applies it), or apply it yourself, then: just harness unblock"
 fi
 if [ ! -f SPEC.md ]; then
+  # Closed (archived) on its branch and no tag on the head yet: release.sh picks up where it was.
+  if [ ! -f IDEA.md ] && [[ $(git branch --show-current) == milestone/m* ]] && [ -z "$(git tag --contains HEAD)" ]; then
+    next "just release"
+  fi
   [ -f IDEA.md ] || next "just milestone open"
   grep -q '^TODO:' IDEA.md && next "write IDEA.md (replace the TODO line), then: just harness run"
   next "just harness run   (the planner writes SPEC.md)"
@@ -99,9 +103,6 @@ if [ "$done_" = "$total" ]; then
     echo "Check these by hand: $manual"
     next "check them by hand, then for each: just milestone pass <id>"
   fi
-  # Released when a tag contains the last change to features.json (the last feature marked).
-  last=$(git log -1 --format=%H -- features.json)
-  [ -n "$(git tag --contains "$last")" ] || next "just release"
   next "just milestone close"
 fi
 next "just harness run   (or: just harness try, to spend at most 3 sessions)"

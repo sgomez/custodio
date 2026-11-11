@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test of the M2 parts of docs/manual-acceptance.md (F52): each machine's part (found by its heading) holds the commands SPEC.md
-# acceptance 12 to 15 ask for, in order, and they match docs/install.md, docs/audit.md and e2e/refusal-lib.sh. Each kind of check has a
+# acceptance 12 to 15 ask for, in order, and they match docs/install.md, docs/audit.md. Each kind of check has a
 # negative control: a fixture copy with the claim broken must fail and must differ from the real page.
 # Usage: scripts/test-docs-manual.sh   (DOC and INSTALL override the real files; CHECK_ONLY=1 only checks DOC).
 set -euo pipefail
@@ -17,17 +17,15 @@ section() { # section DOC HEADING_REGEX: the heading that matches up to the next
 
 # The base query of docs/audit.md: the line that lists all entries of the service.
 audit_query() { grep -E '^journalctl _SYSTEMD_UNIT=custodio.service _UID=\$\(id -u custodio\) MESSAGE_ID=[0-9a-f]+$' docs/audit.md | head -n 1; }
-REFUSAL=$(sed -n "s/^REFUSAL_PHRASE='\(.*\)'$/\1/p" e2e/refusal-lib.sh)
 
 check() {
     local doc=$1 install=$2 fail=0 m part
     bad() { echo "manual-acceptance: $*" >&2; fail=1; }
     need() { grep -Eq -- "$1" <<< "$part" || bad "$m: $2"; } # need REGEX WHAT, on $part
     needF() { grep -qF -- "$1" <<< "$part" || bad "$m: $2"; }
-    [ -n "$REFUSAL" ] || bad "no refusal phrase in e2e/refusal-lib.sh"
     local q; q=$(audit_query); [ -n "$q" ] || bad "no base query in docs/audit.md"
 
-    for m in fedora44 bazzite omarchy ubuntu2404; do
+    for m in fedora44 bazzite omarchy; do
         part=$(section "$doc" "^## .*$m")
         [ -n "$part" ] || { bad "$m: no part with that heading"; continue; }
         need '/etc/os-release' "no OS release command"
@@ -62,12 +60,14 @@ check() {
     m=omarchy; part=$(section "$doc" "^## .*$m")
     need '^sudo pacman -U custodio-.*pkg\.tar\.zst' "no pacman -U"
 
+    # The ubuntu2404 part is marked as no longer applicable, and what it points to exists: the package floor in the packaging and the section of install.md.
     m=ubuntu2404; part=$(section "$doc" "^## .*$m")
-    need '^sudo dpkg -i \./?custodio_|^sudo dpkg -i custodio_' "no dpkg -i"
-    needF "$REFUSAL" "the refusal phrase is not the one of e2e/refusal-lib.sh"
-    need 'sudo apt-get install dbus-broker' "no switch command"; need 'reboot' "no reboot"
-    need 'loginctl' "no logind check"
-    need 'custodio import' "no import"
+    [ -n "$part" ] || bad "$m: no part with that heading"
+    need 'no longer applicable' "the part is not marked as no longer applicable"
+    need 'docs/install\.md' "the part does not point to docs/install.md"
+    grep -Eq '^#+ .*Supported systems' "$install" || bad "$m: docs/install.md has no Supported systems section, which the part points to"
+    [ ! -e e2e/targets/ubuntu2404 ] || bad "$m: the e2e target exists, so the part is not obsolete"
+    grep -Eq '^[[:space:]]*- systemd \(>= 257\)' packaging/nfpm.yaml || bad "$m: packaging/nfpm.yaml has no systemd 257 floor, which the part names"
 
     return $fail
 }
@@ -103,8 +103,7 @@ control_in 'no replace step' bazzite 's/rpm-ostree uninstall custodio --install/
 control_in 'no OS update' bazzite 's/rpm-ostree upgrade/rpm-ostree status/g'
 control_in 'no reboot after the OS update' bazzite '/rpm-ostree upgrade/,$ s/reboot/restart/g'
 control_in 'no SELinux check (bazzite)' bazzite 's/ausearch -m AVC/grep AVC/g'
-control_in 'wrong refusal phrase' ubuntu2404 "s/$REFUSAL/is refused/g"
-control_in 'no logind check' ubuntu2404 's/loginctl/who/g'
-control_in 'no dbus-broker switch' ubuntu2404 's/sudo apt-get install dbus-broker/true/'
+control_in 'ubuntu2404 part not marked' ubuntu2404 's/no longer applicable/applicable/g'
+control_in 'ubuntu2404 part points nowhere' ubuntu2404 's#docs/install\.md#the install page#g'
 
 echo "test-docs-manual: ok"

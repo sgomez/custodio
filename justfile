@@ -118,6 +118,16 @@ script-tests:
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
 system-gates: security-score unit-hardening unit-verify bus-policy
 
+# What the VM target needs on this machine: KVM the user can open, QEMU, OVMF, swtpm, the seed tool, gpgv and the Ubuntu keyring.
+# It fails naming each missing one and never offers software emulation (docs/findings/F150.md).
+vm-host-check:
+    scripts/vm-host-check.sh
+
+# Downloads the pinned Ubuntu 26.04 minimal cloud image into a per-user cache outside the repository, verifies Ubuntu's signature
+# on SHA256SUMS (gpgv) and the image against it, and prints its path, serial and SHA-256. A cached image is verified again.
+vm-image:
+    e2e/vm/image.sh
+
 # The tests of the package gates and of the lifecycle scripts, on small fixture packages built with nfpm (needs nfpm, rpm, bsdtar, zstd, gcc).
 package-gate-test:
     scripts/test-package-scripts.sh
@@ -143,6 +153,11 @@ test-scripts:
     scripts/check-tpm-install-sync.sh
     scripts/test-tpm-install-sync.sh
     scripts/test-with-swtpm.sh
+    scripts/test-vm-credread.sh
+    scripts/test-vm-host-check.sh
+    scripts/test-vm-image.sh
+    scripts/test-vm-launch.sh
+    scripts/test-vm-modes.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
@@ -150,6 +165,7 @@ test-scripts:
     scripts/test-docs-manual.sh
     scripts/test-docs-manual-m3.sh
     scripts/test-docs-manual-m4.sh
+    scripts/test-docs-manual-m5.sh
     scripts/test-install-real.sh
     scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
@@ -161,6 +177,12 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
+    scripts/test-ci-e2e-vm.sh
+    scripts/test-e2e-vm-cases.sh
+    scripts/test-vm-gap-map.sh
+    scripts/test-e2e-vm-host.sh
+    scripts/test-e2e-vm-kinds.sh
+    scripts/test-e2e-vm-silent.sh
     scripts/test-e2e-select.sh
     scripts/test-e2e-owner.sh
     scripts/test-e2e-ops.sh
@@ -194,7 +216,6 @@ test-scripts:
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
-    scripts/test-e2e-refusal.sh
     scripts/test-e2e-oldpath.sh
     scripts/test-e2e-import.sh
     scripts/test-relabel.sh
@@ -457,6 +478,19 @@ e2e-packages: package
 # case exactly once and no other. A name that matches no case of the target is refused before any container starts.
 e2e-cases target +names: e2e-packages
     bash e2e/run.sh {{target}} --cases {{quote(names)}}
+
+# F160: one run of the e2e cases in a VM (Ubuntu 26.04 under QEMU/KVM, a virtual TPM): `just e2e-vm full` or `lacking` (the TPM mode, e2e/vm/vm.sh). The package is built and installed with apt
+# `--no-install-recommends`, the shared setup and every case of e2e/vm/cases.list run in the guest, and the record goes to target/e2e/vm.<mode>.record. The mode is checked before a package is built.
+e2e-vm mode: (e2e-vm-check mode) e2e-packages
+    bash e2e/vm/run.sh {{mode}}
+
+# Like `e2e-vm` for the cases whose ids equal a name or match it as a glob (e.g. `just e2e-vm-cases full 'sign-*'`); a name that matches no case of e2e/vm/cases.list is refused before anything starts.
+e2e-vm-cases mode +names: (e2e-vm-check mode quote(names)) e2e-packages
+    bash e2e/vm/run.sh {{mode}} {{quote(names)}}
+
+# The checks that come before anything is built or started (the mode, the names)
+e2e-vm-check mode names='':
+    bash e2e/vm/run.sh --check {{mode}} {{names}}
 
 # Slow checks (later features add to it): everything in `check`, the memory-safety checks, mutation testing, coverage with the CRAP
 # gate, and the package gates. The integration tests run under coverage. CI runs each of these as its own job.

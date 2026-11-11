@@ -24,3 +24,28 @@ tk_make() {
         rm -f "$d/$t.key"
     done
 }
+
+# tpmkind_judge MODE DIR JOURNAL_PROBLEMS (F161): judges the files of the step in DIR and reports (case_run) the cases that have no problem. The problems of the others are
+# collected in TK_PROBLEMS, one block per case (empty when all is right). MODE is the mode of tpmkind.py: swtpm (container; kind tpm), full or lacking (a VM run).
+TK_PROBLEMS=''
+tpmkind_judge() {
+    local m=$1 d=$2 jp=$3 here
+    here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+    TK_PROBLEMS=''
+    tk_one() { # CASE PROBLEMS: the case is reported when it has no problem
+        local p
+        p=$(printf '%s\n' "$2" | sed '/^$/d')
+        if [ -z "$p" ]; then case_run "$1"; else TK_PROBLEMS="$TK_PROBLEMS
+$1:
+$p"; fi
+    }
+    tk_py() { python3 -I "$here/tpmkind.py" --mode "$m" "$@"; }
+    tk_one tpm-kind-import-rsa "$(tk_py import "$d/import-rsa.out" tk-rsa rsa2048)"
+    tk_one tpm-kind-import-ec "$(tk_py import "$d/import-ec.out" tk-ec ecdsa-p256)"
+    tk_one tpm-kind-api-list "$(tk_py api "$d/api.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)"
+    tk_one tpm-kind-cli-list "$(tk_py cli "$d/cli.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)"
+    tk_one tpm-kind-journal "$jp"
+    if grep -qE '^tk-(rsa|ec)	' "$d/api-after.out"; then TK_PROBLEMS="$TK_PROBLEMS
+end:
+a key of the cases is still listed after the deletes"; fi
+}

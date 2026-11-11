@@ -42,9 +42,9 @@ if not sonames:
 cfg = yaml.safe_load(open(config_path))
 
 
-def declared(label):
+def declared(label, depends_only=False):
     names = [re.sub(r"\s+", " ", d.strip()) for d in cfg["overrides"][NFPM[label]].get("depends", [])]
-    if label == "deb":
+    if label == "deb" and not depends_only:
         names += [re.sub(r"\s+", " ", d.strip()) for d in cfg.get("deb", {}).get("predepends", [])]
     return {re.split(r"[ (<>=]", n)[0] for n in names}
 
@@ -59,6 +59,11 @@ for soname in sonames:
         # An `a | b` alternative in the table is satisfied by either name.
         if not any(alt.strip() in declared(label) for alt in package.split("|")):
             problems.append(f"{label}: {soname} needs package '{package}', which {config_path} does not declare")
+# Loaded by dlopen, so no soname names them: they must be in Depends (Pre-Depends and Recommends do not count).
+for index, label in enumerate(LABELS):
+    for package in expected.TSS_DLOPEN[label]:
+        if package not in declared(label, depends_only=True):
+            problems.append(f"{label}: {package} (loaded by dlopen) must be in Depends, which {config_path} does not declare")
 if problems:
     print("check-tss-deps: " + "\ncheck-tss-deps: ".join(problems), file=sys.stderr)
     sys.exit(1)

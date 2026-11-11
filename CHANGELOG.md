@@ -1,3 +1,158 @@
+## [0.7.0] - 2026-11-11
+
+### 🚀 Features
+
+- *(F150)* Add vm-host-check, vm tools in the dev container and the kvm finding
+- *(F151)* Record the swtpm, tpm-crb and OVMF boot of the 26.04 minimal image
+- *(F152)* Record how to make the virtual tpm lack rsa, with an swtpm 0.10 profile
+- *(F153)* Record systemd 259 credential header and key ids
+- *(F154)* Require libtss2-rc0t64 in the deb and systemd 257 everywhere
+- *(F155)* Keep only the user-scoped varlink route in the credential client
+- *(F156)* Drop the ubuntu2404 e2e target; install.md states the systemd 257 floor
+- *(F157)* Add the harness's credential reader and its self-test
+- *(F158)* Download and verify the ubuntu 26.04 minimal cloud image
+- *(F159)* Add the vm launcher and its stub-based self-test
+- *(F159)* Add the lacking mode, the modes self-test and the container swtpm 0.10.2
+- *(F160)* Add the vm case list, the vm accounting and the vm-only judges
+- *(F160)* Add the vm mode of the guest script
+- *(F160)* Add the vm host driver and the e2e-vm recipes
+- *(F160)* Tick the host, guest and vm-only steps; keep guest.sh greppable paths
+- *(F160)* Ship the packages and the e2e tree on a read-only payload drive
+- *(F160)* Fix the payload drive, the guest session and the judges from the real probe
+- *(F161)* Drop TPM2_Sign from the lacking profile and probe it in a real guest
+- *(F161)* Judge the tpm kinds per vm mode and read the stored credential
+- *(F161)* Judge the tpmbound fallback cases in both vm modes
+- *(F161)* Add the vm-silent cases with the library hidden and restored
+- *(F161)* Fix the hiding and the has-tpm2 reading from the real lacking guest
+- *(F162)* Make sign and noplain runners aware of the VM modes with the reader in lacking
+- *(F162)* Record the real-guest runs and tick the contract
+- *(F163)* Make the pcr cases VM-aware with a two-half run around the power cycle
+- *(F163)* Split the vm run around the power cycle for the pcr cases
+- *(F163)* Make the tpm-clear cases VM-aware with the guest's own tpm
+- *(F163)* Make the upgrade-kinds cases VM-aware and check the real payload
+- *(F163)* Make the upgrade-kinds cases VM-aware and check the real payload
+- *(F164)* Add the vm e2e workflow for the release pull request and its test
+- *(F165)* Add the pcr mask steps for debian 13 and their test
+
+### 🐛 Bug Fixes
+
+- *(F121)* Purge the top-level key files of the M0–M2 layout
+- *(F81)* Take the cgroup prefix up to the last system.slice
+- *(F150)* Verify kvm on the linux host and keep the image cache
+- *(F152)* Remove p-256 by dropping tpm2_sign, correct the api.md reading and the leftovers
+- *(F158)* Run the self-test controls at once and record the missing gpg-agent
+- *(F160)* Fix the test-tool guard and a self-test race; block on the serial copy rate
+- *(F160)* Make the good-run payload check fail the self-test
+- *(F161)* Run the real scripts in the self-tests and fail when the keys were never imported
+- *(F162)* Check the sign job list against a fixed table with salt and mechanism controls
+- *(F163)* Take the expected state owner from the state directory in a vm upgrade
+- *(F163)* Import the setup keys again after the vm tpm clear
+- *(F163)* Cover the setup key restore with fixtures, pin the vm state owner and drop debug output
+- *(F168)* Keep the package-tool word out of the guest.sh comment
+- *(harness)* Give the dev container's cgroup back to dev for nested systemd
+- *(harness)* Point just status and milestone close to close, then release
+- *(F168)* Read the vm gap table from e2e/vm/gaps.md, not the contract
+- *(harness)* Keep bash as pid 1 in the dev container so orphans are reaped
+- *(F168)* Avoid a sigpipe race in the case-script check of test-e2e-vm-cases
+- *(F159)* Keep the qemu stub alive when a client resets the serial socket
+
+### 📚 Documentation
+
+- Mark M4 as done in the milestones
+- Accept the M4 spec deviations and plan M4.1
+- Close milestone M4
+- Number the encrypted fallback milestone M5 and the public release M6
+- Plan M5 on one ubuntu 26.04 minimal vm and move pending items to unassigned
+- Open milestone M5
+- Update IDEA.md
+- Add spec drafted by the planner
+- Trim the M5 spec and set systemd 257 as the floor
+- *(F150)* Add contract
+- *(F150)* Revise contract
+- *(F150)* Mark the first evidence block as the pre-rebuild container
+- *(F151)* Add contract
+- *(F152)* Add contract
+- *(F153)* Add contract
+- *(F154)* Add contract
+- *(F154)* Revise contract
+- *(F155)* Add contract
+- *(F155)* Tick the contract and record progress
+- *(F156)* Add contract
+- *(F157)* Add contract
+- *(F157)* Revise contract after evaluator
+- *(F158)* Add contract
+- *(F158)* Amend contract to build test keys without gpg-agent
+- *(F159)* Add contract
+- *(F159)* Amend contract to follow the evaluator's notes
+- *(F159)* Unblock after rebuilding the dev container with swtpm 0.10.2
+- *(F159)* Record the evidence rerun after the container rebuild
+- *(F160)* Add contract
+- *(F160)* Revise contract after evaluator review
+- *(F160)* Amend contract to condense the cost paragraph under the token limit
+- *(F160)* Amend contracts for a read-only payload drive instead of the serial copy
+- Answer the blocked question
+- *(F161)* Add contract
+- *(F161)* Take the evaluator's notes
+- *(F161)* Revise contract for p-256 encrypted-tpm in lacking
+- *(F162)* Add contract
+- *(F163)* Add contract
+- *(F163)* Record the real-guest probe and settle the clear route and PCR equality
+- *(F163)* Add the progress entry for the probe
+- *(F163)* Amend contract to settle the mapping rows and the equality control
+- *(F163)* Record the file split and the open quick run
+- *(F163)* Amend contract to record dpkg upgrade, payload test location and costs
+- *(F163)* Amend contract to install n+1 with apt in the vm and fix the upgrade install
+- *(F163)* Record the final recheck of the verify scripts
+- *(F164)* Add contract
+- *(F165)* Add contract
+- *(F165)* Revise contract after review
+- *(F165)* Fold in evaluator notes
+- *(F166)* Record the manual acceptance run
+- *(F167)* Add contract
+- *(F167)* Revise contract
+- *(F167)* Amend contract to name the real tests
+- *(F167)* State the Debian 13 PCR 7 reading in api, install and F110
+- *(F168)* Add contract
+- *(F168)* Tick the baseline and checker steps
+- *(F168)* Record the baseline, vm runs and the container blocker
+- *(F168)* Record coverage, tick the passing steps
+- *(F168)* Record the passing container e2e run and tick the step
+- Answer the blocked question
+- *(F168)* Tick the final step and record the recount
+- *(F168)* Ask for the alma10 e2e budget, the dnf metadata download varies
+- Answer the blocked question
+- *(F168)* Record the alma10 and fedora44 times after the dnf cache
+- *(F169)* Record the manual acceptance run
+- Close milestone M5
+
+### 🧪 Testing
+
+- *(F121)* Take a foreign uid from the store, not a fixed 1001
+- *(F115)* Put the creds socket where other namespace uids can reach it
+- *(F156)* Add a ghost-target control to the e2e workflow test
+- *(F160)* Add the vm host self-test with a stub vm, the guest and the vm-only sections
+- *(F163)* Print the token mechanisms when the rsa signature after the upgrade fails
+- *(F163)* Print the d-bus error and the journal when the rsa signature after the upgrade fails
+- *(F168)* Add the gap table checker and its self-test
+- *(custodiod)* Catch the three mutants that survived the release run
+
+### ⚙️ Miscellaneous Tasks
+
+- Build packages on ubuntu 26.04 and install nextest for the mutants diff
+- Run e2e on 24.04 with tpm2-tss 4.1.3 and allow user namespaces for the creds tests
+- Skip the mutants diff on prs labelled skip-mutants and on pr merges
+- Sign off gates locally and release milestones through their pr
+- Move e2e and the mutants diff to their own workflows
+- Skip what check-slow covers on a signed-off milestone pr
+- Name signoffs after the checks they replace and run every gate on prs
+- Run at most 8 mutants shards at once, print every outcome, drop the tag trigger
+- Add feature list drafted by the initializer
+- *(budgets)* Drop the ubuntu2404 row and add the vm full and lacking budgets
+
+### 💼 Other
+
+- *(F159)* Unpack swtpm 0.10.2 under /opt/swtpm and report an swtpm without --profile
+- *(F168)* Cache dnf metadata in the alma10 and fedora44 images
 ## [0.6.0] - 2026-11-07
 
 ### 🚀 Features

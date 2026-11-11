@@ -19,9 +19,9 @@ mutant() { # NAME FILE SED-EXPRESSION: a weakened copy of the judgements must be
     if cmp -s "$ROOT/e2e/$2" "$tmp/$1/$2"; then bad "mutant $1 changes nothing"; fi
     ( if bash "$tmp/$1/tpmkind-selftest.sh" > /dev/null 2>&1; then echo "mutant $1 was not caught" > "$tmp/$1/result"; fi ) &
 }
-mutant kind-substring tpmkind.py 's/e.get("CUSTODIO_STORAGE_KIND") != TPM/"tpm" not in str(e.get("CUSTODIO_STORAGE_KIND"))/'
-mutant api-kind-ignored tpmkind.py 's/if mine\[0\]\[2\] != TPM:/if False:/'
-mutant cli-kind-ignored tpmkind.py 's/if mine\[0\].get("kind") != TPM:/if False:/'
+mutant kind-substring tpmkind.py 's/e.get("CUSTODIO_STORAGE_KIND") != KIND/"tpm" not in str(e.get("CUSTODIO_STORAGE_KIND"))/'
+mutant api-kind-ignored tpmkind.py 's/if mine\[0\]\[2\] != KIND:/if False:/'
+mutant cli-kind-ignored tpmkind.py 's/if mine\[0\].get("kind") != KIND:/if False:/'
 mutant outcome-ignored tpmkind.py "s/e.get(\"CUSTODIO_OUTCOME\") != \"stored\"/False/"
 mutant storage-prefix tpmkind.py 's/re.fullmatch(r"Storage: tpm.*, storage\[0\])/storage[0].startswith("Storage: tpm")/'
 mutant fixture-size tpmkind-lib.sh 's/(2048 bit/(/'

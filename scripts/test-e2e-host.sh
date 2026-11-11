@@ -21,12 +21,6 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     pkg=$(find "$tmp/pkgs" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$pkg" ] || bad "$T: package.pattern matches none of the fake packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/pkgs/$pkg:/pkg/$pkg:ro" || bad "the package is not mounted read-only"
-    if [ -f "$ROOT/e2e/targets/$T/refusal-only" ]; then
-        # F50: the package never installs on this target; no N+1 and no old-path package, one read-only mount
-        [ "$(grep -o -- '-v [^ ]*:/pkg[^ ]*:ro' "$tmp/log" | sort -u | wc -l)" -eq 1 ] || bad "$T: a refusal-only target mounts more than the package"
-        grep -q 'pkg-next\|pkg-oldpath' "$tmp/log" && bad "$T: a refusal-only target mounts N+1 or the old-path package"
-        continue
-    fi
     nxt=$(find "$tmp/next" -name "$(head -n 1 "$ROOT/e2e/targets/$T/package.pattern")" -exec basename {} \; | sort | tail -n 1)
     [ -n "$nxt" ] || bad "$T: package.pattern matches none of the fake N+1 packages"
     grep '^run ' "$tmp/log" | grep -q -- "$tmp/next/$nxt:/pkg-next/$nxt:ro" || bad "$T: N+1 is not mounted read-only at /pkg-next"
@@ -73,7 +67,7 @@ done
 
 # --- unknown target: names the targets, never calls the engine
 expect_fail unknown-target nope || true
-grep -q 'available targets: alma10 arch debian13 fedora44 ubuntu2404 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
+grep -q 'available targets: alma10 arch debian13 fedora44 ubuntu2604' "$tmp/out" || bad "an unknown target does not name the available ones"
 [ ! -s "$tmp/log" ] || bad "the engine was called for an unknown target"
 expect_fail path-target ../targets/debian13 || true
 [ ! -s "$tmp/log" ] || bad "the engine was called for a target with a path"
@@ -154,7 +148,7 @@ grep -q 'same file' "$tmp/out" || bad "N used as N+1 was not named: $(tail -n 3 
 own_ids="purge-service-stopped purge-no-packaged-files purge-not-activatable purge-state-unchanged purge-account-kept purge-notice-keys reinstall-after-purge-keys-listed reinstall-after-purge-signs-with-polkit reinstall-after-purge-no-import"
 for T in $(cd "$ROOT/e2e/targets" && echo *); do
     # the target's own cases.list belongs to the deb targets only
-    case $T in debian13 | ubuntu2604 | ubuntu2404) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
+    case $T in debian13 | ubuntu2604) ;; *) [ ! -e "$ROOT/e2e/targets/$T/cases.list" ] || bad "$T has its own cases.list" ;; esac
 done
 for id in $own_ids; do
     grep -qx "$id" "$ROOT/e2e/targets/debian13/cases.list" || bad "debian13/cases.list lacks $id"

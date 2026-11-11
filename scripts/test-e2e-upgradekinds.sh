@@ -273,6 +273,9 @@ printf 'import sys\nsys.exit("crash")\n' > "$tmp/crash/upgradekinds.py"
 if runuk swtpm "$tmp/ev-swtpm" "$tmp/crash/upgrade-kinds.sh"; then bad "a crashed judgement did not stop the run"; fi
 grep -q '^E2E-CASE run' "$tmp/out" && bad "a crashed judgement still reported a case run"
 
+# shellcheck disable=SC1091 # the section is a part of this script, linted on its own as shellcheck shell=bash
+source "$ROOT/scripts/lib/e2e-upgradekinds-vm-section.sh"
+
 # --- upgrade.sh calls the step where each case needs it
 line() { grep -n -- "$1" "$ROOT/e2e/upgrade.sh" | head -n 1 | cut -d: -f1; }
 before() { # WHAT A B: line A is found and comes before line B
@@ -289,4 +292,5 @@ before "the cursor" 'kinds cursor' 'user_run sign'
 before "the round's listing" 'kinds collect round' 'kinds signs'
 before "the signs judgement" 'kinds signs' 'accts cleanup'
 before "the skip" 'kinds tpmbound' '^# END upgrade-case'
+before "the reader before the install" 'kinds reader' 'bash "$install"'
 exit "$fail"

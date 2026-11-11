@@ -93,6 +93,8 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "two error messages swapped" static sed 's/Message `not authorized`/Message `@@`/; s/Message `no such key`/Message `not authorized`/; s/Message `@@`/Message `no such key`/'
     control "error name altered" run sed '0,/error=PolkitDenied/s//error=NoSuchKey/'
     control "example removed for one operation" run drop_blocks 'op=ReplaceCertificate'
+    control "Debian 13 paragraph names another error" static sed '/^On Debian 13/,/^$/ s/`CredentialsUnavailable`/`TpmFailed`/'
+    control "Debian 13 paragraph names another kind" static sed '/^On Debian 13/,/^$/ s/`encrypted-tpm`/`tpm`/'
     control "command broken" run sed '0,/ ListKeys$/s// ListKeyz/'
 fi
 if [ "$fail" != 0 ]; then echo "test-docs-api: FAILED" >&2; exit 1; fi

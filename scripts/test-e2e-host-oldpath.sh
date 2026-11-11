@@ -26,7 +26,6 @@ for T in $(cd "$ROOT/e2e/targets" && echo *); do
     arch | fedora44 | ubuntu2604)
         [ -s "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "$T has no no-oldpath marker with a reason"
         for id in $oldpath_ids; do grep -q "^$id:" "$ROOT/e2e/targets/$T/skip.list" || bad "the $T skip list lacks $id"; done ;;
-    ubuntu2404) [ -f "$ROOT/e2e/targets/$T/refusal-only" ] || bad "ubuntu2404 is not refusal-only" ;;
     debian13 | alma10) [ ! -e "$ROOT/e2e/targets/$T/no-oldpath" ] || bad "$T has a no-oldpath marker, so no target of its format runs the upgrade from the old path" ;;
     *) bad "unknown target $T: say whether it runs the upgrade from the old path" ;;
     esac

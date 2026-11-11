@@ -12,11 +12,21 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$here/report.sh"
 # shellcheck source=e2e/tpmkind-lib.sh
 source "$here/tpmkind-lib.sh"
-CHECK=/e2e-noplain/scripts/check-no-plaintext.sh
+# NP_CHECK and NP_STATE_DIR exist for the self-test on fixtures; the defaults are the real paths
+CHECK=${NP_CHECK:-/e2e-noplain/scripts/check-no-plaintext.sh}
 [ -r "$CHECK" ] || fail "scripts/check-no-plaintext.sh is not mounted at $CHECK"
 for tool in openssl python3; do command -v "$tool" > /dev/null || fail "$tool is not installed"; done
 
 mode=${E2E_TPM:-swtpm}
+# F162: in a VM run (E2E_VM=1) the TPM is the VM's own: swtpm is the full mode (kind tpm), lacking is the lacking mode (kind encrypted-tpm, read back with the reader of F157 after both imports).
+read_creds=''
+if [ -n "${E2E_VM:-}" ]; then
+    case $mode in
+    swtpm) mode=vm-full ;;
+    lacking) mode=vm-lacking read_creds=1 ;;
+    *) fail "a VM run has the TPM mode swtpm or lacking, not '$mode'" ;;
+    esac
+fi
 NP=$WORK/noplain
 rm -rf "$NP"
 mkdir "$NP"
@@ -27,7 +37,7 @@ fx="$(fixture_problems "$NP/rsa.p12" rsa)
 $(fixture_problems "$NP/ec.p12" ec)"
 [ "$(printf '%s' "$fx" | tr -d '[:space:]')" = '' ] || fail "the fixtures are not what the cases need: $fx"
 
-state=$(readlink -f /var/lib/custodio)
+state=$(readlink -f "${NP_STATE_DIR:-/var/lib/custodio}")
 [ -d "$state" ] || fail "the state directory $state does not exist"
 echo "noplain: state directory $state (as the service sees it: /var/lib/custodio)"
 np() { python3 -I "$here/noplain.py" "$@"; }
@@ -91,6 +101,13 @@ if [ -s "$NP/job-control.out" ]; then problems="$problems
 control:
 $(cat "$NP/job-control.out")"; fi
 
+if [ -n "$read_creds" ]; then # both keys are stored now; the deletes come after the reader
+    # shellcheck source=e2e/vm/cred-lib.sh
+    source "$here/vm/cred-lib.sh"
+    for id in np-rsa np-ec; do vm_read_credential "$id" || problems="$problems
+reader:
+$id: the credential of an encrypted-tpm key did not pass the reader"; done
+fi
 alice delete
 if grep -qE '^np-(rsa|ec)	' "$NP/list-after.out"; then problems="$problems
 end:

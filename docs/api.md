@@ -342,6 +342,12 @@ cannot be opened, answered with an error, or its owner hierarchy is unusable) or
 nothing and never falls through to a weaker kind: a fault never makes the service silently store a key with less
 protection than the machine can give. The kind is always visible, in the import result and in `ListKeys`.
 
+On Debian 13 (systemd 257) `encrypted-tpm` is unavailable when a TPM is present. The credential service there binds a
+user-scoped credential to PCR 7 (mask `0x80`), verified in `docs/findings/F166.md` on Debian 13.7, and the caller cannot
+change that. The service refuses a credential with a nonzero PCR mask, so `ImportP12` ends in `CredentialsUnavailable`
+and never in a weaker kind; without a TPM the credential is bound to the host and `encrypted-host` is chosen. Alma 10
+also has systemd 257: it is inferred from the Debian 13 reading, not run.
+
 ## TPM capabilities
 
 The service keeps a key in the TPM only when the TPM has everything the key type needs. It asks the TPM once, with

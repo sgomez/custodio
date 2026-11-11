@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | recommends-add FMT DEP | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
 """
 import sys
 
@@ -81,6 +81,8 @@ elif op == "dep-del":
 elif op == "dep-set":
     deps = cfg["overrides"][args[0]]["depends"]
     deps[deps.index(args[1])] = args[2]
+elif op == "recommends-add":  # the dependency is only recommended
+    cfg["overrides"][args[0]].setdefault("recommends", []).append(args[1])
 elif op == "provides-add":
     cfg["overrides"][args[0]].setdefault("provides", []).append(args[1])
 elif op == "predep-add":  # the deb's Pre-Depends (top-level deb section)

@@ -112,13 +112,15 @@ Format: a title and three short bullets, a couple of lines each:
 - Rejected: relaxing the store's symlink check; running as root (SPEC forbids).
 
 ## 2026-11-07 — CI
-- Decision: required checks `ci`, `e2e`, `just mutants (diff)`, one workflow each; actions pinned
-  by SHA, tools to `mise.toml`; every PR runs all of them, a weekly job sweeps every mutant.
+- Decision: required checks `ci`, `e2e`, `just mutants (diff)`, `e2e-vm`, one workflow each (ruleset
+  "main: pull requests"); actions pinned by SHA, tools to `mise.toml`; every PR runs all of them
+  (`e2e-vm` starts the VM only on a milestone PR), a weekly job sweeps every mutant.
   `just signoff ci|mutants` runs a check locally, pushes and signs off (gh-signoff): CI skips it.
   A milestone PR must be signed off by `just release` (after `check-slow`); e2e still runs.
 - Why: a milestone's mutants diff (882) passed the 30-minute timeout; e2e alone found a product bug
   that local runs did not; coverage and memory-safety after the merge were no gate.
-- Rejected: a skip label (no proof anything ran); sharding a milestone's diff; tagging before CI.
+- Rejected: a skip label (no proof anything ran); sharding a milestone's diff; tagging before CI;
+  requiring the `e2e-vm <mode>` jobs (skipped, so never reported, on an ordinary PR).
 
 ## 2026-10-28 — Truncation of SHA-384/512 digests for P-256 happens in the service
 - Decision: the module passes the full digest for `CKM_ECDSA_SHA384/512`; the service's
@@ -279,3 +281,8 @@ Format: a title and three short bullets, a couple of lines each:
   a new client reads both together.
 - Rejected: a separate `GetKind` call (a second round trip, and a race with a delete); a dict
   (`a{sv}`) reply (nothing in this API uses variants); appending the kind after the certificate.
+
+## 2026-11-08 — VM image pinned to one dated serial
+- Decision: `e2e/vm/image.sh` pins serial `20261105` (`release-<serial>/`); a cache hit is verified, never refreshed.
+- Why: a run record names one image, and a moving "newest" would change results between runs.
+- Rejected: the newest release by signature (needs a listing; the image can change under a run).

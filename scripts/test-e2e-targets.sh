@@ -48,7 +48,7 @@ target_problems() {
     grep -Eq '(^|[[:space:]])swtpm([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install swtpm"
     grep -Eq '(^|[[:space:]])tpm2-tools([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install tpm2-tools"
     case $n in arch*) ;; *) grep -Eq '(^|[[:space:]])swtpm-tools([[:space:]\\]|$)' <<< "$pkgs" || echo "$n: does not install swtpm-tools" ;; esac
-    [ -f "$d/refusal-only" ] || [ -f "$d/files.sh" ] || echo "$n: no files.sh"
+    [ -f "$d/files.sh" ] || echo "$n: no files.sh"
     grep -Eq 'dpkg|apt|rpm|dnf|pacman' "$inst" 2> /dev/null || echo "$n: install.sh uses no package tool"
     # shellcheck disable=SC2016 # the pattern looks for a literal "$1" in the script
     case $n in
@@ -158,7 +158,7 @@ targets_scripts=()
 for d in "$ROOT"/e2e/targets/*/; do targets_scripts+=("e2e/targets/$(basename "$d")/install.sh" "e2e/targets/$(basename "$d")/probe.sh")
     [ ! -f "$d/remove.sh" ] || targets_scripts+=("e2e/targets/$(basename "$d")/remove.sh")
     [ ! -f "$d/purge.sh" ] || targets_scripts+=("e2e/targets/$(basename "$d")/purge.sh"); done
-for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/select.sh scripts/test-e2e-select.sh scripts/test-e2e-select-host.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh e2e/lifecycle.sh e2e/lifecycle-lib.sh e2e/lifecycle-selftest.sh e2e/refusal.sh e2e/refusal-lib.sh e2e/refusal-static.sh e2e/refusal-selftest.sh scripts/test-e2e-refusal.sh scripts/test-e2e-lifecycle.sh scripts/package-next.sh scripts/package-oldpath.sh scripts/derive-units.sh scripts/test-e2e-oldpath.sh e2e/daemon-path.sh e2e/import-user.sh scripts/test-e2e-import.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-host-oldpath.sh scripts/lib/e2e-host-fixtures.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
+for f in e2e/run.sh e2e/check-cases.sh e2e/check-next.sh e2e/report.sh e2e/select.sh scripts/test-e2e-select.sh scripts/test-e2e-select-host.sh e2e/upgrade.sh e2e/upgrade-lib.sh e2e/upgrade-selftest.sh e2e/upgrade-user.sh e2e/lifecycle.sh e2e/lifecycle-lib.sh e2e/lifecycle-selftest.sh scripts/test-e2e-lifecycle.sh scripts/package-next.sh scripts/package-oldpath.sh scripts/derive-units.sh scripts/test-e2e-oldpath.sh e2e/daemon-path.sh e2e/import-user.sh scripts/test-e2e-import.sh "${targets_scripts[@]}" scripts/test-e2e-host.sh scripts/test-e2e-host-oldpath.sh scripts/lib/e2e-host-fixtures.sh scripts/test-e2e-targets.sh scripts/test-e2e-upgrade.sh scripts/test-e2e-skips.sh scripts/test-e2e-catalog.sh; do
     grep -qx "$f" <<< "$list" || bad "$f is not in the shellcheck list"
 done
 

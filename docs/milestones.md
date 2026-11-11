@@ -78,8 +78,8 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
   systemd 259 and later the daemon seals `encrypted-tpm` with no PCR, the same route as Fedora 44
   and Arch, so the cases of F134, F135, F137, F138, F140 and F141 run with that kind, RSA-PSS
   included. No other distribution gets a VM: on systemd 257 the kind cannot exist (the service
-  refuses the PCR 7 binding). The minimal image's kernel may lack the TPM drivers; if so, a finding
-  says which image or kernel package to use instead.
+  refuses the PCR 7 binding). The image's `generic` kernel has the TPM drivers built in; it lacks
+  only the `libtss2` libraries, which the package brings.
 - The VM run is a release test: CI runs it on the release, never on each PR. Within the milestone,
   it runs only at the checkpoint and the last feature.
 - The `.deb` depends on `libtss2-rc0t64`. systemd loads it by `dlopen` and Ubuntu only recommends
@@ -87,8 +87,10 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
   TPM and an import that needs `encrypted-tpm` fails with a binding mismatch.
 - By hand, once: on Debian 13 with a TPM, read the PCR mask of a credential the daemon seals, to
   confirm or refute the inferred PCR 7 binding.
-- Ubuntu 24.04 without a TPM: import fails, since systemd 255 gives a non-root service no host-bound
-  credential. Fix it or document it as a limitation.
+- systemd 257 is the floor: Ubuntu 24.04 (systemd 255) and older systems are dropped. Every package
+  requires systemd 257, and the service's 255 path (the `systemd-creds` CLI with a TPM device), the
+  `ubuntu2404` end-to-end target and the Ubuntu 24.04 install steps go. This supersedes M2's
+  support for Ubuntu 24.04 with `dbus-broker`.
 
 ## M6 — Public release
 

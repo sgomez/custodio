@@ -1,5 +1,5 @@
 //! Keys and the TPM over time (F129): PCR extensions, a restart of `swtpm` and of the service, and a cleared TPM. The
-//! real service on a private bus with fake polkit, a real `swtpm`, the real `systemd-creds` bound to it for the
+//! real service on a private bus with fake polkit, a real `swtpm`, in-memory TPM credentials for the
 //! `encrypted-tpm` keys, and the in-memory journal.
 //!
 //! One service imports four keys: kind `tpm` (RSA 2048 and P-256) and kind `encrypted-tpm` (the same two key types).
@@ -61,8 +61,8 @@ use common::{SENTINEL_PASSWORD, uid};
 use kit::{ERR_KEY_LOST, ERR_NO_KEY, Family};
 use rig::{Counting, Res, SpyCreds, Svc, TestResult, pkcs8_of};
 use world::{
-    KEYS, Listed, PCRS, World, credentials_of, documented_message, extend_all,
-    is_real_tpm_credential, world,
+    KEYS, Listed, PCRS, World, credentials_of, documented_message, extend_all, is_tpm_credential,
+    world,
 };
 
 #[test]
@@ -94,22 +94,17 @@ fn imports_four_keys() -> TestResult {
             let credential = credentials_of(&w, key);
             match key.kind {
                 Kind::EncryptedTpm => {
-                    assert!(is_real_tpm_credential(&credential.unwrap()), "{}", key.id);
+                    assert!(is_tpm_credential(&credential.unwrap()), "{}", key.id);
                 }
                 _ => assert!(credential.is_none(), "{}", key.id),
             }
         }
-        // The real tool ran for exactly the two encrypted keys, naming an empty PCR list.
-        assert_eq!(
-            w.daemon.calls_log().matches("ARG --tpm2-pcrs=\n").count(),
-            2
-        );
-        // Control: the credential of the in-memory double is not accepted as a real one.
-        let fake = MemoryCreds::tpm()
+        // Control: a host credential is not accepted as a TPM one.
+        let host = MemoryCreds::host()
             .encrypt("k", &SecretSlice::new(Box::from(&b"secret"[..])))
             .unwrap();
-        assert!(!is_real_tpm_credential(&fake));
-        assert!(!is_real_tpm_credential(b"short"));
+        assert!(!is_tpm_credential(&host));
+        assert!(!is_tpm_credential(b"short"));
         w.assert_all_sign("baseline").await
     })
 }
@@ -246,7 +241,7 @@ async fn cleared() -> Res<World> {
             .iter()
             .all(|e| e.outcome() == Outcome::Signed && e.cause().is_none())
     );
-    w.rig.tpm.clear()?;
+    w.clear_tpm()?;
     Ok(w)
 }
 
@@ -265,7 +260,7 @@ fn cleared_keys_stay_listed() -> TestResult {
         w.assert_all_sign("baseline").await?;
         let listed = w.list().await?;
         let files = w.snapshot();
-        w.rig.tpm.clear()?;
+        w.clear_tpm()?;
         assert_all_lost(&w, "after the clear").await?;
         assert_eq!(w.list().await?, listed);
         // The same files under the same names with the same bytes: nothing re-stored, nothing turned into another kind.

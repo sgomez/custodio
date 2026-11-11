@@ -1,0 +1,5 @@
+# Cases of the six groups (sign, noplain, pcr, fallback, tpm-clear, upgrade-kinds) that are in a container list and not in cases.list, as `case: reason`.
+fallback-host-import-rsa: exists only in container mode none; a VM always has a TPM, so the key gets the kind tpm
+fallback-host-import-ec: exists only in container mode none; a VM always has a TPM, so the key gets the kind tpm
+fallback-host-says-weaker-why: exists only in container mode none; a VM always has a TPM, so the key gets the kind tpm
+fallback-host-cli-list: exists only in container mode none; a VM always has a TPM, so the key gets the kind tpm

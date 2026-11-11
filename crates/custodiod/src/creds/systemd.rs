@@ -1,35 +1,24 @@
-//! The real client: the Varlink interface `io.systemd.Credentials` of `systemd-creds` for the
-//! host-bound credential, the `systemd-creds` command with an explicit TPM device for the TPM-bound
-//! one. Both as `docs/findings/F110.md` decided: scope `user`, no `withKey`.
+//! The real client: the Varlink interface `io.systemd.Credentials` of `systemd-creds`, scope `user`,
+//! no `withKey`, as `docs/findings/F110.md` decided. The user-scoped daemon binds a new credential to
+//! the TPM when it finds one and to the host key otherwise; this client does not choose, and starts
+//! no process.
 //!
-//! The TPM is chosen from one input, the configured TPM device: none means host-bound. The
-//! plaintext goes to the daemon in the Varlink request or to the child's standard input, never in
-//! an argument, the environment or a file, and every buffer that holds it is zeroized.
+//! The plaintext goes to the daemon in the Varlink request, never in an argument, the environment
+//! or a file, and every buffer that holds it is zeroized.
 
-use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use secrecy::{ExposeSecret, SecretSlice};
 use zeroize::{Zeroize, Zeroizing};
 
-use super::{Binding, Credentials, CredsError, header};
+use super::{Credentials, CredsError, header};
 
 /// The socket of the daemon (`systemd-creds.socket`).
 pub const SOCKET: &str = "/run/systemd/io.systemd.Credentials";
-/// The command, found through `PATH`.
-pub const PROGRAM: &str = "systemd-creds";
-/// Runs the command with every descriptor above 2 closed (see [`SystemdCreds::run`]).
-pub const LAUNCHER: &str = "/usr/bin/bash";
-/// `bash -c`: closes every inherited descriptor above 2, then replaces itself with the command (`"$@"`). The command
-/// and its arguments are never part of the script text.
-const CLOSE_FDS: &str = "for f in /proc/self/fd/*; do n=${f##*/}; [ \"$n\" -gt 2 ] && eval \"exec $n>&-\"; done 2>/dev/null; exec \"$@\"";
-/// What a shell exits with when it cannot run the command it was asked to `exec` (not executable, not found).
-const SHELL_CANNOT_RUN: [i32; 2] = [126, 127];
-/// The most a reply or the output of the command may hold.
+/// The most a reply may hold.
 const MAX_REPLY: usize = 64 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(30);
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -38,9 +27,6 @@ const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 #[derive(Debug, Clone)]
 pub struct SystemdCreds {
     socket: PathBuf,
-    program: PathBuf,
-    launcher: PathBuf,
-    tpm: Option<String>,
 }
 
 /// Reads until the first NUL, at most `MAX_REPLY` bytes; the NUL and what follows are dropped.
@@ -69,29 +55,16 @@ fn read_reply(stream: &mut impl Read) -> Result<Zeroizing<Vec<u8>>, CredsError> 
 }
 
 impl SystemdCreds {
-    /// `tpm` is the TPM device or TCTI string (`--tpm2-device=`): with one, new credentials are bound
-    /// to the TPM; without, to the host key.
+    /// A client of the daemon listening on `socket`.
     #[must_use]
-    pub fn new(socket: PathBuf, program: PathBuf, tpm: Option<String>) -> Self {
-        Self {
-            socket,
-            program,
-            launcher: PathBuf::from(LAUNCHER),
-            tpm,
-        }
+    pub fn new(socket: PathBuf) -> Self {
+        Self { socket }
     }
 
-    /// Starts the command through another launcher (tests: one that does not exist).
+    /// The system's socket.
     #[must_use]
-    pub fn with_launcher(mut self, launcher: PathBuf) -> Self {
-        self.launcher = launcher;
-        self
-    }
-
-    /// The system's socket and command.
-    #[must_use]
-    pub fn system(tpm: Option<String>) -> Self {
-        Self::new(PathBuf::from(SOCKET), PathBuf::from(PROGRAM), tpm)
+    pub fn system() -> Self {
+        Self::new(PathBuf::from(SOCKET))
     }
 
     /// One Varlink call; returns the reply line. `Err(Unavailable)` when the socket cannot be used.
@@ -130,97 +103,6 @@ impl SystemdCreds {
         }
         take_data(&mut reply).ok_or(CredsError::CannotDecrypt)
     }
-
-    /// Runs the command with `stdin`; its output on success.
-    ///
-    /// The child inherits no descriptor above 2. The TSS libraries open their TPM connection without close-on-exec, so a
-    /// child forked while another thread of the service talks to the TPM would keep that connection open for its whole
-    /// life (`docs/findings/F118.md`). The service has `forbid(unsafe_code)`, so the descriptors are not closed in the
-    /// forked child (`pre_exec`): a launcher closes them before it executes the command. A launcher that is missing
-    /// makes the start fail, which is [`CredsError::Unavailable`], never a signature.
-    fn run(&self, args: &[OsString], stdin: &[u8]) -> Result<Zeroizing<Vec<u8>>, Failure> {
-        let mut child = Command::new(&self.launcher)
-            .args(["-c", CLOSE_FDS, "close-fds"])
-            .arg(&self.program)
-            .args(args)
-            .env_remove("BASH_ENV")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|_| Failure::Spawn)?;
-        if let Some(mut pipe) = child.stdin.take() {
-            // A child that quit early shows in its exit status; the broken pipe says nothing more.
-            let _ = pipe.write_all(stdin);
-        }
-        let mut out = Zeroizing::new(Vec::with_capacity(MAX_REPLY));
-        if let Some(pipe) = child.stdout.take() {
-            let limit = u64::try_from(MAX_REPLY).unwrap_or(u64::MAX);
-            let _ = pipe.take(limit).read_to_end(&mut out);
-        }
-        match child.wait() {
-            Ok(status) if status.success() => Ok(out),
-            // The launcher could not execute the command: as a command that could not be started.
-            Ok(status) if status.code().is_some_and(|c| SHELL_CANNOT_RUN.contains(&c)) => {
-                Err(Failure::Spawn)
-            }
-            _ => Err(Failure::Exit),
-        }
-    }
-
-    fn tpm_args(verb: &str, name: &str, device: &str) -> Vec<OsString> {
-        let mut args = vec![
-            OsString::from(verb),
-            OsString::from(format!("--name={name}")),
-        ];
-        if verb == "encrypt" {
-            // An empty mask is the explicit "no PCR", whatever the default of this systemd.
-            args.push(OsString::from("--with-key=tpm2"));
-            args.push(OsString::from("--tpm2-pcrs="));
-        }
-        args.push(OsString::from(format!("--tpm2-device={device}")));
-        args.push(OsString::from("-"));
-        args.push(OsString::from("-"));
-        args
-    }
-
-    fn encrypt_cli(
-        &self,
-        name: &str,
-        plaintext: &[u8],
-        device: &str,
-    ) -> Result<Vec<u8>, CredsError> {
-        let args = Self::tpm_args("encrypt", name, device);
-        let out = self
-            .run(&args, plaintext)
-            .map_err(|_| CredsError::Unavailable)?;
-        base64_decode(&out).ok_or(CredsError::Unavailable)
-    }
-
-    fn decrypt_cli(
-        &self,
-        name: &str,
-        credential: &[u8],
-        device: &str,
-    ) -> Result<SecretSlice<u8>, CredsError> {
-        let args = Self::tpm_args("decrypt", name, device);
-        let mut text = Vec::with_capacity(credential.len().div_ceil(3) * 4 + 1);
-        base64_encode(&mut text, credential);
-        let out = self.run(&args, &text).map_err(|failure| match failure {
-            Failure::Spawn => CredsError::Unavailable,
-            Failure::Exit => CredsError::CannotDecrypt,
-        })?;
-        Ok(secret(&out))
-    }
-}
-
-/// Why the command gave no output.
-#[derive(Debug, Clone, Copy)]
-enum Failure {
-    /// It could not be started.
-    Spawn,
-    /// It started and did not succeed.
-    Exit,
 }
 
 impl Credentials for SystemdCreds {
@@ -228,25 +110,19 @@ impl Credentials for SystemdCreds {
         if !valid_name(name) {
             return Err(CredsError::BadRequest);
         }
-        match &self.tpm {
-            None => self.encrypt_varlink(name, plaintext.expose_secret()),
-            Some(device) => self.encrypt_cli(name, plaintext.expose_secret(), device),
-        }
+        self.encrypt_varlink(name, plaintext.expose_secret())
     }
 
     fn decrypt(&self, name: &str, credential: &[u8]) -> Result<SecretSlice<u8>, CredsError> {
         if !valid_name(name) {
             return Err(CredsError::BadRequest);
         }
-        let binding = header::inspect(credential).map_err(|_| CredsError::CannotDecrypt)?;
-        match (&self.tpm, binding) {
-            (Some(device), Binding::Tpm) => self.decrypt_cli(name, credential, device),
-            _ => self.decrypt_varlink(name, credential),
-        }
+        header::inspect(credential).map_err(|_| CredsError::CannotDecrypt)?;
+        self.decrypt_varlink(name, credential)
     }
 }
 
-/// A credential name is put in JSON and in an argument as it is: letters, digits, `.`, `_`, `-`.
+/// A credential name is put in JSON as it is: letters, digits, `.`, `_`, `-`.
 fn valid_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 255

@@ -68,6 +68,7 @@ judged "the seeded accounts are not as expected" acct_seed_problems "$ACC"
 if uk_on; then
     kinds collect before || fail "the kinds listing before the upgrade failed"
     kinds before
+    kinds reader
 fi
 snapshot_state "$STATE_LINK" > "$WORK/state.before"
 user_run list > "$WORK/listing.before" || fail "the key listing before the upgrade failed"
@@ -102,6 +103,9 @@ compare_state "$WORK/state.before" "$WORK/state.after" || fail "the key files ch
 echo "e2e: upgrade: the state directory is identical: $(grep -c . "$WORK/state.after") entries with sha256, owner and mode"
 if [ -z "${E2E_NO_ACCOUNTS:-}" ]; then
     read -r uid_a uid_b uid_c <<< "$(accts uids)"
+    # In a VM, systemd 259 keeps the state of the PrivateUsers=yes service owned by 65534 on disk, not by the account (docs/findings/F163.md): that owner is pinned,
+    # not read from the directory; compare_state above has already proved that it did not change in the upgrade.
+    if [ -n "${E2E_VM:-}" ]; then uid_c=65534; fi
     judged "the keys are not under their owners' directories" acct_state_problems "$WORK/state.after" "$uid_a" "$uid_b" "$uid_c"
 fi
 case_run "$id-state-unchanged"

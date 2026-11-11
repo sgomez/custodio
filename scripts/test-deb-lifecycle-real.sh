@@ -99,9 +99,20 @@ new_root() { # [none]
 }
 # dp ARGS...: the real dpkg on the root; sets rc and out (stdout and stderr together).
 dp() {
+    local force=(--force-depends)
+    [ -z "${DP_STRICT:-}" ] || force=()
     rc=0
     out=$(bf_in_root "$root" env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket dpkg --root="$root" --log="$root/dpkg.log" \
-        --force-depends --force-bad-path --no-triggers "$@" 2>&1) || rc=$?
+        "${force[@]}" --force-bad-path --no-triggers "$@" 2>&1) || rc=$?
+}
+# fake_status SYSTEMD_VERSION: every package the .deb names in Depends and Pre-Depends is installed in the root (version 999), except systemd.
+fake_status() {
+    local name
+    : > "$root/var/lib/dpkg/status"
+    { dpkg-deb -f "$new_deb" Depends Pre-Depends | tr ',' '\n' | sed -E 's/^[^ ]*: *//; s/^ *//; s/[ (].*//' | grep -v '^$'; echo systemd; } | sort -u | while read -r name; do
+        printf 'Package: %s\nStatus: install ok installed\nPriority: optional\nSection: misc\nInstalled-Size: 1\nMaintainer: t <t@example.org>\nArchitecture: amd64\nVersion: %s\nDescription: fixture\n\n' \
+            "$name" "$([ "$name" = systemd ] && echo "$1" || echo 999)" >> "$root/var/lib/dpkg/status"
+    done
 }
 # Paths of the package in the root, apart from the package databases and the state directory.
 custodio_files() { find "$root" -mindepth 1 \( -iname '*custodio*' -o -name 'com.rfirma*' \) -not -path "$root/var/lib/*" -not -path "$root/dpkg.log" -not -path "$root/stub/*" -not -path "$root/scripts/*"; }
@@ -212,6 +223,20 @@ scenarios() {
 }
 
 scenarios
+
+# ---- F154: real dpkg without --force-depends refuses the .deb on a root whose systemd is 255, and installs it on 257 ----
+new_root
+fake_status 255
+DP_STRICT=1 dp -i "$new_deb"
+[ "$rc" -ne 0 ] || bad "systemd 255: dpkg installed the package"
+grep -qF 'systemd' <<< "$out" || bad "systemd 255: the refusal does not name systemd: $out"
+grep -qF '255' <<< "$out" || bad "systemd 255: the refusal does not name the installed version 255: $out"
+[ -z "$(custodio_files)" ] || bad "systemd 255: files were installed: $(custodio_files)"
+new_root
+fake_status 257
+DP_STRICT=1 dp -i "$new_deb"
+[ "$rc" -eq 0 ] || bad "systemd 257: dpkg refused the package: $out"
+[ -x "$root/usr/libexec/custodio/custodiod" ] || bad "systemd 257: the files are missing"
 
 # ---- the checks see a bad package: account creation moved from preinst to postinst ----
 mutate_fixture() { # NAME FILE SED
