@@ -54,6 +54,7 @@
 - *(F168)* Read the vm gap table from e2e/vm/gaps.md, not the contract
 - *(harness)* Keep bash as pid 1 in the dev container so orphans are reaped
 - *(F168)* Avoid a sigpipe race in the case-script check of test-e2e-vm-cases
+- *(F159)* Keep the qemu stub alive when a client resets the serial socket
 
 ### 📚 Documentation
 
@@ -133,6 +134,7 @@
 - *(F163)* Print the token mechanisms when the rsa signature after the upgrade fails
 - *(F163)* Print the d-bus error and the journal when the rsa signature after the upgrade fails
 - *(F168)* Add the gap table checker and its self-test
+- *(custodiod)* Catch the three mutants that survived the release run
 
 ### ⚙️ Miscellaneous Tasks
 
