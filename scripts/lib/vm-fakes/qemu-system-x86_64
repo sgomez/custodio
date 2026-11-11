@@ -132,7 +132,10 @@ while True:
             if d:
                 say(conn, d)
         if conn in r:
-            d = conn.recv(65536)
+            try:
+                d = conn.recv(65536)
+            except ConnectionResetError:  # the client closed with our reply unread (chan.py after a timeout); QEMU waits for the next
+                d = b""
             if not d:
                 break
             pending += d
