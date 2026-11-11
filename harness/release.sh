@@ -56,7 +56,7 @@ version=$(git log -1 --format=%s "$branch" -- CHANGELOG.md | sed -n 's/^chore(re
 head=$(git rev-parse "$branch")
 git switch -q main
 git pull -q --ff-only
-merge=$(git log --merges --format='%H %P' main | awk -v h="$head" '$3 == h {print $1; exit}')
+merge=$(git log --merges --format='%H %P' main | awk -v h="$head" '$3 == h && !m {m = $1} END {print m}')
 [ -n "$merge" ] || die "No merge of $branch ($head) in main."
 git tag -a "$version" -m "$version" "$merge"
 git push -q origin "$version"
