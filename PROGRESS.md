@@ -37,3 +37,8 @@ with an empty context.
 - Results: `modutil` keys entries by library path (a second add of the same library renames; same name with another library fails rc 22); update = delete then add; the write is not atomic (unlink then rename of `pkcs11.txt`), so the command keeps a backup; lock rule needs symlink PID and host plus an fcntl probe on `.parentlock` (naive "exists" shown wrong both ways); p11-kit rule: `/etc/crypto-policies/back-ends/nss.config` lists `library=p11-kit-proxy.so`, loaded by libnss3 itself into every database.
 - Not done / known issues: Floorp/Waterfox NSS source and Thunderbird's XDG path inferred; modutil 3.120/3.133 add semantics not re-run (only fresh-db listing); Arch Firefox profile patch inferred.
 - Next session should: nothing for F172; the registration features read the Decision lines.
+
+### 2026-11-12 — F172 — attempt 2
+- Done: fixed NEXT_FINDINGS. Atomicity Decision is now a scratch-copy + `rename(2)` swap of `pkcs11.txt` (fixture run: `-add` leaves `cert9.db`/`key4.db` identical, configdir kept verbatim, SIGKILL on the copy leaves the profile intact). SPEC conflicts named (Safety met by the swap; "in place" not kept by delete+add). Dropped the "skip without cert9.db" rule; Thunderbird NSS and Floorp root marked unknown/inferred. `just quick` green.
+- Not done / known issues: Floorp `MOZ_APP_PROFILE` not read; Thunderbird NSS on Debian/Arch unknown.
+- Next session should: nothing for F172.
