@@ -106,6 +106,7 @@ fn the_environment_counts_only_for_this_process() {
     assert_eq!(listen_names(None, Some("2"), names, 7), none());
     assert_eq!(listen_names(Some("7"), None, names, 7), none());
     assert_eq!(listen_names(Some("7"), Some("5000"), None, 7), none());
+    assert_eq!(listen_names(Some("7"), Some("4096"), None, 7).len(), 4096);
     assert_eq!(
         listen_names(Some("7"), Some("2"), None, 7),
         vec![None, None]
