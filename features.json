@@ -23,7 +23,7 @@
       "description": "docs/findings/F172.md settles the open question 'Profile locations' and prepares the registration command: native Firefox (all channels) in the legacy ~/.mozilla/firefox and the XDG location since Firefox 147, and how profiles.ini and installs.ini list them; native Thunderbird; the candidate derivatives LibreWolf, Floorp and Waterfox; what modutil does with pkcs11.txt (the library= key, add, delete, its locking) and how a running browser's lock (lock, .parentlock) is detected; the package that ships modutil per format (libnss3-tools, nss-tools, nss); and how the command recognises a system whose NSS loads p11-kit-proxy (fedora44, alma10). Measured with the dev container's NSS tools and the fedora44 container. The list it ends with is data the command reads. 'Decision: ' line; indexed.",
       "depends_on": [],
       "verify": "f=docs/findings/F172.md && grep -q '^## F172' \"$f\" && for w in 'profiles.ini' '.mozilla/firefox' 'XDG' '147' 'Thunderbird' 'LibreWolf' 'Floorp' 'Waterfox' 'modutil' 'pkcs11.txt' 'parentlock' 'libnss3-tools' 'nss-tools' 'p11-kit-proxy' 'fedora44'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F172.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F173",
