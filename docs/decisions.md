@@ -229,8 +229,8 @@ Format: a title and three short bullets, a couple of lines each:
   documents `modutil` per profile; the packages register nothing in Firefox. Settled by the
   milestone approver after F56.
 - Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings/F56.md`).
-- Rejected: an enterprise policy (one file, would override the administrator's); a `custodio`
-  command that edits profiles (left in `docs/milestones.md`, "Firefox without p11-kit").
+- Rejected: an enterprise policy (would override the administrator's); a profile-editing command
+  in M2 (M6 builds it).
 
 ## 2026-11-01 — A refused sign for a key the caller does not have leaves no journal entry
 - Decision: `Sign` for an id the caller does not own (missing, or another uid's) fails as
@@ -286,3 +286,8 @@ Format: a title and three short bullets, a couple of lines each:
 - Decision: `e2e/vm/image.sh` pins serial `20261105` (`release-<serial>/`); a cache hit is verified, never refreshed.
 - Why: a run record names one image, and a moving "newest" would change results between runs.
 - Rejected: the newest release by signature (needs a listing; the image can change under a run).
+
+## 2026-11-12 — No setting to refuse the encrypted kinds in v1
+- Decision: import still falls back to the encrypted kinds (approver).
+- Why: for one's own certificate, a working import beats a refusal; `custodio list` shows the kind.
+- Rejected: the setting M4 deferred (still in `docs/milestones.md`).
