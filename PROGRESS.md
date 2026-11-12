@@ -31,3 +31,9 @@ with an empty context.
 - Done: fixed the evaluator finding. Ran the second-boot cache test: `bare_5.snap` + `.assert` (4 KB each) through `VM_PAYLOAD` to a fresh guest, store blocked; `snap install ./bare_5.snap` before `snap ack` is refused, after it installs (**verified** in the finding). Decision line now says the route is tested with bare, big snaps inferred; no-cache reason is snapd behaviour, not the transfer limit.
 - Not done / known issues: the 1.22 GB snaps were not carried to a fresh guest (inferred).
 - Next session should: nothing for F171.
+
+### 2026-11-12 — F172 — attempt 1
+- Done: docs/findings/F172.md and its index line, all five steps ticked. `modutil` measured on NSS 3.110 (dev container); packages and p11-kit checked in fedora44, alma10, archlinux and ubuntu26.04 containers; Mozilla source read by a subagent (no browser run).
+- Results: `modutil` keys entries by library path (a second add of the same library renames; same name with another library fails rc 22); update = delete then add; the write is not atomic (unlink then rename of `pkcs11.txt`), so the command keeps a backup; lock rule needs symlink PID and host plus an fcntl probe on `.parentlock` (naive "exists" shown wrong both ways); p11-kit rule: `/etc/crypto-policies/back-ends/nss.config` lists `library=p11-kit-proxy.so`, loaded by libnss3 itself into every database.
+- Not done / known issues: Floorp/Waterfox NSS source and Thunderbird's XDG path inferred; modutil 3.120/3.133 add semantics not re-run (only fresh-db listing); Arch Firefox profile patch inferred.
+- Next session should: nothing for F172; the registration features read the Decision lines.
