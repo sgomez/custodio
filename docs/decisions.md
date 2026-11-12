@@ -226,8 +226,7 @@ Format: a title and three short bullets, a couple of lines each:
 
 ## 2026-11-01 — Firefox without the p11-kit proxy: registration by hand in M2
 - Decision: where the system NSS does not load `p11-kit-proxy.so` (Arch, Debian), `docs/install.md`
-  documents `modutil` per profile; the packages register nothing in Firefox. Settled by the
-  milestone approver after F56.
+  documents `modutil` per profile; the packages register nothing in Firefox. Approver's call (F56).
 - Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings/F56.md`).
 - Rejected: an enterprise policy (one file, would override the administrator's); a `custodio`
   command that edits profiles (left in `docs/milestones.md`, "Firefox without p11-kit").
@@ -276,9 +275,8 @@ Format: a title and three short bullets, a couple of lines each:
 ## 2026-11-05 — The storage kind sits next to the key type in the replies
 - Decision: `ImportP12` returns one struct `(key type, kind)` of two strings (`(ss)`); `ListKeys` returns
   `a(sssay)`: id, key type, kind, certificate. The kind is a string, never a number.
-- Why: the out signatures changed, so a client written for M3 (`s`, `a(ssay)`) fails to read the
-  new replies; the kind goes beside the key type so the old fields keep their positions and
-  a new client reads both together.
+- Why: an M3 client (`s`, `a(ssay)`) cannot read the changed replies anyway; the kind sits beside
+  the key type, so old fields keep their positions and a client reads both together.
 - Rejected: a separate `GetKind` call (a second round trip, and a race with a delete); a dict
   (`a{sv}`) reply (nothing in this API uses variants); appending the kind after the certificate.
 
@@ -286,3 +284,9 @@ Format: a title and three short bullets, a couple of lines each:
 - Decision: `e2e/vm/image.sh` pins serial `20261105` (`release-<serial>/`); a cache hit is verified, never refreshed.
 - Why: a run record names one image, and a moving "newest" would change results between runs.
 - Rejected: the newest release by signature (needs a listing; the image can change under a run).
+
+## 2026-11-11 — VM harness: no self-tests against a fake QEMU
+- Decision: never test `e2e/vm/vm.sh` with a fake QEMU or swtpm. CI boots the real VM only on
+  milestone PRs; whoever changes the launcher runs `just e2e-vm full|lacking`.
+- Why: flaky; they tested tooling, not custodio.
+- Rejected: hardening the fakes.

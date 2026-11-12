@@ -156,8 +156,7 @@ test-scripts:
     scripts/test-vm-credread.sh
     scripts/test-vm-host-check.sh
     scripts/test-vm-image.sh
-    scripts/test-vm-launch.sh
-    scripts/test-vm-modes.sh
+    scripts/test-vm-profile.sh
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
