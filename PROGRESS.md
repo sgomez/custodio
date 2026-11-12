@@ -26,3 +26,8 @@ with an empty context.
 - Results: image ships snapd 2.77.1 and AppArmor `Y`; Firefox 9181 / core26 / glibc 2.43 (ceiling 2.39), install 50 s, 1.22 GB; cache via `snap download` + `snap ack` + `snap install ./f` works offline (19 s) and tampering is rejected, but the decision is not to cache; label `snap.firefox.firefox (enforce)` via SO_PEERSEC, `/proc/self/attr/current` is denied in the snap; accept only that label; profiles in `~/snap/firefox/common/.mozilla/firefox/`.
 - Not done / known issues: hook labels inferred from profile names (hooks cannot be started under `--shell`); second-boot payload copy inferred (host cannot fetch 1.2 GB through the guest; tested same-guest with the store blocked via proxy). BLOCKED.md skipped: the base is not older than the module supports.
 - Next session should: nothing for F171; the VM snap feature reads the Decision lines.
+
+### 2026-11-12 — F171 — attempt 2
+- Done: fixed the evaluator finding. Ran the second-boot cache test: `bare_5.snap` + `.assert` (4 KB each) through `VM_PAYLOAD` to a fresh guest, store blocked; `snap install ./bare_5.snap` before `snap ack` is refused, after it installs (**verified** in the finding). Decision line now says the route is tested with bare, big snaps inferred; no-cache reason is snapd behaviour, not the transfer limit.
+- Not done / known issues: the 1.22 GB snaps were not carried to a fresh guest (inferred).
+- Next session should: nothing for F171.
