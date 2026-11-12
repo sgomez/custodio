@@ -1,7 +1,7 @@
 #!/bin/sh
 # After a removal (F58; SPEC design section 2) the files are gone, and the state directory and the custodio account stay: the keys cannot be
 # exported or recreated, so nothing here deletes them, and nothing reads, changes or lists what is under the state directory; the notice only
-# names it. The hooks daemon-reload, reload the bus and update the catalog for the removed paths (docs/decisions.md); they run after this script.
+# names it. The hooks daemon-reload, reload the bus and update the catalog for the removed paths (docs/decisions/packaging.md); they run after this script.
 # The policy and the activation file are gone, so nothing starts the service again; stop one that came back after pre_remove.
 if systemctl is-active --quiet custodio.service 2>/dev/null; then
     systemctl stop custodio.service || true

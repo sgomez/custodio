@@ -73,7 +73,7 @@ for tag in PRETRANS POSTTRANS; do [ -z "$(fx_rpm -qp --qf "%{$tag}" "$pkg" | gre
 for pair in PREIN:pre POSTIN:post PREUN:preun POSTUN:postun; do
     [ "$(fx_rpm -qp --qf "%{${pair%%:*}}" "$pkg")" = "$(cat "$SRC/${pair##*:}")" ] || bad "rpm ${pair%%:*} is not packaging/rpm/${pair##*:}"
 done
-# rpm's own sysusers step would create the account for a user() or group() provide before the F42 check runs (docs/decisions.md, F44).
+# rpm's own sysusers step would create the account for a user() or group() provide before the F42 check runs (docs/decisions/packaging.md, F44).
 account_provides() { grep -E '^(user|group)\(' <<< "$(fx_rpm -qp --provides "$1")" || true; }
 [ -z "$(account_provides "$pkg")" ] || bad "the built rpm provides an account: $(account_provides "$pkg")"
 [ -z "$(fx_rpm -qp --triggers "$pkg" | grep -v '^$' || true)" ] || bad "the built rpm has a trigger"

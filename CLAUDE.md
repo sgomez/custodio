@@ -54,8 +54,8 @@ Everything in this repository is in English: code, comments, docs, commit messag
   error messages.
 - Every signature calls polkit. Never cache an authorization.
 - When `SPEC.md` does not decide something, choose the more conservative option. Record it in
-  `docs/decisions.md` only if a later session could undo it without knowing why; follow the rules
-  at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
+  `docs/decisions.md` (packaging: `docs/decisions/packaging.md`) only if a later session could undo
+  it without knowing why; follow the rules at the top of that file. What a feature builds and how goes in the commit and the code; fixes in
   the commit; research in `docs/findings/<id>.md`, following the rules at the top of
   `docs/findings.md`.
 - If a `SPEC.md` requirement cannot be met by anything this project ships, and a finding in
