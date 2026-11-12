@@ -42,3 +42,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. Atomicity Decision is now a scratch-copy + `rename(2)` swap of `pkcs11.txt` (fixture run: `-add` leaves `cert9.db`/`key4.db` identical, configdir kept verbatim, SIGKILL on the copy leaves the profile intact). SPEC conflicts named (Safety met by the swap; "in place" not kept by delete+add). Dropped the "skip without cert9.db" rule; Thunderbird NSS and Floorp root marked unknown/inferred. `just quick` green.
 - Not done / known issues: Floorp `MOZ_APP_PROFILE` not read; Thunderbird NSS on Debian/Arch unknown.
 - Next session should: nothing for F172.
+
+### 2026-11-12 — F172 — attempt 3
+- Done: fixed NEXT_FINDINGS. Re-ran the second add with Custodio's module: `-add two` of the same library gives rc 22 (rename only for `p11-kit-proxy.so`); the register Decision now reads `library=` itself before `-add`. A deleted library file does not block `-list`/`-delete`. Swap proven with the three-file copy; a profile without `pkcs11.txt` (or a database file) uses `modutil` directly, since the swap would leave `configdir='sql:SCRATCH'` (fixtures run). Ignore the attempt 1 "keeps a backup" line: replaced by the swap.
+- Not done / known issues: as in attempt 2.
+- Next session should: nothing for F172.
