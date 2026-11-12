@@ -34,6 +34,19 @@ b'snap.firefox.firefox (enforce)'`. `SO_PEERCRED`, `SO_PEERPIDFD` and `SO_PEERSE
 so the client cannot forge them. polkit 127 accepts a `unix-process` subject `{pidfd: h, uid: i}`
 (`uid` an int32 from `SO_PEERCRED`; a dead process gives "Process not found"). **Verified.**
 
+- **Registration.** The Firefox snap 154 keeps its profiles in
+  `~/snap/firefox/common/.mozilla/firefox/`. The host's `modutil -dbdir sql:<profile> -add Custodio
+  -libfile ~/snap/firefox/common/libcustodio_pkcs11.so`, run outside the snap, registered the copy,
+  and Firefox loaded it with no AppArmor denial. **Verified.**
+- **Another uid in polkit.** polkit lets a caller ask about a subject with another uid only if the
+  caller is trusted for the action. Custodio is, through `org.freedesktop.policykit.owner
+  unix-user:custodio` in `data/com.rfirma.custodio.policy`. **Verified** (polkit 127, host).
+- **Stacked labels.** On Ubuntu, `aa-exec` with a snap profile from an unconfined process is turned
+  into a stack: the peer label reads `snap.<snap>.<app>//&unconfined (enforce)`, not the snap's own.
+  **Verified** with another strict snap's profile on the host, Ubuntu with kernel 7.0.
+- **Other LSMs.** Where SELinux is the major LSM (Fedora, RHEL/Alma), `SO_PEERSEC` returns an SELinux
+  context such as `unconfined_u:unconfined_r:unconfined_t:s0`, never an AppArmor label. **Inferred.**
+
 ## `/run/snap.<name>/`
 
 - Added by snapd PR #6109 (snapd 2.36.1, 2018) so that snaps get a scratch directory in `/run`
