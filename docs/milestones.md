@@ -97,12 +97,13 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
 Ubuntu's Firefox snap and Firefox builds without p11-kit use Custodio; route and rejected
 alternatives in `docs/reports/firefox-snap.md`.
 
-- The service also listens on `/run/snap.<snap>/custodio.sock` for `firefox`, `chromium` and
-  `thunderbird`: list and sign only, a peer only from that snap's AppArmor label, polkit on a
-  `unix-process` subject from the peer's pidfd. Directories root `0755` from `tmpfiles.d`.
+- The service also listens on `/run/snap.firefox/custodio.sock`: list and sign only, a peer only
+  with the Firefox snap's exact AppArmor label, polkit on a `unix-process` subject from the peer's
+  pidfd. Directory root `0755` from `tmpfiles.d`.
 - Inside a snap the module talks to that socket instead of the bus.
 - A `custodio` command registers the module in the user's NSS profiles: native Firefox and its
-  derivatives, and the snaps through a copy of the module in `~/snap/<snap>/common/`.
+  derivatives, and the Firefox snap through a copy of the module in `~/snap/firefox/common/`, kept
+  fresh by a per-user trigger.
 - End-to-end on the Ubuntu 26.04 VM: a client under the Firefox snap's confinement signs through the
   socket. The socket rests on a snapd rule that no document promises; this test watches it.
 - Written threat model; `SECURITY.md` exists. The threat model says that without full-disk
@@ -123,6 +124,8 @@ By a person, after the features:
 
 ## Unassigned
 
+- **Chromium and Thunderbird snaps:** the same snapd rules should let them use a socket of their own
+  in `/run/snap.<snap>/` (inferred, `docs/reports/firefox-snap.md`); M6 ships only Firefox.
 - **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
   on atomic systems such as Bazzite every browser is a Flatpak. Needs its own investigation (the
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through

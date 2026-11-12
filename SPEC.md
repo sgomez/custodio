@@ -53,7 +53,7 @@ user's home. It adds no new operation on keys.
     root alone, so a snap, which AppArmor lets write there, still cannot replace the socket (the DAC
     permissions stop it). The service refuses to serve a socket whose directory does not meet this.
   - **Exhaustion through a socket.** A peer that opens many connections, sends oversized messages or
-    stalls in the handshake must not stop the service from serving the bus or other sockets, and must
+    stalls in the handshake must not stop the service from serving the bus or other peers, and must
     not crowd the journal so that signatures fail for lack of an audit entry.
   - **The registration command** never writes outside the invoking user's own browser profiles and
     their snap directories. It never edits a profile a running browser holds, and it never leaves a
@@ -77,11 +77,9 @@ user's home. It adds no new operation on keys.
   - **Without full-disk encryption, whoever takes the machine can use the keys.** For `tpm` keys
     they cannot copy them. M6 warns when the state directory is not on an encrypted device (Design
     7). The warning is advice: it blocks nothing.
-  - **Firefox Flatpak, parallel snap instances (`firefox_x`) and snaps other than `firefox`,
-    `chromium` and `thunderbird`** get no socket and see no Custodio slot.
-  - **Chromium and Thunderbird snaps are untested.** They get a socket and a registration because
-    the same snapd rules apply to every strict snap (inferred), but only Firefox is run, in the VM
-    and by hand. The README says so.
+  - **Firefox Flatpak, parallel snap instances (`firefox_x`) and every snap but `firefox`** (the
+    Chromium and Thunderbird snaps included) get no socket and see no Custodio slot. The same snapd
+    rules should let them in later (inferred); M6 proves and ships only Firefox.
   - **Several dialogs per page in TLS client authentication.** By design: every signature asks.
 
 ## Goal
@@ -102,14 +100,14 @@ and the release documents.
 
 ### 1. The snap sockets
 
-- **Where.** One socket per known snap at `/run/snap.<snap>/custodio.sock`, for exactly `firefox`,
-  `chromium` and `thunderbird`. The list is fixed in the shipped files; a person adds no snap by
-  configuration.
+- **Where.** One socket, `/run/snap.firefox/custodio.sock`, for the `firefox` snap only. It is fixed
+  in the shipped files; a person adds no snap by configuration. The code takes the snap name from the
+  socket, so a later milestone can add a snap without a new design.
 - **Directories.** `/run/snap.<snap>/` is owned by root, mode `0755`, created by a `tmpfiles.d`
   entry shipped by the package. Not by `RuntimeDirectory=`, which removes the directory when the
   service stops, and not by the service. The socket file is reachable by any uid (the peer check is
   the service's, not the file mode's).
-- **Who creates the sockets.** The service runs as an unprivileged dynamic user, with a read-only
+- **Who creates the socket.** The service runs as an unprivileged dynamic user, with a read-only
   `/run` and in its own user namespace. It cannot create a root-owned socket in a root-owned
   directory. The service manager creates the listening sockets and hands them to the service
   (socket activation). A connection to a socket therefore also starts the service, as a bus call
@@ -117,7 +115,7 @@ and the release documents.
   not rise above M5's.
 - **Directory check.** Before it serves a socket, the service checks that its directory is owned by
   root and writable by root alone. If not, it does not serve that socket and records why in the
-  journal. The other sockets and the bus are unaffected.
+  journal. The bus is unaffected.
 - **Protocol.** Peer-to-peer D-Bus on the socket (no bus daemon), with the same interface name,
   object path, method signatures, error names and error messages as on the bus, so the module keeps
   one client. On the socket the interface has **only `ListKeys` and `Sign`**. Every other method of
@@ -164,11 +162,11 @@ and the release documents.
   and make signatures fail with `AuditUnavailable`.
 - **Limits.** The service bounds what one socket can take: concurrent connections, message size (no
   larger than the bus allows for the same method), and time in the handshake and between messages.
-  Hitting a bound closes that connection. The bus and the other sockets keep working. The values are
+  Hitting a bound closes that connection. The bus and the other connections keep working. The values are
   the builder's, documented with their reasons.
 - **Platforms.** The sockets and directories ship in every package format, the same as the rest of
-  the file list. Where snaps are not confined by AppArmor, the peer has no snap label and is
-  refused. The snap route is supported and tested on Ubuntu 26.04 only.
+  the file list (decided: parity, no exception). Where snaps are not confined by AppArmor, the peer
+  has no snap label and is refused. The snap route is supported and tested on Ubuntu 26.04 only.
 
 Prior art worth copying: the verified prototype of the report (a socket in `/run/snap.firefox/`
 reading `SO_PEERCRED`, `SO_PEERPIDFD` and `SO_PEERSEC`); systemd socket activation of D-Bus
@@ -197,10 +195,14 @@ browsers. The name of the subcommand and its options are the builder's; the man 
   (Firefox, all channels, in both the legacy `~/.mozilla/firefox` and the XDG location that Firefox
   uses since version 147; Thunderbird; and the derivatives a finding confirms), it registers the
   installed module by its installed path in that profile's NSS database.
-- **Snaps.** For each of `firefox`, `chromium` and `thunderbird` that is installed and whose profile
-  or NSS database exists, it places a copy of the installed module in `~/snap/<snap>/common/` and
-  registers the copy's path in that snap's profile(s) or NSS database. The copy's path does not
-  change between versions, so a registration stays valid across refreshes. For the Firefox snap
+- **NSS's own tool writes the database** (decided): `modutil`, a run-time dependency of every
+  package under the format's name (`libnss3-tools`, `nss-tools`, `nss`). No writer of our own: NSS
+  does not document `pkcs11.txt` as stable. The command still reads `pkcs11.txt` and the profile
+  indexes, strictly, to find profiles and existing entries.
+- **The Firefox snap.** If it is installed and has a profile, the command places a copy of the
+  installed module in `~/snap/firefox/common/` and registers the copy's path in the snap's profiles.
+  The copy's path does not change between versions, so a registration stays valid across refreshes.
+  For the Firefox snap
   154 the profiles are under `~/snap/firefox/common/.mozilla/firefox/`, and registering the copy
   there with the host's `modutil` from outside the snap worked: Firefox loaded it with no AppArmor
   denial (verified, `docs/reports/firefox-snap.md`).
@@ -213,10 +215,11 @@ browsers. The name of the subcommand and its options are the builder's; the man 
   copy), whatever its name, so an entry the person added by hand with `docs/install.md`'s
   `modutil` line is not duplicated. An entry that points to a Custodio path that no longer exists is
   updated in place.
-- **Browsers that already see Custodio through p11-kit.** Where the system NSS loads the p11-kit
-  proxy (Fedora, RHEL/Alma), registering native profiles would show the same keys twice. The default
-  is not to register native profiles there, and to say why. Snap profiles are still registered,
-  because snaps do not see the host's p11-kit. This is to be confirmed (open question).
+- **Browsers that already see Custodio through p11-kit** (decided). Where the system NSS loads the
+  p11-kit proxy (Fedora, RHEL/Alma), registering native profiles would show the same keys twice, so
+  the command does not register native profiles there and says why. Mozilla's own Firefox build on
+  those systems uses its bundled NSS and then sees nothing: the README points it to the manual
+  `modutil` route of `docs/install.md`. How the command tells such a system apart is for a finding.
 - **Safety.** It refuses to run as root or under `sudo`, because it writes into the invoking user's
   home. It does not edit a profile whose browser holds it (the profile lock) and reports which one to
   close. It writes copies and profile changes so that an interruption leaves the old state or the
@@ -246,13 +249,14 @@ decides:
 - **Refresh.** Whenever it runs, the registration command replaces each stale copy atomically, in
   place, at the same path. It refreshes only copies that exist: a refresh never registers a browser
   the person did not register.
-- **Automatic refresh.** The package ships a per-user trigger, run by the user's service manager,
-  that refreshes existing copies at login and when the installed module changes while the person is
-  logged in. The person does not have to remember. Its outcome, success or failure with the reason,
+- **Automatic refresh.** The package ships a per-user trigger, run by the user's service manager and
+  enabled for every user by the package (decided), that refreshes existing copies at login and when
+  the installed module changes while the person is logged in. The person does not have to remember,
+  so a security fix in the module reaches the snap. Its outcome, success or failure with the reason,
   goes to the user's journal.
 - **Never silent.** A copy that could not be refreshed is reported by the trigger (user journal) and
-  by the registration command (non-zero exit, naming the copy). Whether the copy should also show it
-  at run time, in a place the browser displays, is an open question.
+  by the registration command (non-zero exit, naming the copy). The copy does not show it at run time
+  (decided: that would need an API addition).
 - **Compatibility.** The protocol between module and service stays compatible within the release
   series, so a stale copy keeps working between an upgrade and its refresh. A future incompatible
   change must make an old copy fail visibly (no slots and a journal entry from the service), never
@@ -262,15 +266,18 @@ decides:
 
 Inside a snap, the copy is loaded against the snap's base (its glibc and loader), not the host's.
 Each snap's base can be older than the host. The module's ELF requirements (glibc symbol versions,
-needed libraries) must fit the oldest base used by the stable channel of the three snaps. A package
+needed libraries) must fit the base used by the stable channel of the Firefox snap. A package
 gate checks this, with the bases and their glibc recorded with sources in the same way as
 `packaging/glibc-ceiling.txt`. The module needs no library that the bases lack.
 
 ### 6. End-to-end on the Ubuntu 26.04 VM
 
 The M5 VM target (Ubuntu 26.04 minimal cloud image, `swtpm`, OVMF; `docs/milestones/M5/SPEC.md`,
-Design 1) gains a snap group of cases. They use the same case accounting: every case is reported once,
-run or skipped, and an unknown or missing case fails the run.
+Design 1) gains a snap group of cases in its `full` mode. They use the same case accounting: every
+case is reported once, run or skipped, and an unknown or missing case fails the run. This group is
+the only new end-to-end test of M6: it is the one thing that only a real snap under real AppArmor can
+prove. Everything else is proven lower, by unit and integration tests (see "Language and
+harnesses").
 
 - **Check first.** Whether the M5 minimal cloud image ships `snapd` and an AppArmor-enabled boot was
   not checked. The Firefox snap also pulls content snaps (GNOME and Mesa runtimes), hundreds of MB
@@ -283,7 +290,9 @@ run or skipped, and an unknown or missing case fails the run.
   the service observed.
 - **Through the socket:** as a regular user, a PKCS#11 client runs under the Firefox snap's
   confinement (`snap run --shell firefox`). The client and the module copy are placed in
-  `~/snap/firefox/common/` by the registration command. The client lists the user's keys and signs
+  `~/snap/firefox/common/` by the registration command (by hand until the command exists). The
+  `/run/snap.firefox/` directory and its socket exist after the package install. The client lists
+  the user's keys and signs
   with each key type, every signature verifies with `openssl`, polkit was asked once per signature
   about the client's process, and the journal entry carries the snap label.
 - **Denied on the bus:** from the same confinement, a call to the service on the system bus is
@@ -295,10 +304,11 @@ run or skipped, and an unknown or missing case fails the run.
 - **Fail closed:** the case fails, and is not skipped, if the snap is not confined (the observed label
   is not `snap.firefox.*` in enforce mode), if the socket stops being reachable, or if the bus stops
   being denied. Either change means snapd's rules moved, and a person must look.
-- **Stale copy:** after an upgrade of the package from N to N+1, the trigger or the command refreshes
-  the copy and the client still signs.
-- **When.** As in M5: a release test in CI, and in the `verify` of the checkpoint and last features
-  only. It needs network for the snap store, like M5's package install.
+- **When.** As in M5: a release test in CI and the last feature's `verify`. One exception, to learn
+  early whether the route holds: the feature that first builds the group runs it alone
+  (`just e2e-vm-cases full 'snap-*'`), right after the socket can sign and the module can reach it,
+  before the registration command and the documents. It needs network for the snap store, like M5's
+  package install.
 
 ### 7. Warning about an unencrypted state directory
 
@@ -332,11 +342,13 @@ list, never by a test that greps wording.
   import falls back to the encrypted kinds without asking (`docs/decisions.md`) and that `custodio
   list` shows each key's kind. It covers the full-disk encryption warning; how to register browsers,
   and to remove the registration before uninstalling, with the command and never Firefox's "Browse"
-  dialog (Design 3); and the limits: the snap route is not a supported snapd interface, the Chromium
-  and Thunderbird snaps are untested, Firefox Flatpak cannot use it, lost keys need the original
-  `.p12`, and TLS client authentication shows several dialogs per page.
+  dialog (Design 3); and the limits: the snap route is not a supported snapd interface, only the
+  Firefox snap is supported (not Chromium, Thunderbird or Firefox Flatpak), Mozilla's Firefox on
+  Fedora and RHEL/Alma needs the manual route, lost keys need the original `.p12`, and TLS client
+  authentication shows several dialogs per page.
 - **Release notes** for the first public release: supported systems, what is new since the last
-  milestone, known limits, and the upgrade note (keys from before M4 were purged).
+  milestone, known limits, and the upgrade note (keys from before M4 were purged). The release is
+  `v0.8.0`, with no name (`docs/decisions.md`).
 - **`docs/install.md`** replaces the manual `modutil` steps with the registration command, keeping
   the manual route as a fallback.
 - **Manual acceptance steps** for Design 6's desktop check, in `docs/manual-acceptance.md`.
@@ -352,7 +364,11 @@ and AddressSanitizer on the FFI layer; `rustfmt` and `clippy` with the service's
 systemd exposure score and the unit and bus-policy checks; the package gates; the API contract
 check; commitlint; and `just` as the entry point.
 
-M6 adds, all blocking:
+M6 adds, all blocking. **The test pyramid holds:** each requirement is proven at the lowest level
+that can prove it. Unit tests for parsers and decisions; integration tests against the real service
+on real sockets for the socket transport, and against NSS's own tools on fixture homes for the
+registration command; static checks for the shipped units and files; and one end-to-end group, the
+VM snap cases, for what only a real snap can show. M6 adds no case group to the container suite.
 
 - **Integration tests of the socket transport** against the real service on real sockets, with the
   peer label supplied by a test-only source that never ships (as the test TCTI rule of
@@ -364,23 +380,26 @@ M6 adds, all blocking:
   exercised by a fuzz target too.
 - **The API contract check** extended to the socket: exactly `ListKeys` and `Sign` are served there,
   and the bus API with the Design 7 addition matches `docs/api.md`.
-- **Unit and package checks:** the socket units are exactly the three snaps; the directories come
-  from `tmpfiles.d` as root `0755`; the exposure score does not rise; the per-user refresh trigger
-  ships in every format; the module's ELF requirements fit the snap bases (Design 5), with a negative
+- **Unit and package checks:** the socket unit is exactly the Firefox one; the directory comes from
+  `tmpfiles.d` as root `0755`; the exposure score does not rise; the per-user refresh trigger ships
+  in every format and passes `systemd-analyze verify`; `modutil` is a run-time dependency of every
+  format; the module's ELF requirements fit the Firefox snap's base (Design 5), with a negative
   control.
-- **End-to-end:** the registration command against native Firefox (and Thunderbird where the target
-  ships it) in the container suite, on each target where they are packaged. The VM snap group
-  (Design 6) is a release test.
+- **Registration against real NSS:** integration tests run the command on fixture homes and check
+  the result with NSS's own `modutil` and `certutil`, including that NSS sees the Custodio token and
+  certificate in a registered profile with the real service running.
+- **End-to-end:** only the VM snap group (Design 6), a release test.
 - **Supply chain:** the snap installed in the VM comes from the store's signed assertions as snapd
   verifies them; the run records the revision. Any new workflow follows the existing pinning rules.
 
 ## Scope
 
-- The three snap sockets: `tmpfiles.d` directories, socket activation, peer check, list and sign
+- The Firefox snap socket: `tmpfiles.d` directory, socket activation, peer check, list and sign
   only, polkit on the pidfd subject, journal fields, limits, directory check.
 - The module's transport choice inside a snap.
-- The registration command for native Firefox and its derivatives and for the three snaps, its
-  removal mode, stale-copy detection and refresh, and the per-user automatic refresh trigger.
+- The registration command for native Firefox, Thunderbird and the derivatives a finding confirms,
+  and for the Firefox snap; its removal mode, stale-copy detection and refresh, and the per-user
+  automatic refresh trigger.
 - The snap-base fit of the module and its gate.
 - The VM snap cases and the manual desktop acceptance.
 - The encrypted-state-directory check in the service, its API addition and the CLI warning.
@@ -393,9 +412,10 @@ M6 adds, all blocking:
 - Everything the idea leaves to a person: the external review of the authorization path, the FFI
   layer and the socket; publishing the packages; making the repository public; rFirma's integration;
   the question on the snapcraft forum.
-- Firefox Flatpak; parallel snap instances; snaps other than the three; classic or devmode snaps.
-- Native Chromium and Chrome (`~/.pki/nssdb`) registration, unless a finding shows they need nothing
-  beyond the same NSS registration and the person approves adding them.
+- Firefox Flatpak; parallel snap instances; the Chromium, Thunderbird and every other snap but
+  Firefox; classic or devmode snaps.
+- Native Chromium and Chrome (`~/.pki/nssdb`) registration.
+- New case groups in the container end-to-end suite.
 - Import, delete or replace through a socket; any new operation on keys; any change to the storage
   kinds, the fallback rule or the PCR guard; the administrator setting that refuses the encrypted
   kinds (`docs/decisions.md`).
@@ -407,11 +427,11 @@ M6 adds, all blocking:
 
 ## Acceptance
 
-Automated, on the host, in the integration suites or in the container suite:
+Automated, on the host, in unit, integration and package checks:
 
-1. The packages install a `tmpfiles.d` entry for each of `/run/snap.firefox/`, `/run/snap.chromium/`
-   and `/run/snap.thunderbird/`, and no other. After install, and after a reboot, each directory is
-   root-owned with mode `0755` and holds `custodio.sock`. Stopping the service does not remove them.
+1. The packages install a `tmpfiles.d` entry for `/run/snap.firefox/` as root `0755` and no other,
+   and a socket unit for `/run/snap.firefox/custodio.sock` and no other; the service unit has no
+   `RuntimeDirectory=` for it. (That the directory and socket exist on a real install is case 17.)
 2. A peer whose label is the socket's snap label in enforce mode lists its own keys and signs. A
    peer that is unconfined, carries another snap's label, carries a non-snap label, carries the
    right snap in complain mode, carries a stacked label (`snap.firefox.firefox//&unconfined`) or a
@@ -433,26 +453,27 @@ Automated, on the host, in the integration suites or in the container suite:
    `docs/audit.md` documents, and `CUSTODIO_PID` is the peer's pid. Bus entries are unchanged
    except for the transport field.
 7. A peer that exceeds the connection, size or time bounds is disconnected. During that, a bus
-   client and a peer on another socket still list and sign, and signatures do not fail with
+   client and another accepted peer still list and sign, and signatures do not fail with
    `AuditUnavailable` because of journal flooding.
 8. With a socket directory not owned by root or writable by others, the service does not serve that
-   socket and records why. The bus and the other sockets keep working.
+   socket and records why. The bus keeps working.
 9. With `SNAP_INSTANCE_NAME` set, the module uses only the matching socket and never the bus. With an
    invalid instance name, a missing socket or a socket directory that is not root-only, it reports no
    slots.
 10. The registration command, run on a home with native Firefox profiles in both the legacy and the
-    XDG location, a hand-registered entry, and the three snaps, registers each profile once. A
+    XDG location, a hand-registered entry, and the Firefox snap, registers each profile once. A
     second run changes nothing (the profile files are byte-identical). Removal leaves no Custodio
     entry and no copy, and leaves every other module entry as it was. It refuses to run as root. It
     skips a locked profile and exits non-zero naming it. NSS's own tools list exactly one Custodio
     module in each registered profile.
-11. In the container suite, on each target that packages native Firefox, Firefox's NSS in a
-    registered profile sees the Custodio token and the imported certificate.
+11. In an integration test with the real service running, NSS's own tools on a registered fixture
+    profile see the Custodio token and the imported certificate.
 12. A copy whose bytes differ from the installed module is reported stale and is replaced at the
-    same path by the command and by the per-user trigger. A copy that cannot be replaced makes the
-    command exit non-zero and leaves an entry in the user's journal. A refresh never creates a copy
-    for a snap that had none.
-13. The package gate fails on a module whose ELF requirements exceed the oldest snap base recorded
+    same path by the command and by its refresh-only mode, which the per-user trigger runs. A copy
+    that cannot be replaced makes the command exit non-zero and the refresh mode log a failure
+    naming it. A refresh never creates a copy for a snap that had none. The trigger's units pass
+    `systemd-analyze verify` and run the refresh mode.
+13. The package gate fails on a module whose ELF requirements exceed the Firefox snap's recorded base
     (negative control) and passes on the shipped module.
 14. The service classifies its state directory as *encrypted* on a dm-crypt chain (including LVM on
     LUKS), *not encrypted* on a plain device and *unknown* where it cannot tell. It records the
@@ -463,10 +484,11 @@ Automated, on the host, in the integration suites or in the container suite:
 16. Every command in the README, the threat model, `docs/install.md` and the release notes runs as
     written in a test.
 
-Automated, on the VM target (release run, checkpoint and last features):
+Automated, on the VM target (release run, the feature that builds the group, and the last feature):
 
-17. Design 6: under `snap run --shell firefox`, a PKCS#11 client in `~/snap/firefox/common/`, set up
-    by the registration command, lists the user's keys and signs with an RSA 2048 and a P-256 key.
+17. Design 6: after the package install, `/run/snap.firefox/` is root `0755` and holds
+    `custodio.sock`. Under `snap run --shell firefox`, a PKCS#11 client in `~/snap/firefox/common/`,
+    set up by the registration command, lists the user's keys and signs with an RSA 2048 and a P-256 key.
     Each signature verifies with `openssl`. Each asked polkit about the client's process, and each
     journal entry carries a `snap.firefox.*` label. From the same confinement, a system-bus call to
     the service is denied by AppArmor. An unconfined process and a process under another snap's
@@ -474,18 +496,16 @@ Automated, on the VM target (release run, checkpoint and last features):
     snapd, AppArmor and dbus-daemon versions and the observed label.
 18. If the observed label is not a `snap.firefox.*` label in enforce mode, if the socket is not
     reachable from the confinement, or if the bus is not denied, the VM run fails (not skips).
-19. After an upgrade of the package from N to N+1, the Firefox snap copy is refreshed without the
-    person running anything (the trigger), and case 17's client still signs.
 
 Manual (a person, following steps the milestone ships in `docs/manual-acceptance.md`):
 
-20. On an Ubuntu 26.04 desktop VM with the real Firefox snap from the store, after installing the
+19. On an Ubuntu 26.04 desktop VM with the real Firefox snap from the store, after installing the
     package and running the registration command: Firefox completes TLS client authentication
     against a test server that requires a client certificate, once with an RSA and once with a P-256
     key. A polkit dialog appears for each signature, and refusing it fails the handshake. The journal
     shows each signature with the Firefox label and Firefox's pid. The record names the snap
     revision.
-21. A person checks the README, the threat model, `SECURITY.md` and the release notes against
+20. A person checks the README, the threat model, `SECURITY.md` and the release notes against
     Design 8's list. Every item is present and agrees with `docs/api.md`, `docs/audit.md` and
     `docs/decisions.md`.
 
@@ -498,49 +518,23 @@ Manual (a person, following steps the milestone ships in `docs/manual-acceptance
   uid another way that the kernel guarantees; dropping the user namespace. The last weakens the
   unit. Settle by a finding and a test. If no route keeps the exposure score, that is a `BLOCKED.md`
   question.
-- **polkit's `unix-process` pidfd subject on each target.** Verified with polkit 127 on Ubuntu 26.04.
-  Which polkit versions accept `{pidfd, uid}`, and what Debian 13's and Alma 10's do with it? The
-  service fails closed either way, but the snap route only matters where snaps are confined. Settle
-  by a finding.
-- **Which labels of the snap to accept.** Any app or hook of the snap (default), or only the browser
-  app (`snap.firefox.firefox`, `snap.chromium.chromium`, `snap.thunderbird.thunderbird`)? Narrower is
-  more conservative but may break a helper app that loads the module. Settle by a finding on the
-  three snaps' apps.
-- **Writing the NSS database.** NSS's `modutil` as a runtime dependency (`libnss3-tools`,
-  `nss-tools`, `nss`), or a writer of our own for `pkcs11.txt`? The tool knows the format and NSS's
-  locking; our own writer adds no dependency but owns a format that NSS does not document as stable.
-  Default: NSS's tool. Settle with the approver.
+- **polkit's `unix-process` pidfd subject.** Verified with polkit 127 on Ubuntu 26.04, where the snap
+  route runs. Which polkit versions accept `{pidfd, uid}` (from polkit's sources and the version each
+  target ships, not by running every target)? Elsewhere the service fails closed. Settle by a finding.
+- **Which labels of the Firefox snap to accept.** Any app or hook of the snap (default), or only
+  `snap.firefox.firefox`? Narrower is more conservative but may break a helper app that loads the
+  module. Settle by a finding on the snap's apps and hooks.
 - **Profile locations.** Known: the Firefox snap 154 keeps its profiles in
   `~/snap/firefox/common/.mozilla/firefox/` (verified on the VM, not the XDG location). Open: the
-  profile roots of native Firefox (legacy and XDG after Firefox 147), Thunderbird (the snap sets
-  `HOME=$SNAP_USER_COMMON`, so `~/snap/thunderbird/common/.thunderbird/`, inferred from its
-  `snapcraft.yaml`), the Chromium snap's NSS database (`~/snap/chromium/current/...`
-  is per revision: does a refresh carry the registration?), and which derivatives to include
-  (LibreWolf, Floorp, Waterfox candidates). Settle by a finding per browser; the list is data.
-- **Systems whose NSS loads p11-kit.** Is skipping native profiles there right? Mozilla's own
-  Firefox on Fedora uses its bundled NSS and would then see nothing. Alternatives: register anyway and
-  accept a duplicate token, or tell builds apart by the profile's last-used application. Settle by a
-  finding on Fedora 44 and the approver's choice.
-- **Snap bases.** Which base does the stable channel of each of the three snaps use today (core22
-  has glibc 2.35, core24 2.39)? The sources disagree: the Firefox snap on the VM (rev 8763) used the
-  `gnome-46-2404` content snap, so core24; its `stable` `snapcraft.yaml` was read as core26; the
-  Thunderbird `snapcraft.yaml` says core22. Settle by a finding from `snap info` and the installed
-  snaps' `meta/snap.yaml`, not from the build files. If a base is older than the module can support,
-  that snap is out of scope or the module's floor moves: a person's choice.
-- **Run-time sign of a stale copy.** Besides the command and the trigger, should a stale copy show
-  itself where the browser displays it (for example in the token's label)? That needs the copy to
-  learn the service's build identity, an API addition. Default: no. The command and the trigger are
-  the guarantee.
-- **The per-user trigger.** Enabled for every user by the package (default), or by the registration
-  command for the user who registers? The first refreshes copies of users who never log in again
-  only at their next login; the second leaves out users who registered by hand. Settle in the
-  contract.
-- **Packaging the sockets outside Ubuntu.** Default: every format ships them (parity), and they refuse
-  every peer where AppArmor does not confine snaps. The alternative is the `.deb` only, with a
-  parity exception. Settle with the approver.
+  profile roots of native Firefox (legacy and XDG after Firefox 147) and Thunderbird, how a system
+  whose NSS loads p11-kit is recognised, and which derivatives to include (LibreWolf, Floorp,
+  Waterfox candidates). Settle by a finding; the list is data.
+- **The Firefox snap's base.** The sources disagree: on the VM (rev 8763) it used the `gnome-46-2404`
+  content snap, so core24 (glibc 2.39); its `stable` `snapcraft.yaml` was read as core26. Settle from
+  `snap info` and the installed snap's `meta/snap.yaml`. If the base is older than the module can
+  support, that is a `BLOCKED.md` question.
 - **Bounds.** The values for connections per socket, message size, handshake and idle time, and the
   rate of refusal entries. Settle in the contract, with a reason for each.
 - **Classifying the state directory.** How to treat ZFS or `fscrypt` native encryption, btrfs over
   several devices, and dm-crypt reached through dm-integrity or RAID. Default: anything not proven
   to be dm-crypt is *unknown*. Settle by a finding.
-- **Version and name of the first public release.** For the release notes. A person's choice.
