@@ -15,7 +15,7 @@
       "description": "docs/findings/F171.md answers what SPEC Design 6 puts first and the snap open questions, from the installed snap in the pinned Ubuntu 26.04 minimal cloud image of M5: whether the image ships snapd and boots with AppArmor enabled (if not, how the run installs snapd from the archive); the download size and time of the Firefox snap with its content snaps, and whether the run caches snaps by revision, verified by their signed assertions and never refreshed silently; the snap's apps and hooks and their AppArmor labels (which the socket accepts: any app or hook, or only snap.firefox.firefox); its base and glibc from snap info and meta/snap.yaml; and where its profiles live. Records the snap revision, base, snapd, AppArmor and dbus-daemon versions. Ends with 'Decision: ' lines; a base older than the module supports is a BLOCKED.md question. Indexed in docs/findings.md.",
       "depends_on": [],
       "verify": "f=docs/findings/F171.md && grep -q '^## F171' \"$f\" && for w in 'snapd' 'AppArmor' 'snap run --shell firefox' 'revision' 'assertion' 'minimal' 'meta/snap.yaml' 'snap info' 'snap.firefox.firefox' 'glibc'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F171.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F172",
