@@ -95,7 +95,10 @@ pub fn check_dir(dir: &Path) -> Result<(), Refusal> {
     let fd = openat(
         CWD,
         dir,
-        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        OFlags::RDONLY
+            .union(OFlags::NOFOLLOW)
+            .union(OFlags::NONBLOCK)
+            .union(OFlags::CLOEXEC),
         Mode::empty(),
     )
     .map_err(|e| match e {
