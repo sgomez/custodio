@@ -7,7 +7,7 @@
       "description": "docs/findings/F170.md settles three open questions of SPEC Design 1. (1) The real uid under PrivateUsers=: with a socket-activated test socket under a copy of the shipped unit (DynamicUser, PrivateUsers=), what SO_PEERCRED reports for a peer of another uid (the overflow uid 65534 or the real one), and the candidates: a PrivateUsers= mode that keeps uids identical (systemd 257 is the floor), another kernel-guaranteed source, dropping the user namespace; for each, the systemd-analyze exposure score against M5's. (2) The D-Bus handshake on a peer-to-peer zbus server under which identity comes only from the kernel (ANONYMOUS versus EXTERNAL). (3) Which polkit versions accept a unix-process subject {pidfd, uid} asked by a trusted caller for another uid, from polkit's sources and the version each target ships (not by running every target), measured on ubuntu2604. Ends with 'Decision: ' lines. If no uid route keeps the exposure score, it writes BLOCKED.md. Indexed in docs/findings.md.",
       "depends_on": [],
       "verify": "f=docs/findings/F170.md && grep -q '^## F170' \"$f\" && for w in 'PrivateUsers=' 'SO_PEERCRED' '65534' 'systemd 257' 'exposure' 'ANONYMOUS' 'EXTERNAL' 'unix-process' 'pidfd' 'ubuntu2604'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F170.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F171",
