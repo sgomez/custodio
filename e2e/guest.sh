@@ -81,14 +81,6 @@ else
     trap on_exit EXIT
     tpm_observe "$tpm_mode" || fail "the TPM the unit sees is not the requested $tpm_mode"
     echo "e2e: the unit sees the TPM of the mode $tpm_mode"
-    # F173: a rootless container engine cannot write the identity uid map that PrivateUsers=identity needs (docs/findings/F170.md:
-    # "Failed to set up user namespacing"). Probe it; where it fails, only this container run gets PrivateUsers=yes through a drop-in.
-    # The VM target (E2E_VM) runs the shipped unit as it is.
-    if ! systemd-run --wait --collect --quiet -p PrivateUsers=identity true > /dev/null 2>&1; then
-        mkdir -p /etc/systemd/system/custodio.service.d
-        printf '[Service]\nPrivateUsers=yes\n' > /etc/systemd/system/custodio.service.d/container-uidmap.conf
-        echo "e2e: this container cannot write the identity uid map; custodio.service runs with PrivateUsers=yes here"
-    fi
 fi
 systemctl daemon-reload
 systemctl reload dbus # restart would drop logind and polkit off the bus
@@ -347,12 +339,6 @@ if [ -n "$vm" ]; then
 fi
 # F131: the TPM setup is undone and the installed unit has no test drop-in after it, as before it
 tpm_teardown || fail "the TPM setup could not be undone"
-# F173: the container-only uid-map drop-in is not a TPM drop-in; it goes before the check that no test drop-in remains
-if [ -e /etc/systemd/system/custodio.service.d/container-uidmap.conf ]; then
-    rm -f /etc/systemd/system/custodio.service.d/container-uidmap.conf
-    rmdir /etc/systemd/system/custodio.service.d 2> /dev/null || true
-    systemctl daemon-reload
-fi
 unit_problems=$(tpm_unit_problems)
 [ -z "$unit_problems" ] || fail "the installed unit has a test drop-in after the run: $unit_problems"
 case_run tpm-installed-unit-clean

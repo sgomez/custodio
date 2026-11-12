@@ -55,6 +55,6 @@ with an empty context.
 - Next session should: check the narrowed mutants rerun, run `timeout 1700 just e2e debian13`, tick the last step.
 
 ### 2026-11-12 — F173 — attempt 2
-- Done: `just mutants-diff F173` clean (58 mutants: 53 caught, 5 unviable). `just e2e debian13` passes on this commit. The rootless container cannot write the identity uid map, so `e2e/guest.sh` probes it and, only there, adds a `PrivateUsers=yes` drop-in (container run only, VM unaffected). The drop-in is removed before the final "no test drop-in" check. `just quick` green. Last step ticked.
+- Done: (the uid-map drop-in lives in `e2e/tpm-lib.sh`, called from `tpm_setup`/`tpm_teardown`, since guest.sh hit the size limit; `just quick` and `just e2e debian13` re-run green on this commit) `just mutants-diff F173` clean (58 mutants: 53 caught, 5 unviable). `just e2e debian13` passes on this commit. The rootless container cannot write the identity uid map, so `e2e/guest.sh` probes it and, only there, adds a `PrivateUsers=yes` drop-in (container run only, VM unaffected). The drop-in is removed before the final "no test drop-in" check. `just quick` green. Last step ticked.
 - Not done / known issues: Arch `post_upgrade` ordering as in attempt 1.
 - Next session should: nothing for F173.
