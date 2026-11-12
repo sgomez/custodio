@@ -94,3 +94,4 @@ Rules:
 - [F164](findings/F164.md) — CI for the VM target: 26.04 ships swtpm 0.10.1 (no pinned deb), package names, KVM udev step, no whole-run time recorded (timeout 60 min)
 - [F166](findings/F166.md) — M5 acceptance 17 on Debian 13.7 (systemd 257.13, virtual TPM): a user-scoped credential is `host+tpm2-scoped` with PCR mask `0x80`, PCR 7 confirmed; a minimal install needs libtss2-esys and -mu too
 - [F170](findings/F170.md) — socket peer identity: `PrivateUsers=yes` shows peers as 65534, `identity` keeps the real uid and the 0.7 score; zbus p2p server uses `ANONYMOUS`; polkit 124+ accepts `{pidfd, uid}` from the `owner` caller.
+- [F171](findings/F171.md) — Firefox snap in the M5 image: snapd and AppArmor ship, rev 9181 / core26 / glibc 2.43, install 50 s for 1.22 GB, cache works but is not needed, only `snap.firefox.firefox` accepted, profiles in `~/snap/firefox/common/.mozilla/firefox/`.
