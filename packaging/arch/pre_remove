@@ -2,4 +2,7 @@
 # Stop the service when the package is removed (F58). pacman runs pre_remove only for a real removal, never for an upgrade, so an upgrade
 # does not stop the service (zz-custodio-restart.hook restarts it once). `pacman -Rns` is the same removal. Nothing here touches the
 # state directory. A failing systemctl (no live systemd) is not an error.
+# The socket first: a socket left listening starts the stopped service again at the next connection (F173).
+systemctl stop custodio-firefox.socket || true
+systemctl disable custodio-firefox.socket || true
 systemctl stop custodio.service || true

@@ -23,6 +23,8 @@ SHARED_DIRS=(
 REQUIRED_PATHS=(
     /usr/lib/custodio/libcustodio_pkcs11.so
     /usr/lib/systemd/system/custodio.service
+    /usr/lib/systemd/system/custodio-firefox.socket
+    /usr/lib/tmpfiles.d/custodio-snap.conf
     /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
     /usr/share/dbus-1/system-services/com.rfirma.Custodio1.service
 )

@@ -9,6 +9,8 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib/package-fixtures.sh
 . "$ROOT/scripts/lib/package-fixtures.sh"
 SRC=$ROOT/packaging/arch
+# shellcheck source=scripts/lib/socket-scripts.sh
+. "$ROOT/scripts/lib/socket-scripts.sh"
 fx_init
 trap fx_cleanup EXIT
 fail=0
@@ -41,6 +43,7 @@ forbidden_hits() {
         grep -Ev '^[[:space:]]*(#|$)' "$1/$f" \
             | grep -E 'dbus-1|polkit-1|/lib/systemd|/etc/|custodio\.service\.d|systemctl +(--[a-z-]+ +)*(edit|set-property|mask|enable|preset|start|restart|try-restart|reload|daemon-reload)|systemd-hook +(restart|reload)|try-reload|systemd-run|useradd|adduser|groupadd|usermod|userdel|groupdel|deluser|rm +-[a-zA-Z]*r|chown|chmod|chgrp|sed +-i|\btee\b|\bcp\b|\bmv\b|\binstall +-|update-catalog' \
             | grep -v "^Exec = /usr/share/libalpm/scripts/systemd-hook restart custodio.service\$" \
+            | grep -vE "$SOCKET_OK" \
             | sed "s|^|$f: |" || true
     done
 }
@@ -92,6 +95,15 @@ for fn in pre_install pre_upgrade post_install post_upgrade pre_remove post_remo
     [ "$body" = "$(cat "$SRC/$fn")" ] || bad "the $fn of the built .INSTALL is not packaging/arch/$fn"
 done
 
+# The socket of the Firefox snap: enabled and restarted on install and upgrade, stopped before the service on removal (F173).
+SVC_STOP='^[[:space:]]*systemctl +stop +custodio\.service'
+arch_socket_problems() { # DIR
+    socket_install_problems "$1/post_install"
+    socket_install_problems "$1/post_upgrade"
+    socket_stop_problems "$1/pre_remove" "$SVC_STOP"
+}
+[ -z "$(arch_socket_problems "$SRC")" ] || bad "the socket lines: $(arch_socket_problems "$SRC")"
+
 # ---- the gates see what they are meant to see (fixtures with one bad line each) ----
 mkdir -p "$FX_DIR/bad"
 try() { # LABEL SCRIPT BODY: a copy of the arch files with BODY appended to SCRIPT; the gate named by the label must see it
@@ -124,6 +136,17 @@ for f in "${SCRIPTS[@]}"; do
     try forbidden "$f" 'systemctl set-property custodio.service Markers=needs-restart'
     case $f in pre_install | pre_upgrade) ;; *) try sysusers "$f" 'systemd-sysusers custodio.conf' ;; esac
 done
+sock_ctl() { # LABEL FILE SED-EXPRESSION
+    rm -rf "$FX_DIR/bad/arch"
+    cp -r "$SRC" "$FX_DIR/bad/arch"
+    sed -i "$3" "$FX_DIR/bad/arch/$2"
+    [ -n "$(arch_socket_problems "$FX_DIR/bad/arch")" ] || bad "control '$1': the socket gate did not see it"
+}
+sock_ctl "socket stopped after the service" pre_remove '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
+sock_ctl "socket not stopped" pre_remove '/stop custodio-firefox.socket/d'
+sock_ctl "socket not enabled on install" post_install '/enable custodio-firefox.socket/d'
+sock_ctl "socket not started on install" post_install '/restart custodio-firefox.socket/d'
+sock_ctl "socket not enabled on upgrade" post_upgrade '/enable custodio-firefox.socket/d'
 try state zz-custodio-restart.hook 'Exec = /usr/bin/ls /var/lib/custodio'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/bin/systemctl enable custodio.service'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/share/libalpm/scripts/systemd-hook reload dbus.service'

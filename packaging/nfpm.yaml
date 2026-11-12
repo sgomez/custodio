@@ -66,6 +66,12 @@ contents:
   - src: data/tmpfiles.d/custodio.conf
     dst: /usr/lib/tmpfiles.d/custodio.conf
     file_info: {mode: 0644, owner: root, group: root}
+  - src: data/tmpfiles.d/custodio-snap.conf
+    dst: /usr/lib/tmpfiles.d/custodio-snap.conf
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/custodio-firefox.socket
+    dst: /usr/lib/systemd/system/custodio-firefox.socket
+    file_info: {mode: 0644, owner: root, group: root}
   - src: data/com.rfirma.Custodio1.conf
     dst: /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf
     file_info: {mode: 0644, owner: root, group: root}

@@ -3,6 +3,9 @@
 # does not stop it: %post of the new package restarts it once, after the new files and the bus policy are in place. The systemd macros are not used:
 # the unit is never enabled by the package, so there is nothing to disable. Nothing here touches the state directory.
 if [ "${1:-1}" -eq 0 ]; then
+    # The socket first: a socket left listening starts the stopped service again at the next connection (F173).
+    systemctl stop custodio-firefox.socket || true
+    systemctl disable custodio-firefox.socket || true
     systemctl stop custodio.service || true
 fi
 exit 0

@@ -116,7 +116,7 @@ script-tests:
     scripts/run-script-tests.sh package-gate-test shell-scripts-test test-scripts
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
-system-gates: security-score unit-hardening unit-verify bus-policy
+system-gates: security-score security-ceiling snap-sockets unit-hardening unit-verify bus-policy
 
 # What the VM target needs on this machine: KVM the user can open, QEMU, OVMF, swtpm, the seed tool, gpgv and the Ubuntu keyring.
 # It fails naming each missing one and never offers software emulation (docs/findings/F150.md).
@@ -219,6 +219,7 @@ test-scripts:
     scripts/test-e2e-oldpath.sh
     scripts/test-e2e-import.sh
     scripts/test-relabel.sh
+    scripts/test-check-snap-sockets.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -240,7 +241,16 @@ security-score threshold="10":
         exit 1
     fi
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
+# The exposure of the service is not above M5's 0.7 (tenths: 7). F170 measured `PrivateUsers=identity` at 0.7 and `no` at 0.8, so
+# the uid route cannot be paid for by loosening something else. The threshold of `security-score` stays 10.
+security-ceiling unit="data/custodio.service" ceiling="7":
+    systemd-analyze security --offline=yes --no-pager --threshold={{ceiling}} {{unit}} | tail -n 1
+
+# The tmpfiles entry and the socket unit are exactly the Firefox ones (the only snap), and nothing makes a RuntimeDirectory=.
+snap-sockets:
+    scripts/check-snap-sockets.sh
+
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh

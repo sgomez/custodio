@@ -7,6 +7,8 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SRC=$ROOT/packaging/deb
 BF_DIR=$(mktemp -d)
 trap 'rm -rf "$BF_DIR"' EXIT
+# shellcheck source=scripts/lib/socket-scripts.sh
+. "$ROOT/scripts/lib/socket-scripts.sh"
 fail=0
 bad() { echo "test-deb-scripts-static: $*" >&2; fail=1; }
 
@@ -34,7 +36,7 @@ for entry in "${ALLOW_STATE[@]}"; do
 done
 # Nothing in the scripts changes the bus policy, the polkit action or the unit, and no script removes the account or deletes recursively.
 for f in "${SCRIPTS[@]}"; do
-    if code "$f" | grep -E 'dbus-1|polkit-1|/lib/systemd|/etc/|custodio\.service\.d|systemctl +(edit|set-property|mask|enable|preset|start)|deb-systemd-helper|userdel|deluser|groupdel|rm +-[a-zA-Z]*r|chown|chmod|chgrp|sed +-i|\btee\b|\bcp\b|\bmv\b|\binstall +-' | grep -v 'bus-check' > "$BF_DIR/hits"; then
+    if code "$f" | grep -E 'dbus-1|polkit-1|/lib/systemd|/etc/|custodio\.service\.d|systemctl +(edit|set-property|mask|enable|preset|start)|deb-systemd-helper|userdel|deluser|groupdel|rm +-[a-zA-Z]*r|chown|chmod|chgrp|sed +-i|\btee\b|\bcp\b|\bmv\b|\binstall +-' | grep -v 'bus-check' | grep -vE "$SOCKET_OK" > "$BF_DIR/hits"; then
         # The embedded F42 check is the same text in all three formats; it holds none of these, so any hit is new.
         bad "$f has a forbidden command or path: $(cat "$BF_DIR/hits")"
     fi
@@ -51,5 +53,26 @@ for f in "${SCRIPTS[@]}"; do
     grep -q '^set -e$' "$SRC/$f" || bad "$f lacks set -e"
 done
 
+# The socket of the Firefox snap: enabled and restarted on install, stopped before the service on removal (F173). The controls are copies
+# of the real scripts with the one fault.
+SVC_STOP='deb-systemd-invoke +stop +custodio\.service'
+deb_socket_problems() { # DIR
+    socket_install_problems "$1/postinst"
+    socket_stop_problems "$1/prerm" "$SVC_STOP"
+}
+[ -z "$(deb_socket_problems "$SRC")" ] || bad "the socket lines: $(deb_socket_problems "$SRC")"
+mkdir -p "$BF_DIR/sock"
+ctl() { # LABEL FILE SED-EXPRESSION: the problem gate must see the fault
+    rm -rf "$BF_DIR/sock/deb"
+    cp -r "$SRC" "$BF_DIR/sock/deb"
+    sed -i "$3" "$BF_DIR/sock/deb/$2"
+    [ -n "$(deb_socket_problems "$BF_DIR/sock/deb")" ] || bad "control '$1': the socket gate did not see it"
+}
+ctl "socket stopped after the service" prerm '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
+ctl "socket not stopped" prerm '/stop custodio-firefox.socket/d'
+ctl "socket not enabled" postinst '/enable custodio-firefox.socket/d'
+ctl "socket not started" postinst '/restart custodio-firefox.socket/d'
+printf '    systemctl enable custodio.service\n' >> "$BF_DIR/hits.extra"
+if { code postinst; cat "$BF_DIR/hits.extra"; } | grep -E 'systemctl +(enable|start)' | grep -vE "$SOCKET_OK" > /dev/null; then :; else bad "control: the forbidden gate let 'systemctl enable custodio.service' through"; fi
 
 exit "$fail"

@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use custodiod::audit::JournalSink;
 use custodiod::creds::systemd::SystemdCreds;
+use custodiod::snap_socket::{self, Outcome};
 use custodiod::startup::start;
 use custodiod::store::KeyStore;
 use custodiod::tpm::{TpmAccess, open::from_environment};
@@ -36,6 +37,17 @@ fn run() -> Result<(), Box<dyn Error>> {
             tpm,
         )
         .await?;
+        // Refused listeners stay open in `unserved`: their connections wait, unserved, until the process ends.
+        let mut unserved = Vec::new();
+        for (snap, listener) in snap_socket::take_from_environment() {
+            let name = snap_socket::descriptor_name(snap);
+            let dir = snap_socket::dir_to_check(snap);
+            if let Outcome::Refused(listener, _) =
+                snap_socket::serve(&name, listener, &dir, &mut std::io::stderr())
+            {
+                unserved.push(listener);
+            }
+        }
         std::future::pending::<()>().await;
         Ok(())
     })

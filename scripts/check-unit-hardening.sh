@@ -12,7 +12,7 @@ unit=${1:-$ROOT/data/custodio.service}
 justfile=${2:-$ROOT/justfile}
 fail=0
 
-for want in ProtectProc=invisible ProcSubset=pid PrivateUsers=yes PrivateDevices=yes \
+for want in ProtectProc=invisible ProcSubset=pid PrivateUsers=identity PrivateDevices=yes \
     DeviceAllow=/dev/tpmrm0\ rw BindPaths=-/dev/tpmrm0 SupplementaryGroups=tss; do
     key=${want%%=*}
     total=$(grep -c "^[[:space:]]*${key}[[:space:]]*=" "$unit" || true)

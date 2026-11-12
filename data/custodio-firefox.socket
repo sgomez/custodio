@@ -1,0 +1,17 @@
+[Unit]
+Description=Custodio socket for the Firefox snap
+Documentation=https://github.com/rfirma/custodio
+# The directory /run/snap.firefox/ comes from tmpfiles.d (data/tmpfiles.d/custodio-snap.conf), root 0755. It is never a
+# RuntimeDirectory= of the service: that would be removed and made again with the service.
+
+[Socket]
+ListenStream=/run/snap.firefox/custodio.sock
+# custodiod takes the descriptor by this name; `snap-<snap>` tells it which snap the socket is for.
+FileDescriptorName=snap-firefox
+Accept=no
+# Any uid may connect: the browser runs as the user, and the peer is checked by the service, not by the file mode.
+SocketMode=0666
+Service=custodio.service
+
+[Install]
+WantedBy=sockets.target

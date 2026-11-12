@@ -14,6 +14,8 @@ FILES = {
     "/usr/lib/systemd/system/custodio.service": 0o644,
     "/usr/lib/sysusers.d/custodio.conf": 0o644,
     "/usr/lib/tmpfiles.d/custodio.conf": 0o644,
+    "/usr/lib/tmpfiles.d/custodio-snap.conf": 0o644,
+    "/usr/lib/systemd/system/custodio-firefox.socket": 0o644,
     "/usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf": 0o644,
     "/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service": 0o644,
     "/usr/share/polkit-1/actions/com.rfirma.custodio.policy": 0o644,

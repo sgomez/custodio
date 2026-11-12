@@ -10,6 +10,8 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SRC=$ROOT/packaging/rpm
 fx_init
 trap fx_cleanup EXIT
+# shellcheck source=scripts/lib/socket-scripts.sh
+. "$ROOT/scripts/lib/socket-scripts.sh"
 fail=0
 bad() { echo "test-rpm-scripts-static: $*" >&2; fail=1; }
 SCRIPTS=(pre post preun postun)
@@ -38,6 +40,7 @@ forbidden_hits() {
     for f in "${SCRIPTS[@]}"; do
         grep -Ev '^[[:space:]]*(#|$)' "$1/$f" \
             | grep -E 'dbus-1|polkit-1|/lib/systemd|/etc/|custodio\.service\.d|systemctl +(edit|set-property|mask|enable|preset|start)|systemd-run|systemd-update-helper|useradd|groupadd|usermod|userdel|groupdel|rm +-[a-zA-Z]*r|chown|chmod|chgrp|sed +-i|\btee\b|\bcp\b|\bmv\b|\binstall +-' \
+            | grep -vE "$SOCKET_OK" \
             | sed "s|^|$f: |" || true
     done
 }
@@ -111,6 +114,24 @@ python3 -I "$ROOT/scripts/lib/nfpm_edit.py" "$ROOT/packaging/nfpm.yaml" "$FX_DIR
 (cd "$FX_DIR" && NFPM_VERSION=0.1.0 NFPM_PRERELEASE='' nfpm package -f nfpm-macro.yaml -p rpm -t "$FX_DIR/out" > /dev/null)
 macro_pkg=$(ls "$FX_DIR"/out/*.rpm)
 [ -n "$(macro_hits "$(fx_rpm -qp --scripts "$macro_pkg")")" ] || bad "control: the macro gate did not see a macro in a built rpm"
+
+# The socket of the Firefox snap: enabled and restarted on install, stopped before the service on erase (F173).
+SVC_STOP='^[[:space:]]*systemctl +stop +custodio\.service'
+rpm_socket_problems() { # DIR
+    socket_install_problems "$1/post"
+    socket_stop_problems "$1/preun" "$SVC_STOP"
+}
+[ -z "$(rpm_socket_problems "$SRC")" ] || bad "the socket lines: $(rpm_socket_problems "$SRC")"
+sock_ctl() { # LABEL FILE SED-EXPRESSION
+    rm -rf "$FX_DIR/bad/rpm"
+    cp -r "$SRC" "$FX_DIR/bad/rpm"
+    sed -i "$3" "$FX_DIR/bad/rpm/$2"
+    [ -n "$(rpm_socket_problems "$FX_DIR/bad/rpm")" ] || bad "control '$1': the socket gate did not see it"
+}
+sock_ctl "socket stopped after the service" preun '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
+sock_ctl "socket not stopped" preun '/stop custodio-firefox.socket/d'
+sock_ctl "socket not enabled" post '/enable custodio-firefox.socket/d'
+sock_ctl "socket not started" post '/restart custodio-firefox.socket/d'
 
 # A package with a user() provide is seen by the account gate.
 fx_build userprov 0.1.0 "" provides-add rpm 'user(custodio)'

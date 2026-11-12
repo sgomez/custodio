@@ -23,12 +23,13 @@ unit_case() { # LABEL SED-EXPRESSION
 unit_case "spaced ProtectProc = default" 's/^ProtectProc=.*/ProtectProc = default/'
 unit_case "ProtectProc=default" 's/^ProtectProc=.*/ProtectProc=default/'
 unit_case "ProcSubset=all" 's/^ProcSubset=.*/ProcSubset=all/'
+unit_case "PrivateUsers=yes (F170 route is identity)" 's/^PrivateUsers=.*/PrivateUsers=yes/'
 unit_case "PrivateUsers=no" 's/^PrivateUsers=.*/PrivateUsers=no/'
 for key in ProtectProc ProcSubset PrivateUsers; do
     unit_case "$key missing" "/^$key=/d"
 done
-for dup in ProtectProc=default ProcSubset=all PrivateUsers=no ProtectProc=invisible \
-    "ProtectProc = default" "ProcSubset = all" "PrivateUsers = no" "ProtectProc = invisible"; do
+for dup in ProtectProc=default ProcSubset=all PrivateUsers=no PrivateUsers=yes PrivateUsers=identity ProtectProc=invisible \
+    "ProtectProc = default" "ProcSubset = all" "PrivateUsers = no" "PrivateUsers = identity" "ProtectProc = invisible"; do
     sed "/^\[Install\]/i $dup" "$UNIT" > "$dir/u.service"
     grep -qxF "$dup" "$dir/u.service" || bad "fixture for '$dup' was not written"
     expect_fail "duplicate $dup" "$dir/u.service" "$JUST"
@@ -76,4 +77,9 @@ expect_fail "threshold 11" "$UNIT" "$dir/justfile"
 sed '/^security-score threshold=/d' "$JUST" > "$dir/justfile"
 expect_fail "threshold unreadable" "$UNIT" "$dir/justfile"
 expect_fail "missing unit file" "$dir/none.service" "$JUST"
+
+# The exposure ceiling (F173, `just security-ceiling`): the shipped unit is at or below 0.7, `PrivateUsers=no` (0.8) is above.
+just --justfile "$JUST" security-ceiling "$UNIT" >/dev/null 2>&1 || bad "the shipped unit is above the exposure ceiling"
+sed 's/^PrivateUsers=.*/PrivateUsers=no/' "$UNIT" > "$dir/u.service"
+if just --justfile "$JUST" security-ceiling "$dir/u.service" >/dev/null 2>&1; then bad "PrivateUsers=no (0.8) passed the ceiling"; fi
 exit "$fail"
