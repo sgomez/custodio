@@ -46,6 +46,10 @@ const CERT_SUFFIX: &str = "-cert";
 const MAX_ID_LEN: usize = 64 - CERT_SUFFIX.len();
 /// Largest data to sign: a `DigestInfo` or digest is far smaller.
 const MAX_SIGN_DATA_LEN: usize = 1024;
+/// Largest message that can carry a legal `Sign`: the header (path, interface, member, signature, about 150 bytes),
+/// an id of `MAX_ID_LEN`, three words and `MAX_SIGN_DATA_LEN` bytes of data come to under 1.5 KiB; the bound leaves
+/// room for the sender and destination fields a client may add. The snap socket's message bound is this value.
+pub const MAX_SIGN_MESSAGE_LEN: usize = 4096;
 /// Largest password accepted for a `.p12`.
 const MAX_PASSWORD_LEN: usize = 1024;
 

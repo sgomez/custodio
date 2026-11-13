@@ -12,7 +12,9 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use limits::{Limits, Line, RateLimit, Slots};
 
 use rustix::fs::{CWD, FileType, Mode, OFlags, fstat, openat};
 use rustix::io::Errno;
@@ -20,6 +22,7 @@ use rustix::io::Errno;
 use crate::store::KeyStore;
 
 pub mod keys;
+pub mod limits;
 pub mod peer;
 mod sign;
 pub use sign::Signing;
@@ -229,6 +232,9 @@ pub struct Service {
     source: peer::Source,
     log: Log,
     signing: Option<Signing>,
+    limits: Limits,
+    slots: Slots,
+    refusals: Arc<RateLimit>,
 }
 
 impl Service {
@@ -240,6 +246,28 @@ impl Service {
             source: peer::Source::Kernel,
             log,
             signing: None,
+            limits: Limits::SHIPPED,
+            slots: Slots::default(),
+            refusals: Arc::new(RateLimit::shipped()),
+        }
+    }
+
+    /// Serves with these bounds instead of the shipped ones, and this rate for the refusal lines.
+    #[must_use]
+    pub fn with_limits(mut self, limits: Limits, refusals: RateLimit) -> Self {
+        self.limits = limits;
+        self.refusals = Arc::new(refusals);
+        self
+    }
+
+    /// Writes a refusal line unless the rate says it is too many; the next line tells how many were dropped.
+    fn refused(&self, text: &str) {
+        match self.refusals.check(Instant::now()) {
+            Line::Write { suppressed: 0 } => (self.log)(text),
+            Line::Write { suppressed } => {
+                (self.log)(&format!("{text} ({suppressed} similar lines suppressed)"));
+            }
+            Line::Drop => {}
         }
     }
 
@@ -299,8 +327,15 @@ fn accept_loop(listener: &UnixListener, service: &Service) {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
+                let Some(slot) = service.slots.take(service.limits.connections) else {
+                    service.refused("custodiod: peer refused: too many connections");
+                    continue;
+                };
                 let service = service.clone();
-                thread::spawn(move || handle(stream, &service));
+                thread::spawn(move || {
+                    handle(&stream, &service);
+                    drop(slot);
+                });
             }
             Err(_) => thread::sleep(ACCEPT_BACKOFF),
         }
@@ -308,8 +343,9 @@ fn accept_loop(listener: &UnixListener, service: &Service) {
 }
 
 /// One connection: the three kernel values are read once, and the connection is closed (dropped) unless they pass.
-fn handle(stream: UnixStream, service: &Service) {
-    match peer::admit(&stream, &service.source) {
+fn handle(stream: &UnixStream, service: &Service) {
+    let started = Instant::now();
+    match peer::admit(stream, &service.source) {
         Ok(accepted) => {
             let peer::Accepted {
                 uid,
@@ -326,9 +362,21 @@ fn handle(stream: UnixStream, service: &Service) {
                 label,
                 pidfd,
             };
-            keys::serve_peer(stream, session);
+            // zbus talks to one end of a socket pair; the relay holds the other and the peer, and enforces the bounds.
+            let Ok((inner, outer)) = UnixStream::pair() else {
+                return;
+            };
+            let limits = service.limits;
+            let relayed = stream.try_clone();
+            thread::spawn(move || {
+                if let Ok(peer) = relayed {
+                    limits::relay(&peer, &outer, limits, started);
+                }
+            });
+            keys::serve_peer(inner, session);
+            let _ = stream.shutdown(std::net::Shutdown::Both);
         }
-        Err(reason) => (service.log)(&format!("custodiod: peer refused: {reason}")),
+        Err(reason) => service.refused(&format!("custodiod: peer refused: {reason}")),
     }
 }
 
