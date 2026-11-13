@@ -57,6 +57,15 @@ fn peer_of(c: &Creds) -> Peer {
     }
 }
 
+/// Hex of the bytes of `text`, as `AUTH EXTERNAL` carries a uid.
+fn hex_of(text: &str) -> String {
+    use std::fmt::Write as _;
+    text.bytes().fold(String::new(), |mut out, b| {
+        let _ = write!(out, "{b:02x}");
+        out
+    })
+}
+
 fn put(store: &KeyStore, owner: u32, id: &str, cert: &[u8]) -> TestResult {
     let key = SecretSlice::from(b"a-key-that-is-not-in-the-clear".to_vec());
     let sealed = seal(&MemoryCreds::host(), &format!("{owner}-{id}"), &key)?;
@@ -295,11 +304,7 @@ fn real_peer_without_label() -> TestResult {
 fn claimed_uid_ignored() -> TestResult {
     let rig = Rig::start(false)?;
     rig.set(creds(UID_A, GOOD));
-    let hex: String = UID_B
-        .to_string()
-        .bytes()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let hex = hex_of(&UID_B.to_string());
     let mut raw = UnixStream::connect(&rig.path)?;
     raw.set_read_timeout(Some(Duration::from_secs(10)))?;
     raw.write_all(format!("\0AUTH EXTERNAL {hex}\r\n").as_bytes())?;
@@ -317,7 +322,7 @@ fn refusal_journal() -> TestResult {
     rig.set(creds(UID_A, b"secret-label-bytes (enforce)"));
     rig.assert_closed()?;
     let lines = rig.lines();
-    assert!(!lines.is_empty());
+    assert_eq!(lines.len(), 1);
     for line in &lines {
         assert!(line.contains("refused"));
         assert!(!line.contains("secret-label-bytes"));
@@ -346,7 +351,7 @@ fn bad_peer_then_good() -> TestResult {
 
 /// The decision function alone: each input gives its own reason, and the uid is judged before the rest.
 #[test]
-fn decisions() -> TestResult {
+fn decisions() {
     let reason = |c: &Creds| decide(peer_of(c)).err();
     assert_eq!(reason(&creds(UID_A, GOOD)), None);
     assert_eq!(
@@ -382,5 +387,4 @@ fn decisions() -> TestResult {
     // A uid one off the overflow uid is a user.
     assert_eq!(reason(&creds(OVERFLOW_UID - 1, GOOD)), None);
     assert_eq!(reason(&creds(OVERFLOW_UID + 1, GOOD)), None);
-    Ok(())
 }

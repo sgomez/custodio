@@ -21,7 +21,7 @@ struct PeerKeys {
 #[interface(name = "com.rfirma.Custodio1")]
 impl PeerKeys {
     /// `(key id, key type, storage kind, DER certificate)` for every stored key of the peer's uid.
-    async fn list_keys(&self) -> Result<Vec<ListedKey>, ServiceError> {
+    fn list_keys(&self) -> Result<Vec<ListedKey>, ServiceError> {
         list_for_peer(&self.store, self.uid)
     }
 }

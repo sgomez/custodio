@@ -1,0 +1,32 @@
+use super::*;
+use std::fs::File;
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::net::UnixStream;
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+#[test]
+fn a_socketpair_peer_is_this_process() -> TestResult {
+    let (a, _b) = UnixStream::pair()?;
+    let peer = read(&a);
+    assert_eq!(peer.uid, Some(std::fs::metadata("/proc/self")?.uid()));
+    assert!(peer.pidfd.is_some());
+    Ok(())
+}
+
+#[test]
+fn a_descriptor_that_is_no_socket_reads_nothing() -> TestResult {
+    let peer = read(&File::open("/dev/null")?);
+    assert!(peer.uid.is_none() && peer.pidfd.is_none() && peer.label.is_none());
+    Ok(())
+}
+
+#[test]
+fn debug_does_not_show_the_label() {
+    let peer = Peer {
+        uid: Some(1),
+        pidfd: None,
+        label: Some(b"secret-label".to_vec()),
+    };
+    assert!(!format!("{peer:?}").contains("secret"));
+}

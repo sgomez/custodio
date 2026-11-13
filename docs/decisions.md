@@ -232,3 +232,8 @@ Format: a title and three short bullets, a couple of lines each:
 - Decision: M6 ships as `v0.8.0`, unnamed (approver).
 - Why: the external review follows M6; 1.0 waits for its fixes.
 - Rejected: `v1.0.0` now; a codename.
+
+## 2026-11-13 — Snap socket handshake: ANONYMOUS only, the uid comes from SO_PEERCRED (F175)
+- Decision: the peer-to-peer server on a snap socket accepts `ANONYMOUS` only and sets no `.user_id()`; `AUTH EXTERNAL` is rejected unread. Whose keys are listed is the uid of `SO_PEERCRED` and nothing else. The three `getsockopt` reads live in `crates/custodio-peer` (the one place with `unsafe`; `custodiod` keeps `forbid(unsafe_code)`). Details: `docs/findings/F170.md`.
+- Why: `EXTERNAL` compares a uid the peer writes, and under `PrivateUsers=identity` an unmapped uid shows as 65534; `rustix` and `nix` have no `SO_PEERSEC`.
+- Rejected: `EXTERNAL` with `.user_id()` set per connection; `unsafe` inside `custodiod`; the `/proc/<pid>/attr/current` label (racy, not the connect-time label).
