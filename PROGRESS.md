@@ -68,3 +68,8 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. Arch `post_upgrade` now stops a running service, starts the socket and starts the service again, so it keeps running; the restart hook still follows the reloads. The Arch static gate allows that one `systemctl start custodio.service || true` in `post_upgrade` only, with controls (service left stopped, started before the socket, the same line in another script). Deb starts/stops the socket and the service through `deb-systemd-invoke`; rpm `%post` no longer starts the socket twice. `scripts/lib/socket-scripts.sh` takes the invoker. Contract amended (probe text, evidence wording, upgrade order). The three static script tests and `test-relabel.sh` pass.
 - Not done / known issues: Rust unchanged since the clean mutants run. `scripts/test-*-lifecycle.sh` (package gates) were not run; their recorded-call expectations may need the socket calls at the checkpoint. The Arch e2e is not run here.
 - Next session should: run `just quick`, `just e2e debian13` if the loop did not.
+
+### 2026-11-13 — F173 — attempt 5
+- Done: fixed NEXT_FINDINGS (deb upgrade left the service stopped: `deb-systemd-invoke` refuses to start a static unit that is not running, and it was just stopped). `packaging/deb/postinst` now ends with `systemctl restart custodio.service`; stops and the socket start still go through `deb-systemd-invoke`. Contract amended (own commit). `test-deb-scripts-static.sh`, `test-relabel.sh`, `just quick` green; `just e2e debian13` passes on this commit (607 s). Rust unchanged since the clean mutants run.
+- Not done / known issues: package lifecycle gates and Arch e2e not run (checkpoint).
+- Next session should: nothing for F173.
