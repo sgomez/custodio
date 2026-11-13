@@ -602,6 +602,12 @@ mod transport {
         );
         assert_eq!(f.len(), BEFORE.len() + 2);
         assert_eq!(e.message(), base()?.message());
+        assert_eq!(
+            e.peer_label().map(PeerLabel::as_str),
+            Some("snap.firefox.firefox (enforce)")
+        );
+        assert_eq!(e.transport(), Transport::Socket);
+        assert_eq!(base()?.peer_label(), None);
         Ok(())
     }
 
