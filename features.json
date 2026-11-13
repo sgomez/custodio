@@ -55,7 +55,7 @@
         "F174"
       ],
       "verify": "just quick && cargo test -p custodiod --test snap_socket_peer --locked && scripts/test-check-test-label.sh && just mutants-diff F175",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F176",
