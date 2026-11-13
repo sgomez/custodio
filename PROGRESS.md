@@ -86,3 +86,7 @@ with an empty context.
 ### 2026-11-13 — F173 — attempt 8
 - Done: no code change. Tree clean, `just quick` green (already passed on this tree). All contract steps ticked; the evaluator's notes were non-blocking (seam is the `test-seam` Cargo feature, enabled by a self dev-dependency with `compile_error!` in release builds; `check-snap-sockets.sh` checks it is not default).
 - Next session should: nothing for F173.
+
+### 2026-11-13 — F174 — attempt 1
+- Done: `custodiod::peer_label::check(&[u8]) -> Result<(), Refusal>` (14 reasons, fixed display texts with no label bytes; "another snap" and "another app of the snap" are two reasons). Firefox hard-coded (no snap parameter until a second socket exists). Trailing NUL is refused: the dev container probe (`getsockopt(SO_PEERSEC)` on a socketpair) returned `b'crun (unconfined)'` with no NUL; recorded in the module docs. Table test `tests/peer_label.rs`; fuzz target `peer_label` (accept implies exact label) in `fuzz/Cargo.toml` and the `fuzz-smoke` list; `peer_label.rs` added to the `mutants` file list. Gates: `just quick`, the test, `mutants-diff F174` (18 caught), `fuzz-build`, `lint-fuzz`, `fuzz-smoke` (and its negative control) green. The seed corpus dir is git-ignored, so none was added; smoke does not use one anyway.
+- Next session should: nothing for F174.

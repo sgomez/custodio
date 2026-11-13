@@ -17,6 +17,7 @@ pub mod dbus;
 pub mod error;
 pub mod import;
 mod offload;
+pub mod peer_label;
 pub mod polkit;
 pub mod sign;
 pub mod snap_socket;
