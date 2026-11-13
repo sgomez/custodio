@@ -30,7 +30,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         let key_credentials = Arc::new(SystemdCreds::system());
         // The earlier format is purged, then the object is served and the name taken: `start` is the only path.
         let _connection = start(
-            store,
+            Arc::clone(&store),
             Connection::system(),
             Arc::new(JournalSink::default()),
             key_credentials,
@@ -38,12 +38,14 @@ fn run() -> Result<(), Box<dyn Error>> {
         )
         .await?;
         // Refused listeners stay open in `unserved`: their connections wait, unserved, until the process ends.
+        let log: snap_socket::Log = Arc::new(|line| eprintln!("{line}"));
+        let snap_service = snap_socket::Service::new(Arc::clone(&store), log);
         let mut unserved = Vec::new();
         for (snap, listener) in snap_socket::take_from_environment() {
             let name = snap_socket::descriptor_name(snap);
             let dir = snap_socket::dir_to_check(snap);
             if let Outcome::Refused(listener, _) =
-                snap_socket::serve(&name, listener, &dir, &mut std::io::stderr())
+                snap_socket::serve(&name, listener, &dir, &mut std::io::stderr(), &snap_service)
             {
                 unserved.push(listener);
             }

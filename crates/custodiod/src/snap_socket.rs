@@ -1,5 +1,6 @@
 //! The sockets of confined browsers (snaps): systemd passes one, named for the snap, and this module decides whether
-//! it may be served. Nothing is read or written on a connection yet: it is accepted and closed.
+//! it may be served. Each accepted connection is checked first ([`peer`]): a peer that passes gets the interface with
+//! `ListKeys` for its own uid ([`keys`]), any other is closed before a byte is read.
 //!
 //! The name of the descriptor tells which snap it is for, and the directory is derived from the name and nothing
 //! else (`snap-firefox` -> `/run/snap.firefox/`). The directory is checked before the socket is served: it must be
@@ -7,13 +8,19 @@
 
 use std::fmt;
 use std::io::Write;
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use rustix::fs::{CWD, FileType, Mode, OFlags, fstat, openat};
 use rustix::io::Errno;
+
+use crate::store::KeyStore;
+
+pub mod keys;
+pub mod peer;
 
 /// Snaps with a socket. Anything else systemd passes is closed and ignored.
 const KNOWN_SNAPS: [&str; 1] = ["firefox"];
@@ -210,21 +217,59 @@ pub fn dir_to_check(snap: &str) -> PathBuf {
     socket_dir(snap)
 }
 
+/// Where a line about a refused connection goes. It never receives label bytes or key material.
+pub type Log = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// What serving a socket needs besides the socket: the store, the source of peer values and the log.
+#[derive(Clone)]
+pub struct Service {
+    store: Arc<KeyStore>,
+    source: peer::Source,
+    log: Log,
+}
+
+impl Service {
+    /// The kernel is the source of the peer's values.
+    #[must_use]
+    pub fn new(store: Arc<KeyStore>, log: Log) -> Self {
+        Self {
+            store,
+            source: peer::Source::Kernel,
+            log,
+        }
+    }
+
+    /// Takes the peer's values from `source` instead of the kernel. Only a test build has it.
+    #[cfg(feature = "test-seam")]
+    #[must_use]
+    pub fn with_source(mut self, source: peer::Source) -> Self {
+        self.source = source;
+        self
+    }
+}
+
 /// What became of a socket.
 pub enum Outcome {
-    /// Served by a thread that accepts and closes.
+    /// Served by a thread that accepts and checks each connection.
     Serving,
     /// The directory failed its check. The listener is given back and must be kept open: connections wait in its
     /// backlog, unserved, and are not told they were refused.
     Refused(UnixListener, Refusal),
 }
 
-/// Checks `dir`; when it passes, serves `listener` (accept, close at once, read and write nothing). Otherwise writes
-/// a line naming the socket and the reason to `journal`.
-pub fn serve(name: &str, listener: UnixListener, dir: &Path, journal: &mut dyn Write) -> Outcome {
+/// Checks `dir`; when it passes, serves `listener`: each connection is checked and then served or closed. Otherwise
+/// writes a line naming the socket and the reason to `journal`.
+pub fn serve(
+    name: &str,
+    listener: UnixListener,
+    dir: &Path,
+    journal: &mut dyn Write,
+    service: &Service,
+) -> Outcome {
     match check_dir(dir) {
         Ok(()) => {
-            thread::spawn(move || accept_and_close(&listener));
+            let service = service.clone();
+            thread::spawn(move || accept_loop(&listener, &service));
             Outcome::Serving
         }
         Err(reason) => {
@@ -239,12 +284,28 @@ pub fn serve(name: &str, listener: UnixListener, dir: &Path, journal: &mut dyn W
     }
 }
 
-fn accept_and_close(listener: &UnixListener) {
+fn accept_loop(listener: &UnixListener, service: &Service) {
     loop {
         match listener.accept() {
-            Ok((stream, _)) => drop(stream),
+            Ok((stream, _)) => {
+                let service = service.clone();
+                thread::spawn(move || handle(stream, &service));
+            }
             Err(_) => thread::sleep(ACCEPT_BACKOFF),
         }
+    }
+}
+
+/// One connection: the three kernel values are read once, and the connection is closed (dropped) unless they pass.
+fn handle(stream: UnixStream, service: &Service) {
+    match peer::admit(&stream, &service.source) {
+        Ok(accepted) => {
+            let peer::Accepted { uid, pidfd } = accepted;
+            // Kept for as long as the connection lives; the signing checks of a later feature use it.
+            let _pidfd = pidfd;
+            keys::serve_peer(stream, Arc::clone(&service.store), uid);
+        }
+        Err(reason) => (service.log)(&format!("custodiod: peer refused: {reason}")),
     }
 }
 

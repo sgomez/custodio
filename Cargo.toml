@@ -6,6 +6,7 @@ members = [
   "crates/custodio-cli",
   "crates/crap",
   "crates/custodio-client",
+  "crates/custodio-peer",
   "crates/custodio-it",
 ]
 

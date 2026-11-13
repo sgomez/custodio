@@ -157,6 +157,10 @@ fn a_refusal_is_journaled_with_the_socket_and_the_reason() -> TestResult {
         listener,
         Path::new("/nonexistent/x"),
         &mut journal,
+        &Service::new(
+            Arc::new(KeyStore::open(tmp.path().join("keys"))?),
+            Arc::new(|_| {}),
+        ),
     );
     assert!(matches!(outcome, Outcome::Refused(_, Refusal::Missing)));
     assert_eq!(

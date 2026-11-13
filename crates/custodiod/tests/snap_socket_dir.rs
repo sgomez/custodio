@@ -12,7 +12,10 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
-use custodiod::snap_socket::{Outcome, descriptor_name, serve};
+use std::sync::Arc;
+
+use custodiod::snap_socket::{Outcome, Service, descriptor_name, serve};
+use custodiod::store::KeyStore;
 use zbus::block_on;
 use zbus::connection::Builder;
 
@@ -24,6 +27,13 @@ fn none<T>() -> Vec<T> {
 
 const NAME: &str = "snap-firefox";
 
+fn service(dir: &Path) -> Result<Service, Box<dyn Error>> {
+    Ok(Service::new(
+        Arc::new(KeyStore::open(dir.join("keys"))?),
+        Arc::new(|_| {}),
+    ))
+}
+
 fn socket(dir: &Path) -> Result<(UnixListener, PathBuf), Box<dyn Error>> {
     let path = dir.join("custodio.sock");
     Ok((UnixListener::bind(&path)?, path))
@@ -34,7 +44,7 @@ fn refused(dir: &Path, expected: &str) -> TestResult {
     let tmp = tempfile::tempdir()?;
     let (listener, path) = socket(tmp.path())?;
     let mut journal = Vec::new();
-    let outcome = serve(NAME, listener, dir, &mut journal);
+    let outcome = serve(NAME, listener, dir, &mut journal, &service(tmp.path())?);
     let Outcome::Refused(listener, _) = outcome else {
         return Err("the socket was served".into());
     };
@@ -63,7 +73,13 @@ fn a_directory_of_root_that_only_root_writes_is_served() -> TestResult {
     let (listener, path) = socket(tmp.path())?;
     let mut journal = Vec::new();
     assert!(matches!(
-        serve(NAME, listener, Path::new("/usr"), &mut journal),
+        serve(
+            NAME,
+            listener,
+            Path::new("/usr"),
+            &mut journal,
+            &service(tmp.path())?
+        ),
         Outcome::Serving
     ));
     assert_eq!(journal, none());
@@ -80,7 +96,13 @@ fn a_served_connection_gets_no_reply_and_the_service_goes_on() -> TestResult {
     let (listener, path) = socket(tmp.path())?;
     let mut journal = Vec::new();
     assert!(matches!(
-        serve(NAME, listener, Path::new("/usr"), &mut journal),
+        serve(
+            NAME,
+            listener,
+            Path::new("/usr"),
+            &mut journal,
+            &service(tmp.path())?
+        ),
         Outcome::Serving
     ));
     let mut first = UnixStream::connect(&path)?;
