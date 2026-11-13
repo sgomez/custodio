@@ -78,3 +78,7 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. The final deb upgrade restart (`systemctl restart custodio.service`) now runs only after `postinst` asks `/usr/sbin/policy-rc.d custodio.service restart` (0, 104 or no file allow; 101 forbids). `test-deb-scripts-static.sh` runs the real postinst with stubbed commands: 0/104/absent restart, 101 does not, and a copy without the question restarts on 101 (control). Contract amended (own commit); `docs/findings/F173.md` (deb-systemd-invoke source lines 114-141) and its index line added; packaging decision updated. `just quick` green; `just e2e debian13` passes on this commit (606 s). Rust unchanged since the clean mutants run.
 - Not done / known issues: package lifecycle gates and Arch e2e not run (checkpoint).
 - Next session should: nothing for F173.
+
+### 2026-11-13 — F173 — attempt 7
+- Done: no code change. Re-ran `just quick`, `just system-gates`, both script tests and `snap_socket_dir`: green. The previous session left nothing uncommitted-worthy; Rust unchanged since the clean mutants run, e2e debian13 passed on attempt 6.
+- Next session should: nothing for F173.
