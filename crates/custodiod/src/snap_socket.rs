@@ -343,7 +343,8 @@ fn accept_loop(listener: &UnixListener, service: &Service) {
 }
 
 /// One connection: the three kernel values are read once, and the connection is closed (dropped) unless they pass.
-fn handle(stream: &UnixStream, service: &Service) {
+/// Returns when the connection is over.
+pub fn handle(stream: &UnixStream, service: &Service) {
     let started = Instant::now();
     match peer::admit(stream, &service.source) {
         Ok(accepted) => {
