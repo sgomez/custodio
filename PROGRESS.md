@@ -82,3 +82,7 @@ with an empty context.
 ### 2026-11-13 — F173 — attempt 7
 - Done: no code change. Re-ran `just quick`, `just system-gates`, both script tests and `snap_socket_dir`: green. The previous session left nothing uncommitted-worthy; Rust unchanged since the clean mutants run, e2e debian13 passed on attempt 6.
 - Next session should: nothing for F173.
+
+### 2026-11-13 — F173 — attempt 8
+- Done: no code change. Tree clean, `just quick` green (already passed on this tree). All contract steps ticked; the evaluator's notes were non-blocking (seam is the `test-seam` Cargo feature, enabled by a self dev-dependency with `compile_error!` in release builds; `check-snap-sockets.sh` checks it is not default).
+- Next session should: nothing for F173.
