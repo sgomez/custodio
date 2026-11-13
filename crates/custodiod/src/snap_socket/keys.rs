@@ -46,14 +46,9 @@ pub fn serve_peer(stream: UnixStream, store: Arc<KeyStore>, uid: u32) {
     let Ok(connection) = built else {
         return;
     };
-    // zbus answers on its own threads; this one only waits for the peer to hang up.
-    loop {
-        let mut fds = [PollFd::new(&watch, PollFlags::RDHUP)];
-        match poll(&mut fds, None) {
-            Ok(_) if !fds[0].revents().is_empty() => break,
-            Err(rustix::io::Errno::INTR) | Ok(_) => {}
-            Err(_) => break,
-        }
+    // zbus answers on its own threads; this one only waits for the peer to hang up. `poll` with no timeout returns
+    // only when `RDHUP`, `HUP` or `ERR` is set on the descriptor, or when a signal interrupts it.
+    while poll(&mut [PollFd::new(&watch, PollFlags::RDHUP)], None) == Err(rustix::io::Errno::INTR) {
     }
     drop(connection);
 }

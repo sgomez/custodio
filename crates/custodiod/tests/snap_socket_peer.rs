@@ -325,6 +325,7 @@ fn refusal_journal() -> TestResult {
     assert_eq!(lines.len(), 1);
     for line in &lines {
         assert!(line.contains("refused"));
+        assert!(line.contains("label"), "the line names the reason: {line}");
         assert!(!line.contains("secret-label-bytes"));
         assert!(!line.contains("a-key") && !line.contains("b-key"));
     }
@@ -384,6 +385,21 @@ fn decisions() {
         reason(&creds(UID_A, b"unconfined")),
         Some(Refusal::Label(_))
     ));
+    // Each reason has its own text, and none is empty.
+    let texts: Vec<String> = [
+        Refusal::UnreadableUid,
+        Refusal::OverflowUid,
+        Refusal::NoPidfd,
+        Refusal::NoLabel,
+        Refusal::Label(custodiod::peer_label::Refusal::Empty),
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    for (i, a) in texts.iter().enumerate() {
+        assert!(a.len() > 10);
+        assert!(texts.iter().skip(i + 1).all(|b| a != b));
+    }
     // A uid one off the overflow uid is a user.
     assert_eq!(reason(&creds(OVERFLOW_UID - 1, GOOD)), None);
     assert_eq!(reason(&creds(OVERFLOW_UID + 1, GOOD)), None);
