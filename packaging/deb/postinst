@@ -6,17 +6,22 @@ set -e
 case "$1" in
 configure)
     systemctl daemon-reload || true
-    # The socket of the Firefox snap (F173) is enabled and started on install and upgrade (never restarted: systemd refuses to start a socket while its service runs), so a connection to it starts the
+    # The socket of the Firefox snap (F173) is enabled and started on install and upgrade, so a connection to it starts the
     # service. The service itself stays unenabled. Both tolerate failure: no live systemd in a chroot.
     systemctl enable custodio-firefox.socket || true
-    systemctl start custodio-firefox.socket || true
     deb-systemd-invoke reload dbus.service || true
     journalctl --update-catalog || true
     # preinst left the marker only if the service was running before this upgrade. Without it (an upgrade whose preinst did not
     # run to the end) the service is left alone and D-Bus activation starts the new binary on the next call.
+    # systemd refuses to start a socket while its service is active (and a restart of the socket would leave it down), so a running
+    # service is stopped first, the socket started, and the service restarted (started) after it.
     if [ -n "$2" ] && [ -e /run/custodio-restart-after-upgrade ]; then
         rm -f /run/custodio-restart-after-upgrade
-        deb-systemd-invoke restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+        systemctl stop custodio.service || true
+        systemctl start custodio-firefox.socket || true
+        systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+    else
+        systemctl start custodio-firefox.socket || true
     fi
     ;;
 abort-upgrade | abort-remove | abort-deconfigure)

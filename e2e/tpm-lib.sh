@@ -183,8 +183,15 @@ tpm_unit_problems() {
 # F173: a rootless container engine cannot write the identity uid map that PrivateUsers=identity needs (docs/findings/F170.md: "Failed to set up
 # user namespacing"). Where the probe fails, only this container run gets PrivateUsers=yes through a drop-in; the VM target runs the shipped unit.
 uidmap_dropin_if_needed() {
-    local out
-    out=$(systemd-run --wait --collect --quiet -p PrivateUsers=identity true 2>&1) && return 0
+    local out unit=/run/systemd/system/custodio-uidmap-probe.service rc=0
+    # systemd-run does not parse "identity" (the unit file parser does), so the probe is a unit file.
+    printf '[Service]\nType=oneshot\nPrivateUsers=identity\nExecStart=/bin/true\n' > "$unit"
+    systemctl daemon-reload
+    out=$(systemctl start custodio-uidmap-probe.service 2>&1) || rc=$?
+    if [ "$rc" -ne 0 ]; then out="$out $(journalctl -u custodio-uidmap-probe.service -n 5 --no-pager 2>&1)"; fi
+    rm -f "$unit"
+    systemctl daemon-reload
+    [ "$rc" -ne 0 ] || return 0
     # Only the uid-map failure of the finding is tolerated; any other failure of the probe fails the run.
     case $out in *"Failed to set up user namespacing"*) ;; *) echo "e2e: probe of PrivateUsers=identity failed for another reason: $out" >&2; return 1 ;; esac
     mkdir -p /etc/systemd/system/custodio.service.d
