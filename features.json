@@ -43,7 +43,7 @@
         "F171"
       ],
       "verify": "just quick && cargo test -p custodiod --test peer_label --locked && just mutants-diff F174 && just fuzz-build && just lint-fuzz && just fuzz-smoke",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F175",
