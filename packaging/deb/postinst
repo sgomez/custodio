@@ -19,7 +19,8 @@ configure)
         rm -f /run/custodio-restart-after-upgrade
         deb-systemd-invoke stop custodio.service || true
         deb-systemd-invoke start custodio-firefox.socket || true
-        deb-systemd-invoke restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+        # Plain systemctl: deb-systemd-invoke refuses to start a static unit that is not running, and it was stopped just above.
+        systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
     else
         deb-systemd-invoke start custodio-firefox.socket || true
     fi

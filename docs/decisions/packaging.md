@@ -71,5 +71,5 @@ Decisions about the package scripts and file layout, under the rules at the top 
 ## 2026-11-13 — The Firefox snap socket on install and upgrade (F173)
 - Decision: the scripts `start` `custodio-firefox.socket`, never `restart` it. For a running service on upgrade they stop it, start the
   socket, then start it again (deb and rpm `restart`; Arch `systemctl start` in `post_upgrade`, and `zz-custodio-restart.hook` restarts it
-  once more after the reloads). Deb uses `deb-systemd-invoke` for starts and stops, so `policy-rc.d` is honoured.
+  once more after the reloads). Deb uses `deb-systemd-invoke` for starts and stops (except the final start of the static service after an upgrade, which it refuses, so that one is `systemctl restart`), so `policy-rc.d` is honoured.
 - Why: systemd refuses to start a socket while its service is active; a restart of the socket stops the service and leaves it down.
