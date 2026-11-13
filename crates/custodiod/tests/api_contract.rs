@@ -470,3 +470,6 @@ fn edited_copies_of_the_document_fail() -> Result<(), Box<dyn Error>> {
     expect_fail(&no_bounds, &sources, "has no bounds entry", "");
     Ok(())
 }
+
+#[path = "api_contract/socket.rs"]
+mod socket;

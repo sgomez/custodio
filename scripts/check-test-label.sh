@@ -22,10 +22,15 @@ for f in $shipped; do bad "$f names the test-only source ($FEATURE): it must not
 # ---- Cargo manifests
 manifests=$(find "$ROOT" -name Cargo.toml -not -path '*/target/*' -not -path '*/.git/*')
 for f in $manifests; do
+    # The fuzz crate of custodiod is built only by cargo-fuzz (debug assertions on, so the release `compile_error!` holds), and ships
+    # nothing; it may name the feature on its one dependency line.
+    allow=
+    case "$f" in */crates/custodiod/fuzz/Cargo.toml) allow='custodiod = { path = "..", features = ["test-seam"] }' ;; esac
     # Lines naming the feature that are not comments, not the definition, and not in a dev-dependencies section.
-    hits=$(awk -v feat="$FEATURE" '
+    hits=$(awk -v feat="$FEATURE" -v allow="$allow" '
         /^[[:space:]]*\[/ { sec = $0; gsub(/[[:space:]]/, "", sec) }
         /^[[:space:]]*#/ { next }
+        allow != "" && $0 == allow { next }
         index($0, "\"" feat "\"") || index($0, feat) {
             line = $0; gsub(/[[:space:]]/, "", line)
             if (line == feat "=[]" && sec == "[features]") next

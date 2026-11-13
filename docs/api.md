@@ -220,6 +220,35 @@ A TPM-protected key signs inside the TPM; an encrypted key is decrypted for this
 key can no longer be used the call fails `KeyLost`; if the TPM or the credential service is not usable right now it
 fails `TemporarilyUnavailable`. Either way the key is left as it is.
 
+## Socket transport
+
+Confined browsers (snaps) cannot reach the system bus, so `custodiod` also serves a Unix socket per snap, passed by
+systemd (`/run/snap.firefox/custodio.sock` for Firefox). The peer connects with a peer-to-peer D-Bus connection (no bus,
+no `Hello`), authenticates with `ANONYMOUS` and calls the same object path and interface (`com.rfirma.Custodio1`) as
+on the bus. The key owner is always the uid the kernel reports for the connection, never a value in the handshake or an
+argument. `Sign` asks polkit about the peer's process on every call.
+
+Only two methods are served there; every other method, interface or path fails with the standard
+`org.freedesktop.DBus.Error.UnknownMethod`, `UnknownInterface` or `UnknownObject`, asks no polkit, writes no journal
+entry and changes nothing. Arguments, results and errors of the two are those of the bus methods above.
+
+- socket method `ListKeys`
+- socket method `Sign`
+
+Bounds (a peer that hits one has its connection closed, and no other connection is touched):
+
+- socket connections: `32` at once per socket. A browser needs one or two; the bound keeps the threads and descriptors
+  of a flood small. One peer can use every slot: the bound is not per user, so a peer that fills it keeps others out
+  until it leaves, while connections already open and the bus keep working.
+- socket message size: `4096` bytes, header included. It is the largest message that can carry a legal `Sign` (an id of
+  at most 59 bytes and at most 1024 bytes of data), which is what the bus accepts for that method.
+- socket handshake time: `10` seconds from accept to `BEGIN`.
+- socket idle time: `300` seconds from the end of the previous message (or of the handshake), measured from the start
+  of a message, so sending one byte at a time does not extend it. It is long because a `Sign` waits for the user to
+  answer the polkit dialog while the peer is silent.
+- socket refusal log: at most `10` lines per `60` seconds in the service log (journald), each without label bytes; the
+  next line reports how many were suppressed. Journal entries of signatures are not affected.
+
 ## Errors
 
 Every failure is one of these names, with a fixed message that repeats nothing the caller sent. A client library

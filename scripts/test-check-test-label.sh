@@ -60,6 +60,10 @@ expect_fail "build dependency feature" $C 's|^\[dev-dependencies\]|[build-depend
 expect_fail "default feature in the features section" $C 's|^test-seam = \[\]|test-seam = []\ndefault = ["test-seam"]|' 'outside \[dev-dependencies\]'
 expect_fail "another feature turns it on" $C 's|^test-seam = \[\]|test-seam = []\nshipped = ["test-seam"]|' 'outside \[dev-dependencies\]'
 expect_fail "another crate's normal dependency" crates/custodio-cli/Cargo.toml 's|^\[dependencies\]|[dependencies]\ncustodiod = { path = "../custodiod", features = ["test-seam"] }|' 'outside \[dev-dependencies\]'
+# The fuzz crate may name it on its one dependency line, and on no other.
+fresh case
+"$GATE" "$tmp/case" > /dev/null 2>&1 || bad "the fuzz crate's dependency line fails"
+expect_fail "fuzz crate: another dependency with the feature" crates/custodiod/fuzz/Cargo.toml 's|^tempfile = "3.27.0"|tempfile = "3.27.0"\ncustodiod-x = { path = "..", features = ["test-seam"] }|' 'outside \[dev-dependencies\]'
 # A dev-dependency that turns it on and a comment that names it are fine.
 fresh case
 printf '# test-seam is only a dev-dependency feature\n' >> "$tmp/case/$C"
