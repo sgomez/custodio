@@ -11,12 +11,13 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use custodiod::audit::{AuditSink, MemorySink};
+use custodiod::credentials::BusCredentials;
 use custodiod::creds::memory::MemoryCreds;
 use custodiod::creds::{Credentials, seal};
-use custodiod::dbus::{BUS_NAME, MAX_SIGN_MESSAGE_LEN, OBJECT_PATH};
+use custodiod::dbus::{BUS_NAME, Custodio, MAX_SIGN_MESSAGE_LEN, OBJECT_PATH};
 use custodiod::import::{credential_name, parse_p12};
-use custodiod::polkit::{AuthError, BoxFuture, ProcessAuthorizer};
-use custodiod::snap_socket::limits::{Limits, MAX_MESSAGE_LEN, RateLimit};
+use custodiod::polkit::{AuthError, BoxFuture, PolkitAuthorizer, ProcessAuthorizer};
+use custodiod::snap_socket::limits::{Limits, RateLimit};
 use custodiod::snap_socket::peer::{Peer, Source};
 use custodiod::snap_socket::{Outcome, Service, Signing, serve};
 use custodiod::store::{KeyStore, Kind, Protected, Record};
@@ -24,6 +25,14 @@ use custodiod::tpm::open::NoTpm;
 use secrecy::SecretString;
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Connection, block_on};
+
+#[path = "snap_socket_sign/polkit.rs"]
+#[allow(
+    dead_code,
+    reason = "shared with snap_socket_sign, which uses the rest"
+)]
+mod polkit;
+use polkit::{Answer, Bus, FakePolkit};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -52,9 +61,30 @@ fn own_pidfd() -> Option<std::os::fd::OwnedFd> {
     rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
 }
 
+/// A key `k` of `owner`, sealed with the host credentials.
+fn put_key(store: &KeyStore, owner: u32) -> TestResult {
+    let parsed = parse_p12(
+        include_bytes!("fixtures/p256.p12"),
+        &SecretString::from("test-password".to_owned()),
+    )?;
+    let sealed = seal(
+        &MemoryCreds::host(),
+        &credential_name(owner, "k"),
+        &parsed.key,
+    )?;
+    store.put(&Record::new(
+        owner,
+        "k",
+        Kind::EncryptedHost,
+        &parsed.certificate,
+        Protected::from_sealed(&sealed),
+    )?)?;
+    Ok(())
+}
+
 struct Rig {
     sink: Arc<MemorySink>,
-    _tmp: tempfile::TempDir,
+    tmp: tempfile::TempDir,
     path: PathBuf,
     log: Arc<Mutex<Vec<String>>>,
     label: Arc<Mutex<Vec<u8>>>,
@@ -73,22 +103,7 @@ impl Rig {
     fn start(limits: Limits, rate: RateLimit) -> Result<Self, Box<dyn Error>> {
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(tmp.path().join("keys"))?);
-        let parsed = parse_p12(
-            include_bytes!("fixtures/p256.p12"),
-            &SecretString::from("test-password".to_owned()),
-        )?;
-        let sealed = seal(
-            &MemoryCreds::host(),
-            &credential_name(UID, "k"),
-            &parsed.key,
-        )?;
-        store.put(&Record::new(
-            UID,
-            "k",
-            Kind::EncryptedHost,
-            &parsed.certificate,
-            Protected::from_sealed(&sealed),
-        )?)?;
+        put_key(&store, UID)?;
         let path = tmp.path().join("custodio.sock");
         let listener = UnixListener::bind(&path)?;
         let log = Arc::new(Mutex::new(Vec::new()));
@@ -130,7 +145,7 @@ impl Rig {
         assert!(matches!(outcome, Outcome::Serving));
         Ok(Self {
             sink: audit,
-            _tmp: tmp,
+            tmp,
             path,
             log,
             label,
@@ -254,14 +269,33 @@ fn header(body: u32) -> Vec<u8> {
 }
 
 #[test]
-fn the_message_bound_is_not_above_the_buses() {
-    const { assert!(MAX_MESSAGE_LEN <= MAX_SIGN_MESSAGE_LEN) };
-    // The largest legal `Sign`: the longest id, three words and 1024 bytes of data, with a header of a client that
-    // names every field. It must fit under the bound.
+fn the_largest_legal_sign_passes_the_shipped_bound() -> TestResult {
+    // The bound is the bus's own for `Sign` (`MAX_SIGN_MESSAGE_LEN`, from the argument bounds in `dbus.rs`).
+    assert_eq!(Limits::SHIPPED.message, MAX_SIGN_MESSAGE_LEN);
+    let rig = Rig::start(
+        Limits::SHIPPED,
+        RateLimit::new(100, Duration::from_secs(60)),
+    )?;
+    let client = rig.client()?;
+    // A 59-byte id and 1024 bytes of data, as a stock client frames them: a reply (an error for an unknown id is
+    // fine), not a close.
     let id = "i".repeat(59);
-    let body = 4 + id.len() + 1 + 3 + 12 + 4 + 4 + 1024;
-    let header_fields = 8 * 16;
-    assert!(16 + header_fields + body + 8 <= MAX_MESSAGE_LEN);
+    let reply = block_on(client.call_method(
+        None::<&str>,
+        OBJECT_PATH,
+        Some(BUS_NAME),
+        "Sign",
+        &(id.as_str(), 0x1041_u32, 0_u32, 0_u32, vec![7_u8; 1024]),
+    ));
+    match reply {
+        Err(zbus::Error::MethodError(name, _, _)) => {
+            assert_eq!(name.as_str(), "com.rfirma.Custodio1.Error.NoSuchKey");
+        }
+        other => return Err(format!("expected a Custodio error, got {other:?}").into()),
+    }
+    // The connection is still open.
+    assert_eq!(Rig::list_on(&client)?, 1);
+    Ok(())
 }
 
 #[test]
@@ -393,6 +427,7 @@ fn a_flood_does_not_stop_a_peer_that_is_already_connected() -> TestResult {
     )?;
     // The second peer connects before the flood: one peer can use every slot, and `docs/api.md` says so.
     let kept = rig.client()?;
+    let bus = BusSide::start(&rig)?;
     let flood = (0..40)
         .map(|i| {
             let mut s = rig.connect()?;
@@ -407,6 +442,9 @@ fn a_flood_does_not_stop_a_peer_that_is_already_connected() -> TestResult {
     // The kept peer signs while the flood is open, and a new peer signs once the flood is gone.
     assert!(Rig::sign_on(&kept)? > 0);
     assert_eq!(Rig::list_on(&kept)?, 1);
+    // A bus client lists and signs while the flood is open.
+    assert_eq!(bus.list()?, 1);
+    assert_eq!(bus.sign()?.len(), 64);
     drop(flood);
     let later = {
         let until = Instant::now() + PATIENCE;
@@ -420,7 +458,89 @@ fn a_flood_does_not_stop_a_peer_that_is_already_connected() -> TestResult {
     };
     assert!(Rig::sign_on(&later)? > 0);
     // Every signature has its entry: the flood costs the audit log nothing (refusal lines go to the service log).
-    assert_eq!(rig.sink.entries().len(), 2);
+    assert_eq!(rig.sink.entries().len(), 3);
     assert!(rig.lines().len() <= 10);
     Ok(())
+}
+
+/// The bus service on a private bus, with a scripted polkit, sharing the rig's key store and audit log.
+struct BusSide {
+    _bus: Bus,
+    _polkit: Connection,
+    _service: Connection,
+    client: Connection,
+}
+
+impl BusSide {
+    fn start(rig: &Rig) -> Result<Self, Box<dyn Error>> {
+        let uid = rustix::process::getuid().as_raw();
+        let store = Arc::new(KeyStore::open(rig.tmp.path().join("keys"))?);
+        put_key(&store, uid)?;
+        let bus = Bus::start()?;
+        let script = Arc::new(Mutex::new(std::collections::VecDeque::from([Answer::Yes])));
+        let (polkit, service, client) = block_on(async {
+            let polkit = bus.connect().await?;
+            polkit
+                .object_server()
+                .at(
+                    "/org/freedesktop/PolicyKit1/Authority",
+                    FakePolkit {
+                        script,
+                        calls: Arc::default(),
+                        rule: None,
+                    },
+                )
+                .await?;
+            polkit.request_name("org.freedesktop.PolicyKit1").await?;
+            let service = bus.connect().await?;
+            service
+                .object_server()
+                .at(
+                    OBJECT_PATH,
+                    Custodio::new(
+                        store,
+                        PolkitAuthorizer::new(service.clone()),
+                        BusCredentials::new(service.clone()),
+                        Arc::clone(&rig.sink) as Arc<dyn AuditSink>,
+                    )
+                    .with_key_credentials(Arc::new(MemoryCreds::host())),
+                )
+                .await?;
+            service.request_name(BUS_NAME).await?;
+            Ok::<_, Box<dyn Error>>((polkit, service, bus.connect().await?))
+        })?;
+        Ok(Self {
+            _bus: bus,
+            _polkit: polkit,
+            _service: service,
+            client,
+        })
+    }
+
+    fn call(
+        &self,
+        method: &str,
+        body: &(impl zbus::export::serde::Serialize + zbus::zvariant::DynamicType),
+    ) -> zbus::Result<zbus::Message> {
+        block_on(self.client.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some("com.rfirma.Custodio1"),
+            method,
+            body,
+        ))
+    }
+
+    fn list(&self) -> Result<usize, Box<dyn Error>> {
+        let reply = self.call("ListKeys", &())?;
+        Ok(reply
+            .body()
+            .deserialize::<Vec<(String, String, String, Vec<u8>)>>()?
+            .len())
+    }
+
+    fn sign(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        let reply = self.call("Sign", &("k", 0x1041_u32, 0_u32, 0_u32, vec![7_u8; 32]))?;
+        Ok(reply.body().deserialize()?)
+    }
 }
