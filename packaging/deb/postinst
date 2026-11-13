@@ -20,7 +20,14 @@ configure)
         deb-systemd-invoke stop custodio.service || true
         deb-systemd-invoke start custodio-firefox.socket || true
         # Plain systemctl: deb-systemd-invoke refuses to start a static unit that is not running, and it was stopped just above.
-        systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+        # policy-rc.d is asked first, as deb-systemd-invoke does: exit 0 and 104 allow the restart, anything else (101) forbids it.
+        policy=0
+        if [ -x /usr/sbin/policy-rc.d ]; then
+            /usr/sbin/policy-rc.d custodio.service restart || policy=$?
+        fi
+        if [ "$policy" = 0 ] || [ "$policy" = 104 ]; then
+            systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+        fi
     else
         deb-systemd-invoke start custodio-firefox.socket || true
     fi

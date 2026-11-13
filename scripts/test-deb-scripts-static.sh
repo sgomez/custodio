@@ -75,4 +75,29 @@ ctl "socket not started" postinst '/start custodio-firefox.socket/d'
 printf '    systemctl enable custodio.service\n' >> "$BF_DIR/hits.extra"
 if { code postinst; cat "$BF_DIR/hits.extra"; } | grep -E 'systemctl +(enable|start)' | grep -vE "$SOCKET_OK" > /dev/null; then :; else bad "control: the forbidden gate let 'systemctl enable custodio.service' through"; fi
 
+# The final restart of the service after an upgrade is plain systemctl (deb-systemd-invoke refuses a static unit that is not running),
+# so postinst asks policy-rc.d itself (F173). The real postinst runs on an upgrade of a running service with stubbed commands; a stub
+# policy-rc.d answering 101 must leave the service unrestarted, 0 and 104 must restart it, and a copy without the question must fail.
+run_upgrade() { # SCRIPT RC(policy-rc.d exit, or none): prints the commands the script ran
+    local d="$BF_DIR/run" cmd
+    rm -rf "$d"; mkdir -p "$d/bin"
+    for cmd in systemctl deb-systemd-invoke journalctl; do
+        printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$cmd" "$d" > "$d/bin/$cmd"; chmod +x "$d/bin/$cmd"
+    done
+    : > "$d/calls"; : > "$d/marker"
+    if [ "$2" != none ]; then printf '#!/bin/sh\necho "policy-rc.d $*" >> "%s/calls"\nexit %s\n' "$d" "$2" > "$d/policy"; chmod +x "$d/policy"; fi
+    sed -e "s#/usr/sbin/policy-rc.d#$d/policy#g" -e "s#/run/custodio-restart-after-upgrade#$d/marker#g" "$1" > "$d/script"
+    PATH="$d/bin:$PATH" sh "$d/script" configure 1.0 > /dev/null 2>&1 || true
+    cat "$d/calls"
+}
+restarts() { run_upgrade "$1" "$2" | grep -c '^systemctl restart custodio.service' || true; }
+for rc in 0 104; do
+    [ "$(restarts "$SRC/postinst" $rc)" = 1 ] || bad "postinst does not restart the service when policy-rc.d exits $rc"
+done
+[ "$(restarts "$SRC/postinst" none)" = 1 ] || bad "postinst does not restart the service without a policy-rc.d"
+[ "$(restarts "$SRC/postinst" 101)" = 0 ] || bad "postinst restarts the service although policy-rc.d exits 101"
+run_upgrade "$SRC/postinst" 101 | grep -q '^policy-rc.d custodio.service restart$' || bad "postinst does not ask policy-rc.d about the restart"
+sed 's#^\( *\)/usr/sbin/policy-rc.d custodio.service restart .*$#\1true#' "$SRC/postinst" > "$BF_DIR/nopolicy"
+[ "$(restarts "$BF_DIR/nopolicy" 101)" = 1 ] || bad "control: the copy without the policy-rc.d question did not restart on 101 (the test cannot see the fault)"
+
 exit "$fail"
