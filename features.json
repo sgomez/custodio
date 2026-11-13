@@ -33,7 +33,7 @@
         "F170"
       ],
       "verify": "just quick && just system-gates && scripts/test-check-snap-sockets.sh && scripts/test-check-unit-hardening.sh && cargo test -p custodiod --test snap_socket_dir --locked && just mutants-diff F173 && just e2e debian13",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F174",
