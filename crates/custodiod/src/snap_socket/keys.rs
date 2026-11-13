@@ -5,6 +5,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
 use rustix::event::{PollFd, PollFlags, poll};
+use rustix::io::retry_on_intr;
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Guid, block_on, interface};
 
@@ -48,7 +49,6 @@ pub fn serve_peer(stream: UnixStream, store: Arc<KeyStore>, uid: u32) {
     };
     // zbus answers on its own threads; this one only waits for the peer to hang up. `poll` with no timeout returns
     // only when `RDHUP`, `HUP` or `ERR` is set on the descriptor, or when a signal interrupts it.
-    while poll(&mut [PollFd::new(&watch, PollFlags::RDHUP)], None) == Err(rustix::io::Errno::INTR) {
-    }
+    let _ = retry_on_intr(|| poll(&mut [PollFd::new(&watch, PollFlags::RDHUP)], None));
     drop(connection);
 }
