@@ -183,9 +183,43 @@ pub fn parse_import_request(
 }
 
 /// The key id and mechanism for the audit entry of a checked request.
-fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), ServiceError> {
+pub(crate) fn audit_parts(
+    id: &str,
+    mechanism: &Mechanism,
+) -> Result<(KeyId, AuditMechanism), ServiceError> {
     let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
     Ok((key_id, AuditMechanism::from(mechanism)))
+}
+
+/// The entry of one `Sign` call, bus or socket: the outcome, the caller if known and the storage kind of the record
+/// read, with the app-id case and the details of a failure.
+pub(crate) fn sign_entry(
+    (outcome, caller, kind): (Outcome, Option<Caller>, Option<StorageKind>),
+    key_id: KeyId,
+    mechanism: AuditMechanism,
+    app_id: AppIdOutcome,
+    result: &Result<Vec<u8>, ServiceError>,
+) -> Entry {
+    let entry = match caller {
+        Some(caller) => Entry::new(outcome, caller, key_id, Some(mechanism)),
+        None => Entry::without_caller(key_id, Some(mechanism)),
+    }
+    .with_app_id(app_id);
+    sign_kind::sign_details(entry, kind, result)
+}
+
+/// Records `entry` and only then gives the reply: if it cannot be recorded nothing is returned but
+/// `AuditUnavailable`.
+pub(crate) async fn record_sign(
+    sink: &Arc<dyn AuditSink>,
+    entry: Entry,
+    result: Result<Vec<u8>, ServiceError>,
+) -> Result<Vec<u8>, ServiceError> {
+    let sink = Arc::clone(sink);
+    match run_on_thread(move || sink.record(&entry)).await {
+        Some(Ok(())) => result,
+        _ => Err(ServiceError::AuditUnavailable),
+    }
 }
 
 /// What a `Sign` call records: the outcome, the caller if known, the reply, and the storage kind of the record that
@@ -305,17 +339,14 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         else {
             return Err(ServiceError::NoSuchKey);
         };
-        let entry = match caller {
-            Some(caller) => Entry::new(outcome, caller, key_id, Some(audit_mechanism)),
-            None => Entry::without_caller(key_id, Some(audit_mechanism)),
-        }
-        .with_app_id(app_id);
-        let entry = sign_kind::sign_details(entry, kind, &result);
-        let sink = Arc::clone(&self.sink);
-        match run_on_thread(move || sink.record(&entry)).await {
-            Some(Ok(())) => result,
-            _ => Err(ServiceError::AuditUnavailable),
-        }
+        let entry = sign_entry(
+            (outcome, caller, kind),
+            key_id,
+            audit_mechanism,
+            app_id,
+            &result,
+        );
+        record_sign(&self.sink, entry, result).await
     }
 
     /// The caller of a call, when the bus names one: the sender, its credentials and the pinned pidfd.
@@ -520,5 +551,6 @@ pub use list::{ListedKey, list_for_peer};
 use list::{kind_name, list_owned};
 mod replace;
 mod sign_kind;
+pub(crate) use sign_kind::sign_with_record;
 #[cfg(test)]
 mod tests;

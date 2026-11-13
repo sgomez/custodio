@@ -21,6 +21,8 @@
 //! | `CUSTODIO_KEY_TYPE` | import entries only, when known: `rsa_2048`, `ecdsa_p256` |
 //! | `CUSTODIO_APP_ID_STATE` | always: `read`, `none` or `undetermined` |
 //! | `CUSTODIO_APP_ID` | only with the state `read`: the validated flatpak app-id |
+//! | `CUSTODIO_TRANSPORT` | every request entry: `bus` or `socket` (not `purge` entries) |
+//! | `CUSTODIO_PEER_LABEL` | socket entries only: the peer's security label, which passed `peer_label::check` |
 //!
 //! This table and the outcomes below are for signing; the other operations are in [`OperationEntry`] and docs/audit.md.
 //!
@@ -131,6 +133,7 @@ mod cause;
 mod journal;
 mod memory;
 mod operation;
+mod transport;
 mod wire;
 
 use std::fmt;
@@ -147,6 +150,8 @@ pub use operation::{
     AuditKeyType, DELETE_MESSAGE_ID, DeleteOutcome, IMPORT_MESSAGE_ID, ImportOutcome, Operation,
     OperationEntry, PURGE_MESSAGE_ID, PurgeOutcome, REPLACE_CERTIFICATE_MESSAGE_ID, ReplaceOutcome,
 };
+pub(crate) use transport::push_transport;
+pub use transport::{PEER_LABEL_FIELD, PeerLabel, TRANSPORT_FIELD, Transport};
 
 /// `MESSAGE_ID` of every signing entry, generated once from a random source.
 pub const MESSAGE_ID: &str = "29c3d30e6c4242406c6db3f120d36401";
@@ -347,6 +352,8 @@ pub struct Entry {
     app_id: AppIdOutcome,
     storage_kind: Option<StorageKind>,
     cause: Option<SignCause>,
+    transport: Transport,
+    peer_label: Option<PeerLabel>,
 }
 
 impl Entry {
@@ -365,6 +372,8 @@ impl Entry {
             app_id: AppIdOutcome::Undetermined,
             storage_kind: None,
             cause: None,
+            transport: Transport::Bus,
+            peer_label: None,
         }
     }
 
@@ -373,6 +382,26 @@ impl Entry {
     pub fn with_app_id(mut self, app_id: AppIdOutcome) -> Self {
         self.app_id = app_id;
         self
+    }
+
+    /// The entry of a call that came through a snap socket, from the peer with this label.
+    #[must_use]
+    pub fn with_socket_peer(mut self, label: PeerLabel) -> Self {
+        self.transport = Transport::Socket;
+        self.peer_label = Some(label);
+        self
+    }
+
+    /// How the request arrived.
+    #[must_use]
+    pub const fn transport(&self) -> Transport {
+        self.transport
+    }
+
+    /// The peer's label, for a socket entry.
+    #[must_use]
+    pub const fn peer_label(&self) -> Option<&PeerLabel> {
+        self.peer_label.as_ref()
     }
 
     /// The entry with the storage kind of the record that was used, when it was read.
@@ -422,6 +451,8 @@ impl Entry {
             app_id: AppIdOutcome::Undetermined,
             storage_kind: None,
             cause: None,
+            transport: Transport::Bus,
+            peer_label: None,
         }
     }
 
@@ -467,6 +498,7 @@ impl Entry {
         }
         push_storage(&mut f, self.storage_kind, self.cause.map(SignCause::name));
         push_app_id(&mut f, &self.app_id);
+        push_transport(&mut f, self.transport, self.peer_label.as_ref());
         f
     }
 }

@@ -590,6 +590,9 @@ impl OperationEntry {
         }
         super::push_storage(&mut f, self.storage_kind, self.cause.map(ImportCause::name));
         super::push_app_id(&mut f, &self.app_id);
+        if !matches!(self.kind, Kind::Purge(_)) {
+            super::push_transport(&mut f, super::Transport::Bus, None);
+        }
         f
     }
 }

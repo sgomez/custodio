@@ -9,12 +9,14 @@
 //! matches: a new variant of either source error does not build until it has a class.
 
 use crate::audit::{Entry, SignCause};
+use crate::creds::Credentials;
 use crate::creds::CredsError;
 use crate::dbus::Custodio;
 use crate::error::ServiceError;
 use crate::import::credential_name;
 use crate::sign::{Mechanism, sign};
 use crate::store::{Kind as StorageKind, Record};
+use crate::tpm::TpmAccess;
 use crate::tpm::blob::Imported;
 use crate::tpm::sign::{self as tpm_sign, SignRequest, TpmSignError};
 
@@ -52,34 +54,49 @@ impl<A, C> Custodio<A, C> {
         mechanism: Mechanism,
         data: &[u8],
     ) -> Result<Vec<u8>, ServiceError> {
-        if let Some((blob, parent_name)) = record.protected().blob() {
-            let imported = Imported {
-                blob: blob.clone(),
-                parent_name: parent_name.to_vec(),
-            };
-            let request = SignRequest {
-                imported: &imported,
-                mechanism,
-                data,
-            };
-            return tpm_sign::sign(self.tpm.as_ref(), &request).map_err(|e| ServiceError::from(&e));
-        }
-        let (Some(creds), Some(credential)) =
-            (self.key_creds.as_deref(), record.protected().credential())
-        else {
-            return Err(ServiceError::Internal);
-        };
-        let name = credential_name(record.owner(), record.id());
-        let key = creds
-            .decrypt(&name, credential)
-            .map_err(|e| ServiceError::from(&e))?;
-        sign(&key, mechanism, data).map_err(|e| ServiceError::from(&e))
+        sign_with_record(
+            self.tpm.as_ref(),
+            self.key_creds.as_deref(),
+            record,
+            mechanism,
+            data,
+        )
     }
+}
+
+/// Signs with the key of `record`, by its kind. The bus service and the snap socket both come here.
+pub(crate) fn sign_with_record(
+    tpm: &dyn TpmAccess,
+    key_creds: Option<&dyn Credentials>,
+    record: &Record,
+    mechanism: Mechanism,
+    data: &[u8],
+) -> Result<Vec<u8>, ServiceError> {
+    if let Some((blob, parent_name)) = record.protected().blob() {
+        let imported = Imported {
+            blob: blob.clone(),
+            parent_name: parent_name.to_vec(),
+        };
+        let request = SignRequest {
+            imported: &imported,
+            mechanism,
+            data,
+        };
+        return tpm_sign::sign(tpm, &request).map_err(|e| ServiceError::from(&e));
+    }
+    let (Some(creds), Some(credential)) = (key_creds, record.protected().credential()) else {
+        return Err(ServiceError::Internal);
+    };
+    let name = credential_name(record.owner(), record.id());
+    let key = creds
+        .decrypt(&name, credential)
+        .map_err(|e| ServiceError::from(&e))?;
+    sign(&key, mechanism, data).map_err(|e| ServiceError::from(&e))
 }
 
 /// The entry of a signature with the kind of the record used and, for a failure of one of the two classes a person
 /// can act on, its cause.
-pub(super) fn sign_details(
+pub(crate) fn sign_details(
     entry: Entry,
     kind: Option<StorageKind>,
     result: &Result<Vec<u8>, ServiceError>,

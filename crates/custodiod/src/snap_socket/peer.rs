@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 pub use custodio_peer::Peer;
 
+use crate::audit::PeerLabel;
 use crate::peer_label;
 
 /// The uid the kernel shows for a uid that has no mapping (`/proc/sys/kernel/overflowuid`).
@@ -23,6 +24,10 @@ pub const OVERFLOW_UID: u32 = 65534;
 #[derive(Debug)]
 pub struct Accepted {
     pub uid: u32,
+    /// The peer's pid from `SO_PEERCRED`, for the journal only.
+    pub pid: u32,
+    /// The peer's label, which passed [`peer_label::check`].
+    pub label: PeerLabel,
     pub pidfd: OwnedFd,
 }
 
@@ -58,15 +63,26 @@ impl fmt::Display for Refusal {
 /// # Errors
 /// The [`Refusal`] that says why the connection must be closed.
 pub fn decide(peer: Peer) -> Result<Accepted, Refusal> {
-    let Peer { uid, pidfd, label } = peer;
+    let Peer {
+        uid,
+        pid,
+        pidfd,
+        label,
+    } = peer;
     let uid = uid.ok_or(Refusal::UnreadableUid)?;
+    let pid = pid.ok_or(Refusal::UnreadableUid)?;
     if uid == OVERFLOW_UID {
         return Err(Refusal::OverflowUid);
     }
     let pidfd = pidfd.ok_or(Refusal::NoPidfd)?;
     let label = label.ok_or(Refusal::NoLabel)?;
-    peer_label::check(&label).map_err(Refusal::Label)?;
-    Ok(Accepted { uid, pidfd })
+    let label = PeerLabel::new(&label).map_err(Refusal::Label)?;
+    Ok(Accepted {
+        uid,
+        pid,
+        label,
+        pidfd,
+    })
 }
 
 /// Where the three values come from: the kernel. Only a test build with the `test-seam` feature has another.

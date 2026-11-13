@@ -52,6 +52,7 @@ fn null_fd() -> Result<OwnedFd, Box<dyn Error>> {
 fn peer_of(c: &Creds) -> Peer {
     Peer {
         uid: c.uid,
+        pid: c.uid.map(|_| 4242),
         pidfd: if c.pidfd { null_fd().ok() } else { None },
         label: c.label.clone(),
     }
@@ -292,8 +293,21 @@ fn real_peer_without_label() -> TestResult {
     assert!(read.pidfd.is_some());
     assert!(admit(&a, &Source::Kernel).is_err());
     // The same label bytes through the decision function refuse too.
-    let Peer { uid, pidfd, label } = read;
-    assert!(decide(Peer { uid, pidfd, label }).is_err());
+    let Peer {
+        uid,
+        pid,
+        pidfd,
+        label,
+    } = read;
+    assert!(
+        decide(Peer {
+            uid,
+            pid,
+            pidfd,
+            label
+        })
+        .is_err()
+    );
     // And served: the real peer is closed.
     let rig = Rig::start(true)?;
     rig.assert_closed()?;

@@ -54,6 +54,7 @@ fn signing_fields_are_the_old_list_plus_the_operation() -> TestResult {
                 ("CUSTODIO_OUTCOME", name),
                 ("CUSTODIO_MECHANISM", "ecdsa"),
                 ("CUSTODIO_APP_ID_STATE", "undetermined"),
+                ("CUSTODIO_TRANSPORT", "bus"),
             ]
         );
         let without = Entry::without_caller(key()?, None).fields();
@@ -207,7 +208,7 @@ fn import_outcomes() -> TestResult {
             "4c7163ce45d0b9faf8e7c38d098bdb22",
             ("import", name, prio, phrase),
         );
-        assert_eq!(e.fields().len(), 10, "no key type unless known");
+        assert_eq!(e.fields().len(), 11, "no key type unless known");
         let typed = OperationEntry::import(o, Some(C), key()?, Some(AuditKeyType::EcdsaP256));
         assert_eq!(
             get(&typed.fields(), "CUSTODIO_KEY_TYPE").as_deref(),
@@ -247,7 +248,7 @@ fn delete_outcomes() -> TestResult {
             "13d1a981ea8f64fc1a6f390bee7fd66c",
             ("delete", name, prio, phrase),
         );
-        assert_eq!(e.fields().len(), 10);
+        assert_eq!(e.fields().len(), 11);
         assert_eq!(e.key_type(), None);
     }
     Ok(())
@@ -296,7 +297,7 @@ fn replace_certificate_outcomes() -> TestResult {
             "336e0b53720a735afb179ebc7f779ed6",
             ("replace_certificate", name, prio, phrase),
         );
-        assert_eq!(e.fields().len(), 10);
+        assert_eq!(e.fields().len(), 11);
     }
     Ok(())
 }
@@ -384,14 +385,15 @@ fn import_entries_carry_the_kind_or_the_cause() -> TestResult {
         names
             .iter()
             .rev()
-            .take(3)
+            .take(4)
             .rev()
             .copied()
             .collect::<Vec<_>>(),
         [
             "CUSTODIO_KEY_TYPE",
             "CUSTODIO_STORAGE_KIND",
-            "CUSTODIO_APP_ID_STATE"
+            "CUSTODIO_APP_ID_STATE",
+            "CUSTODIO_TRANSPORT"
         ]
     );
     for cause in ImportCause::all() {

@@ -21,6 +21,8 @@ use crate::store::KeyStore;
 
 pub mod keys;
 pub mod peer;
+mod sign;
+pub use sign::Signing;
 
 /// Snaps with a socket. Anything else systemd passes is closed and ignored.
 const KNOWN_SNAPS: [&str; 1] = ["firefox"];
@@ -226,6 +228,7 @@ pub struct Service {
     store: Arc<KeyStore>,
     source: peer::Source,
     log: Log,
+    signing: Option<Signing>,
 }
 
 impl Service {
@@ -236,7 +239,15 @@ impl Service {
             store,
             source: peer::Source::Kernel,
             log,
+            signing: None,
         }
+    }
+
+    /// What `Sign` needs. Without it every `Sign` fails closed with `AuthorizationUnavailable`.
+    #[must_use]
+    pub fn with_signing(mut self, signing: Signing) -> Self {
+        self.signing = Some(signing);
+        self
     }
 
     /// Takes the peer's values from `source` instead of the kernel. Only a test build has it.
@@ -300,10 +311,22 @@ fn accept_loop(listener: &UnixListener, service: &Service) {
 fn handle(stream: UnixStream, service: &Service) {
     match peer::admit(&stream, &service.source) {
         Ok(accepted) => {
-            let peer::Accepted { uid, pidfd } = accepted;
-            // Kept for as long as the connection lives; the signing checks of a later feature use it.
-            let _pidfd = pidfd;
-            keys::serve_peer(stream, Arc::clone(&service.store), uid);
+            let peer::Accepted {
+                uid,
+                pid,
+                label,
+                pidfd,
+            } = accepted;
+            // The pidfd lives as long as the connection: every signature asks polkit about that process.
+            let session = sign::Session {
+                store: Arc::clone(&service.store),
+                signing: service.signing.clone(),
+                uid,
+                pid,
+                label,
+                pidfd,
+            };
+            keys::serve_peer(stream, session);
         }
         Err(reason) => (service.log)(&format!("custodiod: peer refused: {reason}")),
     }

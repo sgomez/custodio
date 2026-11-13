@@ -57,6 +57,8 @@ pub enum Refusal {
     ExtraText,
 }
 
+impl std::error::Error for Refusal {}
+
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

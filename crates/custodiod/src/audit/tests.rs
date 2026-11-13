@@ -277,7 +277,8 @@ CUSTODIO_KEY_ID=key-1_A\n\
 CUSTODIO_OPERATION=sign\n\
 CUSTODIO_OUTCOME=signed\n\
 CUSTODIO_MECHANISM=rsa_pkcs_pss_sha256\n\
-CUSTODIO_APP_ID_STATE=undetermined\n";
+CUSTODIO_APP_ID_STATE=undetermined\n\
+CUSTODIO_TRANSPORT=bus\n";
     assert_eq!(recv(&s)?, expected);
     Ok(())
 }
@@ -349,6 +350,7 @@ fn all_entries_decode_to_expected_fields() -> TestResult {
                     want.push(("CUSTODIO_MECHANISM".into(), m.name().into()));
                 }
                 want.push(("CUSTODIO_APP_ID_STATE".into(), b"undetermined".to_vec()));
+                want.push(("CUSTODIO_TRANSPORT".into(), b"bus".to_vec()));
                 assert_eq!(got, want);
             }
         }
@@ -416,7 +418,7 @@ fn one_datagram_per_call() -> TestResult {
         sink.record(&entry(Outcome::Denied, None)?)?;
     }
     for _ in 0..3 {
-        assert_eq!(decode(&recv(&s)?)?.len(), 10);
+        assert_eq!(decode(&recv(&s)?)?.len(), 11);
     }
     would_block(&s)?;
     Ok(())
@@ -541,4 +543,78 @@ fn entry_with_caller_exposes_it() -> TestResult {
         })
     );
     Ok(())
+}
+
+mod transport {
+    use super::*;
+    use crate::audit::{PEER_LABEL_FIELD, PeerLabel, TRANSPORT_FIELD, Transport};
+
+    const GOOD: &[u8] = b"snap.firefox.firefox (enforce)";
+
+    /// The fields of a bus entry before the transport existed, written out and not taken from the code.
+    const BEFORE: [&str; 11] = [
+        "MESSAGE",
+        "MESSAGE_ID",
+        "PRIORITY",
+        "SYSLOG_IDENTIFIER",
+        "CUSTODIO_UID",
+        "CUSTODIO_PID",
+        "CUSTODIO_KEY_ID",
+        "CUSTODIO_OPERATION",
+        "CUSTODIO_OUTCOME",
+        "CUSTODIO_MECHANISM",
+        "CUSTODIO_APP_ID_STATE",
+    ];
+
+    fn base() -> Result<Entry, Box<dyn std::error::Error>> {
+        Ok(Entry::new(
+            Outcome::Signed,
+            Caller { uid: 10, pid: 20 },
+            KeyId::new("k")?,
+            Some(AuditMechanism::Ecdsa),
+        ))
+    }
+
+    #[test]
+    fn a_bus_entry_differs_from_the_old_list_by_the_transport_only() -> TestResult {
+        let mut f = base()?.fields();
+        assert_eq!(f.pop(), Some((TRANSPORT_FIELD, "bus".to_owned())));
+        let names: Vec<_> = f.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, BEFORE);
+        assert_eq!(base()?.transport(), Transport::Bus);
+        Ok(())
+    }
+
+    #[test]
+    fn a_socket_entry_adds_the_transport_and_the_label() -> TestResult {
+        let e = base()?.with_socket_peer(PeerLabel::new(GOOD)?);
+        let f = e.fields();
+        let tail: Vec<_> = f.iter().rev().take(2).rev().cloned().collect();
+        assert_eq!(
+            tail,
+            [
+                (TRANSPORT_FIELD, "socket".to_owned()),
+                (
+                    PEER_LABEL_FIELD,
+                    "snap.firefox.firefox (enforce)".to_owned()
+                )
+            ]
+        );
+        assert_eq!(f.len(), BEFORE.len() + 2);
+        assert_eq!(e.message(), base()?.message());
+        Ok(())
+    }
+
+    #[test]
+    fn a_label_that_failed_the_check_cannot_be_recorded() {
+        for bad in [
+            &b"snap.firefox.firefox (enforce)\n"[..],
+            b"snap.firefox.firefox (enforce)\0",
+            b"snap.firefox.firefox (enforce)\nPRIORITY=0",
+            b"",
+            b"snap.other.app (enforce)",
+        ] {
+            assert!(PeerLabel::new(bad).is_err());
+        }
+    }
 }

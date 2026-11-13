@@ -21,6 +21,9 @@ pub const LABEL_BUFFER: usize = 4096;
 pub struct Peer {
     /// `SO_PEERCRED`: the kernel uid of the process that connected.
     pub uid: Option<u32>,
+    /// `SO_PEERCRED`: the pid of that process, from the same read as the uid (as the connecting process saw
+    /// itself, in the service's pid namespace).
+    pub pid: Option<u32>,
     /// `SO_PEERPIDFD`: a pidfd of that process.
     pub pidfd: Option<OwnedFd>,
     /// `SO_PEERSEC`: the security label, as bytes. Never printed: `Debug` is hand-written below.
@@ -31,6 +34,7 @@ impl std::fmt::Debug for Peer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Peer")
             .field("uid", &self.uid)
+            .field("pid", &self.pid)
             .field("pidfd", &self.pidfd.is_some())
             .field("label", &self.label.as_ref().map(Vec::len))
             .finish()
@@ -40,10 +44,10 @@ impl std::fmt::Debug for Peer {
 /// Reads the three values of the peer of `socket`, once each.
 #[must_use]
 pub fn read<S: AsFd + AsRawFd>(socket: &S) -> Peer {
+    let cred = rustix::net::sockopt::socket_peercred(socket).ok();
     Peer {
-        uid: rustix::net::sockopt::socket_peercred(socket)
-            .ok()
-            .map(|cred| cred.uid.as_raw()),
+        uid: cred.map(|c| c.uid.as_raw()),
+        pid: cred.map(|c| c.pid.as_raw_nonzero().get().cast_unsigned()),
         pidfd: getsockopt(socket, PeerPidfd).ok(),
         label: peer_label(socket),
     }

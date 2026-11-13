@@ -27,7 +27,7 @@ use crate::rig::{
 use crate::secrets::{Secrets, assert_operation_clean};
 
 /// The fields every import entry has had since F113, in order.
-const OLD_FIELDS: [&str; 10] = [
+const OLD_FIELDS: [&str; 11] = [
     "MESSAGE",
     "MESSAGE_ID",
     "PRIORITY",
@@ -38,6 +38,8 @@ const OLD_FIELDS: [&str; 10] = [
     "CUSTODIO_OPERATION",
     "CUSTODIO_OUTCOME",
     "CUSTODIO_APP_ID_STATE",
+    // The one field added since: every request entry says how it arrived.
+    "CUSTODIO_TRANSPORT",
 ];
 
 pub fn value(e: &OperationEntry, name: &str) -> Option<String> {
@@ -443,6 +445,7 @@ fn failed_entry_keeps_its_old_fields() -> TestResult {
             "CUSTODIO_KEY_TYPE",
             "CUSTODIO_CAUSE",
             "CUSTODIO_APP_ID_STATE",
+            "CUSTODIO_TRANSPORT",
         ]);
         assert_eq!(names, want);
         Ok(())
