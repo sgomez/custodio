@@ -57,8 +57,8 @@ done
 # of the real scripts with the one fault.
 SVC_STOP='deb-systemd-invoke +stop +custodio\.service'
 deb_socket_problems() { # DIR
-    socket_install_problems "$1/postinst"
-    socket_stop_problems "$1/prerm" "$SVC_STOP"
+    socket_install_problems "$1/postinst" deb-systemd-invoke
+    socket_stop_problems "$1/prerm" "$SVC_STOP" deb-systemd-invoke
 }
 [ -z "$(deb_socket_problems "$SRC")" ] || bad "the socket lines: $(deb_socket_problems "$SRC")"
 mkdir -p "$BF_DIR/sock"

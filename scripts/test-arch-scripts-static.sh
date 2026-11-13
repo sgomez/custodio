@@ -36,11 +36,14 @@ state_hits() {
         done < <(grep -E '/var/lib|StateDirectory|STATE_DIRECTORY' "$1/$f" | grep -Ev '^[[:space:]]*#' || true)
     done
 }
+# The one start of the service the scripts may make, in post_upgrade only: after the socket is started, to keep a running service running (F173).
+SVC_START_OK='^[[:space:]]*systemctl +start +custodio\.service +\|\| +true$'
 # forbidden_hits DIR: commands and paths no script or hook may use (the embedded F42 check holds none of them, so any hit is new).
 forbidden_hits() {
     local f
     for f in "${SCRIPTS[@]}" "${HOOKS[@]}" custodio-bus-check; do
         grep -Ev '^[[:space:]]*(#|$)' "$1/$f" \
+            | { if [ "$f" = post_upgrade ]; then grep -vE "$SVC_START_OK"; else cat; fi; } \
             | grep -E 'dbus-1|polkit-1|/lib/systemd|/etc/|custodio\.service\.d|systemctl +(--[a-z-]+ +)*(edit|set-property|mask|enable|preset|start|restart|try-restart|reload|daemon-reload)|systemd-hook +(restart|reload)|try-reload|systemd-run|useradd|adduser|groupadd|usermod|userdel|groupdel|deluser|rm +-[a-zA-Z]*r|chown|chmod|chgrp|sed +-i|\btee\b|\bcp\b|\bmv\b|\binstall +-|update-catalog' \
             | grep -v "^Exec = /usr/share/libalpm/scripts/systemd-hook restart custodio.service\$" \
             | grep -vE "$SOCKET_OK" \
@@ -101,6 +104,8 @@ arch_socket_problems() { # DIR
     socket_install_problems "$1/post_install"
     socket_install_problems "$1/post_upgrade"
     socket_stop_problems "$1/pre_remove" "$SVC_STOP"
+    # A running service stays running: where post_upgrade stops it, it starts it again after the socket.
+    awk '/systemctl +stop +custodio\.service/ { s = NR } /systemctl +start +custodio-firefox\.socket/ && s { k = NR } /systemctl +start +custodio\.service/ && k > s && s { ok = 1 } END { exit !ok }' "$1/post_upgrade" || echo "post_upgrade does not stop the service, start the socket, then start the service"
 }
 [ -z "$(arch_socket_problems "$SRC")" ] || bad "the socket lines: $(arch_socket_problems "$SRC")"
 
@@ -124,6 +129,7 @@ for f in "${SCRIPTS[@]}"; do
     try forbidden "$f" 'sed -i s/x/y/ /usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf'
     try forbidden "$f" 'systemctl enable custodio.service'
     try forbidden "$f" 'systemctl start custodio.service'
+    try forbidden "$f" 'systemctl start custodio.service --now'
     try forbidden "$f" 'systemctl restart custodio.service'
     try forbidden "$f" 'systemctl daemon-reload'
     try forbidden "$f" 'systemctl reload dbus.service'
@@ -146,6 +152,9 @@ sock_ctl "socket stopped after the service" pre_remove '/stop custodio-firefox.s
 sock_ctl "socket not stopped" pre_remove '/stop custodio-firefox.socket/d'
 sock_ctl "socket not enabled on install" post_install '/enable custodio-firefox.socket/d'
 sock_ctl "socket not started on install" post_install '/start custodio-firefox.socket/d'
+sock_ctl "service left stopped on upgrade" post_upgrade '/^    systemctl start custodio.service/d'
+sock_ctl "service started before the socket" post_upgrade '/^    systemctl start custodio.service/{h;d};/^    systemctl stop custodio.service/{G}'
+try forbidden post_install 'systemctl start custodio.service || true'
 sock_ctl "socket not enabled on upgrade" post_upgrade '/enable custodio-firefox.socket/d'
 try state zz-custodio-restart.hook 'Exec = /usr/bin/ls /var/lib/custodio'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/bin/systemctl enable custodio.service'

@@ -4,9 +4,8 @@
 # never enabled, started or preset here (the systemd macros are not used): D-Bus activation and its socket start it. Nothing here touches the state directory.
 # Every reload tolerates failure: there is no live systemd in a chroot, an image build or rpm-ostree.
 systemctl daemon-reload || true
-# The socket of the Firefox snap (F173) is enabled and started on install and upgrade, so a connection to it starts the service.
+# The socket of the Firefox snap (F173) is enabled here and started below, so a connection to it starts the service.
 systemctl enable custodio-firefox.socket || true
-systemctl start custodio-firefox.socket || true
 systemctl reload dbus.service || true
 journalctl --update-catalog || true
 # %pre left the marker only if the service was running before this upgrade (rpm runs it before this scriptlet, and the %preun and

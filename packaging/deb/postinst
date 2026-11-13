@@ -17,11 +17,11 @@ configure)
     # service is stopped first, the socket started, and the service restarted (started) after it.
     if [ -n "$2" ] && [ -e /run/custodio-restart-after-upgrade ]; then
         rm -f /run/custodio-restart-after-upgrade
-        systemctl stop custodio.service || true
-        systemctl start custodio-firefox.socket || true
-        systemctl restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
+        deb-systemd-invoke stop custodio.service || true
+        deb-systemd-invoke start custodio-firefox.socket || true
+        deb-systemd-invoke restart custodio.service || echo "custodio: could not restart custodio.service; the next D-Bus call starts the new binary." >&2
     else
-        systemctl start custodio-firefox.socket || true
+        deb-systemd-invoke start custodio-firefox.socket || true
     fi
     ;;
 abort-upgrade | abort-remove | abort-deconfigure)

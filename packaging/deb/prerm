@@ -5,7 +5,7 @@ set -e
 case "$1" in
 remove)
     # The socket first: a socket left listening starts the stopped service again at the next connection (F173).
-    systemctl stop custodio-firefox.socket || true
+    deb-systemd-invoke stop custodio-firefox.socket || true
     systemctl disable custodio-firefox.socket || true
     deb-systemd-invoke stop custodio.service || true
     ;;

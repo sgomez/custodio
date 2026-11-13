@@ -67,3 +67,9 @@ Decisions about the package scripts and file layout, under the rules at the top 
   restart would precede the daemon reload (`docs/findings/F58.md`).
 - Rejected: `enqueue-marked` with `Markers=needs-restart` (runs before `dbus-reload`); reloads in
   `post_*`; a marker file; a `useradd` fallback.
+
+## 2026-11-13 — The Firefox snap socket on install and upgrade (F173)
+- Decision: the scripts `start` `custodio-firefox.socket`, never `restart` it. For a running service on upgrade they stop it, start the
+  socket, then start it again (deb and rpm `restart`; Arch `systemctl start` in `post_upgrade`, and `zz-custodio-restart.hook` restarts it
+  once more after the reloads). Deb uses `deb-systemd-invoke` for starts and stops, so `policy-rc.d` is honoured.
+- Why: systemd refuses to start a socket while its service is active; a restart of the socket stops the service and leaves it down.

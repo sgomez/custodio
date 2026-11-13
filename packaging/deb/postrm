@@ -10,7 +10,7 @@ remove | purge)
     # The bus policy and the activation file are gone now, so nothing starts the service again; stop one that came back
     # between prerm and the removal of the files.
     if systemctl is-active --quiet custodio-firefox.socket 2>/dev/null; then
-        systemctl stop custodio-firefox.socket || true
+        deb-systemd-invoke stop custodio-firefox.socket || true
     fi
     if systemctl is-active --quiet custodio.service 2>/dev/null; then
         deb-systemd-invoke stop custodio.service || true

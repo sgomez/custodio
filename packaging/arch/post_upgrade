@@ -3,13 +3,15 @@
 # dbus, which pacman runs after this script, do the rest on the paths this package ships: 30-systemd-daemon-reload-system (daemon-reload),
 # dbus-reload (bus reload), 25-systemd-catalog (journal catalog). Repeating a call here would run it twice, and before the hook. The unit is
 # never enabled or started here (zz-custodio-restart.hook restarts a running one): D-Bus activation and its socket start it. Nothing here touches the state directory. See docs/decisions/packaging.md.
-# The socket of the Firefox snap (F173) is enabled and started (not restarted: systemd would refuse to start it while the service runs). A changed socket
-# unit is read at the next boot.
+# The socket of the Firefox snap (F173) is enabled and started, never restarted. systemd refuses to start a socket while its service is
+# active, so when the socket is down and the service runs (an upgrade from a package without the socket) the service is stopped, the
+# socket started and the service started again: it keeps running. zz-custodio-restart.hook still restarts it after the reloads, so the
+# new unit file is read and the service is restarted once the hooks have run (docs/decisions/packaging.md).
 systemctl enable custodio-firefox.socket || true
-# systemd refuses to start a socket while its service is active, so a running service is stopped first; D-Bus activation or the socket starts the new binary on the next call (the hook restarts only a running service).
 if systemctl is-active --quiet custodio-firefox.socket; then :; elif systemctl is-active --quiet custodio.service; then
     systemctl stop custodio.service || true
     systemctl start custodio-firefox.socket || true
+    systemctl start custodio.service || true
 else
     systemctl start custodio-firefox.socket || true
 fi
