@@ -330,7 +330,11 @@ fn an_idle_connection_is_closed() -> TestResult {
     )?;
     let mut idle = rig.handshaken()?;
     let took = closed_within(&mut idle, PATIENCE)?;
-    assert!(took >= Duration::from_millis(250), "{took:?}");
+    // The idle bound starts when the handshake ends, not at the handshake bound (5 s here).
+    assert!(
+        took >= Duration::from_millis(250) && took < Duration::from_secs(3),
+        "{took:?}"
+    );
     // One byte at a time does not hold the connection: closed within the bound from the start of the message.
     let mut slow = rig.handshaken()?;
     let start = Instant::now();
