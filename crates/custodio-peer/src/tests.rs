@@ -28,7 +28,9 @@ fn debug_does_not_show_the_label() {
         pidfd: None,
         label: Some(b"secret-label".to_vec()),
     };
-    assert!(!format!("{peer:?}").contains("secret"));
+    let shown = format!("{peer:?}");
+    assert!(!shown.contains("secret"));
+    assert!(shown.contains("Peer") && shown.contains("uid: Some(1)"));
 }
 
 #[test]
