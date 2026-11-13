@@ -3,31 +3,57 @@
 
 use std::error::Error;
 use std::io::{ErrorKind, Read, Write};
+use std::os::fd::BorrowedFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use custodiod::audit::{AuditSink, MemorySink};
 use custodiod::creds::memory::MemoryCreds;
-use custodiod::creds::seal;
+use custodiod::creds::{Credentials, seal};
 use custodiod::dbus::{BUS_NAME, MAX_SIGN_MESSAGE_LEN, OBJECT_PATH};
+use custodiod::import::{credential_name, parse_p12};
+use custodiod::polkit::{AuthError, BoxFuture, ProcessAuthorizer};
 use custodiod::snap_socket::limits::{Limits, MAX_MESSAGE_LEN, RateLimit};
 use custodiod::snap_socket::peer::{Peer, Source};
-use custodiod::snap_socket::{Outcome, Service, serve};
+use custodiod::snap_socket::{Outcome, Service, Signing, serve};
 use custodiod::store::{KeyStore, Kind, Protected, Record};
-use secrecy::SecretSlice;
+use custodiod::tpm::open::NoTpm;
+use secrecy::SecretString;
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Connection, block_on};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
 const GOOD: &[u8] = b"snap.firefox.firefox (enforce)";
-const CERT: &[u8] = include_bytes!("fixtures/cert-p256-other.der");
 const UID: u32 = 4001;
 /// Long enough to be sure a close did not come, short enough to fail fast.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// A polkit that approves everything and counts the questions.
+struct Counting(Arc<AtomicUsize>);
+
+impl ProcessAuthorizer for Counting {
+    fn authorize_process<'a>(
+        &'a self,
+        _pidfd: BorrowedFd<'a>,
+        _uid: u32,
+        _action: &'a str,
+    ) -> BoxFuture<'a, Result<(), AuthError>> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    }
+}
+
+fn own_pidfd() -> Option<std::os::fd::OwnedFd> {
+    let pid = rustix::process::Pid::from_raw(i32::try_from(std::process::id()).ok()?)?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
+}
+
 struct Rig {
+    sink: Arc<MemorySink>,
     _tmp: tempfile::TempDir,
     path: PathBuf,
     log: Arc<Mutex<Vec<String>>>,
@@ -47,13 +73,20 @@ impl Rig {
     fn start(limits: Limits, rate: RateLimit) -> Result<Self, Box<dyn Error>> {
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(tmp.path().join("keys"))?);
-        let key = SecretSlice::from(b"a-key-that-is-not-in-the-clear".to_vec());
-        let sealed = seal(&MemoryCreds::host(), &format!("{UID}-k"), &key)?;
+        let parsed = parse_p12(
+            include_bytes!("fixtures/p256.p12"),
+            &SecretString::from("test-password".to_owned()),
+        )?;
+        let sealed = seal(
+            &MemoryCreds::host(),
+            &credential_name(UID, "k"),
+            &parsed.key,
+        )?;
         store.put(&Record::new(
             UID,
             "k",
             Kind::EncryptedHost,
-            CERT,
+            &parsed.certificate,
             Protected::from_sealed(&sealed),
         )?)?;
         let path = tmp.path().join("custodio.sock");
@@ -62,6 +95,14 @@ impl Rig {
         let label = Arc::new(Mutex::new(GOOD.to_vec()));
         let sink = Arc::clone(&log);
         let seen = Arc::clone(&label);
+        let audit = Arc::new(MemorySink::default());
+        let creds: Arc<dyn Credentials> = Arc::new(MemoryCreds::host());
+        let signing = Signing {
+            authorizer: Arc::new(Counting(Arc::new(AtomicUsize::new(0)))),
+            sink: Arc::clone(&audit) as Arc<dyn AuditSink>,
+            key_creds: Some(creds),
+            tpm: Arc::new(NoTpm),
+        };
         let service = Service::new(
             store,
             Arc::new(move |line| {
@@ -70,11 +111,12 @@ impl Rig {
                     .push(line.to_owned());
             }),
         )
+        .with_signing(signing)
         .with_limits(limits, rate)
         .with_source(Source::Injected(Arc::new(move |_| Peer {
             uid: Some(UID),
-            pid: Some(4242),
-            pidfd: std::fs::File::open("/dev/null").ok().map(Into::into),
+            pid: Some(std::process::id()),
+            pidfd: own_pidfd(),
             label: Some(seen.lock().unwrap_or_else(PoisonError::into_inner).clone()),
         })));
         let mut journal = Vec::new();
@@ -87,6 +129,7 @@ impl Rig {
         );
         assert!(matches!(outcome, Outcome::Serving));
         Ok(Self {
+            sink: audit,
             _tmp: tmp,
             path,
             log,
@@ -148,6 +191,22 @@ impl Rig {
                 .body()
                 .deserialize::<Vec<(String, String, String, Vec<u8>)>>()?
                 .len())
+        })
+    }
+
+    /// One `Sign` of a digest on `connection`; the signature's length.
+    fn sign_on(connection: &Connection) -> Result<usize, Box<dyn Error>> {
+        block_on(async {
+            let reply = connection
+                .call_method(
+                    None::<&str>,
+                    OBJECT_PATH,
+                    Some(BUS_NAME),
+                    "Sign",
+                    &("k", 0x1041_u32, 0_u32, 0_u32, vec![7_u8; 32]),
+                )
+                .await?;
+            Ok(reply.body().deserialize::<Vec<u8>>()?.len())
         })
     }
 
@@ -341,8 +400,23 @@ fn a_flood_does_not_stop_a_peer_that_is_already_connected() -> TestResult {
             Ok(s)
         })
         .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
-    drop(flood);
+    // The kept peer signs while the flood is open, and a new peer signs once the flood is gone.
+    assert!(Rig::sign_on(&kept)? > 0);
     assert_eq!(Rig::list_on(&kept)?, 1);
+    drop(flood);
+    let later = {
+        let until = Instant::now() + PATIENCE;
+        loop {
+            match rig.client() {
+                Ok(c) if Rig::list_on(&c).is_ok() => break c,
+                _ if Instant::now() < until => {}
+                _ => return Err("no room after the flood".into()),
+            }
+        }
+    };
+    assert!(Rig::sign_on(&later)? > 0);
+    // Every signature has its entry: the flood costs the audit log nothing (refusal lines go to the service log).
+    assert_eq!(rig.sink.entries().len(), 2);
     assert!(rig.lines().len() <= 10);
     Ok(())
 }

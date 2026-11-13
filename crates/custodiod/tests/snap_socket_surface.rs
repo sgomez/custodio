@@ -3,52 +3,94 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::os::fd::BorrowedFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use custodiod::audit::{AuditSink, MemorySink};
 use custodiod::creds::memory::MemoryCreds;
-use custodiod::creds::seal;
+use custodiod::creds::{Credentials, seal};
 use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
+use custodiod::import::{credential_name, parse_p12};
+use custodiod::polkit::{AuthError, BoxFuture, ProcessAuthorizer};
 use custodiod::snap_socket::peer::{Peer, Source};
-use custodiod::snap_socket::{Outcome, Service, serve};
+use custodiod::snap_socket::{Outcome, Service, Signing, serve};
 use custodiod::store::{KeyStore, Kind, Protected, Record};
-use secrecy::SecretSlice;
+use custodiod::tpm::open::NoTpm;
+use secrecy::SecretString;
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Connection, block_on};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-const CERT: &[u8] = include_bytes!("fixtures/cert-p256-other.der");
 const UID: u32 = 4001;
+
+fn own_pidfd() -> Option<std::os::fd::OwnedFd> {
+    let pid = rustix::process::Pid::from_raw(i32::try_from(std::process::id()).ok()?)?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
+}
+
+/// A polkit that approves everything and counts the questions.
+struct Counting(Arc<AtomicUsize>);
+
+impl ProcessAuthorizer for Counting {
+    fn authorize_process<'a>(
+        &'a self,
+        _pidfd: BorrowedFd<'a>,
+        _uid: u32,
+        _action: &'a str,
+    ) -> BoxFuture<'a, Result<(), AuthError>> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async { Ok(()) })
+    }
+}
 
 struct Rig {
     tmp: tempfile::TempDir,
     path: PathBuf,
+    asked: Arc<AtomicUsize>,
+    sink: Arc<MemorySink>,
 }
 
 impl Rig {
     fn start() -> Result<Self, Box<dyn Error>> {
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(tmp.path().join("keys"))?);
-        let key = SecretSlice::from(b"a-key-that-is-not-in-the-clear".to_vec());
-        let sealed = seal(&MemoryCreds::host(), &format!("{UID}-k"), &key)?;
+        let parsed = parse_p12(
+            include_bytes!("fixtures/p256.p12"),
+            &SecretString::from("test-password".to_owned()),
+        )?;
+        let sealed = seal(
+            &MemoryCreds::host(),
+            &credential_name(UID, "k"),
+            &parsed.key,
+        )?;
         store.put(&Record::new(
             UID,
             "k",
             Kind::EncryptedHost,
-            CERT,
+            &parsed.certificate,
             Protected::from_sealed(&sealed),
         )?)?;
         let path = tmp.path().join("custodio.sock");
-        let service =
-            Service::new(store, Arc::new(|_| {})).with_source(Source::Injected(Arc::new(|_| {
-                Peer {
-                    uid: Some(UID),
-                    pid: Some(4242),
-                    pidfd: std::fs::File::open("/dev/null").ok().map(Into::into),
-                    label: Some(b"snap.firefox.firefox (enforce)".to_vec()),
-                }
+        let asked = Arc::new(AtomicUsize::new(0));
+        let sink = Arc::new(MemorySink::default());
+        let creds: Arc<dyn Credentials> = Arc::new(MemoryCreds::host());
+        let signing = Signing {
+            authorizer: Arc::new(Counting(Arc::clone(&asked))),
+            sink: Arc::clone(&sink) as Arc<dyn AuditSink>,
+            key_creds: Some(creds),
+            tpm: Arc::new(NoTpm),
+        };
+        let service = Service::new(store, Arc::new(|_| {}))
+            .with_signing(signing)
+            .with_source(Source::Injected(Arc::new(|_| Peer {
+                uid: Some(UID),
+                pid: Some(std::process::id()),
+                pidfd: own_pidfd(),
+                label: Some(b"snap.firefox.firefox (enforce)".to_vec()),
             })));
         let outcome = serve(
             "snap-firefox",
@@ -58,7 +100,12 @@ impl Rig {
             &service,
         );
         assert!(matches!(outcome, Outcome::Serving));
-        Ok(Self { tmp, path })
+        Ok(Self {
+            tmp,
+            path,
+            asked,
+            sink,
+        })
     }
 
     fn client(&self) -> Result<Connection, Box<dyn Error>> {
@@ -183,6 +230,18 @@ fn other_methods_are_unknown() -> TestResult {
         assert_eq!(got, want, "{cases:?}");
     }
     assert_eq!(rig.store_snapshot()?, before);
+    assert_eq!(rig.asked.load(Ordering::SeqCst), 0, "polkit was asked");
+    assert!(rig.sink.entries().is_empty(), "a journal entry was written");
+    // Negative control: the same harness sees the question and the entry after a real `Sign`.
+    let _ = block_on(connection.call_method(
+        None::<&str>,
+        OBJECT_PATH,
+        Some(BUS_NAME),
+        "Sign",
+        &("k", 0x1041_u32, 0_u32, 0_u32, vec![7_u8; 32]),
+    ));
+    assert_eq!(rig.asked.load(Ordering::SeqCst), 1);
+    assert_eq!(rig.sink.entries().len(), 1);
     Ok(())
 }
 
