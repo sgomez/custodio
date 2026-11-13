@@ -145,7 +145,7 @@ sock_ctl() { # LABEL FILE SED-EXPRESSION
 sock_ctl "socket stopped after the service" pre_remove '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
 sock_ctl "socket not stopped" pre_remove '/stop custodio-firefox.socket/d'
 sock_ctl "socket not enabled on install" post_install '/enable custodio-firefox.socket/d'
-sock_ctl "socket not started on install" post_install '/restart custodio-firefox.socket/d'
+sock_ctl "socket not started on install" post_install '/start custodio-firefox.socket/d'
 sock_ctl "socket not enabled on upgrade" post_upgrade '/enable custodio-firefox.socket/d'
 try state zz-custodio-restart.hook 'Exec = /usr/bin/ls /var/lib/custodio'
 try forbidden zz-custodio-restart.hook 'Exec = /usr/bin/systemctl enable custodio.service'

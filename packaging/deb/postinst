@@ -6,10 +6,10 @@ set -e
 case "$1" in
 configure)
     systemctl daemon-reload || true
-    # The socket of the Firefox snap (F173) is enabled and (re)started on install and upgrade, so a connection to it starts the
+    # The socket of the Firefox snap (F173) is enabled and started on install and upgrade (never restarted: systemd refuses to start a socket while its service runs), so a connection to it starts the
     # service. The service itself stays unenabled. Both tolerate failure: no live systemd in a chroot.
     systemctl enable custodio-firefox.socket || true
-    systemctl restart custodio-firefox.socket || true
+    systemctl start custodio-firefox.socket || true
     deb-systemd-invoke reload dbus.service || true
     journalctl --update-catalog || true
     # preinst left the marker only if the service was running before this upgrade. Without it (an upgrade whose preinst did not

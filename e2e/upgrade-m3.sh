@@ -97,6 +97,7 @@ for _ in $(seq 60); do
 done
 [ "$pid2" != "$pid1" ] || fail "the service did not restart after the install (still pid $pid1)"
 systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade"
+systemctl is-active --quiet custodio-firefox.socket || fail "custodio-firefox.socket is not listening after the upgrade (a restart of it fails while the service runs)"
 [ "$(installed_version "$fmt")" = "$vn" ] || fail "after the upgrade the database holds $(installed_version "$fmt"), not $vn"
 files_snapshot > "$ACC/state.after"
 journalctl --sync

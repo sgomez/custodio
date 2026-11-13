@@ -131,7 +131,7 @@ sock_ctl() { # LABEL FILE SED-EXPRESSION
 sock_ctl "socket stopped after the service" preun '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
 sock_ctl "socket not stopped" preun '/stop custodio-firefox.socket/d'
 sock_ctl "socket not enabled" post '/enable custodio-firefox.socket/d'
-sock_ctl "socket not started" post '/restart custodio-firefox.socket/d'
+sock_ctl "socket not started" post '/start custodio-firefox.socket/d'
 
 # A package with a user() provide is seen by the account gate.
 fx_build userprov 0.1.0 "" provides-add rpm 'user(custodio)'

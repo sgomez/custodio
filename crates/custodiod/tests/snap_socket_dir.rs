@@ -109,7 +109,10 @@ fn a_directory_of_another_owner_is_not_served() -> TestResult {
     std::fs::create_dir(&dir)?;
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
     if rustix::process::getuid().is_root() {
-        return Ok(()); // as root the owner is root: the mode tests below decide
+        eprintln!(
+            "skipped: running as root, the directory is owned by root; the mode tests decide"
+        );
+        return Ok(());
     }
     refused(&dir, "the directory is not owned by root")?;
     Ok(())

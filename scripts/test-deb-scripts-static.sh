@@ -71,7 +71,7 @@ ctl() { # LABEL FILE SED-EXPRESSION: the problem gate must see the fault
 ctl "socket stopped after the service" prerm '/stop custodio-firefox.socket/{h;d};/stop custodio.service/{G}'
 ctl "socket not stopped" prerm '/stop custodio-firefox.socket/d'
 ctl "socket not enabled" postinst '/enable custodio-firefox.socket/d'
-ctl "socket not started" postinst '/restart custodio-firefox.socket/d'
+ctl "socket not started" postinst '/start custodio-firefox.socket/d'
 printf '    systemctl enable custodio.service\n' >> "$BF_DIR/hits.extra"
 if { code postinst; cat "$BF_DIR/hits.extra"; } | grep -E 'systemctl +(enable|start)' | grep -vE "$SOCKET_OK" > /dev/null; then :; else bad "control: the forbidden gate let 'systemctl enable custodio.service' through"; fi
 

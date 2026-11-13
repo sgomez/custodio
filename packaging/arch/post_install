@@ -5,5 +5,5 @@
 # never enabled or started: D-Bus activation and its socket start it. Nothing here touches the state directory. See docs/decisions/packaging.md.
 # Only the socket of the Firefox snap (F173) is enabled and started, here: a new unit file is read from disk, so it needs no reload first.
 systemctl enable custodio-firefox.socket || true
-systemctl restart custodio-firefox.socket || true
+systemctl start custodio-firefox.socket || true
 :

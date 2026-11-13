@@ -87,7 +87,7 @@ tpm_setup() {
     swtpm | none | lacking) ;;
     *) tpm_fail "the mode '$mode' is not set up by this harness"; return 1 ;;
     esac
-    uidmap_dropin_if_needed
+    uidmap_dropin_if_needed || { tpm_fail "the PrivateUsers=identity probe failed"; return 1; }
     mkdir -p "$TPM_DIR" "$TPM_DROPIN_DIR"
     TPM_SETUP_DONE=1
     case $mode in
@@ -183,7 +183,10 @@ tpm_unit_problems() {
 # F173: a rootless container engine cannot write the identity uid map that PrivateUsers=identity needs (docs/findings/F170.md: "Failed to set up
 # user namespacing"). Where the probe fails, only this container run gets PrivateUsers=yes through a drop-in; the VM target runs the shipped unit.
 uidmap_dropin_if_needed() {
-    systemd-run --wait --collect --quiet -p PrivateUsers=identity true > /dev/null 2>&1 && return 0
+    local out
+    out=$(systemd-run --wait --collect --quiet -p PrivateUsers=identity true 2>&1) && return 0
+    # Only the uid-map failure of the finding is tolerated; any other failure of the probe fails the run.
+    case $out in *"Failed to set up user namespacing"*) ;; *) echo "e2e: probe of PrivateUsers=identity failed for another reason: $out" >&2; return 1 ;; esac
     mkdir -p /etc/systemd/system/custodio.service.d
     printf '[Service]\nPrivateUsers=yes\n' > /etc/systemd/system/custodio.service.d/container-uidmap.conf
     echo "e2e: this container cannot write the identity uid map; custodio.service runs with PrivateUsers=yes here"

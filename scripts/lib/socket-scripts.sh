@@ -1,15 +1,15 @@
 # Shared by the static tests of the maintainer scripts (F173). The socket of the Firefox snap, custodio-firefox.socket, is enabled and
-# restarted on install, and stopped before the service on removal (a socket left listening starts a stopped service again).
+# started on install, and stopped before the service on removal (a socket left listening starts a stopped service again).
 # shellcheck shell=bash
 
 # The only systemctl lines on the socket that the forbidden-command gates let through (anything else on the unit stays forbidden).
 # shellcheck disable=SC2034 # read by the scripts that source this file
-SOCKET_OK='^[[:space:]]*systemctl +(enable|restart|stop|disable) +custodio-firefox\.socket +\|\| +true$'
+SOCKET_OK='^[[:space:]]*systemctl +(enable|start|stop|disable) +custodio-firefox\.socket +\|\| +true$'
 
-# socket_install_problems FILE: prints what is missing from an install script (the socket enabled, then restarted).
+# socket_install_problems FILE: prints what is missing from an install script (the socket enabled, then started).
 socket_install_problems() {
     local f=$1 action
-    for action in enable restart; do
+    for action in enable start; do
         grep -qE "^[[:space:]]*systemctl +$action +custodio-firefox\\.socket +\\|\\| +true\$" "$f" || echo "$f does not $action custodio-firefox.socket"
     done
 }

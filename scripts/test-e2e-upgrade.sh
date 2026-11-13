@@ -95,6 +95,7 @@ cat > "$t/bin/systemctl" <<'STUB'
 #!/bin/sh
 case "$*" in
 "is-active --quiet custodio") [ -n "$STUB_ACTIVE" ] ;;
+"is-active --quiet custodio-firefox.socket") [ -n "$STUB_ACTIVE" ] ;;
 "show -p MainPID --value custodio") echo "$STUB_PID" ;;
 "show -p FragmentPath --value custodio") echo "$STUB_UNIT" ;;
 *) echo "unexpected systemctl $*" >&2; exit 9 ;;

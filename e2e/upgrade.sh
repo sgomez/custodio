@@ -88,6 +88,7 @@ done
 sleep 5
 [ "$(systemctl show -p MainPID --value custodio)" = "$pid2" ] || fail "the main pid changed again after the upgrade (not $pid2): the service keeps restarting"
 systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade"
+systemctl is-active --quiet custodio-firefox.socket || fail "custodio-firefox.socket is not listening after the upgrade (a restart of it fails while the service runs)"
 [ "$(installed_version "$fmt")" = "$vn1" ] || fail "after the upgrade the database holds $(installed_version "$fmt"), not N+1=$vn1"
 bin2=$(unit_binary "$(unit_file)") || fail "cannot read the executable of the unit after the upgrade"
 [ "$bin2" = "$(daemon_path "$fmt")" ] || fail "after the upgrade the unit starts $bin2, not $(daemon_path "$fmt"), the daemon of this package"
