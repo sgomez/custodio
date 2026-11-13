@@ -75,7 +75,7 @@
         "F176"
       ],
       "verify": "just quick && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test snap_socket_surface --locked && cargo test -p custodiod --test snap_socket_limits --locked && just mutants-diff F177 && just fuzz-build && just lint-fuzz && just fuzz-smoke",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F178",
