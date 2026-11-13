@@ -311,6 +311,9 @@ bus-policy:
 # crypto tests take tens of minutes under Miri. See docs/decisions.md.
 miri:
     cargo +{{nightly_toolchain}} miri test -p custodio-pkcs11 --lib --locked ffi::
+    # custodio-peer's one `getsockopt`: Miri cannot read options of a socketpair, so only the test that runs it on a descriptor
+    # that is no socket (the error path, with the buffer passed to the call) runs here; the others run under `just asan`.
+    MIRIFLAGS=-Zmiri-disable-isolation cargo +{{nightly_toolchain}} miri test -p custodio-peer --lib --locked reads_nothing
 
 # The tests of the PKCS#11 module under AddressSanitizer (needs nightly).
 asan:
@@ -318,6 +321,8 @@ asan:
     set -euo pipefail
     host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
     RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-pkcs11 --lib --locked \
+        --target "$host" --target-dir target/asan
+    RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-peer --lib --locked \
         --target "$host" --target-dir target/asan
 
 # Mutation testing of the authorization path (polkit, D-Bus service), the audit path and the key store in custodiod, and of the
@@ -337,9 +342,10 @@ mutants *args:
     status=0
     cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/list.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/import.rs --file crates/custodiod/src/import/choice.rs --file crates/custodiod/src/import/protect.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/dbus/sign_kind.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/store/error.rs --file crates/custodiod/src/store/files.rs --file crates/custodiod/src/store/kind.rs --file crates/custodiod/src/store/legacy.rs --file crates/custodiod/src/store/record.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/audit/cause.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/creds.rs --file crates/custodiod/src/creds/systemd.rs --file crates/custodiod/src/creds/header.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/startup.rs --file crates/custodiod/src/snap_socket.rs --file crates/custodiod/src/snap_socket/peer.rs --file crates/custodiod/src/snap_socket/keys.rs --file crates/custodiod/src/peer_label.rs --file crates/custodiod/src/error.rs --file crates/custodiod/src/tpm.rs --file crates/custodiod/src/tpm/blob.rs --file crates/custodiod/src/tpm/classify.rs --file crates/custodiod/src/tpm/esys.rs --file crates/custodiod/src/tpm/esys/primary.rs --file crates/custodiod/src/tpm/import.rs --file crates/custodiod/src/tpm/sign.rs --file crates/custodiod/src/tpm/sign/block.rs --file crates/custodiod/src/tpm/sign/check.rs --file crates/custodiod/src/tpm/esys/signing.rs --file crates/custodiod/src/tpm/key.rs --file crates/custodiod/src/tpm/list.rs --file crates/custodiod/src/tpm/open.rs --file crates/custodiod/src/tpm/wrap.rs --no-shuffle --colors never --output target/mutants "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-peer --file crates/custodio-peer/src/lib.rs --no-shuffle --colors never --output target/mutants-peer "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
-    for out in target/mutants target/mutants-pkcs11 target/mutants-client; do
+    for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
             echo "$out: a mutant ran out of disk space; free space and run again" >&2; status=1
         fi

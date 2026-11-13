@@ -404,6 +404,8 @@ name = "custodio-peer"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "nix",
+ "rustix",
 ]
 
 [[package]]
@@ -847,6 +849,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]

@@ -234,6 +234,6 @@ Format: a title and three short bullets, a couple of lines each:
 - Rejected: `v1.0.0` now; a codename.
 
 ## 2026-11-13 — Snap socket handshake: ANONYMOUS only, the uid comes from SO_PEERCRED (F175)
-- Decision: the peer-to-peer server on a snap socket accepts `ANONYMOUS` only and sets no `.user_id()`; `AUTH EXTERNAL` is rejected unread. Whose keys are listed is the uid of `SO_PEERCRED` and nothing else. The three `getsockopt` reads live in `crates/custodio-peer` (the one place with `unsafe`; `custodiod` keeps `forbid(unsafe_code)`). Details: `docs/findings/F170.md`.
-- Why: `EXTERNAL` compares a uid the peer writes, and under `PrivateUsers=identity` an unmapped uid shows as 65534; `rustix` and `nix` have no `SO_PEERSEC`.
+- Decision: the peer-to-peer server on a snap socket accepts `ANONYMOUS` only and sets no `.user_id()`; `AUTH EXTERNAL` is rejected unread. Whose keys are listed is the uid of `SO_PEERCRED` and nothing else. `SO_PEERCRED` is read with `rustix` and `SO_PEERPIDFD` with `nix` (both safe); the one `getsockopt(SO_PEERSEC)` is the only `unsafe` outside the PKCS#11 FFI layer, audited, alone in `crates/custodio-peer` (a person approved it for F175; `custodiod` keeps `forbid(unsafe_code)`). Details: `docs/findings/F170.md`.
+- Why: `EXTERNAL` compares a uid the peer writes, and under `PrivateUsers=identity` an unmapped uid shows as 65534; `rustix` and `nix` have no `SO_PEERSEC` wrapper.
 - Rejected: `EXTERNAL` with `.user_id()` set per connection; `unsafe` inside `custodiod`; the `/proc/<pid>/attr/current` label (racy, not the connect-time label).

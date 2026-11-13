@@ -30,3 +30,18 @@ fn debug_does_not_show_the_label() {
     };
     assert!(!format!("{peer:?}").contains("secret"));
 }
+
+#[test]
+fn the_label_is_what_the_kernel_says_and_no_longer() -> TestResult {
+    let (a, _b) = UnixStream::pair()?;
+    // Without a security module the read fails and there is nothing to compare; with one, a connected pair of this
+    // process shows this process's own label.
+    let own = std::fs::read("/proc/self/attr/current").unwrap_or_default();
+    let own = own.strip_suffix(&[0]).unwrap_or(&own);
+    let own = own.strip_suffix(b"\n").unwrap_or(own);
+    if own.is_empty() {
+        return Ok(());
+    }
+    assert_eq!(read(&a).label.as_deref(), Some(own));
+    Ok(())
+}

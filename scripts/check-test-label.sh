@@ -4,7 +4,7 @@
 #   - the feature's name anywhere in a file of data/ or packaging/ (unit files, nfpm.yaml, packaging scripts, Environment=, --features);
 #   - in a Cargo.toml of the workspace, outside [dev-dependencies] and the feature's own definition `test-seam = []`: a normal or build
 #     dependency with features = [...] naming it, another feature that turns it on, or a `default = [...]` list that has it.
-# Prints the number of enabling occurrences it found (0) on success. Argument: the root of the tree to check (default: this repository),
+# Prints nothing on success and one line per enabling occurrence on failure. Argument: the root of the tree to check (default: this repository),
 # so the test can check altered copies.
 set -euo pipefail
 
