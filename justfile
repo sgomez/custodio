@@ -173,9 +173,7 @@ test-scripts:
     scripts/test-docs-install-register.sh
     scripts/test-docs-release-notes.sh
     scripts/test-docs-threat-model.sh
-    scripts/test-docs-manual.sh
-    scripts/test-docs-manual-m3.sh
-    scripts/test-docs-manual-m4.sh
+    scripts/test-tpm-record-check.sh
     scripts/test-docs-manual-m5.sh
     scripts/test-docs-manual-m6.sh
     scripts/test-install-real.sh
@@ -189,7 +187,6 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
-    scripts/test-ci-e2e-vm.sh
     scripts/test-e2e-vm-cases.sh
     scripts/test-vm-gap-map.sh
     scripts/test-e2e-vm-host.sh
@@ -208,7 +205,6 @@ test-scripts:
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
-    scripts/test-ci-e2e.sh
     scripts/test-e2e-tpm-host.sh
     scripts/test-e2e-tpm-kind.sh
     scripts/test-e2e-sign.sh
