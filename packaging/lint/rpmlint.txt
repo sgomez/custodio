@@ -11,3 +11,5 @@ no-changelogname-tag | - | the changelog is the shared file /usr/share/doc/custo
 not-listed-as-documentation | /usr/share/doc/custodio/changelog.Debian.gz | nfpm marks %doc only for the .rpm and drops the file from the other formats, which share one file list
 dangerous-command-in-%pre | rm | `rm -f /run/custodio-restart-after-upgrade` clears a stale restart marker (F44); the path is fixed, in /run, and never under the state directory
 dangerous-command-in-%post | rm | `rm -f /run/custodio-restart-after-upgrade` consumes the restart marker before the one restart of an upgrade (F44); the path is fixed, in /run
+zero-perms | /usr/lib/systemd/user/default.target.wants/custodio-refresh.service 0 | nfpm records mode 0 for a symlink in the rpm (it ignores `mode` for links); Linux ignores the permissions of a symlink, so the link works for every user (F184)
+zero-perms | /usr/lib/systemd/user/paths.target.wants/custodio-refresh.path 0 | nfpm records mode 0 for a symlink in the rpm (it ignores `mode` for links); Linux ignores the permissions of a symlink, so the link works for every user (F184)
