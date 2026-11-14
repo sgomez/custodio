@@ -48,6 +48,20 @@ fn io_why(e: &io::Error) -> String {
     escape(&e.to_string())
 }
 
+/// `symlink_metadata`, with a missing path as `None`.
+fn stat(path: &Path) -> io::Result<Option<fs::Metadata>> {
+    match fs::symlink_metadata(path) {
+        Ok(m) => Ok(Some(m)),
+        Err(e) => {
+            if e.kind() == io::ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
 /// The bytes of the module being copied.
 fn read_module(module: &Path) -> Result<Vec<u8>, String> {
     fs::read(module).map_err(|e| {
@@ -62,22 +76,21 @@ fn read_module(module: &Path) -> Result<Vec<u8>, String> {
 /// Replace the copy with `bytes` through the temporary file.
 fn write_atomic(copy: &Path, bytes: &[u8]) -> Result<(), String> {
     let tmp = copy.with_file_name(TEMP_NAME);
-    match fs::symlink_metadata(&tmp) {
-        Ok(m) if m.is_dir() => {
+    match stat(&tmp).map_err(|e| format!("cannot look at {}: {}", tmp.display(), io_why(&e)))? {
+        Some(m) if m.is_dir() => {
             return Err(format!(
                 "{} is a directory, which is not removed here; remove it and run this again",
                 tmp.display()
             ));
         }
-        Ok(_) => fs::remove_file(&tmp).map_err(|e| {
+        Some(_) => fs::remove_file(&tmp).map_err(|e| {
             format!(
                 "cannot remove the leftover {}: {}",
                 tmp.display(),
                 io_why(&e)
             )
         })?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("cannot look at {}: {}", tmp.display(), io_why(&e))),
+        None => {}
     }
     let written = (|| {
         let mut file = OpenOptions::new()
@@ -101,11 +114,7 @@ fn write_atomic(copy: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// Bring the copy to the module's bytes. `create`: make it when there is none.
 fn bring_up_to_date(copy: &Path, module: &Path, create: bool) -> Result<CopyState, String> {
-    let meta = match fs::symlink_metadata(copy) {
-        Ok(m) => Some(m),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("cannot look at it: {}", io_why(&e))),
-    };
+    let meta = stat(copy).map_err(|e| format!("cannot look at it: {}", io_why(&e)))?;
     if meta.is_none() && !create {
         return Ok(CopyState::Absent);
     }
@@ -148,15 +157,14 @@ pub fn refresh_copy(copy: &Path, module: &Path) -> Result<CopyState, String> {
 /// # Errors
 /// The reason it could not be deleted, a directory at the path included.
 pub fn remove_copy(copy: &Path) -> Result<bool, String> {
-    match fs::symlink_metadata(copy) {
-        Ok(m) if m.is_dir() => {
+    match stat(copy).map_err(|e| format!("cannot look at it: {}", io_why(&e)))? {
+        Some(m) if m.is_dir() => {
             Err("it is a directory, which is not removed; remove it yourself".to_owned())
         }
-        Ok(_) => fs::remove_file(copy)
+        Some(_) => fs::remove_file(copy)
             .map(|()| true)
             .map_err(|e| format!("cannot delete it: {}", io_why(&e))),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("cannot look at it: {}", io_why(&e))),
+        None => Ok(false),
     }
 }
 

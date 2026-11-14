@@ -177,6 +177,7 @@ fn the_copy_is_written_by_rename() {
     );
     assert!(result.is_err());
     assert!(err.contains(tmp.to_str().unwrap()), "{err}");
+    assert!(err.contains("is a directory"), "{err}");
     assert!(tmp.is_dir());
     assert_eq!(s.f.snapshot(), before);
     fs::remove_dir(&tmp).unwrap();
@@ -346,6 +347,10 @@ fn an_unreplaceable_copy_fails_naming_it() {
         assert!(result.is_err(), "{refresh_only}: {out}");
         let shown = format!("{out}{err}{}", result.unwrap_err());
         assert!(shown.contains(s.copy.to_str().unwrap()), "{shown}");
+        assert!(
+            shown.contains("Permission denied"),
+            "the reason is given: {shown}"
+        );
         assert_eq!(fs::read(&s.copy).unwrap(), b"stale");
         assert!(!s.copy.with_file_name(TEMP_NAME).exists());
         if refresh_only {
@@ -376,6 +381,15 @@ fn an_unreplaceable_copy_fails_naming_it() {
     );
     assert!(result.is_err());
     assert!(format!("{out}{err}").contains(s.copy.to_str().unwrap()));
+    assert!(s.copy.is_dir());
+    assert!(format!("{out}{err}").contains("is a directory"));
+    // and a removal does not delete it either
+    let (result, out, err) = command(&s, &args(&s.module, true, false), Path::new("/nonexistent"));
+    assert!(result.is_err());
+    assert!(
+        format!("{out}{err}").contains("is a directory"),
+        "{out}{err}"
+    );
     assert!(s.copy.is_dir());
 }
 

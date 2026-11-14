@@ -55,7 +55,8 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
             "{word}: {entry}"
         );
     };
-    let (_, out, _) = run(&s);
+    let (_, out, err) = run(&s);
+    assert!(err.is_empty(), "a reachable journal prints nothing: {err}");
     check(&sock.recv(), 6, "no copy");
     assert!(out.contains("no copy"));
     plant(&s.copy, b"stale");
