@@ -133,6 +133,7 @@ mod cause;
 mod journal;
 mod memory;
 mod operation;
+mod storage;
 mod transport;
 mod wire;
 
@@ -141,6 +142,7 @@ use std::io;
 
 use crate::app_id::{AppId, AppIdOutcome};
 use crate::sign::{Mechanism, PssHash};
+use crate::storage::StateStorage;
 use crate::store::{Kind as StorageKind, valid_key_id};
 
 pub use cause::{ImportCause, SignCause};
@@ -150,6 +152,7 @@ pub use operation::{
     AuditKeyType, DELETE_MESSAGE_ID, DeleteOutcome, IMPORT_MESSAGE_ID, ImportOutcome, Operation,
     OperationEntry, PURGE_MESSAGE_ID, PurgeOutcome, REPLACE_CERTIFICATE_MESSAGE_ID, ReplaceOutcome,
 };
+pub use storage::{STATE_STORAGE_FIELD, STATE_STORAGE_MESSAGE_ID};
 pub(crate) use transport::push_transport;
 pub use transport::{PEER_LABEL_FIELD, PeerLabel, TRANSPORT_FIELD, Transport};
 
@@ -187,6 +190,15 @@ pub trait AuditSink: Send + Sync {
     ///
     /// [`AuditError`] when the entry could not be handed over completely.
     fn record_operation(&self, entry: &OperationEntry) -> Result<(), AuditError>;
+
+    /// Records the state directory's storage result at start-up; the default drops it.
+    ///
+    /// # Errors
+    ///
+    /// [`AuditError`], as for [`Self::record`].
+    fn record_state_storage(&self, _storage: StateStorage) -> Result<(), AuditError> {
+        Ok(())
+    }
 }
 
 /// Why an entry was not recorded. Carries no path and no entry content.

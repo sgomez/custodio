@@ -13,12 +13,14 @@ use zeroize::Zeroizing;
 pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
+pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
 pub mod bus;
 pub mod delete;
 pub mod failure;
 pub mod list;
+pub mod storage;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
@@ -248,6 +250,38 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         "Now delete the original file: it still holds your private key.\n  shred -u {}   (or remove it with your file manager and empty the trash)",
         args.file.display()
     );
+    Ok(())
+}
+
+/// `custodio import`: [`run_import`], then the storage warning on `err` when the import succeeded.
+///
+/// # Errors
+/// See [`ImportFailure`]; the warning never adds one.
+pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write, E: Write>(
+    args: &ImportArgs,
+    prompt: &mut P,
+    importer: &I,
+    storage: &S,
+    out: &mut W,
+    err: &mut E,
+) -> Result<(), ImportFailure> {
+    run_import(args, prompt, importer, out)?;
+    storage::warn(storage, err);
+    Ok(())
+}
+
+/// `custodio list`: [`run_list`], then the storage warning on `err` when the list was shown without error.
+///
+/// # Errors
+/// See [`ListFailure`]; the warning never adds one.
+pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
+    lister: &L,
+    storage: &S,
+    out: &mut W,
+    err: &mut E,
+) -> Result<(), ListFailure> {
+    run_list(lister, out)?;
+    storage::warn(storage, err);
     Ok(())
 }
 

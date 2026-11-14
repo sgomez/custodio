@@ -109,6 +109,20 @@ method for certificates.
 - out: `a(sssay)`
 - bounds: none.
 
+### Method `StateStorage`
+
+Whether the state directory of the service is on an encrypted device: `encrypted` (every path from its filesystem to the
+physical devices goes through dm-crypt), `not-encrypted` (a chain read completely that ends at physical devices with no
+dm-crypt in it) or `unknown` (anything else: a chain the service cannot read, LVM or RAID it does not classify, a
+filesystem's own encryption, a network, overlay or in-memory filesystem). `unknown` is never reported as `encrypted`. The
+service finds it once, when it starts, with the access its unit has and no external tool (`docs/findings/F180.md`), and
+journals it (`CUSTODIO_STATE_STORAGE`, see `docs/audit.md`); the call returns that value. Read-only: it asks no polkit,
+writes no journal entry and changes nothing. Bus only; the snap socket does not serve it. A client that gets
+`UnknownMethod` is talking to a service that predates it and shows nothing.
+
+- out: `s`
+- bounds: none.
+
 ### Method `ImportP12`
 
 Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind that was chosen. A different user may use the same `id`;

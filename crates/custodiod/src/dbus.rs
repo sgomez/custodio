@@ -21,6 +21,7 @@ use crate::import::{MAX_P12_LEN, P12Decoder, RealDecoder};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash};
+use crate::storage::StateStorage;
 use crate::store::{KeyStore, Kind as StorageKind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::open::NoTpm;
@@ -251,6 +252,7 @@ pub struct Custodio<A, C> {
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
+    storage: StateStorage,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -271,7 +273,15 @@ impl<A, C> Custodio<A, C> {
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
+            storage: StateStorage::Unknown,
         }
+    }
+
+    /// The result `StateStorage` returns.
+    #[must_use]
+    pub const fn with_state_storage(mut self, storage: StateStorage) -> Self {
+        self.storage = storage;
+        self
     }
 
     /// Sets the credential service that protects stored keys. Without one, an import or a signature
@@ -475,6 +485,11 @@ where
     ) -> Result<Vec<ListedKey>, ServiceError> {
         self.list_keys_call(header.sender().map(zbus::names::UniqueName::as_str))
             .await
+    }
+
+    /// The result found at start; asks no polkit.
+    fn state_storage(&self) -> &'static str {
+        self.storage.name()
     }
 
     /// Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind.

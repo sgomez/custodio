@@ -26,10 +26,20 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `delete` | `13d1a981ea8f64fc1a6f390bee7fd66c` |
 | `replace_certificate` | `336e0b53720a735afb179ebc7f779ed6` |
 | `purge` | `8e1f5a6c0b3d4972a4c6d58f31b7e902` |
+| state directory storage (start-up) | `5b0d7a2e91c34f68b3e4a7d1c09f2e86` |
 
 A journal catalog (`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains each in
 `journalctl -x`. Entries written before `CUSTODIO_OPERATION` existed are signing entries without it; the
 signing `MESSAGE_ID` never changed.
+
+## State directory storage
+
+At start, after the purge and before the service takes its bus name, `custodiod` writes one entry with
+`MESSAGE_ID=5b0d7a2e91c34f68b3e4a7d1c09f2e86` and the field `CUSTODIO_STATE_STORAGE`: `encrypted`, `not-encrypted` or
+`unknown` (see `StateStorage` in `docs/api.md`). `PRIORITY` is `6` for `encrypted` and `4` otherwise;
+`SYSLOG_IDENTIFIER` is `custodiod`. It has no caller, key or operation field. If the entry cannot be submitted the
+service logs that on standard error and still starts; the bus method still answers. Query it with
+`journalctl _SYSTEMD_UNIT=custodio.service MESSAGE_ID=5b0d7a2e91c34f68b3e4a7d1c09f2e86`.
 
 ## Fields
 

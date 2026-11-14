@@ -22,6 +22,7 @@ pub mod polkit;
 pub mod sign;
 pub mod snap_socket;
 pub mod startup;
+pub mod storage;
 pub mod store;
 pub mod tpm;
 

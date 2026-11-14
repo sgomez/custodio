@@ -44,6 +44,21 @@ agent, `import` and `delete` ask for the password on the terminal. Details in `m
 Programs sign through the PKCS#11 module, which p11-kit loads where the system supports it; Firefox
 sometimes needs it registered by hand ([docs/install.md](docs/install.md), "Firefox").
 
+## Full-disk encryption
+
+Custodio keeps its keys under `/var/lib/custodio`. A `tpm` key cannot be copied out of the TPM, but whoever takes the
+machine can still ask the TPM to sign with it, and the other kinds (`encrypted-tpm`, `encrypted-host`) are files that
+anyone who can read the disk can try to use. Full-disk encryption (LUKS, also under LVM) is what keeps a stolen disk
+or a stolen powered-off machine from being used.
+
+When it starts, the service checks, with no external tool, whether the block devices under its state directory include
+dm-crypt, and journals the result (`CUSTODIO_STATE_STORAGE`, see [docs/audit.md](docs/audit.md)). `custodio import` and
+`custodio list` print a warning on standard error when the result is `not-encrypted`, or `unknown` (a chain the service
+cannot read, RAID or dm-integrity it does not classify, a network, overlay or in-memory filesystem, a filesystem's own
+encryption such as fscrypt or ZFS native encryption, btrfs). The warning blocks nothing. Encrypt the disk that holds
+`/var/lib/custodio` with your distribution's installer or `cryptsetup`; `unknown` on an encrypted disk the service
+cannot classify is a reason to look, not proof of a problem. The rules are in `docs/findings/F180.md`.
+
 ## Writing a client
 
 Client authors: see [docs/api.md](docs/api.md) for detecting the service (on the host and from a flatpak), every

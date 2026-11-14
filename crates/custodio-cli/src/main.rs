@@ -8,7 +8,9 @@ use custodio_cli::agent::process::Pkttyagent;
 use custodio_cli::agent::{Process, WithAgent};
 use custodio_cli::bus::DbusImporter;
 use custodio_cli::tty::Terminal;
-use custodio_cli::{CliError, Command, finish, parse_command, run_delete, run_import, run_list};
+use custodio_cli::{
+    CliError, Command, finish, import_command, list_command, parse_command, run_delete,
+};
 
 fn run() -> Result<(), CliError> {
     let command = parse_command(std::env::args().skip(1)).map_err(CliError::Args)?;
@@ -18,14 +20,21 @@ fn run() -> Result<(), CliError> {
     let on_terminal = rustix::termios::isatty(io::stdin());
     let with_agent =
         |inner| WithAgent::new(inner, Pkttyagent, on_terminal, Process::current().ok());
+    let storage = bus.clone();
     match command {
-        Command::Import(args) => {
-            run_import(&args, &mut Terminal, &with_agent(bus), &mut io::stdout())
-                .map_err(CliError::Import)
-        }
+        Command::Import(args) => import_command(
+            &args,
+            &mut Terminal,
+            &with_agent(bus),
+            &storage,
+            &mut io::stdout(),
+            &mut io::stderr(),
+        )
+        .map_err(CliError::Import),
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
             .map_err(CliError::Delete),
-        Command::List => run_list(&bus, &mut io::stdout()).map_err(CliError::List),
+        Command::List => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
+            .map_err(CliError::List),
     }
 }
 

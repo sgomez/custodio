@@ -182,3 +182,21 @@ Custodio removed one key of the earlier storage format when it started, before i
 
 The entry is written before the files are removed. The key must be imported again from its .p12 file. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 5b0d7a2e91c34f68b3e4a7d1c09f2e86 en
+Subject: Custodio state directory storage
+Defined-By: custodio
+
+Custodio checked, when it started, whether its state directory is on an encrypted device. `CUSTODIO_STATE_STORAGE` is encrypted, not-encrypted or unknown. Without full-disk encryption, whoever takes the machine can use the keys, though not copy a `tpm` key. Unknown is never encrypted: it means the service could not tell.
+
+`PRIORITY` is 6 for encrypted and 4 otherwise. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry. There is no caller, key or operation.
+To trust an entry, match the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
+
+-- 5b0d7a2e91c34f68b3e4a7d1c09f2e86
+Subject: Custodio state directory storage
+Defined-By: custodio
+
+Custodio checked, when it started, whether its state directory is on an encrypted device. `CUSTODIO_STATE_STORAGE` is encrypted, not-encrypted or unknown. Without full-disk encryption, whoever takes the machine can use the keys, though not copy a `tpm` key. Unknown is never encrypted: it means the service could not tell.
+
+`PRIORITY` is 6 for encrypted and 4 otherwise. `SYSLOG_IDENTIFIER` is custodiod and `MESSAGE_ID` identifies this kind of entry. There is no caller, key or operation.
+To trust an entry, match the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.

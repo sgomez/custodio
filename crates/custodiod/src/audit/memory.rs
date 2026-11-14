@@ -4,12 +4,14 @@ use std::io;
 use std::sync::{Mutex, PoisonError};
 
 use super::{AuditError, AuditSink, Entry, OperationEntry};
+use crate::storage::StateStorage;
 
 /// Stores every entry it is given.
 #[derive(Debug, Default)]
 pub struct MemorySink {
     entries: Mutex<Vec<Entry>>,
     operations: Mutex<Vec<OperationEntry>>,
+    storage: Mutex<Vec<StateStorage>>,
 }
 
 impl MemorySink {
@@ -34,7 +36,26 @@ impl MemorySink {
     }
 }
 
+impl MemorySink {
+    /// The state-directory storage results recorded so far, in order.
+    #[must_use]
+    pub fn state_storage(&self) -> Vec<StateStorage> {
+        self.storage
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
 impl AuditSink for MemorySink {
+    fn record_state_storage(&self, storage: StateStorage) -> Result<(), AuditError> {
+        self.storage
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(storage);
+        Ok(())
+    }
+
     fn record_operation(&self, entry: &OperationEntry) -> Result<(), AuditError> {
         self.operations
             .lock()

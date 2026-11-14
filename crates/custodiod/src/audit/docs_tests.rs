@@ -357,7 +357,9 @@ fn catalog_format() -> TestResult {
     let lines: Vec<_> = catalog.lines().filter(|l| !l.starts_with('#')).collect();
     assert_eq!(lines.first(), Some(&format!("-- {MESSAGE_ID} en").as_str()));
     let entries: Vec<_> = catalog.split("\n-- ").skip(1).collect();
-    let ids: Vec<_> = Operation::all().iter().map(|o| o.message_id()).collect();
+    let mut ids: Vec<_> = Operation::all().iter().map(|o| o.message_id()).collect();
+    // The start-up entry for the state directory's storage is not an operation.
+    ids.push(STATE_STORAGE_MESSAGE_ID);
     assert_eq!(
         entries.len(),
         2 * ids.len(),

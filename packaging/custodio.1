@@ -39,6 +39,19 @@ If you have none, it prints a sentence saying so and exits with status 0.
 .B list
 takes no arguments and does not ask for authorization: it never calls polkit.
 .PP
+After a successful
+.B import
+or
+.BR list ,
+the tool asks the service whether its state directory is on an encrypted device.
+If the service reports that it is not, or that it could not tell, a warning is printed on standard error:
+without full\-disk encryption, whoever takes the machine can use your keys, though they cannot copy a
+.B tpm
+key.
+It points to the section "Full\-disk encryption" of the README.
+The warning blocks nothing and does not change what is printed on standard output or the exit status;
+nothing is printed when the state directory is encrypted or when the service is too old to say.
+.PP
 .B delete
 deletes your key
 .IR "key id" ,
