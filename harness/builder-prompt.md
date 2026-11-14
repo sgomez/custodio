@@ -19,7 +19,8 @@ Follow "Every session" in CLAUDE.md:
    full diff again only at the end. Do not run the whole `verify`: the loop runs it as the gate.
    The package, install and e2e suites run at the checkpoint features and the release, and
    failures there are fixed there. Run every command in the foreground with `timeout`; background
-   tasks and polling loops are blocked.
+   tasks and polling loops are blocked. Make edits yourself: no subagent or fork in the background,
+   and never end your turn while one runs (the session ends then and the loop stashes the work).
 4. Append your entry to PROGRESS.md, or finish the one you started, and commit with a Conventional
    Commits message scoped to the feature id, e.g. `feat(F05): add key store`. Stop at a clean
    point when your context gets long: the next session continues from the contract.
