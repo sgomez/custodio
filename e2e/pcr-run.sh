@@ -107,6 +107,7 @@ alice sign ext
 
 # restart the TPM and then the service
 tpm_swtpm_restart "$mode" || fail "the TPM could not be restarted"
+systemctl reset-failed custodio 2> /dev/null || true # the start rate counter (tpmfail-lib.sh)
 systemctl restart custodio || fail "systemctl restart custodio failed"
 for _ in $(seq 100); do
     p=$(systemctl show -p MainPID --value custodio)
