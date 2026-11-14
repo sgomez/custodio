@@ -226,6 +226,7 @@ test-scripts:
     scripts/test-e2e-m3-run.sh
     scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
+    scripts/test-set-version.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh

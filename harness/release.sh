@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Release of a closed milestone, from its branch: CHANGELOG.md and release commit, `just check-slow`, push,
-# the signoff/ci and signoff/mutants statuses on that commit (gh-signoff), the PR, CI, the merge, and the version tag
-# on the merge in main. Run it again after a fix or a stop: it picks up where it was.
+# Release of a closed milestone, from its branch: CHANGELOG.md, the version in Cargo.toml and the release commit,
+# `just check-slow`, push, the signoff/ci and signoff/mutants statuses on that commit (gh-signoff), the PR, CI, the
+# merge, and the version tag on the merge in main. Run it again after a fix or a stop: it picks up where it was.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=harness/lib.sh
@@ -22,7 +22,11 @@ if [ "$(pr_state)" != MERGED ]; then
   git rev-parse -q --verify "refs/tags/$version" >/dev/null && die "Tag $version already exists."
   # Again after a fix: the changelog lists it.
   git cliff --tag "$version" -o CHANGELOG.md 2>/dev/null
-  if tracked_changes; then commit "chore(release): prepare for $version" CHANGELOG.md; fi
+  # The binaries and packages carry the tag's version: Cargo.toml and every Cargo.lock follow it.
+  changed=$(scripts/set-version.sh . "$version") || die "scripts/set-version.sh failed for $version."
+  versioned=()
+  [ -z "$changed" ] || mapfile -t versioned <<< "$changed"
+  if tracked_changes; then commit "chore(release): prepare for $version" CHANGELOG.md "${versioned[@]}"; fi
 
   sha=$(git rev-parse HEAD)
   signed=$(gh api "repos/{owner}/{repo}/commits/$sha/status" \
