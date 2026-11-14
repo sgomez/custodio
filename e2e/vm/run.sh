@@ -24,7 +24,7 @@ OUT=${E2E_OUT:-target/e2e}
 PKG=${E2E_PACKAGES:-target/packages}
 PKG_NEXT=${E2E_PACKAGES_NEXT:-target/packages-next}
 LIST=e2e/vm/cases.list
-TOOLS='tpm2-tools openssl opensc p11-kit pkcs11-provider libnss3-tools python3-gi'
+TOOLS='tpm2-tools openssl opensc p11-kit pkcs11-provider python3-gi'
 die() { echo "e2e-vm: $*" >&2; exit 1; }
 
 mode=${1:-}
@@ -71,8 +71,8 @@ for f in "$deb" "$deb_next"; do
     grep -qw -- libtss2-rc0t64 <<< "$(dpkg-deb -f "$f" Depends)" || die "$f does not depend on libtss2-rc0t64: package N must already need it"
 done
 deps=$(dpkg-deb -f "$deb" Depends Recommends Pre-Depends) || die "cannot read the fields of $deb"
-# p11-kit and polkitd are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
-for t in tpm2-tools openssl opensc pkcs11-provider libnss3-tools python3-gi; do
+# p11-kit, polkitd and libnss3-tools (modutil, F184) are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
+for t in tpm2-tools openssl opensc pkcs11-provider python3-gi; do
     ! grep -qw -- "$t" <<< "$deps" || die "the package depends on or recommends the test tool $t: the tools are installed in the guest only"
 done
 version=$(dpkg-deb -f "$deb" Version) || version=unknown
