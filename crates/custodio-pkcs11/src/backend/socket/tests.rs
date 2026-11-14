@@ -123,3 +123,77 @@ fn api_md_names_the_socket_path_and_variable() -> Result<(), Box<dyn std::error:
     assert!(!documents(&doc.replace("SNAP_INSTANCE_NAME", "SNAP_NAME")));
     Ok(())
 }
+
+const IN_NAMESPACE: &str = "CUSTODIO_SOCKET_TEST_IN_NAMESPACE";
+
+/// Runs `test` as (namespaced) root, where a directory the test creates is root-owned: the test binary runs itself again
+/// under `unshare -Ur`, so the positive cases of the directory check are exercised without real privileges.
+fn as_namespaced_root(test: &str, body: impl FnOnce() -> Result<(), Box<dyn std::error::Error>>) {
+    if std::env::var_os(IN_NAMESPACE).is_some() {
+        body().expect("body");
+        return;
+    }
+    let out = std::process::Command::new("unshare")
+        .args(["-Ur"])
+        .arg(std::env::current_exe().expect("exe"))
+        .args(["--exact", test, "--nocapture"])
+        .env(IN_NAMESPACE, "1")
+        .output()
+        .expect("unshare");
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn root_owned_directories_give_the_socket_path() {
+    as_namespaced_root(
+        "backend::socket::tests::root_owned_directories_give_the_socket_path",
+        || {
+            let tmp = tempfile::tempdir()?;
+            let dir = tmp.path().join("snap.firefox");
+            std::fs::create_dir(&dir)?;
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
+            assert!(check_dir(&dir));
+            assert_eq!(
+                path_in(tmp.path(), "firefox"),
+                Some(dir.join("custodio.sock"))
+            );
+            assert!(path_in(tmp.path(), "Firefox").is_none());
+            assert!(path_in(tmp.path(), "other").is_none());
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o775))?;
+            assert!(!check_dir(&dir));
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o757))?;
+            assert!(!check_dir(&dir));
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))?;
+            let link = tmp.path().join("snap.link");
+            symlink(&dir, &link)?;
+            assert!(!check_dir(&link));
+            let file = tmp.path().join("snap.file");
+            std::fs::write(&file, b"")?;
+            assert!(!check_dir(&file));
+            Ok(())
+        },
+    );
+}
+
+#[test]
+fn the_default_base_is_run() {
+    assert_eq!(BASE_DIR, "/run");
+    #[cfg(not(feature = "test-socket-dir"))]
+    assert_eq!(base_dir(), PathBuf::from("/run"));
+}
+
+#[test]
+fn the_directory_is_opened_without_following_a_link_and_without_blocking() {
+    assert_eq!(
+        open_flags(),
+        libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC
+    );
+    for flag in OPEN_FLAGS {
+        assert_eq!(open_flags() & flag, flag);
+    }
+}

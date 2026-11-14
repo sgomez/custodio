@@ -19,6 +19,14 @@ pub const SNAP_INSTANCE_VAR: &str = "SNAP_INSTANCE_NAME";
 /// The socket the module uses inside a snap, as a template.
 pub const SOCKET_PATH_TEMPLATE: &str = "/run/snap.$SNAP_INSTANCE_NAME/custodio.sock";
 
+/// No final symbolic link, no blocking on a special file, no descriptor kept across `exec`.
+const OPEN_FLAGS: [i32; 3] = [libc::O_NOFOLLOW, libc::O_NONBLOCK, libc::O_CLOEXEC];
+
+/// The flags are distinct bits, so their sum is their union.
+fn open_flags() -> i32 {
+    OPEN_FLAGS.iter().sum()
+}
+
 const BASE_DIR: &str = "/run";
 const MAX_SNAP_NAME: usize = 40;
 const MIN_SNAP_NAME: usize = 2;
@@ -62,7 +70,7 @@ pub fn directory_ok(is_dir: bool, uid: u32, mode: u32) -> bool {
 pub fn check_dir(dir: &Path) -> bool {
     let Ok(file) = OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .custom_flags(open_flags())
         .open(dir)
     else {
         return false;
