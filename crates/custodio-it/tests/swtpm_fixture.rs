@@ -2,7 +2,7 @@
 //! restart on the same state, clear, independent instances, cleanup on drop (panics included) and after a SIGKILL.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::str::FromStr;
@@ -266,31 +266,34 @@ fn drop_during_a_panic_cleans_up() {
     assert_gone(pid, &dir);
 }
 
-/// Set in the child process of `a_killed_test_binary_leaves_no_swtpm`.
-const KILLED_CHILD: &str = "CUSTODIO_SWTPM_KILLED_CHILD";
+/// Set in the child processes of the tests below: what the child does with its fixture.
+const CHILD: &str = "CUSTODIO_SWTPM_CHILD";
 
-#[test]
-fn a_killed_test_binary_leaves_no_swtpm() {
-    if std::env::var_os(KILLED_CHILD).is_some() {
-        let tpm = start();
-        println!("fixture {} {}", tpm.pid(), tpm.state_dir().display());
-        std::io::stdout().flush().expect("flush");
-        loop {
-            std::thread::sleep(Duration::from_secs(60));
-        }
-    }
+/// Runs `test` of this binary again as a child in its own process group, as nextest does, with [`CHILD`] set to
+/// `mode` and `path` as its `PATH`. Returns the child, its still open stdout, and its swtpm's pid and state directory.
+fn fixture_child(
+    test: &str,
+    mode: &str,
+    path: &std::ffi::OsStr,
+) -> (
+    std::process::Child,
+    BufReader<std::process::ChildStdout>,
+    u32,
+    PathBuf,
+) {
+    use std::os::unix::process::CommandExt;
     let mut child = Command::new(std::env::current_exe().expect("test binary"))
-        .args([
-            "--exact",
-            "a_killed_test_binary_leaves_no_swtpm",
-            "--nocapture",
-        ])
-        .env(KILLED_CHILD, "1")
+        .args(["--exact", test, "--nocapture"])
+        .env(CHILD, mode)
+        .env("PATH", path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
+        .process_group(0)
         .spawn()
         .expect("spawn the child");
-    let line = BufReader::new(child.stdout.take().expect("stdout"))
+    let mut out = BufReader::new(child.stdout.take().expect("stdout"));
+    let line = out
+        .by_ref()
         .lines()
         .map_while(Result::ok)
         .find(|l| l.starts_with("fixture "))
@@ -298,13 +301,110 @@ fn a_killed_test_binary_leaves_no_swtpm() {
     let mut parts = line.split(' ').skip(1);
     let pid: u32 = parts.next().and_then(|p| p.parse().ok()).expect("pid");
     let dir = PathBuf::from(parts.next().expect("dir"));
-    // Negative control: the child's swtpm is up before the kill.
-    assert_alive(pid, &dir);
-    child.kill().expect("SIGKILL the child, so no Drop runs");
-    child.wait().expect("reap the child");
+    (child, out, pid, dir)
+}
+
+/// The child side: starts a fixture and reports it. `hold` then sleeps until killed; any other mode drops it.
+fn fixture_child_body(mode: &std::ffi::OsStr) {
+    let tpm = start();
+    println!("fixture {} {}", tpm.pid(), tpm.state_dir().display());
+    std::io::stdout().flush().expect("flush");
+    if mode == "hold" {
+        loop {
+            std::thread::sleep(Duration::from_secs(60));
+        }
+    }
+    drop(tpm);
+    println!("dropped");
+}
+
+fn wait_gone(pid: u32, dir: &Path) {
     let deadline = Instant::now() + Duration::from_secs(20);
     while (process_exists(pid) || dir.exists()) && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(100));
     }
-    assert_gone(pid, &dir);
+    assert_gone(pid, dir);
+}
+
+fn signal(target: &str) {
+    let status = Command::new("bash")
+        .args(["-c", "kill -KILL -- \"$1\"", "kill", target])
+        .status()
+        .expect("run kill");
+    assert!(status.success(), "kill {target}");
+}
+
+#[test]
+fn a_killed_test_binary_leaves_no_swtpm() {
+    const TEST: &str = "a_killed_test_binary_leaves_no_swtpm";
+    if let Some(mode) = std::env::var_os(CHILD) {
+        return fixture_child_body(&mode);
+    }
+    let path = std::env::var_os("PATH").expect("PATH");
+    let (mut child, _out, pid, dir) = fixture_child(TEST, "hold", &path);
+    // Negative control: the child's swtpm is up before the kill.
+    assert_alive(pid, &dir);
+    signal(&child.id().to_string());
+    child.wait().expect("reap the child");
+    wait_gone(pid, &dir);
+}
+
+/// nextest ends a test (fail-fast, a timeout) with SIGKILL to its whole process group.
+#[test]
+fn a_killed_process_group_leaves_no_swtpm() {
+    const TEST: &str = "a_killed_process_group_leaves_no_swtpm";
+    if let Some(mode) = std::env::var_os(CHILD) {
+        return fixture_child_body(&mode);
+    }
+    let path = std::env::var_os("PATH").expect("PATH");
+    let (mut child, _out, pid, dir) = fixture_child(TEST, "hold", &path);
+    assert_alive(pid, &dir);
+    signal(&format!("-{}", child.id()));
+    child.wait().expect("reap the child");
+    wait_gone(pid, &dir);
+}
+
+/// A swtpm that survives the drop must stay stoppable: its control socket is in the state directory.
+#[test]
+fn a_swtpm_that_does_not_stop_keeps_its_control_socket() {
+    const TEST: &str = "a_swtpm_that_does_not_stop_keeps_its_control_socket";
+    if let Some(mode) = std::env::var_os(CHILD) {
+        return fixture_child_body(&mode);
+    }
+    // The child (and its guardian) find a `swtpm_ioctl` that always fails.
+    let shim = std::env::temp_dir().join(format!("custodio-swtpm-shim.{}", std::process::id()));
+    fs::create_dir(&shim).expect("shim directory");
+    let tool = shim.join("swtpm_ioctl");
+    fs::write(&tool, "#!/bin/sh\nexit 1\n").expect("shim");
+    fs::set_permissions(&tool, std::os::unix::fs::PermissionsExt::from_mode(0o755)).expect("chmod");
+    let mut path = vec![shim.clone()];
+    path.extend(std::env::split_paths(
+        &std::env::var_os("PATH").expect("PATH"),
+    ));
+    let path = std::env::join_paths(path).expect("PATH");
+
+    let (mut child, out, pid, dir) = fixture_child(TEST, "drop", &path);
+    assert!(
+        out.lines().map_while(Result::ok).any(|l| l == "dropped"),
+        "the child dropped its fixture"
+    );
+    child.wait().expect("reap the child");
+    let ctrl = dir.join("swtpm.sock.ctrl");
+    let stoppable = !process_exists(pid) || ctrl.exists();
+    if ctrl.exists() {
+        let stopped = Command::new("swtpm_ioctl")
+            .arg("--unix")
+            .arg(&ctrl)
+            .arg("-s")
+            .status()
+            .expect("run swtpm_ioctl");
+        assert!(stopped.success(), "stop over the kept control socket");
+    }
+    fs::remove_dir_all(&shim).expect("remove the shim");
+    assert!(
+        stoppable,
+        "swtpm {pid} is running without its control socket"
+    );
+    // The guardian, still there, removes the state once swtpm is gone.
+    wait_gone(pid, &dir);
 }
