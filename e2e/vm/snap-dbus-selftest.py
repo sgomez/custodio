@@ -22,11 +22,11 @@ def serve(path, reply_for):
     def run():
         s, _ = srv.accept()
         got = b""
-        while b"\r\n" not in got:
-            got += s.recv(256)
+        while b"\r\n" not in got:  # one byte at a time: a larger read may swallow the first message sent right after BEGIN
+            got += s.recv(1)
         s.sendall(b"OK 00\r\n")
         while b"BEGIN\r\n" not in got:
-            got += s.recv(256)
+            got += s.recv(1)
         while True:
             try:
                 kind, f, _ = c.read_message(s)

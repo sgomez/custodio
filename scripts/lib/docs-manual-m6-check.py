@@ -84,12 +84,13 @@ def run_exchange(server_cmd, client_cmd, cwd, errors):
     out, port, deadline = "", None, time.monotonic() + 20
     try:
         while port is None and time.monotonic() < deadline:
+            # raw reads: select() does not see lines a buffered readline() already pulled in, so ACCEPT could be missed
             if select.select([proc.stdout], [], [], 0.2)[0]:
-                line = proc.stdout.readline()
-                if not line:
+                chunk = os.read(proc.stdout.fileno(), 4096)
+                if not chunk:
                     break
-                out += line
-                m = re.match(r"ACCEPT 127\.0\.0\.1:(\d+)", line)
+                out += chunk.decode(errors="replace")
+                m = re.search(r"^ACCEPT 127\.0\.0\.1:(\d+)", out, re.M)
                 port = m.group(1) if m else None
         if port is None:
             fail(errors, f"the server did not print ACCEPT: {out[-300:]!r}")
