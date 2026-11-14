@@ -33,8 +33,13 @@ start_agent() {
 case $mode in
 seed)
     start_agent seed
+    declare -A seeds=()
     for id in $ids; do
-        python3 -I /e2e/import.py "$ACC/$user-$id.p12" "$id" e2e-password > "$ACC/$user-seed-$id.out" 2>&1 || { cat "$ACC/$user-seed-$id.out" >&2; fail "$user: the import of $id with the M3 build failed"; }
+        python3 -I /e2e/import.py "$ACC/$user-$id.p12" "$id" e2e-password > "$ACC/$user-seed-$id.out" 2>&1 &
+        seeds[$id]=$!
+    done
+    for id in $ids; do
+        wait "${seeds[$id]}" || { cat "$ACC/$user-seed-$id.out" >&2; fail "$user: the import of $id with the M3 build failed"; }
     done
     [ "$(wc -l < "$E2E_DIR/requests")" -eq 2 ] || fail "$user: expected 2 requests in the agent's log, saw $(wc -l < "$E2E_DIR/requests")"
     ;;
