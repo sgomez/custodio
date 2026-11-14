@@ -85,8 +85,6 @@ for _ in $(seq 60); do
     if [ "$pid2" -gt 0 ] && [ "$pid2" != "$pid1" ] && systemctl is-active --quiet custodio; then break; fi
     sleep 1
 done
-sleep 5
-[ "$(systemctl show -p MainPID --value custodio)" = "$pid2" ] || fail "the main pid changed again after the upgrade (not $pid2): the service keeps restarting"
 systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade"
 systemctl is-active --quiet custodio-firefox.socket || fail "custodio-firefox.socket is not listening after the upgrade (a restart of it fails while the service runs)"
 [ "$(installed_version "$fmt")" = "$vn1" ] || fail "after the upgrade the database holds $(installed_version "$fmt"), not N+1=$vn1"
@@ -132,6 +130,9 @@ if uk_on; then
     kinds tpmbound
 fi
 accts cleanup || fail "bob's keys could not be deleted at the end of the case"
+# The listings and signatures above were the wait: the service that answered them is still the one that came up.
+[ "$(systemctl show -p MainPID --value custodio)" = "$pid2" ] || fail "the main pid changed again after the upgrade (not $pid2): the service keeps restarting"
+[ "$(systemctl show -p NRestarts --value custodio)" = 0 ] || fail "systemd restarted custodio.service after the upgrade"
 case_run "$id-signs-with-polkit"
 # END upgrade-case
 case_run "$id-no-manual-step"
