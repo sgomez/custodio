@@ -16,6 +16,10 @@ edition = "2024"
 license = "EUPL-1.2"
 publish = false
 
+# The tests hash 64 MiB messages; unoptimized, that alone takes 35 s per test.
+[profile.dev.package.sha2]
+opt-level = 3
+
 [profile.release]
 strip = "symbols"
 
