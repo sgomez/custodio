@@ -168,6 +168,8 @@ test-scripts:
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
     scripts/test-docs-install.sh
+    scripts/test-docs-readme.sh
+    scripts/test-docs-threat-model.sh
     scripts/test-docs-manual.sh
     scripts/test-docs-manual-m3.sh
     scripts/test-docs-manual-m4.sh
