@@ -197,7 +197,7 @@
         "F186"
       ],
       "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F188",
