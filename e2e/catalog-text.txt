@@ -9,6 +9,7 @@ mechanism, absent when it was not known. `CUSTODIO_STORAGE_KIND` is how the key 
 identifies this kind of entry.
 
 `CUSTODIO_APP_ID_STATE` says whether the caller's flatpak app-id was read (`read`), the caller is not in a flatpak scope (`none`) or it could not be determined (`undetermined`). `CUSTODIO_APP_ID` holds the app-id, only with `read`. It is recorded from the caller's cgroup scope, not authenticated, and never changes the result.
+`CUSTODIO_TRANSPORT` says how the request arrived: `bus` (the system bus) or `socket` (a snap socket). A socket entry also has `CUSTODIO_PEER_LABEL`, the security label of the peer, and `CUSTODIO_PID` is the peer's pid.
 
 The user and process id name the calling process only, not a person. To trust an entry, match
 the journal's own fields, as docs/audit.md shows: _SYSTEMD_UNIT=custodio.service.
