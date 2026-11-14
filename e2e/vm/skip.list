@@ -6,3 +6,15 @@ vm-silent-journal-cause: full mode: an RSA import goes to tpm, so a missing libt
 vm-silent-nothing-stored: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
 vm-silent-no-key: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
 vm-silent-restored-imports: full mode: an RSA import goes to tpm, so a missing libtss2-rc cannot make it fail; the case needs the lacking mode
+snap-record: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-socket-dir: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-list-keys: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-sign-rsa: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-sign-ec: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-polkit-per-signature: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-journal-label: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-bus-denied: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-refused-unconfined: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-refused-root: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-refused-other-snap: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+snap-unknown-methods: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind

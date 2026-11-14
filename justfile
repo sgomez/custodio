@@ -184,6 +184,7 @@ test-scripts:
     scripts/test-e2e-vm-host.sh
     scripts/test-e2e-vm-kinds.sh
     scripts/test-e2e-vm-silent.sh
+    scripts/test-e2e-vm-snap.sh
     scripts/test-e2e-select.sh
     scripts/test-e2e-owner.sh
     scripts/test-e2e-ops.sh

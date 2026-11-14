@@ -42,6 +42,10 @@ run)
                 echo "E2E-CASE run $id"
             done
         fi
+        # F179: the snap group of a full run prints the facts of the record (run.sh fails on an unknown one)
+        if [ -z "${STUB_CASES:-}" ] && [[ $cmd == *"E2E_TPM=swtpm"* && $cmd == *"snap-"* ]]; then
+            printf 'E2E-SNAP-RECORD %s\n' snap_revision=9181 snap_base=core26 snapd_deb=2.77.1 snapd_snap=2.78 apparmor=5.0.2 dbus_daemon=1.16.2 'peer_label=snap.firefox.firefox (enforce)'
+        fi
         printf 'E2E-PHASE install 3\nE2E-PHASE service 2\nE2E-PHASE import 4\nE2E-PHASE sign 5\nE2E-PHASE pcr 6\nE2E-PHASE upgrade 7\n'
         exit "${STUB_GUEST_RC:-0}" ;;
     esac

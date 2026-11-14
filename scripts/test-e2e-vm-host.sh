@@ -37,6 +37,10 @@ grep -v '^[[:space:]]*\(#\|$\)' "$R/e2e/vm/cases.list" | sed 's/^/E2E-CASE run /
 { cat "$tmp/cases.ok"; echo "E2E-CASE run sign-rsa-pkcs"; } > "$tmp/cases.twice"
 grep -v 'pcr-restarted-signs' "$tmp/cases.ok" > "$tmp/cases.missing"
 { cat "$tmp/cases.ok"; echo "E2E-CASE run bogus-case"; } > "$tmp/cases.unknown"
+# F179: a full run of the snap group prints the facts of its record (run.sh refuses an unknown one)
+for k in snap_revision=9181 snap_base=core26 snapd_deb=2.77.1 snapd_snap=2.78 apparmor=5.0.2 dbus_daemon=1.16.2 'peer_label=snap.firefox.firefox (enforce)'; do
+    for f in ok twice missing unknown; do echo "E2E-SNAP-RECORD $k" >> "$tmp/cases.$f"; done
+done
 
 declare -A PID=()
 launch() { # launch NAME DRIVER MODE [VAR=VALUE...]: starts a run in the background; $tmp/NAME/{out,rc,log,stops,rec}
@@ -205,7 +209,7 @@ c="c-hostapt"; [ -s "$tmp/$c/host" ] || bad "control hostapt: the host check did
 fp() { # fp NAME MESSAGE STOPS [STEP-PRESENT...]: exits non-zero, the message names the cause, stop calls, no temp file, record when a VM started
     local n=$1 msg=$2 st=$3; shift 3
     [ "$(rcof "$n")" != 0 ] && [ "$(rcof "$n")" != none ] || bad "$n: exit $(rcof "$n")"
-    grep -qF -- "$msg" "$tmp/$n/out.txt" || bad "$n: no message '$msg': $(tail -n 3 "$tmp/$n/out.txt")"
+    grep -qF -- "$msg" "$tmp/$n/out.txt" || bad "$n: no message '$msg': $(tail -n 12 "$tmp/$n/out.txt")"
     [ "$(stops "$n")" = "$st" ] || bad "$n: stop called $(stops "$n") times, expected $st"
     [ -z "$(ls -A "$tmp/$n/tmp")" ] || bad "$n: temporary files are left"
     if [ "$st" = 1 ]; then

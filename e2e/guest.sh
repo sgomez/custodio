@@ -234,6 +234,13 @@ if phase_runs vm-silent; then
 fi
 phase_done vm-silent
 
+# The snap cases (F179, VM full mode only): the real Firefox snap installed from stable by e2e/vm/run.sh; alice lists and signs through /run/snap.firefox/custodio.sock under
+# `snap run --shell firefox`, and what must be refused is (e2e/vm/snap.sh). After vm-silent and before sign; her keys and bob's are deleted at the end.
+if phase_runs snap; then
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/snap.sh" || fail "snap.sh failed"
+fi
+phase_done snap
+
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs sign; then
