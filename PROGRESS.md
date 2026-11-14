@@ -164,3 +164,7 @@ with an empty context.
 - Decisions: property vs method: a method (`StateStorage`). Warning on stderr so stdout of the data is untouched. md RAID with all-encrypted members is *encrypted* (every write goes through dm-crypt); plain RAID is *unknown* per the contract.
 - Gates: `just quick`, `just api-contract`, `scripts/test-docs-api.sh`, the three F180 tests green. `just mutants-diff F180`: first run 66 mutants with 6 missed and 1 timeout (fscrypt helpers, `unescape`, `walk_node` partition-of-partition, `MemorySink` storage); killed with new tests (`fscrypt_flag`/`has_fscrypt` split out, `unescape` without index arithmetic, three tests) and narrowed reruns of those mutants were clean; the full diff was not rerun afterwards. All steps ticked. The man page and README prose are for a person to check.
 - Next session should: nothing for F180 unless the loop's verify fails.
+
+### 2026-11-14 — F180 — attempt 2
+- Done: fixed NEXT_FINDINGS. dm-crypt is now recognised only by `CRYPT-LUKS1-`, `CRYPT-LUKS2-`, `CRYPT-PLAIN-` (cryptsetup 2.7.5 `dm_prepare_uuid` read from source: integrity, verity, subdev and temp devices also start with `CRYPT-`); other `CRYPT-*` is unknown. Tests use `CRYPT-INTEGRITY-…`, new `other_cryptsetup_types_are_unknown`. Finding corrected (cryptsetup citation, statx not FS_IOC_GETFLAGS, tmpfs over `/var/lib/private`). `just quick` green, `state_storage` 46 pass, `just mutants-diff F180` (7 mutants, 6 caught, 1 unviable).
+- Next session should: nothing for F180.

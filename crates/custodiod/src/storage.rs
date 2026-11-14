@@ -47,7 +47,10 @@ const BLOCK_FILESYSTEMS: [&str; 8] = [
 /// Deepest chain followed.
 const MAX_DEPTH: usize = 16;
 /// The dm uuid prefix of dm-crypt (cryptsetup).
-const CRYPT_PREFIX: &str = "CRYPT-";
+/// dm uuid prefixes of the types in which cryptsetup 2.7.5 (`lib/libdevmapper.c` `dm_prepare_uuid`) creates a dm-crypt
+/// target. Every cryptsetup device starts with `CRYPT-<type>-`, also `INTEGRITY`, `VERITY`, `SUBDEV` and `TEMP`, which
+/// encrypt nothing, so the bare `CRYPT-` prefix is not proof.
+const CRYPT_PREFIXES: [&str; 3] = ["CRYPT-LUKS1-", "CRYPT-LUKS2-", "CRYPT-PLAIN-"];
 /// The dm uuid prefix of LVM.
 const LVM_PREFIX: &str = "LVM-";
 const DEFAULT_STATE_DIR: &str = "/var/lib/custodio";
@@ -184,7 +187,7 @@ fn walk_node(node: &Path, path: &mut Vec<PathBuf>) -> StateStorage {
             return StateStorage::Unknown;
         };
         let uuid = uuid.trim_end();
-        if uuid.starts_with(CRYPT_PREFIX) {
+        if CRYPT_PREFIXES.iter().any(|p| uuid.starts_with(p)) {
             return StateStorage::Encrypted;
         }
         if uuid.starts_with(LVM_PREFIX) {

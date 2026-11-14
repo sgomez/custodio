@@ -126,8 +126,19 @@ fn a_dm_device_named_crypt_without_the_uuid_is_unknown() -> Res {
 fn integrity_is_unknown() -> Res {
     let mut t = Tree::new()?;
     let p = plain(&t)?;
-    t.dm("dm-0", "253:0", "INTEGRITY-abc", &[&p])?;
+    t.dm("dm-0", "253:0", "CRYPT-INTEGRITY-abc-x", &[&p])?;
     assert_eq!(t.on("253:0", "ext4")?.verdict(), Unknown);
+    Ok(())
+}
+
+#[test]
+fn other_cryptsetup_types_are_unknown() -> Res {
+    for kind in ["VERITY", "SUBDEV", "TEMP", "INTEGRITY"] {
+        let mut t = Tree::new()?;
+        let p = plain(&t)?;
+        t.dm("dm-0", "253:0", &format!("CRYPT-{kind}-abc-x"), &[&p])?;
+        assert_eq!(t.on("253:0", "ext4")?.verdict(), Unknown, "{kind}");
+    }
     Ok(())
 }
 
@@ -136,12 +147,12 @@ fn integrity_over_crypt_is_unknown_and_under_crypt_is_encrypted() -> Res {
     let mut t = Tree::new()?;
     let p = plain(&t)?;
     let luks = t.dm("dm-0", "253:0", "CRYPT-LUKS2-abc-x", &[&p])?;
-    t.dm("dm-1", "253:1", "INTEGRITY-abc", &[&luks])?;
+    t.dm("dm-1", "253:1", "CRYPT-INTEGRITY-abc-x", &[&luks])?;
     assert_eq!(t.on("253:1", "ext4")?.verdict(), Unknown);
 
     let mut t = Tree::new()?;
     let p = plain(&t)?;
-    let integ = t.dm("dm-0", "253:0", "INTEGRITY-abc", &[&p])?;
+    let integ = t.dm("dm-0", "253:0", "CRYPT-INTEGRITY-abc-x", &[&p])?;
     t.dm("dm-1", "253:1", "CRYPT-LUKS2-abc-x", &[&integ])?;
     assert_eq!(t.on("253:1", "ext4")?.verdict(), Encrypted);
     Ok(())
