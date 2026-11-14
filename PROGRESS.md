@@ -221,3 +221,8 @@ with an empty context.
 - Facts: `-Verify` alone accepts a client certificate of another CA, so the page's server has `-verify_return_error`. The fallback page leaves out `-force` (the script names it as the one option it leaves out; the page says `custodio register` passes it). The notes' version is `v0.8.0` and is not compared with `Cargo.toml` (`0.1.0`; bumping is `just release`).
 - For a person: acceptance 19 is the VM run of section 25 (its Firefox menu path, the error text of a refused dialog and which Firefox process signs are marked **unverified** on the page); acceptance 20 is the prose of the notes and `install.md` (including that Mozilla's Firefox on Fedora and RHEL/Alma needs the manual route, and `nss-tools` as the package of `modutil` there: not tried).
 - Next session should: nothing for F186 if the evaluator accepts.
+
+### 2026-11-14 — F187 — attempt 3
+- Done: fixed NEXT_FINDINGS. The uncommitted lifecycle-script edits (rpm, arch, package-scripts, real rpm/arch, stubs, mutants) were checked one script at a time and all pass: `test-rpm-lifecycle` 92 s, `test-arch-lifecycle` 133 s, `test-package-scripts` 1 s, `test-rpm-lifecycle-real` 198 s (row 200), `test-arch-lifecycle-real` 60 s. Committed as `0ea84bc`. `just quick` green.
+- Not done: no checkpoint step is ticked. `just check`, `api-contract`, `fuzz-smoke`, `memory-safety`, `e2e`, `package-gates`, `coverage`, `crap` and both VM modes have not been run on this tree.
+- Next session should: start at step 1 (`just check`), one command per step.
