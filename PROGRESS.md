@@ -236,3 +236,4 @@ with an empty context.
 - `PathChanged=` on a rename-replaced module: **unverified**. No case in `e2e/` (VM or container) touches the user refresh units; left for a person (F184's inference from systemd's inotify watch).
 - Acceptance 19 and 20 are a person's (manual-acceptance section 25, prose), not claimed.
 - Container e2e, package-gates, coverage were run before the VM fix, which touched only `e2e/vm/*`; the nfpm and lint changes precede them.
+- Final: `just check` (forced) green on the final tree after the last fix; `just quick` green.
