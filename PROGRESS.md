@@ -237,3 +237,10 @@ with an empty context.
 - Acceptance 19 and 20 are a person's (manual-acceptance section 25, prose), not claimed.
 - Container e2e, package-gates, coverage were run before the VM fix, which touched only `e2e/vm/*`; the nfpm and lint changes precede them.
 - Final: `just check` (forced) green on the final tree after the last fix; `just quick` green.
+
+### 2026-11-14 — F188 — attempt 1 (manual, a person with an agent)
+- Done: acceptance 19 run by a person on the labvm `ubuntu2604` VM (Firefox snap rev 8763, `custodio_0.8.0-1_amd64.deb`): all 8 steps pass, recorded in `docs/findings/F188.md`. Each page load asks twice (page and favicon connections); refusing the page's dialog gives `SSL_ERROR_RX_CERTIFICATE_REQUIRED_ALERT`.
+- Acceptance 20: release documents checked against SPEC Design 8; fixed the release notes (dangling sentence, purge owner only for M3 keys), the threat model (Alma 10 inferred, RAID example), and linked `docs/manual-acceptance.md` from the README.
+- Version: `Cargo.toml` was still `0.1.0`; now `0.8.0`, and `harness/release.sh` writes the git-cliff version into `Cargo.toml` and every `Cargo.lock` (`scripts/set-version.sh`, tested by `scripts/test-set-version.sh`).
+- Known: `just quick` on the host (outside the container) fails the `register_*` tests (host NSS/modutil) and hangs in `a_killed_run_…`; it fails the same at `ca26feb`. Run it with `harness/run.sh just quick`.
+- Next: `just milestone pass F188`, `just milestone close`, `just release`.
