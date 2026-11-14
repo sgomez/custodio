@@ -134,7 +134,13 @@ fn a_missing_modutil_is_an_error_naming_it() {
     let before = f.snapshot();
     let out = f.binary(&["register", "--module", m.to_str().unwrap()], &empty, &[]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("modutil"));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        err.lines().count(),
+        1,
+        "one error, not one per profile: {err}"
+    );
+    assert!(err.contains("modutil was not found"), "{err}");
     assert_eq!(f.snapshot(), before);
 }
 

@@ -270,11 +270,9 @@ pub fn refuse_root_and_sudo(
     Ok(())
 }
 
+/// Whether `program` is a file in a directory of `PATH` (an absolute `program` is its own path: `join` replaces).
 fn program_exists(program: &OsStr) -> bool {
     let p = Path::new(program);
-    if p.components().count() > 1 {
-        return p.is_file();
-    }
     std::env::var_os("PATH")
         .is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(p).is_file()))
 }
@@ -351,11 +349,9 @@ fn remove_scratch(scratch: &Path) {
 }
 
 fn writable(dir: &Path) -> bool {
-    rustix::fs::access(
-        dir,
-        rustix::fs::Access::WRITE_OK | rustix::fs::Access::EXEC_OK,
-    )
-    .is_ok()
+    [rustix::fs::Access::WRITE_OK, rustix::fs::Access::EXEC_OK]
+        .into_iter()
+        .all(|mode| rustix::fs::access(dir, mode).is_ok())
 }
 
 /// Apply the steps to the profile: through a scratch copy and `rename(2)` when the three files exist, else directly.

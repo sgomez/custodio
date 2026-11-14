@@ -16,6 +16,16 @@ use tempfile::TempDir;
 
 pub const LOCAL: Ipv4Addr = Ipv4Addr::new(10, 1, 2, 3);
 
+/// The cargo profile of the directory this test binary lives in (`debug`, `release`, or a named profile such as the
+/// one `cargo mutants` uses), so the module and the server are built where the test looks for them.
+fn profile_args(dir: &Path) -> Vec<OsString> {
+    match dir.file_name().and_then(|n| n.to_str()) {
+        Some("debug") | None => Vec::new(),
+        Some("release") => vec!["--release".into()],
+        Some(name) => vec!["--profile".into(), name.into()],
+    }
+}
+
 static BUILT: Once = Once::new();
 
 /// The built module (cargo does not build the `cdylib` for the tests of another package): built here, once, from the
@@ -28,9 +38,7 @@ pub fn built_module() -> PathBuf {
         let mut build = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
         build.args(["build", "--quiet", "--locked", "-p", "custodio-pkcs11"]);
         build.arg("--target-dir").arg(&target);
-        if !cfg!(debug_assertions) {
-            build.arg("--release");
-        }
+        build.args(profile_args(&dir));
         assert!(
             build.status().is_ok_and(|s| s.success()),
             "building the module failed"
@@ -264,9 +272,7 @@ impl Service {
                 "docs_api_server",
             ]);
             build.arg("--target-dir").arg(dir.parent().unwrap());
-            if !cfg!(debug_assertions) {
-                build.arg("--release");
-            }
+            build.args(profile_args(&dir));
             assert!(
                 build.status().is_ok_and(|s| s.success()),
                 "building the test server failed"

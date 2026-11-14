@@ -78,6 +78,7 @@ fn a_second_run_is_byte_identical() {
     let second = f.run(&m, false);
     assert_eq!(after_one, f.snapshot());
     assert_eq!(first.lines.len(), second.lines.len());
+    assert!(!first.has_fixable_skip() && !second.has_fixable_skip());
     for l in &second.lines {
         assert!(matches!(l.outcome, Outcome::AlreadyRegistered(_)), "{l}");
         assert!(l.to_string().contains("already registered"));
