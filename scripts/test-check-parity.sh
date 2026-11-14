@@ -77,13 +77,20 @@ done
 
 # arch_repack NAME UID GID [UNAME GNAME]: the Arch package of case NAME with every entry owned by UID:GID.
 arch_repack() {
-    local pkg tree=$FX_DIR/archtree-$1
+    local pkg
     pkg=$(fx_file "$1" archlinux)
-    rm -rf "$tree"
-    mkdir "$tree"
-    bsdtar -xf "$pkg" -C "$tree"
-    (cd "$tree" && bsdtar --uid "$2" --gid "$3" --uname "${4:-}" --gname "${5:-}" --zstd -cf "$pkg" .PKGINFO .MTREE .INSTALL usr)
-    rm -rf "$tree"
+    # Entry by entry, so the symlinks keep the mode they have in the archive (extracting and archiving again gives them 0777).
+    zstd -dc "$pkg" | python3 -I -c '
+import sys, tarfile
+uid, gid, uname, gname = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4]
+src = tarfile.open(fileobj=sys.stdin.buffer, mode="r|")
+dst = tarfile.open(fileobj=sys.stdout.buffer, mode="w|", format=tarfile.PAX_FORMAT)
+for member in src:
+    member.uid, member.gid, member.uname, member.gname = uid, gid, uname, gname
+    dst.addfile(member, src.extractfile(member) if member.isfile() else None)
+dst.close()
+' "$2" "$3" "${4:-}" "${5:-}" | zstd -q -o "$pkg.new"
+    mv "$pkg.new" "$pkg"
 }
 # Arch numeric 0 0 against root root passes (the good set is that); numeric 1000 1000 fails; named root passes.
 mixed arch1000 good archlinux good

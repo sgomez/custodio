@@ -145,6 +145,9 @@ config_case() { # NAME WORD... -- OP [ARG...]
     expect_fail "$name" "$FX_DIR/out/$name" "$FX_DIR/nfpm-$name.yaml" "${words[@]}"
 }
 config_case omit-entry /usr/share/p11-kit/modules/custodio.module -- drop /usr/share/p11-kit/modules/custodio.module
+# F184: a user unit and an enabling link are on the list; a package without either fails naming it.
+config_case omit-user-unit /usr/lib/systemd/user/custodio-refresh.path deb: rpm: arch: -- drop /usr/lib/systemd/user/custodio-refresh.path
+config_case omit-user-link /usr/lib/systemd/user/default.target.wants/custodio-refresh.service deb: rpm: arch: -- drop /usr/lib/systemd/user/default.target.wants/custodio-refresh.service
 config_case cli-0644 $CLI deb: rpm: arch: -- mode $CLI 644
 config_case extra-file /usr/share/extra deb: rpm: arch: -- add /usr/share/extra
 config_case etc-file /etc/x deb: rpm: arch: -- add /etc/x

@@ -148,6 +148,9 @@ package-gate-test:
 # packages, with dash and bash), and the real dpkg, rpm and pacman refusing, installing or warning. The pacman cases run in the Arch
 # image of the namcap lint and need a container engine; CUSTODIO_SKIP_ARCH_INSTALL=1 skips them with a message.
 test-scripts:
+    scripts/check-register-deps.sh
+    scripts/test-check-register-deps.sh
+    scripts/test-user-refresh-units.sh
     scripts/check-bus-check-sync.sh
     scripts/check-sysusers-sync.sh
     scripts/test-bus-check-sync.sh

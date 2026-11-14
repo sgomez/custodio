@@ -88,6 +88,7 @@ def wanted_files(label):
 def check_config():
     cfg = yaml.safe_load(open(config_path))
     seen = {label: {} for label in LABELS}
+    links_seen = {label: set() for label in LABELS}
     dirs = {}
     for item in cfg["contents"]:
         dst, info = item["dst"], item.get("file_info", {})
@@ -105,7 +106,7 @@ def check_config():
             if info.get("owner") != "root" or info.get("group") != "root":
                 fail("nfpm.yaml", f"{dst} is not owned by root:root")
             continue
-        for label in labels:
+        for label in () if item.get("type") == "symlink" else labels:
             if dst in seen[label]:
                 fail("nfpm.yaml", f"{dst} is listed twice" + ("" if packager is None else f" for {label}"))
             seen[label][dst] = info.get("mode")
@@ -116,6 +117,14 @@ def check_config():
                 fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
         if not dst.startswith("/usr/"):
             fail("nfpm.yaml", f"{dst} is not under /usr")
+        if item.get("type") == "symlink":
+            if packager is not None or item.get("src") != expected.SYMLINKS.get(dst):
+                fail("nfpm.yaml", f"the symlink {dst} must be listed for every format, pointing at {expected.SYMLINKS.get(dst)}")
+            if info.get("owner") != "root" or info.get("group") != "root":
+                fail("nfpm.yaml", f"{dst} is not owned by root:root")
+            for label in labels:
+                links_seen[label].add(dst)
+            continue
         if item.get("type", "file") != "file":
             fail("nfpm.yaml", f"{dst} has type {item['type']}")
         if info.get("owner") != "root" or info.get("group") != "root":
@@ -133,6 +142,8 @@ def check_config():
         elif dirs[dst] != mode:
             fail("nfpm.yaml", f"the directory {dst} has mode {dirs[dst]:o}, expected {mode:o}")
     for label in LABELS:
+        for dst in expected.SYMLINKS.keys() - links_seen[label]:
+            fail("nfpm.yaml", f"the symlink {dst} is missing from the file list of {label}")
         every = wanted_files(label)
         for dst in every.keys() - seen[label].keys():
             fail("nfpm.yaml", f"{dst} is missing from the file list of {label}")
@@ -159,6 +170,7 @@ def check_package(label, nfpm_name, pattern):
     listing = entries(label, found[0])
     files = {}
     listed_dirs = {}
+    listed_links = set()
     for path, kind, mode, owner, group in listing:
         if path != "/usr" and not path.startswith("/usr/"):
             fail(label, f"{path} is not under /usr")
@@ -170,8 +182,10 @@ def check_package(label, nfpm_name, pattern):
             files[path] = mode
         elif kind == "d":
             listed_dirs[path] = mode
+        elif kind == "l":
+            listed_links.add(path)
         else:
-            fail(label, f"{path} is not a regular file or directory (type {kind})")
+            fail(label, f"{path} is not a regular file, directory or symlink (type {kind})")
     if label == "rpm":
         # rpm lists no implicit parent, so the directories it lists are exactly the ones it owns on purpose.
         for path, mode in expected.RPM_ONLY_DIRS.items():
@@ -189,6 +203,10 @@ def check_package(label, nfpm_name, pattern):
             fail(label, f"{path} has mode {files[path]:o}, expected {mode:o}")
     for path in files.keys() - wanted.keys():
         fail(label, f"{path} is not in the expected file list")
+    for path in expected.SYMLINKS.keys() - listed_links:
+        fail(label, f"the symlink {path} is missing from the package")
+    for path in listed_links - expected.SYMLINKS.keys():
+        fail(label, f"the symlink {path} is not in the expected list")
     check_unit(label, files)
     # Config-typed entries do not show in the listing of a .deb (conffiles) or an Arch package (backup).
     if label == "deb" and os.path.exists(f"{extract_dir}/deb-control/conffiles"):

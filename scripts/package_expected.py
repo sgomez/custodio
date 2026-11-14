@@ -21,10 +21,18 @@ FILES = {
     "/usr/share/polkit-1/actions/com.rfirma.custodio.policy": 0o644,
     "/usr/share/p11-kit/modules/custodio.module": 0o644,
     "/usr/lib/systemd/catalog/custodio.catalog": 0o644,
+    "/usr/lib/systemd/user/custodio-refresh.service": 0o644,
+    "/usr/lib/systemd/user/custodio-refresh.path": 0o644,
     "/usr/share/licenses/custodio/LICENSE": 0o644,
     "/usr/share/doc/custodio/copyright": 0o644,
     "/usr/share/man/man1/custodio.1.gz": 0o644,
     "/usr/share/doc/custodio/changelog.Debian.gz": 0o644,
+}
+
+# Symlinks every package installs (F184): path -> target. They enable the per-user refresh units for every user from the installed files alone.
+SYMLINKS = {
+    "/usr/lib/systemd/user/default.target.wants/custodio-refresh.service": "../custodio-refresh.service",
+    "/usr/lib/systemd/user/paths.target.wants/custodio-refresh.path": "../custodio-refresh.path",
 }
 
 # Files only the Arch package installs (nfpm `packager: archlinux`): the alpm hook that refuses an upgrade or reinstall while the (F58: and the restart hook)
@@ -79,12 +87,16 @@ TSS_LIBS = {
 }
 SYSTEMD = {"deb": "systemd (>= 257)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
 
+# The package that ships `modutil` (F172, verified there): `custodio register` runs it to add the module to the NSS databases of Firefox
+# and Thunderbird (F183). The deb names libnss3-tools, the rpm nss-tools, Arch's nss. scripts/check-register-deps.sh compares this with nfpm.yaml.
+MODUTIL = {"deb": "libnss3-tools", "rpm": "nss-tools", "arch": "nss"}
+
 # Dependencies every package must declare, exactly as the format writes them (whitespace normalised). libc and libgcc are
 # listed because the Rust binaries always link them; nfpm does not compute shared-library dependencies.
 DEPS = {
-    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit", *TSS_LIBS["deb"]],
-    "rpm": ["glibc", "libgcc", "polkit >= 124", SYSTEMD["rpm"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["rpm"]],
-    "arch": ["glibc", "gcc-libs", "polkit>=124", SYSTEMD["arch"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["arch"]],
+    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit", MODUTIL["deb"], *TSS_LIBS["deb"]],
+    "rpm": ["glibc", "libgcc", "polkit >= 124", SYSTEMD["rpm"], "dbus", "p11-kit", "util-linux", MODUTIL["rpm"], *TSS_LIBS["rpm"]],
+    "arch": ["glibc", "gcc-libs", "polkit>=124", SYSTEMD["arch"], "dbus", "p11-kit", "util-linux", MODUTIL["arch"], *TSS_LIBS["arch"]],
 }
 # The CLI runs `setpriv --pdeathsig=KILL -- pkttyagent ...` (F89). setpriv comes from util-linux and pkttyagent from the polkit package
 # the lists above already carry (polkitd on Debian, polkit on Fedora/Alma/Arch), so only rpm and arch add util-linux. The deb leaves it

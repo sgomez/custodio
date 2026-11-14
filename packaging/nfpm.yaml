@@ -87,6 +87,22 @@ contents:
   - src: data/custodio.catalog
     dst: /usr/lib/systemd/catalog/custodio.catalog
     file_info: {mode: 0644, owner: root, group: root}
+  # The per-user refresh of the Firefox snap's module copy (F184): run at login and when the installed module changes. The two links
+  # enable both for every user from the installed files alone, so no maintainer script runs `systemctl --user`.
+  - src: data/systemd-user/custodio-refresh.service
+    dst: /usr/lib/systemd/user/custodio-refresh.service
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: data/systemd-user/custodio-refresh.path
+    dst: /usr/lib/systemd/user/custodio-refresh.path
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: ../custodio-refresh.service
+    dst: /usr/lib/systemd/user/default.target.wants/custodio-refresh.service
+    type: symlink
+    file_info: {owner: root, group: root}
+  - src: ../custodio-refresh.path
+    dst: /usr/lib/systemd/user/paths.target.wants/custodio-refresh.path
+    type: symlink
+    file_info: {owner: root, group: root}
   - src: LICENSE
     dst: /usr/share/licenses/custodio/LICENSE
     file_info: {mode: 0644, owner: root, group: root}
@@ -139,6 +155,7 @@ overrides:
       - polkitd (>= 124)
       - dbus-system-bus
       - p11-kit
+      - libnss3-tools # modutil, which `custodio register` runs (F172, F184)
       # TPM2 Software Stack (F125): the three linked libraries, the TCTI that libtss2-tctildr loads by dlopen, and tpm-udev, which creates
       # the `tss` group the unit names (SupplementaryGroups=tss). The same t64 names on debian13 and ubuntu2604.
       - libtss2-esys-3.0.2-0t64
@@ -164,6 +181,7 @@ overrides:
       - systemd >= 257 # user-scoped systemd-creds Varlink calls (F110: alma10 257, fedora44 259)
       - dbus
       - p11-kit
+      - nss-tools # modutil, which `custodio register` runs (F172, F184)
       - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
@@ -179,6 +197,7 @@ overrides:
       - systemd>=257 # user-scoped systemd-creds Varlink calls (F110: arch decided as ubuntu2604)
       - dbus
       - p11-kit
+      - nss # modutil, which `custodio register` runs (F172, F184)
       - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
