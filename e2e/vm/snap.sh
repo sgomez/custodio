@@ -118,13 +118,14 @@ MODC=/home/alice/snap/firefox/common/libcustodio_pkcs11.so
 CLC=/home/alice/snap/firefox/common/snap-client.py
 refused unconf runuser -u alice -- env SNAP_INSTANCE_NAME=firefox python3 -I "$CLC" list "$MODC"
 refused root env SNAP_INSTANCE_NAME=firefox python3 -I "$CLC" list "$MODC"
-# another snap's label: the test profile, loaded for this case only (the trap unloads it); the child is alice, so the refusal can only be the label's
+# another snap's label: the test profile, loaded for this case only (the trap unloads it). Under alice, aa-exec gave a stacked label (the service said
+# `peer label is stacked`), so root enters the profile; the child is root, which is why the judge requires the another-snap reason and not any refusal
 snap_profile_load || fail "the test profile could not be loaded"
-runuser -u alice -- aa-exec -p snap.e2e-other.app -- cat /proc/self/attr/current > "$SN/other.label" 2>&1 || echo "no label: $(cat "$SN/other.label")" > "$SN/other.label"
-runuser -u alice -- aa-exec -p snap.e2e-other.app -- python3 -I -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/snap.firefox/custodio.sock'); print('connected')" > "$SN/other.connect" 2>&1 || true
+aa-exec -p snap.e2e-other.app -- cat /proc/self/attr/current > "$SN/other.label" 2>&1 || echo "no label: $(cat "$SN/other.label")" > "$SN/other.label"
+aa-exec -p snap.e2e-other.app -- python3 -I -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/run/snap.firefox/custodio.sock'); print('connected')" > "$SN/other.connect" 2>&1 || true
 sed -i 's/ *$//' "$SN/other.label"
 if [ "$(tail -n 1 "$SN/other.connect")" = connected ]; then echo connected > "$SN/other.connect"; else head -c 200 "$SN/other.connect" > "$SN/other.connect.t"; mv "$SN/other.connect.t" "$SN/other.connect"; fi
-refused other runuser -u alice -- aa-exec -p snap.e2e-other.app -- env SNAP_INSTANCE_NAME=firefox python3 -I "$CLC" list "$MODC"
+refused other aa-exec -p snap.e2e-other.app -- env SNAP_INSTANCE_NAME=firefox python3 -I "$CLC" list "$MODC"
 snap_profile_unload || fail "the test profile could not be unloaded"
 
 # unknown methods: the key list, the state, the audit entries and the agent's requests are the same before and after
@@ -149,5 +150,9 @@ for c in $SNAP_CASES; do
 $c:
 $p"; fi
 done
+if [ -n "$problems" ]; then
+    { for f in sign-rsa.err sign-rsa.out unconf.err other.err agent-alice/agent.log; do echo "--- $f"; head -c 600 "$SN/$f" 2>&1; done
+      echo "--- service journal"; journalctl -u custodio --no-pager -n 15 -o cat | cut -c1-200; echo "--- polkit"; journalctl -u polkit --no-pager -n 15 -o cat | cut -c1-200; } >&2
+fi
 [ -z "$problems" ] || fail "snap cases:$problems"
 echo "snap: passed"

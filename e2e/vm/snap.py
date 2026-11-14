@@ -241,7 +241,7 @@ def refusal(d, pre, reason):
         p.append(f"the {pre} client listed keys")
     if read(d, f"{pre}.signs.before").strip() != read(d, f"{pre}.signs.after").strip():
         p.append(f"a sign entry was added by the {pre} client")
-    if not any(f"peer refused: {reason}" in x for x in lines(d, f"{pre}.refusal.log")):
+    if not any("peer refused:" in x and x.rstrip().endswith(reason) for x in lines(d, f"{pre}.refusal.log")):
         p.append(f"the journal has no refusal line 'peer refused: {reason}' for the {pre} client")
     return p
 

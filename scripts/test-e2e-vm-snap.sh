@@ -71,9 +71,9 @@ echo 'audit: type=1400 apparmor="DENIED" operation="dbus_method_call" profile="s
 for pre in unconf root other; do
     : > $pre.out; echo 1 > $pre.rc; echo 3 > $pre.signs.before; echo 3 > $pre.signs.after
 done
-echo 'custodiod: peer refused: peer is unconfined' > unconf.refusal.log
+echo "custodiod: peer refused: the peer's label is refused: peer is unconfined" > unconf.refusal.log
 cp unconf.refusal.log root.refusal.log
-echo 'custodiod: peer refused: peer is another snap' > other.refusal.log
+echo "custodiod: peer refused: the peer's label is refused: peer is another snap" > other.refusal.log
 echo 'snap.e2e-other.app (enforce)' > other.label; echo connected > other.connect
 for m in ImportP12 DeleteKey ReplaceCertificate; do echo "error org.freedesktop.DBus.Error.UnknownMethod: no such method $m" > um-$m.out; done
 for n in keys state journal agent; do echo "same-$n" > um.$n.before; echo "same-$n" > um.$n.after; done
@@ -145,7 +145,7 @@ for pre in unconf root other; do
     ctl "$pre-new-sign" "$c" "echo 4 > $pre.signs.after"
     ctl "$pre-no-control" "$c" 'echo 1 > list.rc'
 done
-ctl other-wrong-reason snap-refused-other-snap "echo 'custodiod: peer refused: peer is unconfined' > other.refusal.log"
+ctl other-wrong-reason snap-refused-other-snap "echo 'custodiod: peer refused: the peers label is refused: peer is unconfined' > other.refusal.log"
 ctl other-vacuous snap-refused-other-snap "echo 'unconfined' > other.label"
 ctl other-no-connect snap-refused-other-snap "echo 'denied' > other.connect"
 # unknown methods
