@@ -96,7 +96,7 @@
         "F178"
       ],
       "verify": "just quick && scripts/test-e2e-vm-snap.sh && scripts/test-e2e-vm-cases.sh && scripts/test-ci-e2e-vm.sh && just e2e-vm-cases full 'snap-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F180",
