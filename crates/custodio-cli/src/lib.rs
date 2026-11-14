@@ -22,12 +22,14 @@ pub mod delete;
 pub mod failure;
 pub mod list;
 pub mod register_discover;
+pub mod register_native;
 pub mod storage;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
        custodio list\n\
        custodio delete <key id>\n\
+       custodio register [--module <path>] [--remove]\n\
 The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
 arguments or the environment.";
 
@@ -37,6 +39,7 @@ pub enum Command {
     Import(ImportArgs),
     List,
     Delete(String),
+    Register(register_native::RegisterArgs),
 }
 
 /// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
@@ -52,6 +55,12 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
         } else {
             Err(ArgError::Usage)
         };
+    }
+    if it.peek().map(String::as_str) == Some("register") {
+        it.next();
+        return register_native::parse_register_args(it)
+            .map(Command::Register)
+            .ok_or(ArgError::Usage);
     }
     if it.peek().map(String::as_str) == Some("delete") {
         it.next();
@@ -297,6 +306,7 @@ pub enum CliError {
     Import(ImportFailure),
     List(ListFailure),
     Delete(DeleteFailure),
+    Register(register_native::RegisterError),
 }
 
 impl fmt::Display for CliError {
@@ -307,6 +317,7 @@ impl fmt::Display for CliError {
             Self::Import(e) => write!(f, "custodio: {e}"),
             Self::List(e) => write!(f, "custodio: {e}"),
             Self::Delete(e) => write!(f, "custodio: {e}"),
+            Self::Register(e) => write!(f, "{e}"),
         }
     }
 }
@@ -318,9 +329,15 @@ impl std::error::Error for CliError {}
 pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
-        Err(CliError::Args(_)) => 2,
+        Err(CliError::Args(_) | CliError::Register(register_native::RegisterError::Refused(_))) => {
+            2
+        }
         Err(
-            CliError::SystemBus(_) | CliError::Import(_) | CliError::List(_) | CliError::Delete(_),
+            CliError::SystemBus(_)
+            | CliError::Import(_)
+            | CliError::List(_)
+            | CliError::Delete(_)
+            | CliError::Register(_),
         ) => 1,
     }
 }
