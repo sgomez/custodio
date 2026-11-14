@@ -106,7 +106,7 @@
         "F177"
       ],
       "verify": "just quick && grep -qF '(findings/F180.md)' docs/findings.md && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test state_storage --locked && cargo test -p custodiod --test storage_api --locked && cargo test -p custodio-cli --test storage_warning --locked && just mutants-diff F180",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F181",
