@@ -1,3 +1,174 @@
+## [0.8.0] - 2026-11-14
+
+### 🚀 Features
+
+- *(F173)* Serve the firefox snap socket from a checked directory
+- *(F174)* Add peer label parser with its fuzz target
+- *(F175)* Check each snap socket peer and serve ListKeys to it
+- *(F175)* Add the test-label gate and the handshake decision
+- *(F176)* Sign through the snap socket with polkit on the peer's pidfd
+- *(F177)* Bound connections, message size and time on the snap socket
+- *(F177)* Add the socket surface tests and the socket_message fuzz target
+- *(F177)* Document the socket transport and check it against a live peer
+- *(F178)* Choose the snap socket inside a snap and pin the module's calls
+- *(F178)* Pin the bus calls and the error table, cover fork and per-call connections
+- *(F179)* Add snap group judges, client, accounting and run wiring
+- *(F179)* Run the snap group in the VM, record findings
+- *(F179)* Pass the snap group in the VM, tick steps
+- *(F180)* Classify the state directory, expose it on the bus, warn in the CLI
+- *(F181)* Add strict browser file parsers, profile discovery and fuzz targets
+- *(F182)* Add the register subcommand and its fixture-home tests
+- *(F182)* Man page entry, real-service NSS case and the mutants list
+- *(F182)* Tick the contract and hand off
+- *(F183)* Keep the firefox snap copy of the module and add refresh-only mode
+- *(F183)* Set the vm snap group up with the command and add the acceptance test
+- *(F183)* Tick the contract and hand off
+- *(F184)* Add modutil dependency gate and per-user refresh units
+- *(F184)* Add the snap-base gate and its test
+- *(F184)* Record progress and tick the contract
+- *(F185)* Add readme, threat model and the doc tests
+- *(F186)* Add release notes and the registration steps of install.md
+- *(F186)* Add the acceptance 19 steps and their script tests
+
+### 🐛 Bug Fixes
+
+- *(harness)* Avoid sigpipe when release.sh looks up the merge commit
+- *(F173)* Start the firefox socket instead of restarting it and check it after upgrades
+- *(F173)* Stop a running service before starting its socket on upgrade
+- *(F173)* Keep a running service running on arch upgrade, use deb-systemd-invoke
+- *(F173)* Restart the static service with systemctl after a deb upgrade
+- *(F173)* Ask policy-rc.d before the final service restart on deb upgrade
+- *(F178)* Mutation-test the socket module and kill its survivors
+- *(F179)* Send the polkit unix-process uid as int32
+- *(F179)* Drop the fixed sleep before the audit-record wait
+- *(F180)* Recognise dm-crypt only by the LUKS and plain uuid types
+- *(F181)* Bind the fuzz entry point results so lint-fuzz passes
+- *(F183)* Mutate register_cli and make the vm script stricter
+- *(F185)* Follow the p11-kit rule in the readme effect check
+- *(F187)* Sync the catalog text and id count with F176 and F180
+- *(F187)* Expect the firefox socket calls in the deb lifecycle tests
+- *(F187)* Split the deb lifecycle mutants into a lib file
+- *(cli)* Make the agent notify pipe close-on-exec
+- *(harness)* Keep a builder's work when its background tasks were killed
+- *(e2e)* Reset the start rate counter before the test restarts
+- *(it)* Keep the swtpm guardian out of reach of sigkill
+- *(F187)* Stop two script tests from failing under load
+- *(F187)* Let the rpm own the two user wants directories
+- *(F187)* Let the vm guest take libnss3-tools from the package
+- *(F188)* Make the release write its version into cargo.toml and the lockfiles
+
+### 📚 Documentation
+
+- Open milestone M6
+- Scope M6 on browser access and the public release
+- Add spec drafted by the planner
+- Move the packaging decisions to their own file
+- Narrow M6 to the firefox snap and cut the feature list to 19
+- *(F170)* Add contract
+- *(F170)* Record socket peer identity findings
+- *(F171)* Add contract
+- *(F171)* Record firefox snap findings from the m5 vm image
+- *(F171)* Run the second-boot cache test on a fresh guest
+- *(F172)* Add contract
+- *(F172)* Research native browser profiles and modutil registration
+- *(F172)* Decide scratch-copy swap for pkcs11.txt and name SPEC conflicts
+- *(F172)* Fix modutil dedupe claim and the no-pkcs11.txt swap case
+- *(F172)* Fix the index line on modutil dedupe and the swap
+- *(F173)* Add contract
+- *(F173)* Revise contract after evaluator review
+- *(F173)* Record progress
+- *(F173)* Record progress and tick the last step
+- *(F173)* Amend contract to the container uid-map fallback and the upgrade socket check
+- *(F173)* Amend contract to the upgrade order that keeps a running service running
+- *(F173)* Amend contract to systemctl for the final service start on deb upgrade
+- *(F173)* Record progress
+- *(F173)* Amend contract to ask policy-rc.d before the final deb restart
+- *(F173)* Record progress
+- *(F173)* Record progress
+- *(F173)* Record progress
+- *(F174)* Add contract
+- *(F175)* Add contract
+- *(F175)* Add contract
+- *(F175)* Record the handoff
+- *(F175)* Ask how SO_PEERSEC may be read without new unsafe
+- *(F175)* Allow one audited so_peersec read in custodio-peer
+- Answer the blocked question
+- *(F176)* Add contract
+- *(F176)* Revise contract for the peer pid read
+- *(F177)* Add contract
+- *(F178)* Add contract
+- *(F178)* Revise contract after evaluator review
+- *(F178)* Record attempt 3
+- *(F179)* Add contract
+- *(F179)* Amend contract after review
+- *(F180)* Add contract
+- *(F180)* Revise contract
+- *(F180)* Revise contract
+- *(F181)* Add contract
+- *(F181)* Revise contract
+- *(F182)* Add contract
+- *(F182)* Revise contract
+- *(F182)* Pin the installed path evidence
+- *(F183)* Add contract
+- *(F183)* Revise contract after evaluator review
+- *(F184)* Add contract
+- *(F184)* Revise contract
+- *(F184)* Revise contract for verify stub copies
+- *(F185)* Add contract
+- *(F185)* Revise contract
+- *(F186)* Add contract
+- *(F186)* Fix section number in step
+- *(F186)* Amend contract to the evaluator's notes
+- *(F187)* Add contract
+- *(F187)* Fix vm case count in contract
+- *(F187)* Record the lifecycle script fixes and what is left
+- *(F187)* Record the host-side gates
+- *(F187)* Record the container, package and coverage gates
+- *(F187)* Tick the checkpoint steps and record the VM runs
+- *(F187)* Record the final check
+- *(F188)* Record the firefox snap run and fix the release documents
+- *(F188)* Record the session in progress.md
+- Close milestone M6
+
+### 🚜 Refactor
+
+- *(F173)* Move the container uid-map drop-in into the tpm setup
+- *(F175)* Retry the wait for a hang-up on interrupt
+- *(F175)* Read peer credentials and pidfd with safe wrappers
+
+### 🧪 Testing
+
+- *(F173)* Kill surviving mutants of the socket check
+- *(F173)* Pin the descriptor count limit
+- *(F173)* Run the container e2e where the identity uid map cannot be written
+- *(F175)* Pin the reason texts and the open connection
+- *(F175)* Pin the peer debug output and record the handoff
+- *(F176)* Pin the peer label accessor and record the handoff
+- *(F177)* Count polkit questions and audit entries on the socket surface, flood and fuzz
+- *(F177)* Pin the idle bound's start and tick the contract
+- *(F177)* Add a bus client to the flood and send the largest legal sign over the socket
+- *(F178)* Add bus pin, fork, per-call leak, directory rule and shared error table cases
+- *(F178)* Count service connections, sign through the socket, pin against the live service
+- *(F180)* Kill mutants in the classifier, record the attempt
+- *(F182)* Pin the missing modutil, the clean report and the profile of nested builds
+- *(F182)* Cover a foreign module with parameters and NSS lines on removal
+- *(F183)* Pin the reasons of a copy that cannot be replaced
+- *(e2e)* Check the upgraded service after the case instead of sleeping 5 s
+- *(e2e)* Seed the m3 upgrade case with the four imports at once
+- *(F187)* Expect the firefox socket calls in the package lifecycle scripts
+
+### ⚙️ Miscellaneous Tasks
+
+- Add feature list drafted by the initializer
+- Forbid background subagents in builder sessions
+
+### 💼 Other
+
+- *(F175)* Mutate the shared listing
+- *(F176)* Mutate the socket sign path and the transport fields
+- Run tests with nextest and shellcheck in parallel
+- Optimize sha2 in the dev profile
+- *(F188)* Set the workspace version to 0.8.0
 ## [0.7.0] - 2026-11-11
 
 ### 🚀 Features
