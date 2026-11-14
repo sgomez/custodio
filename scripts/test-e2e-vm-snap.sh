@@ -180,7 +180,7 @@ out=$(python3 -I "$E/vm/snap.py" snap-bus-denied "$tmp/c-bus-succeeded"); [ -n "
 
 # ---- the profile the guest's place phase makes, then the real command registers it (F179's harness, F183's command)
 bin=$ROOT/target/debug/custodio-cli
-[ -x "$bin" ] || cargo build --quiet --locked -p custodio-cli || bad "the command could not be built"
+cargo build --quiet --locked -p custodio-cli || bad "the command could not be built"
 stub=$(find /usr/lib /usr/lib64 -name libsoftokn3.so -print -quit 2> /dev/null) || true # a loadable shared object: modutil refuses anything else
 [ -n "$stub" ] || bad "no shared object for the stub module"
 mkdir -p "$tmp/mod"
@@ -206,9 +206,8 @@ out=$(reg "$tmp/home2") || bad "custodio register failed on an empty home"
 printf '%s\n' "$out" > "$tmp/c-real/register.out"
 [ -n "$(snap_problems snap-record "$tmp/c-real")" ] || bad "the judge accepts the report of a home without the profile"
 # the harness shell scripts are clean
-if command -v shellcheck > /dev/null; then
-    shellcheck -x "$E/vm/snap-user.sh" "$E/vm/snap-lib.sh" "$E/vm/snap.sh" || bad "shellcheck found problems in the snap harness"
-fi
+command -v shellcheck > /dev/null || bad "shellcheck is not installed (mise.toml pins it)"
+shellcheck -x "$E/vm/snap-user.sh" "$E/vm/snap-lib.sh" "$E/vm/snap.sh" || bad "shellcheck found problems in the snap harness"
 
 # ---- the test profile is always unloaded
 printf '#!/bin/sh\necho "$@" >> "$PARSER_LOG"\n' > "$tmp/parser"

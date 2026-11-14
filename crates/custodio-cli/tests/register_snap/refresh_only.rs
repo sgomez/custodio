@@ -181,3 +181,11 @@ fn the_refresh_only_command_line() {
         assert_eq!(a(bad), None, "{bad:?}");
     }
 }
+
+#[test]
+fn the_binary_writes_to_the_systemd_journal_socket() {
+    assert_eq!(
+        custodio_cli::register_cli::default_journal_socket(),
+        "/run/systemd/journal/socket"
+    );
+}
