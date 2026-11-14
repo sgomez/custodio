@@ -60,8 +60,11 @@ snap=$HOME/snap/firefox/common/.mozilla/firefox/efgh5678.default
 copy=$HOME/snap/firefox/common/libcustodio_pkcs11.so
 case $1 in
     "custodio register")
-        grep -qxF -- "-dbdir sql:$native -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so -force" "$STUB_LOG" || { echo "no -add of the installed module in the native profile" >&2; exit 1; }
-        grep -qxF -- "library=/usr/lib/custodio/libcustodio_pkcs11.so" "$native/pkcs11.txt" 2> /dev/null || [ -e /etc/crypto-policies/back-ends/nss.config ] || { echo "the native profile has no entry" >&2; exit 1; }
+        # A host whose NSS loads p11-kit skips native profiles (the code's rule); the effect is then checked on the snap profile only.
+        if [ "${NATIVE_SKIPPED:-0}" = 0 ]; then
+            grep -qxF -- "-dbdir sql:$native -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so -force" "$STUB_LOG" || { echo "no -add of the installed module in the native profile" >&2; exit 1; }
+            grep -qxF -- "library=/usr/lib/custodio/libcustodio_pkcs11.so" "$native/pkcs11.txt" 2> /dev/null || { echo "the native profile has no entry" >&2; exit 1; }
+        fi
         [ -f "$copy" ] || { echo "no snap copy" >&2; exit 1; }
         grep -qxF -- "-dbdir sql:$snap -add Custodio -libfile $copy -force" "$STUB_LOG" || { echo "no -add of the copy in the snap profile" >&2; exit 1; }
         grep -qxF -- "library=$copy" "$snap/pkcs11.txt" || { echo "the snap profile has no entry" >&2; exit 1; }
@@ -118,9 +121,13 @@ CONF
     uid=$(id -u)
     [ "$uid" != 0 ] || uid=1000
     # A host whose NSS loads p11-kit (Fedora-like) skips native profiles: their lines are then not compared.
-    [ ! -e /etc/crypto-policies/back-ends/nss.config ] || ignore='^Firefox /'
+    local skipped=0
+    if grep -qx '[[:space:]]*library=p11-kit-proxy.so[[:space:]]*' /etc/crypto-policies/back-ends/nss.config 2> /dev/null; then
+        skipped=1
+        ignore='^Firefox /'
+    fi
     # The overlay's directories go on a tmpfs of the namespace, so the result does not depend on TMPDIR or the root filesystem.
-    HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d \
+    HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d NATIVE_SKIPPED=$skipped \
         DBUS_SYSTEM_BUS_ADDRESS=$(head -n 1 "$d/address") \
         DOCS_PASSWORD=test-password DOCS_ANSWER=yes DOCS_HOME_SHOWN=/home/ana DOCS_IGNORE_RE=$ignore DOCS_CHECK=$d/check.sh \
         timeout 300 unshare -rm sh -c '
@@ -177,7 +184,6 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     }
     control "link to the threat model removed" static sed 's#(docs/threat-model\.md[^)]*)#(docs/install.md)#g'
     control "link to SECURITY.md removed" static sed 's#(SECURITY\.md[^)]*)#(docs/install.md)#g'
-    control "link to a missing file" static sed '0,/(docs\/install\.md)/s##(docs/nonexistent.md)#'
     control "command altered" run sed '0,/^\$ custodio list$/s//$ custodio lst/'
     control "output altered" run sed '0,/^  kind: encrypted-host$/s//  kind: tpm/'
     control "remove command replaced by refresh-only" run sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'

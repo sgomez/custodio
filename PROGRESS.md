@@ -211,3 +211,6 @@ with an empty context.
 - Controls: README link to the threat model and to `SECURITY.md` removed, a missing link target, command altered, output altered, `--remove` replaced by `--refresh-only` (the effect check `removed` never ran). Shared-helper rules (missing file, missing anchor, no info string, unknown info string, failing command, differing output, missing required link, `SECURITY.md` without the threat-model link) are proven once in the threat-model script.
 - For a person (SPEC acceptance 20): the prose of the README, the threat model and `SECURITY.md`. Unverified claims in them: that TLS client authentication shows a dialog per signature (SPEC), and the `encrypted-tpm` platform notes (SPEC M5).
 - Next session should: nothing for F185.
+
+### 2026-11-14 — F185 — attempt 2
+- Done: fixed NEXT_FINDINGS. The README test's effect check on the native profile now follows the code's rule (`nss.config` has the line `library=p11-kit-proxy.so`, passed as `NATIVE_SKIPPED`), the same condition that drops `^Firefox /` lines from the comparison; the snap-profile check is unconditional. Dropped the README "missing file" control (proven in the threat-model script). `just quick` and both scripts green.
