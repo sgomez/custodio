@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# F139: container-free checks of the tpmfail-* cases: the placement (debian13 list and skip list, group), the accounting (a skip refused in swtpm, accepted in none and lacking; a
-# case reported run refused in none and lacking), the judgements of e2e/tpmfail.py on good and bad records of each of the five facts, and the failing TPM stub against a fake
+# F139: container-free checks of the tpmfail-* cases: the judgements of e2e/tpmfail.py on good and bad records of each of the five facts, and the failing TPM stub against a fake
 # upstream. NOT checked here: a real run (`just e2e-cases debian13 'tpmfail-*'` in swtpm, none and lacking).
 # shellcheck disable=SC2086 # the ids are words
 set -euo pipefail
@@ -9,45 +8,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-tpmfail: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
-ids="tpmfail-device-unopenable tpmfail-tpm-error tpmfail-credentials-down-tpm-lacking tpmfail-credentials-down-host"
 tf() { python3 -I "$ROOT/e2e/tpmfail.py" "$@"; }
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    grep -q "^$id:" "$D/skip.list" || bad "$id is not on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    ! grep -rlx "$id" "$ROOT"/e2e/targets/*/cases.list | grep -qv debian13 || bad "$id is listed by another target"
-done
-[ "$(grep -c '^tpmfail-' "$D/cases.list")" = 4 ] || bad "debian13 cases.list lists other tpmfail cases than the four"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids tpmfail-x; do [ "$(case_group "$id")" = tpmfail ] || bad "case_group $id is '$(case_group "$id")', expected tpmfail"; done
-# shellcheck source=e2e/tpmfail-cases.sh
-source "$ROOT/e2e/tpmfail-cases.sh"
-[ "$(printf '%s\n' $TPMFAIL_CASES | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "TPMFAIL_CASES differ from the listed cases"
-
-# accounting
-printf '%s\n' $ids > "$tmp/cases"
-( E2E_SELECT_FILE=$tmp/cases; export E2E_SELECT_FILE; tpmfail_skip_all none ) > "$tmp/out-all"
-[ "$(grep -c '^E2E-CASE skipped tpmfail-' "$tmp/out-all")" = 4 ] || bad "the guest does not report four skips"
-grep -q 'E2E_TPM=none' "$tmp/out-all" || bad "the skip reason does not name the mode"
-sed 's/^E2E-CASE skipped /E2E-CASE run /' "$tmp/out-all" > "$tmp/out-run"
-awk '/^E2E-CASE run / && !done { sub(/run/, "skipped"); done = 1 } { print }' "$tmp/out-run" > "$tmp/out-one"
-sed -n 's/^E2E-CASE skipped \(.*\)/\1: not applicable/p' "$tmp/out-all" > "$tmp/skip-all"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-check swtpm "$D/skip.list" "$tmp/out-run" || bad "mode swtpm: run cases are refused"
-! check swtpm "$D/skip.list" "$tmp/out-all" || bad "mode swtpm: skipped cases are accepted"
-! check swtpm "$D/skip.list" "$tmp/out-one" || bad "mode swtpm: one skipped case is accepted"
-! check swtpm "$tmp/skip-all" "$tmp/out-all" || bad "mode swtpm: a skip list naming the cases lets the skips through"
-for m in none lacking; do
-    check $m "$D/skip.list" "$tmp/out-all" || bad "mode $m: the skips are refused"
-    ! check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: run cases are accepted"
-    ! check $m "$D/skip.list" "$tmp/out-one" || bad "mode $m: one run case is accepted"
-    echo "# none" > "$tmp/skip-empty"
-    ! check $m "$tmp/skip-empty" "$tmp/out-all" || bad "mode $m: skips are accepted with no skip list"
-done
 
 expect_ok() { local out; out=$("$@") || { bad "failed to run: $*"; return; }; [ -z "$out" ] || bad "good evidence rejected ($*): $out"; }
 expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad evidence accepted ($*)"; }

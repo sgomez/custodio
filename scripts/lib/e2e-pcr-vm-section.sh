@@ -191,19 +191,4 @@ grep -q 'power cycle of the guest failed' "$tmp/d-failcycle/out.txt" || bad "dri
 [ "$(dcount nocycle '^vm cycle')" = 0 ] || bad "driver control nocycle: the copy still cycles the guest"
 ! dorder nocycle || bad "driver control nocycle: the order check passed"
 dorder onehalf && bad "driver control onehalf: the order check passed without a second half"
-# accounting: a pcr case skipped in a VM run is refused in both modes, even when a skip list names it
-printf '%s\n' pcr-extended-signs pcr-restarted-signs pcr-signs-every-key > "$tmp/vmcases"
-printf '%s: stub\n' pcr-extended-signs pcr-restarted-signs pcr-signs-every-key > "$tmp/vmskip"
-: > "$tmp/vmnoskip"
-for tm in swtpm lacking; do
-    for id in $ids; do
-        { for i in $ids; do if [ "$i" = "$id" ]; then echo "E2E-CASE skipped $i"; else echo "E2E-CASE run $i"; fi; done; } > "$tmp/vmout"
-        CHECK_VM=1 CHECK_TPM_MODE=$tm bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmskip" "$tmp/vmout" > /dev/null 2>&1 && bad "VM $tm: $id skipped is accepted with a skip list entry"
-    done
-    # control: the same skipped line, in a container without a TPM (mode none), is accepted, so the refusals above are the VM rule's
-    { echo "E2E-CASE skipped pcr-extended-signs"; echo "E2E-CASE skipped pcr-restarted-signs"; echo "E2E-CASE skipped pcr-signs-every-key"; } > "$tmp/vmout"
-    [ "$tm" != swtpm ] || CHECK_TPM_MODE=none bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmskip" "$tmp/vmout" > /dev/null 2>&1 || bad "control: the skipped lines are not in the format of check-cases.sh"
-    for i in $ids; do echo "E2E-CASE run $i"; done > "$tmp/vmout"
-    CHECK_VM=1 CHECK_TPM_MODE=$tm bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$tmp/vmnoskip" "$tmp/vmout" > /dev/null 2>&1 || bad "VM $tm: all pcr cases run is refused"
-done
 exit "$fail"

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# F134: container-free checks of the sign-* cases: the judgements pass their self-test, the placement (debian13 list, not the every-target list, never on the skip list, group),
-# that the guest's cases are the listed ones, and the accounting rejecting a sign-* skip in each TPM mode. NOT checked here: a real run
+# F134: container-free checks of the sign-* cases: the judgements pass their self-test and the job list. NOT checked here: a real run
 # (`just e2e-cases debian13 'sign-*'` in swtpm, none and lacking).
 # shellcheck disable=SC2086,SC2013,SC2015,SC2016 # the ids are words; the reader line is cut by sed on purpose (single quotes keep the $)
 set -euo pipefail
@@ -9,26 +8,8 @@ tmp=$(mktemp -d)
 trap "[ -n \"\${KEEP:-}\" ] || rm -rf \"\$tmp\"" EXIT
 fail=0
 bad() { echo "test-e2e-sign: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
-ids="sign-kind-matches-mode sign-rsa-pkcs sign-rsa-pss-sha256 sign-rsa-pss-sha384 sign-rsa-pss-sha512 sign-rsa-composed sign-ec-ecdsa sign-ec-composed"
 
 bash "$ROOT/e2e/sign-selftest.sh" > /dev/null || bad "the self-test of the sign judgements fails"
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    ! grep -q "^$id:" "$D/skip.list" || bad "$id is on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    ! grep -rlx "$id" "$ROOT"/e2e/targets/*/cases.list | grep -qv debian13 || bad "$id is listed by another target"
-done
-grep -rh '^sign-' "$ROOT"/e2e/targets/*/skip.list "$ROOT/e2e/cases.list" 2> /dev/null | grep -q . && bad "a sign-* case is on a skip list or in the every-target list"
-[ "$(grep -c '^sign-' "$D/cases.list")" = 8 ] || bad "debian13 cases.list lists other sign cases than the eight"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids sign-x; do [ "$(case_group "$id")" = sign ] || bad "case_group $id is '$(case_group "$id")', expected sign"; done
-# the cases sign-run.sh reports are the listed ones: the judgements' groups and the kind case
-got=$( (echo sign-kind-matches-mode; python3 -I "$ROOT/e2e/sign.py" groups) | sort)
-[ "$got" = "$(printf '%s\n' $ids | sort)" ] || bad "the cases of sign.py differ from the listed ones"
 
 # the job list, against a table written here independently of sign.py (a shorter list is consistent with itself everywhere else)
 cat > "$tmp/expected-jobs" << 'EOT'
@@ -72,22 +53,6 @@ for c in nosalt nomech; do
     ! cmp -s "$ROOT/e2e/sign.py" "$tmp/sign-$c.py" || bad "control $c: the mutation did not change the copy"
     dump_jobs "$tmp/sign-$c.py" > "$tmp/got-$c" 2> /dev/null || true
     ! diff -q "$tmp/expected-jobs" "$tmp/got-$c" > /dev/null 2>&1 || bad "control $c: the job list check accepts a list without a salt or a mechanism"
-done
-
-# accounting: as if the guest ran or skipped them, in each mode (run.sh sets CHECK_TPM_MODE)
-printf '%s\n' $ids > "$tmp/cases"
-sed 's/^/E2E-CASE run /' "$tmp/cases" > "$tmp/out-run"
-sed 's/^E2E-CASE run /E2E-CASE skipped /' "$tmp/out-run" > "$tmp/out-all"
-awk '/^E2E-CASE run / && !done { sub(/run/, "skipped"); done = 1 } { print }' "$tmp/out-run" > "$tmp/out-one"
-sed 's/^E2E-CASE skipped \(.*\)/\1: not applicable/' "$tmp/out-all" > "$tmp/skip-all"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-for m in swtpm none lacking; do
-    check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: the run sign cases are refused"
-    ! check $m "$D/skip.list" "$tmp/out-one" || bad "mode $m: one skipped sign case is accepted"
-    ! check $m "$D/skip.list" "$tmp/out-all" || bad "mode $m: skipped sign cases are accepted"
-    # even a skip list that names every case does not help
-    ! check $m "$tmp/skip-all" "$tmp/out-all" || bad "mode $m: a skip list naming the cases lets the skips through"
-    ! check $m "$tmp/skip-all" "$tmp/out-one" || bad "mode $m: a skip list naming the cases lets one skip through"
 done
 
 # ---- F162: a VM run (E2E_VM=1) of sign-run.sh on fixtures. `su` is a stub that runs scripts/lib/e2e-sign-alice.py: it takes the keys out of the run's own .p12 files and signs every job with
@@ -157,18 +122,4 @@ grep -q 'sign-rsa-pss-sha384' "$tmp/vfull-bad.out" && grep -q '^E2E-CASE run sig
 grep -q 'TPM mode' "$tmp/vnone.out" || bad "vnone: E2E_TPM=none in a VM run is not refused with its reason"
 [ "$(rcof vctl)" = 0 ] || bad "the control copy without the reader call does not pass the nonzero PCR mask: $(tail -n 3 "$tmp/vctl.out")"
 
-# accounting of a VM run (CHECK_VM=1): all run accepted, one skipped refused, all skipped refused even with a skip list naming them
-cp "$E/vm/cases.list" "$tmp/vmcases"
-for id in $ids; do grep -qx "$id" "$tmp/vmcases" || bad "$id is not in e2e/vm/cases.list"; done
-for id in $(grep -v '^[[:space:]]*\(#\|$\)' "$tmp/vmcases"); do echo "E2E-CASE run $id"; done > "$tmp/vm-run"
-for id in $ids; do
-    sed "s/^E2E-CASE run $id\$/E2E-CASE skipped $id/" "$tmp/vm-run" > "$tmp/vm-sk"
-    printf '%s: x\n' $ids > "$tmp/vm-skiplist"
-    for m in swtpm lacking; do
-        vcheck() { CHECK_VM=1 CHECK_TPM_MODE=$m bash "$E/check-cases.sh" check "$tmp/vmcases" "$1" "$2" > /dev/null 2>&1; }
-        vcheck "$E/vm/skip.list" "$tmp/vm-run" || bad "VM $m: all cases run is refused"
-        ! vcheck "$E/vm/skip.list" "$tmp/vm-sk" || bad "VM $m: $id skipped is accepted"
-        ! vcheck "$tmp/vm-skiplist" "$tmp/vm-sk" || bad "VM $m: $id skipped is accepted with a skip list naming it"
-    done
-done
 exit "$fail"

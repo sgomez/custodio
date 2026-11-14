@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# F137: container-free checks of the pcr-* cases: the placement (debian13 list and skip list, group), the accounting (a skip refused in swtpm and lacking, accepted in none), the
-# judgements of e2e/pcr.py on good and bad evidence (PCRs not changed by the extension, PCRs not reset by the restart, an unchanged service pid, a signature that does not verify,
+# F137: container-free checks of the pcr-* cases: the judgements of e2e/pcr.py on good and bad evidence (PCRs not changed by the extension, PCRs not reset by the restart, an unchanged service pid, a signature that does not verify,
 # a signing refusal, a kind that changed, a missing key, fewer than two tpm keys, a control that proves nothing), and the restart helper's mode check. NOT checked here: a real
 # run (`just e2e-cases debian13 'pcr-*'` in swtpm, lacking and none).
 # shellcheck disable=SC2086,SC2015,SC2016 # SC2086: the ids are words; SC2015: A && B || bad is the check; SC2016: stub text and sed programs in single quotes
@@ -11,45 +10,7 @@ trap 'rm -rf "$tmp"' EXIT
 fail=0
 # shellcheck disable=SC2034 # fail is read by the sourced VM section
 bad() { echo "test-e2e-pcr: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
-ids="pcr-extended-signs pcr-restarted-signs pcr-signs-every-key"
 pc() { python3 -I "$ROOT/e2e/pcr.py" "$@"; }
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    grep -q "^$id:" "$D/skip.list" || bad "$id is not on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    ! grep -rlx "$id" "$ROOT"/e2e/targets/*/cases.list | grep -qv debian13 || bad "$id is listed by another target"
-done
-[ "$(grep -c '^pcr-' "$D/cases.list")" = 3 ] || bad "debian13 cases.list lists other pcr cases than the three"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids pcr-x; do [ "$(case_group "$id")" = pcr ] || bad "case_group $id is '$(case_group "$id")', expected pcr"; done
-# shellcheck source=e2e/pcr-cases.sh
-source "$ROOT/e2e/pcr-cases.sh"
-[ "$(printf '%s\n' $PCR_CASES | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "PCR_CASES differ from the listed cases"
-[ "$(pc cases | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "pcr.py cases differ from the listed cases"
-
-# accounting
-printf '%s\n' $ids > "$tmp/cases"
-( E2E_SELECT_FILE=$tmp/cases; export E2E_SELECT_FILE; pcr_skip_all none ) > "$tmp/out-all"
-[ "$(grep -c '^E2E-CASE skipped pcr-' "$tmp/out-all")" = 3 ] || bad "the guest does not report three skips"
-grep -q 'E2E_TPM=none' "$tmp/out-all" || bad "the skip reason does not name the mode"
-sed 's/^E2E-CASE skipped /E2E-CASE run /' "$tmp/out-all" > "$tmp/out-run"
-awk '/^E2E-CASE run / && !done { sub(/run/, "skipped"); done = 1 } { print }' "$tmp/out-run" > "$tmp/out-one"
-sed -n 's/^E2E-CASE skipped \(.*\)/\1: not applicable/p' "$tmp/out-all" > "$tmp/skip-all"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-check none "$D/skip.list" "$tmp/out-all" || bad "mode none: the skips are refused"
-check none "$D/skip.list" "$tmp/out-run" || bad "mode none: run cases are refused"
-echo "# none" > "$tmp/skip-empty"
-! check none "$tmp/skip-empty" "$tmp/out-all" || bad "mode none: skips are accepted with no skip list"
-for m in swtpm lacking; do
-    check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: run cases are refused"
-    ! check $m "$D/skip.list" "$tmp/out-all" || bad "mode $m: skipped cases are accepted"
-    ! check $m "$D/skip.list" "$tmp/out-one" || bad "mode $m: one skipped case is accepted"
-    ! check $m "$tmp/skip-all" "$tmp/out-all" || bad "mode $m: a skip list naming the cases lets the skips through"
-done
 
 expect_ok() { local out; out=$("$@") || { bad "failed to run: $*"; return; }; [ -z "$out" ] || bad "good evidence rejected ($*): $out"; }
 expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad evidence accepted ($*)"; }

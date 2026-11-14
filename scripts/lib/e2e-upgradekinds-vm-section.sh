@@ -64,13 +64,6 @@ runvm lacking encrypted-tpm "$ev" "$tmp/vst-pcr" "$tmp/vctl/upgrade-kinds.sh" ||
 runvm swtpm tpm "$tmp/vev-swtpm" "$tmp/vst-pcr" "$ROOT/e2e/upgrade-kinds.sh" || bad "VM full: the reader was called"
 # a VM run with the mode none is refused; the container run still skips upgrade-kinds-tpmbound (above)
 ! runvm none encrypted-host "$tmp/ev-none" "$tmp/vst-none" "$ROOT/e2e/upgrade-kinds.sh" || bad "VM: mode none is accepted"
-# accounting in a VM run: all four run is accepted, any skipped is refused even if a skip list names it
-printf '%s: stub\n' $ids > "$tmp/vmskip"
-for m in swtpm lacking; do
-    CHECK_VM=1 CHECK_TPM_MODE=$m bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$D/skip.list" "$tmp/out-run" > /dev/null 2>&1 || bad "VM $m: four cases run are refused"
-    ! CHECK_VM=1 CHECK_TPM_MODE=$m bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$tmp/vmskip" "$tmp/out-ok" > /dev/null 2>&1 || bad "VM $m: upgrade-kinds-tpmbound skipped is accepted"
-done
-
 # the owner of the state files in a VM is pinned to 65534 (docs/findings/F163.md): the judge accepts that owner and refuses another one
 cat > "$tmp/own.good" <<'S'
 d 65534 65534 700 - .

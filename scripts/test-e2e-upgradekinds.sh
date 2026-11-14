@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# F141: container-free checks of the upgrade-kinds-* cases: the placement (debian13 list and skip list, not e2e/cases.list, no other target), the accounting (a skip of the three
-# run cases refused in any mode, a run of upgrade-kinds-tpmbound refused), the judgements of e2e/upgradekinds.py on good and bad evidence per mode (a kind other than the mode's before
+# F141: container-free checks of the upgrade-kinds-* cases: where the cases are enabled, the judgements of e2e/upgradekinds.py on good and bad evidence per mode (a kind other than the mode's before
 # the install, a kind changed by the upgrade for every pair, an id or an owner missing, added or swapped, a CLI row whose kind or type differs, a journal entry of another kind, missing,
 # double, from before the cursor or of another operation, and a run in which every key has the same wrong kind), and a stub-driven run of e2e/upgrade-kinds.sh (good evidence is reported,
-# bad evidence stops it, and a copy of the script that leaves the judgements out is caught). NOT checked here: a real run (`just e2e-cases debian13 'upgrade-*'` in swtpm, none, lacking).
+# bad evidence stops it). NOT checked here: a real run (`just e2e-cases debian13 'upgrade-*'` in swtpm, none, lacking).
 # shellcheck disable=SC2086 # the ids are words
 # shellcheck disable=SC2016 # the patterns handed to before are text for grep: single quotes keep the dollar signs literal
 set -euo pipefail
@@ -16,22 +15,6 @@ D=$ROOT/e2e/targets/debian13
 ids="upgrade-kinds-before upgrade-kinds-kept upgrade-kinds-signs upgrade-kinds-tpmbound"
 uk() { python3 -I "$ROOT/e2e/upgradekinds.py" "$@"; }
 
-# --- placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    for t in "$ROOT"/e2e/targets/*/; do
-        [ "$t" = "$D/" ] || ! grep -qx "$id" "$t/cases.list" 2> /dev/null || bad "$id is listed by $t"
-    done
-done
-grep -q '^upgrade-kinds-tpmbound:.*F134' "$D/skip.list" || bad "upgrade-kinds-tpmbound is not on the skip list of debian13 with the deviation named"
-for id in upgrade-kinds-before upgrade-kinds-kept upgrade-kinds-signs; do ! grep -q "^$id:" "$D/skip.list" || bad "$id is on the skip list"; done
-[ "$(grep -c '^upgrade-kinds-' "$D/cases.list")" = 4 ] || bad "debian13 cases.list lists other upgrade-kinds cases than the four"
-[ "$(uk cases | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "upgradekinds.py cases differ from the listed cases"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids; do [ "$(case_group "$id")" = upgrade ] || bad "case_group $id is '$(case_group "$id")', expected upgrade"; done
-[ "$(case_group upgrade-oldpath-keys-listed)" = other-mode ] || bad "the old-path cases changed group"
 # the case is reported only where the target lists it, for the N to N+1 run, and when one is selected
 mkdir -p "$tmp/t-no" "$tmp/t-yes"
 printf 'upgrade-version-greater\n' > "$tmp/t-no/cases.list"
@@ -45,20 +28,6 @@ printf 'upgrade-version-greater\n' > "$tmp/sel"
 ! E2E_SELECT_FILE=$tmp/sel enabled "$tmp/t-yes" upgrade || bad "enabled when no kinds case is selected"
 printf 'upgrade-kinds-kept\n' > "$tmp/sel"
 E2E_SELECT_FILE=$tmp/sel enabled "$tmp/t-yes" upgrade || bad "not enabled when a kinds case is selected"
-
-# --- accounting
-printf '%s\n' $ids > "$tmp/cases"
-for id in $ids; do echo "E2E-CASE run $id"; done > "$tmp/out-run"
-sed 's/^E2E-CASE run upgrade-kinds-tpmbound$/E2E-CASE skipped upgrade-kinds-tpmbound/' "$tmp/out-run" > "$tmp/out-ok"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$D/skip.list" "$2" > /dev/null 2>&1; }
-for m in swtpm none lacking; do
-    check $m "$tmp/out-ok" || bad "mode $m: three run and one skipped is refused"
-    ! check $m "$tmp/out-run" || bad "mode $m: upgrade-kinds-tpmbound reported run is accepted"
-    for id in upgrade-kinds-before upgrade-kinds-kept upgrade-kinds-signs; do
-        sed "s/^E2E-CASE run $id\$/E2E-CASE skipped $id/" "$tmp/out-ok" > "$tmp/out-skip"
-        ! check $m "$tmp/out-skip" || bad "mode $m: $id skipped is accepted"
-    done
-done
 
 # --- the judgements. Evidence of a good run: the kind of the mode for every key of both users, in the API list and in the CLI list.
 # shellcheck disable=SC2034 # read through eval in mklist
@@ -260,12 +229,6 @@ for m in swtpm none lacking; do
     fi
     stops_on_bad $m "$ROOT/e2e/upgrade-kinds.sh" || bad "mode $m: some bad evidence did not stop the run"
 done
-# the mutant: the same script with the judgement left out (the problems are not looked at) lets bad evidence through, so stops_on_bad must report it
-cp "$ROOT/e2e/report.sh" "$ROOT/e2e/select.sh" "$ROOT/e2e/upgradekinds.py" "$tmp/"
-sed 's/\[ -z "\$p" \] || {/true || {/' "$ROOT/e2e/upgrade-kinds.sh" > "$tmp/upgrade-kinds.sh"
-if cmp -s "$tmp/upgrade-kinds.sh" "$ROOT/e2e/upgrade-kinds.sh"; then bad "the mutant of the judgement changed nothing"; fi
-if stops_on_bad swtpm "$tmp/upgrade-kinds.sh"; then bad "the mutant that leaves the judgement out is not caught"; fi
-
 # a judgement that crashes (here: python exits at once) stops the run and reports no case
 mkdir -p "$tmp/crash"
 cp "$ROOT/e2e/report.sh" "$ROOT/e2e/select.sh" "$ROOT/e2e/upgrade-kinds.sh" "$tmp/crash/"

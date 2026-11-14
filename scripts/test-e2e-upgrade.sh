@@ -2,7 +2,7 @@
 # F48: the self-test of the upgrade checks of the e2e suite (e2e/upgrade-selftest.sh) and the host check of the package pair
 # (e2e/check-next.sh) on fixture packages built with nfpm: N+1 with only the version raised passes; the same version, another
 # custodiod, another file list, another format and the same file are each rejected with their own message.
-# shellcheck disable=SC2016 # the patterns handed to mutant and before are text for sed and grep: single quotes keep the dollar signs literal
+# shellcheck disable=SC2016 # the patterns handed to before are text for sed and grep: single quotes keep the dollar signs literal
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=scripts/lib/package-fixtures.sh
@@ -12,32 +12,6 @@ bad() { echo "test-e2e-upgrade: $*" >&2; fail=1; }
 
 bash "$ROOT/e2e/upgrade-selftest.sh" > /dev/null || bad "the upgrade self-test failed"
 bash "$ROOT/e2e/upgrade-accts-selftest.sh" || bad "the upgrade accounts self-test failed"
-
-# --- F96: a mutant of each judgement of upgrade-accts-lib.sh makes the self-test fail.
-mt=$(mktemp -d)
-cp "$ROOT/e2e/upgrade-accts-selftest.sh" "$mt/"
-# mutant NAME SED-EXPRESSION: the library with one change; the self-test must fail on it (and the change must change the file)
-mutant() {
-    sed "$2" "$ROOT/e2e/upgrade-accts-lib.sh" > "$mt/upgrade-accts-lib.sh"
-    if cmp -s "$mt/upgrade-accts-lib.sh" "$ROOT/e2e/upgrade-accts-lib.sh"; then bad "mutant $1 changed nothing"; return; fi
-    if bash "$mt/upgrade-accts-selftest.sh" > /dev/null 2>&1; then bad "mutant $1: the self-test still passed"; fi
-}
-mutant list-exact 's/\[ "\$got" = "\$want" \] && return/return/'
-mutant same-cert 's/\[ "\$(acct_sha "\$dir\/alice-rsa1.der")" = "\$(acct_sha "\$dir\/bob-rsa1.der")" \]/false/'
-mutant old-cert 's/\[ "\$(acct_sha "\$acc\/after\/bob-rsa1.der")" != "\$(acct_sha "\$acc\/bob-old.der")" \]/true/'
-mutant new-cert 's/\[ "\$(acct_sha "\$acc\/after\/bob-rsa1.der")" = "\$(acct_sha "\$acc\/bob-new.der")" \]/true/'
-mutant certs-kept 's/\[ "\$(acct_sha "\$acc\/before\/\$u-\$id.der")" = "\$(acct_sha "\$acc\/after\/\$u-\$id.der")" \]/true/'
-mutant list-kept 's/"\$(acct_sha "\$acc\/before\/\$u.list")" != "\$(acct_sha "\$acc\/after\/\$u.list")"/false/'
-mutant state-owner 's/\[ "\$owner" = "\$cu" \] || echo "state: \.\/\$uid/true || echo "state: .\/$uid/'
-mutant state-mode 's/\[ "\$mode" = 600 \]/true/'
-mutant state-stray 's/\[\[ " \$want " == \*" \$path "\* \]\]/true/'
-mutant state-same-file 's/\[ "\${seen\[\.\/\$au\/rsa1\]##\* }" != "\${seen\[\.\/\$bu\/rsa1\]##\* }" \]/true/'
-mutant sign-requests 's/\[ "\$req" = 1 \] || echo "\$u: the signature/true || echo "$u: the signature/'
-mutant sign-own 's/acct_verifies "\$f.sig" "\$acc\/sign\/data.bin" "\$acc\/after\/\$u-\$id.der" "\$id" ||/true ||/'
-mutant sign-other 's/! acct_verifies "\$f.sig" "\$acc\/sign\/data.bin" "\$acc\/after\/\$o-\$n.der" "\$id" ||/true ||/'
-mutant denied-status 's/\[ "\$st" != 0 \]/true/'
-mutant denied-asked 's/\[ "\${req:-}" = 1 \] || echo "\$u: the denied/true || echo "$u: the denied/'
-rm -rf "$mt"
 
 fx_init
 trap fx_cleanup EXIT

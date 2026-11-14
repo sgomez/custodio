@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # F45: the skip list format and its enforcement (e2e/check-cases.sh), with no container engine. Where each behaviour is checked:
 #   here            the format of skip.list; the case accounting (run, skipped, missing, unknown, duplicated); whole-name matching;
-#                   unused entries; that the committed lists are well formed and the suite reports through one function
+#                   unused entries; the rule of each case family per TPM mode; that the committed lists are well formed and the suite reports through one function
 #   test-e2e-host.sh  that the host script runs the accounting on the guest's real output and fails the run on it (stub engine)
 #   just e2e        the real distribution (the required real run; nothing here replaces it)
 set -euo pipefail
@@ -87,6 +87,34 @@ grep -q "selected case 'delta'" "$tmp/stderr" || bad "an unknown selected id is 
 : > "$tmp/sel"
 if "$CHK" check "$tmp/cases" "$tmp/empty" "$tmp/out" "$tmp/sel" 2> /dev/null; then bad "an empty selection was accepted"; fi
 if "$CHK" check "$tmp/cases" "$tmp/empty" "$tmp/out" "$tmp/nosel" 2> /dev/null; then bad "a missing selection file was accepted"; fi
+
+# The rule of each case family per TPM mode: the modes where a run and where a skip are accepted (`-`: none). The skip list names
+# the case in every row, so a refused skip is refused whatever the list says.
+ALL="swtpm none lacking"
+policy() { # VM("" or 1) ID RUN-MODES SKIP-MODES
+    local vm=$1 id=$2 kind modes m want rc modes_all=$ALL
+    [ -z "$vm" ] || modes_all="swtpm lacking"
+    echo "$id" > "$tmp/p-cases"; echo "$id: reason" > "$tmp/p-skip"
+    for kind in run skipped; do
+        modes=$3; [ "$kind" = run ] || modes=$4
+        echo "E2E-CASE $kind $id" > "$tmp/p-out"
+        for m in $modes_all; do
+            want=1; case " $modes " in *" $m "*) want=0 ;; esac
+            rc=0; CHECK_VM=$vm CHECK_TPM_MODE=$m "$CHK" check "$tmp/p-cases" "$tmp/p-skip" "$tmp/p-out" > /dev/null 2>&1 || rc=$?
+            [ "$rc" = "$want" ] || bad "policy${vm:+ (VM)}: $id $kind in mode $m gave exit $rc, expected $want"
+        done
+    done
+}
+policy "" alpha "$ALL" "$ALL"
+policy "" tpm-kind-x "$ALL" "none lacking"
+for id in tpm-dup-x pcr-x tpm-clear-x tpm-slots-x; do policy "" $id "$ALL" none; done
+policy "" tpmfail-x swtpm "none lacking"
+policy "" fallback-host-x "$ALL" "swtpm lacking"
+for id in fallback-tpmbound-x upgrade-kinds-tpmbound; do policy "" $id - "$ALL"; done
+for id in upgrade-kinds-x sign-x noplain-x journal-kind-x; do policy "" $id "$ALL" -; done
+for id in fallback-tpmbound-x upgrade-kinds-tpmbound upgrade-kinds-x tpm-kind-x tpm-clear-x pcr-x sign-x noplain-x; do policy 1 $id "$ALL" -; done
+policy 1 snap-x "$ALL" lacking
+policy 1 vm-silent-x "$ALL" swtpm
 
 # the format of the list
 lint_ok() { printf '%b' "$2" > "$tmp/l"; "$CHK" lint "$tmp/l" 2> "$tmp/stderr" || bad "$1: rejected: $(cat "$tmp/stderr")"; }

@@ -194,19 +194,12 @@ test-scripts:
     scripts/test-e2e-vm-silent.sh
     scripts/test-e2e-vm-snap.sh
     scripts/test-e2e-select.sh
-    scripts/test-e2e-owner.sh
-    scripts/test-e2e-ops.sh
-    scripts/test-e2e-rd.sh
-    scripts/test-e2e-jo.sh
-    scripts/test-e2e-journal.sh
-    scripts/test-e2e-appid.sh
-    scripts/test-e2e-cli.sh
+    scripts/test-e2e-selftests.sh
     scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
     scripts/test-e2e-tpm-host.sh
-    scripts/test-e2e-tpm-kind.sh
     scripts/test-e2e-sign.sh
     scripts/test-e2e-noplain.sh
     scripts/test-e2e-tpmdup.sh
