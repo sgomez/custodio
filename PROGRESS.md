@@ -226,3 +226,7 @@ with an empty context.
 - Done: fixed NEXT_FINDINGS. The uncommitted lifecycle-script edits (rpm, arch, package-scripts, real rpm/arch, stubs, mutants) were checked one script at a time and all pass: `test-rpm-lifecycle` 92 s, `test-arch-lifecycle` 133 s, `test-package-scripts` 1 s, `test-rpm-lifecycle-real` 198 s (row 200), `test-arch-lifecycle-real` 60 s. Committed as `0ea84bc`. `just quick` green.
 - Not done: no checkpoint step is ticked. `just check`, `api-contract`, `fuzz-smoke`, `memory-safety`, `e2e`, `package-gates`, `coverage`, `crap` and both VM modes have not been run on this tree.
 - Next session should: start at step 1 (`just check`), one command per step.
+
+### 2026-11-14 — F187 — attempt 4
+- Done (commit `fix(F187): stop two script tests...`): `just check` red under parallel load from two test bugs, both fixed at the cause: `e2e/vm/snap-dbus-selftest.py` fake peer read the handshake with `recv(256)` and could swallow the first message sent after `BEGIN` (now byte by byte); `scripts/lib/docs-manual-m6-check.py` missed the `ACCEPT` line when `readline` had already buffered it after `select` (now `os.read`). Passed on the fixed tree: `just check` (CHECK_FORCE=1, scripts 255 s), `just api-contract`, `just fuzz-smoke` (14 targets = 2+1+11 of `cargo fuzz list`), `just memory-safety`.
+- Next session should: `timeout 1700 just e2e` (clear old `target/e2e/*.record` first), then package-gates, coverage, crap, VM full, VM lacking.
