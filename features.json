@@ -116,7 +116,7 @@
         "F172"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test browser_files --locked && cargo test -p custodio-cli --test register_discover --locked && just fuzz-build && just lint-fuzz && just fuzz-smoke",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F182",
