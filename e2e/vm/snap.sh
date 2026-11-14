@@ -91,7 +91,6 @@ while IFS= read -r line; do echo "E2E-SNAP-RECORD $line"; done < "$SN/record"
 # the bus call from the confinement, and the same call outside; the denial is AppArmor's (its audit record)
 c1=$(cursor)
 user_phase alice bus
-sleep 1 # the kernel's audit record reaches the journal a moment after the denial; a bounded wait on the record follows
 for _ in $(seq 20); do
     journalctl --sync
     { journalctl --after-cursor="$c1" -k --no-pager; journalctl --after-cursor="$c1" _TRANSPORT=audit --no-pager; } 2> /dev/null | grep 'apparmor="DENIED"' > "$SN/audit.log" || true

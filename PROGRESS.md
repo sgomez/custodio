@@ -153,3 +153,8 @@ with an empty context.
 - Done: the sign failure was a product bug: polkit reads the `unix-process` `uid` as an int32 and ignores a uint32 (`'pidfd' specified withtout 'uid'`), and the test fake polkit decoded u32, hiding it. `process_request` now sends `i32` (a uid above i32::MAX is not asked about, fail closed); unit test and the fake now decode int32 like polkit. `just e2e-vm-cases full 'snap-*'` passes: all 12 cases, rc 0 (phases: boot 13 s, install 7, setup 11, snap step 112 s incl. ~50 s waiting for the overlapped install). Pid is not namespaced (subject pid = client pid, as the judge checks). `aa-exec` as alice gives a stacked label, so root enters the test profile (the judge requires the another-snap reason). `just quick`, test-e2e-vm-snap/-cases, test-ci-e2e-vm green. `e2e/guest.sh` comments trimmed to stay under the 5000-token limit.
 - Budget estimate: full run 503 s + snap step; the install wait is hidden behind the other groups in a full run, so about 503 + ~65 = ~570 s against `vm full 580`; the checkpoint measures the real number.
 - Next session should: nothing for F179.
+
+### 2026-11-14 — F179 — attempt 3
+- Done: NEXT_FINDINGS fixed: removed the fixed `sleep 1` before the bounded audit-record wait in `e2e/vm/snap.sh`; the loop is the wait. `just quick` and `scripts/test-e2e-vm-snap.sh` green.
+- Not done / known issues: `j_bus` still accepts any denied `snap.firefox` record containing `dbus` (evaluator's non-blocking note; the real record format is not re-measured here). The `i32::try_from` fail-closed branch in `polkit.rs` has no test.
+- Next session should: nothing for F179.
