@@ -85,41 +85,70 @@ fn double(listener: UnixListener, answer: Answer) -> mpsc::Receiver<Pin2> {
                 .auth_mechanism(AuthMechanism::Anonymous)
                 .build()
                 .await?;
-            let mut messages = MessageStream::from(&conn);
-            let msg = futures_next(&mut messages).await.ok_or("no message")??;
-            let header = msg.header();
-            let seen = (
-                header.destination().map(ToString::to_string),
-                header.path().map(ToString::to_string).unwrap_or_default(),
-                header
-                    .interface()
-                    .map(ToString::to_string)
-                    .unwrap_or_default(),
-                header.member().map(ToString::to_string).unwrap_or_default(),
-                {
-                    // zbus shows the arguments of a call as one struct; on the wire they are the bare list.
-                    let sig = msg.body().signature().to_string();
-                    sig.strip_prefix('(')
-                        .and_then(|s| s.strip_suffix(')'))
-                        .map_or(sig.clone(), str::to_owned)
-                },
-            );
-            let _ = tx.send(seen);
-            match answer {
-                Answer::Keys(k) => drop(conn.reply(&header, &k).await?),
-                Answer::Bytes(b) => drop(conn.reply(&header, &b).await?),
-                Answer::Text(t) => drop(conn.reply(&header, &t).await?),
-                Answer::Error(name) => {
-                    let error = zbus::Message::error(&header, name).build(&"x")?;
-                    conn.send(&error).await?;
-                }
-            }
-            // Keep the connection until the module hangs up.
-            let _ = futures_next(&mut messages).await;
-            Ok::<_, Box<dyn Error>>(())
+            record_and_answer(conn, answer, tx).await?;
+            Ok::<(), Box<dyn Error>>(())
         });
     });
     rx
+}
+
+/// The same double on a private bus, owning the service's name; returns once the name is owned.
+fn bus_double(address: &str, answer: Answer) -> Result<mpsc::Receiver<Pin2>, Box<dyn Error>> {
+    let (tx, rx) = mpsc::channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let address = address.to_owned();
+    thread::spawn(move || {
+        let _ = block_on(async {
+            let conn = Builder::address(address.as_str())
+                .name(BUS_NAME)
+                .build()
+                .await?;
+            let _ = ready_tx.send(());
+            record_and_answer(conn, answer, tx).await?;
+            Ok::<(), Box<dyn Error>>(())
+        });
+    });
+    ready_rx.recv_timeout(std::time::Duration::from_secs(20))?;
+    Ok(rx)
+}
+
+async fn record_and_answer(
+    conn: zbus::Connection,
+    answer: Answer,
+    tx: mpsc::Sender<Pin2>,
+) -> Result<(), Box<dyn Error>> {
+    let mut messages = MessageStream::from(&conn);
+    let msg = futures_next(&mut messages).await.ok_or("no message")??;
+    let header = msg.header();
+    let seen = (
+        header.destination().map(ToString::to_string),
+        header.path().map(ToString::to_string).unwrap_or_default(),
+        header
+            .interface()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        header.member().map(ToString::to_string).unwrap_or_default(),
+        {
+            // zbus shows the arguments of a call as one struct; on the wire they are the bare list.
+            let sig = msg.body().signature().to_string();
+            sig.strip_prefix('(')
+                .and_then(|s| s.strip_suffix(')'))
+                .map_or(sig.clone(), str::to_owned)
+        },
+    );
+    let _ = tx.send(seen);
+    match answer {
+        Answer::Keys(k) => drop(conn.reply(&header, &k).await?),
+        Answer::Bytes(b) => drop(conn.reply(&header, &b).await?),
+        Answer::Text(t) => drop(conn.reply(&header, &t).await?),
+        Answer::Error(name) => {
+            let error = zbus::Message::error(&header, name).build(&"x")?;
+            conn.send(&error).await?;
+        }
+    }
+    // Keep the connection until the module hangs up.
+    let _ = futures_next(&mut messages).await;
+    Ok(())
 }
 
 type Pin2 = (Option<String>, String, String, String, String);
@@ -180,6 +209,46 @@ fn run(mode: &str, answer: Answer) -> Result<(Pin2, String), Box<dyn Error>> {
     Ok((seen, result))
 }
 
+struct Daemon(std::process::Child);
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// Like `run`, on a private bus: the module child has no `SNAP_INSTANCE_NAME`, so it uses the bus.
+fn run_on_bus(mode: &str, answer: Answer) -> Result<(Pin2, String), Box<dyn Error>> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    let mut daemon = Command::new("dbus-daemon")
+        .args(["--session", "--nofork", "--print-address=1"])
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut address = String::new();
+    BufReader::new(daemon.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
+    let _daemon = Daemon(daemon);
+    let address = address.trim().to_owned();
+    let rx = bus_double(&address, answer)?;
+    let out = Command::new(std::env::current_exe()?)
+        .args(["--exact", "module_child", "--nocapture", "--test-threads=1"])
+        .env(MODE_VAR, mode)
+        .env_remove("SNAP_INSTANCE_NAME")
+        .env("DBUS_SYSTEM_BUS_ADDRESS", &address)
+        .output()?;
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen = rx.recv()?;
+    let result = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|l| l.split_once("RESULT ").map(|(_, r)| r.to_owned()))
+        .ok_or("no result line")?;
+    Ok((seen, result))
+}
+
 fn good(member: &str) -> Answer {
     if member == "ListKeys" {
         Answer::Keys(vec![("ec".into(), "ec".into(), "host".into(), vec![1])])
@@ -211,6 +280,63 @@ fn the_modules_calls_are_pinned() -> TestResult {
     }
     // The constants the pin stands for are the client crate's.
     assert_eq!((PINNED[0].1, PINNED[0].2), (OBJECT_PATH, BUS_NAME));
+    Ok(())
+}
+
+/// On the bus the call is the same, with the service's name as destination.
+#[test]
+fn the_modules_calls_are_pinned_on_the_bus() -> TestResult {
+    for (pin, mode) in PINNED.iter().zip(["list", "sign"]) {
+        let (seen, result) = run_on_bus(mode, good(pin.3))?;
+        assert_eq!(
+            seen,
+            (
+                Some("com.rfirma.Custodio1".to_owned()),
+                pin.1.into(),
+                pin.2.into(),
+                pin.3.into(),
+                pin.4.into()
+            ),
+            "{mode}"
+        );
+        assert!(result.starts_with("Ok("), "{mode}: {result}");
+    }
+    assert_eq!(BUS_NAME, "com.rfirma.Custodio1");
+    Ok(())
+}
+
+#[test]
+fn a_changed_reply_signature_gives_no_slots_on_the_bus_too() -> TestResult {
+    assert_eq!(
+        run_on_bus("list", Answer::Text("x".into()))?.1,
+        "Err(Unavailable)"
+    );
+    assert_eq!(
+        run_on_bus("sign", Answer::Text("x".into()))?.1,
+        "Err(Unavailable)"
+    );
+    Ok(())
+}
+
+/// The table of the unit tests (`backend/tests.rs` uses the same one) through the socket, for `Sign` and `ListKeys`.
+#[test]
+fn errors_map_the_same_on_both_transports() -> TestResult {
+    for (name, want) in custodio_pkcs11::backend::error_table::error_table() {
+        let name: &'static str = Box::leak(name.to_owned().into_boxed_str());
+        let want = format!("Err({want:?})");
+        for mode in ["list", "sign"] {
+            assert_eq!(
+                run(mode, Answer::Error(name))?.1,
+                want,
+                "socket {mode} {name}"
+            );
+        }
+        assert_eq!(
+            run_on_bus("sign", Answer::Error(name))?.1,
+            want,
+            "bus {name}"
+        );
+    }
     Ok(())
 }
 

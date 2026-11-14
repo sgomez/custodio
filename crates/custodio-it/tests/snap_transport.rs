@@ -195,8 +195,126 @@ fn module_child() {
                 show("list", h.join().unwrap_or(Err(BackendError::Unavailable)));
             }
         }
+        "sequential" => {
+            // Nothing a call opened outlives it: descriptors and threads are as many after as before.
+            let (fds, threads) = (open_fds(), thread_count());
+            for _ in 0..5 {
+                show("list", list());
+            }
+            println!("RESULT leaked fds {}", open_fds() - fds);
+            println!("RESULT leaked threads {}", thread_count() - threads);
+        }
+        "fork" => {
+            // A parent with a lock held at `fork` (the module's own rule) and a child that calls the service.
+            let held = std::sync::Mutex::new(());
+            let guard = held.lock();
+            // SAFETY: the test process is single-threaded here (`--test-threads=1`, nothing spawned); the child only calls the
+            // backend, prints and exits with `_exit`.
+            let pid = unsafe { libc::fork() };
+            if pid == 0 {
+                show("forked list", list());
+                // SAFETY: leaves the child without running the parent's destructors.
+                unsafe { libc::_exit(0) };
+            }
+            let mut status = 0;
+            // SAFETY: `pid` is our child.
+            unsafe { libc::waitpid(pid, &raw mut status, 0) };
+            drop(guard);
+            println!("RESULT child status {status}");
+        }
+        "dirs" => {
+            // The module's directory rule and the service's, on the same directories (`directory_rule_matches_the_service`).
+            let root = std::path::PathBuf::from(std::env::var(BASE_VAR).unwrap_or_default());
+            for name in [
+                "d700", "d755", "d770", "d707", "d777", "link", "afile", "missing",
+            ] {
+                let dir = root.join(name);
+                let ours = custodio_pkcs11::backend::check_dir(&dir);
+                let theirs = custodiod::snap_socket::check_dir(&dir).is_ok();
+                println!("RESULT dir {name} {ours} {theirs}");
+            }
+        }
         _ => println!("RESULT unknown mode"),
     }
+}
+
+fn open_fds() -> usize {
+    std::fs::read_dir("/proc/self/fd").map_or(0, Iterator::count)
+}
+
+fn thread_count() -> usize {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find_map(|l| l.strip_prefix("Threads:"))
+                .and_then(|n| n.trim().parse().ok())
+        })
+        .unwrap_or(0)
+}
+
+#[test]
+fn each_call_opens_and_closes_its_own_connection() -> TestResult {
+    let rig = Rig::start("firefox", 0o700)?;
+    let lines = rig.lines("sequential", Some("firefox"), true)?;
+    assert_eq!(
+        lines
+            .lines()
+            .filter(|l| *l == "RESULT list ok [\"ec\"]")
+            .count(),
+        5,
+        "{lines}"
+    );
+    assert!(lines.contains("RESULT leaked fds 0"), "{lines}");
+    assert!(lines.contains("RESULT leaked threads 0"), "{lines}");
+    Ok(())
+}
+
+#[test]
+fn a_forked_child_can_call_through_the_socket() -> TestResult {
+    let rig = Rig::start("firefox", 0o700)?;
+    let lines = rig.lines("fork", Some("firefox"), true)?;
+    assert!(lines.contains("RESULT forked list ok [\"ec\"]"), "{lines}");
+    assert!(lines.contains("RESULT child status 0"), "{lines}");
+    Ok(())
+}
+
+#[test]
+fn directory_rule_matches_the_service() -> TestResult {
+    let rig = Rig::start("firefox", 0o700)?;
+    let base = rig.base.path();
+    for (name, mode) in [
+        ("d700", 0o700),
+        ("d755", 0o755),
+        ("d770", 0o770),
+        ("d707", 0o707),
+        ("d777", 0o777),
+    ] {
+        let d = base.join(name);
+        std::fs::create_dir(&d)?;
+        dir_mode(&d, mode)?;
+    }
+    std::os::unix::fs::symlink(base.join("d700"), base.join("link"))?;
+    File::create(base.join("afile"))?;
+    let lines = rig.lines("dirs", Some("firefox"), true)?;
+    // (name, both accept) in the namespace where the test user is root.
+    let want = [
+        ("d700", true),
+        ("d755", true),
+        ("d770", false),
+        ("d707", false),
+        ("d777", false),
+        ("link", false),
+        ("afile", false),
+        ("missing", false),
+    ];
+    for (name, ok) in want {
+        assert!(
+            lines.contains(&format!("RESULT dir {name} {ok} {ok}")),
+            "{name}: {lines}"
+        );
+    }
+    Ok(())
 }
 
 #[test]

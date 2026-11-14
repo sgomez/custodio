@@ -49,7 +49,12 @@ mod socket;
 mod test_dir;
 
 use socket::Transport;
-pub use socket::{SNAP_INSTANCE_VAR, SOCKET_PATH_TEMPLATE};
+pub use socket::{SNAP_INSTANCE_VAR, SOCKET_PATH_TEMPLATE, check_dir};
+
+/// The table of service failures and what each ends as, shared by the unit tests and the integration tests (one source,
+/// so the two cannot drift apart).
+#[cfg(any(test, feature = "test-socket-dir"))]
+pub mod error_table;
 
 /// Talks to `custodiod` on the system bus, or, inside a snap (`SNAP_INSTANCE_NAME` set), on the snap's socket. A connection is opened for every call and dropped
 /// after it, so no connection, thread or lock outlives a call and nothing survives `fork` in a
