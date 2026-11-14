@@ -28,8 +28,6 @@ fn registers_every_native_profile_once() {
     fs::remove_file(legacy.join("bare.default/pkcs11.txt")).unwrap();
     // a foreign entry that must stay
     write_foreign(&legacy.join("a.default"));
-    // the same profile reached from a second root through a link
-    symlink(&xdg, f.home().join(".config/linked")).unwrap();
     let profiles = [
         legacy.join("a.default"),
         legacy.join("bare.default"),
@@ -179,6 +177,14 @@ fn removal_keeps_every_other_entry_as_it_was() {
     let root = f.root(".mozilla/firefox", &["a.default"]);
     let p = root.join("a.default");
     write_foreign(&p);
+    // a foreign module with parameters and an NSS line that `modutil -delete` could normalise
+    let file = p.join("pkcs11.txt");
+    let mut body = fs::read_to_string(&file).unwrap();
+    body.push_str(
+        "library=/old/libparams.so\nname=withparams\nparameters=configdir='sql:/x' certPrefix=\n\
+         NSS=trustOrder=75 slotParams=(1={slotFlags=[RSA,RC4] askpw=any timeout=30})\n\n",
+    );
+    fs::write(&file, body).unwrap();
     let foreign_before: Vec<String> = fs::read_to_string(p.join("pkcs11.txt"))
         .unwrap()
         .lines()
@@ -194,7 +200,7 @@ fn removal_keeps_every_other_entry_as_it_was() {
         .collect();
     assert_eq!(
         after, foreign_before,
-        "internal module (parameters, NSS lines) and foreign entries unchanged"
+        "internal module, the foreign entry with parameters and NSS lines, and the one with a missing library, line for line"
     );
     assert!(!modutil_list(&p).contains("Custodio"));
 }

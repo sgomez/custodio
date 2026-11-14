@@ -182,3 +182,7 @@ with an empty context.
 - Decisions (conservative): a Custodio-named library at another path that still exists is left alone ("already registered, left as it is"), never doubled; removal deletes every entry whose library file is `libcustodio_pkcs11.so`, hand-registered included (man page says so); removal also runs on p11-kit systems; the `--module` check folds into the `refuses_root_and_sudo` control (the stub records `-libfile`).
 - Not done / known issues: the snap profile is left for F183. `the_default_module_path_is_the_installed_one` fails by design on a machine with Custodio installed (its message says so).
 - Next session should: nothing for F182.
+
+### 2026-11-14 — F182 — attempt 2
+- Done: fixed NEXT_FINDINGS 1: `removal_keeps_every_other_entry_as_it_was` now also has a foreign module with `parameters=` and `NSS=` lines, compared line for line after removal. Removed the unused `linked` symlink. `just quick` green, 20 tests pass, `just mutants-diff F182` clean (56 caught, 8 unviable; run before the test-only rename).
+- Next session should: nothing for F182.
