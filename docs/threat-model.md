@@ -87,7 +87,7 @@ Custodio does not defend against:
 - **Import.** The `.p12` and its password pass through your session and, once, through the service's memory. If the
   original `.p12` stays on disk, Custodio protects nothing: delete it after importing.
 - **Platforms.** `encrypted-tpm` was run end to end on a virtual TPM on Ubuntu 26.04, not on real firmware, and not on
-  Fedora or Arch. On Debian 13 and RHEL/Alma 10 (systemd 257) the daemon binds user credentials to a PCR when a TPM is present, the
+  Fedora or Arch. On Debian 13 (run) and RHEL/Alma 10 (inferred from Debian 13, not run), with systemd 257, the daemon binds user credentials to a PCR when a TPM is present, the
   service refuses them, and the `encrypted-tpm` kind is unavailable. Systems with a systemd older than 257 are not supported.
 - **Several dialogs per page.** TLS client authentication signs once per handshake, and every signature asks.
 
@@ -154,6 +154,6 @@ or `cryptsetup`.
 
 When it starts, the service checks, without an external tool, whether the block devices under its state directory include
 dm-crypt, and journals the result. `custodio import` and `custodio list` print a warning on standard error when the result is `not-encrypted` or
-`unknown`, and the warning blocks nothing. `unknown` on an encrypted disk the service cannot classify (RAID, a
+`unknown`, and the warning blocks nothing. `unknown` on an encrypted disk the service cannot classify (btrfs, a
 filesystem's own encryption, a network filesystem) is a reason to look, not proof of a problem. The rules are in the
 [README](../README.md#full-disk-encryption) and `docs/findings/F180.md`.

@@ -99,3 +99,4 @@ Rules:
 - [F173](findings/F173.md) — `deb-systemd-invoke restart` skips a static unit that is not running (source lines 114-141), so the deb upgrade restarts the service with `systemctl` after asking `policy-rc.d` itself.
 - [F178](findings/F178.md) — module socket client: zbus needs the `p2p` feature; the namespaced child sees a test dir as root-owned; a changed reply signature ends as `Unavailable`; the instance-name grammar is inferred from snapd, not run
 - [F180](findings/F180.md) — state directory classification: mountinfo + /sys/dev/block + dm uuid `CRYPT-`, no tool, readable under the unit; everything not proven dm-crypt is unknown.
+- [F188](findings/F188.md) — M6 acceptance 19 (Firefox snap rev 8763, ubuntu2604): TLS client auth passes with RSA 2048 and P-256; two dialogs per page load (page and favicon connections).

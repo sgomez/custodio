@@ -24,7 +24,7 @@ later and a system bus that provides `ProcessFD`; the package manager refuses an
   the Firefox snap's alone. Entries from this route say `socket` as their transport and carry the peer label
   (see [audit.md](audit.md)).
 - **`custodio register`.** One command registers the module in the profiles of Firefox, its derivatives and the Firefox
-  snap, and `custodio register --remove` undoes it. Run it as yourself, with the browser closed:
+  snap, and `custodio register --remove` undoes it. Run it as yourself, with the browser closed; its output is shown below.
 - **Copies that stay current.** A package upgrade replaces the module but not the copy the snap runs. `custodio register`
   refreshes every stale copy, and two user units shipped by the package do it at login and when the installed module
   changes.
@@ -54,7 +54,8 @@ signature shows one polkit dialog; a lost key needs the original `.p12`.
 
 Keys that an earlier build than M4 stored were **purged**, not migrated: once a build of M4 or later has run, no key file
 of the old format remains in the state directory, and those keys are gone from the API. Import them again from the
-original `.p12` files. Each purged key left a journal entry with its owner and id, which you can still read
+original `.p12` files. Each purged key left a journal entry with its id, and with its owner for a key stored by
+M3 (the M0–M2 layout had no owner), which you can still read
 (`CUSTODIO_OPERATION=purge`, see [audit.md](audit.md)). Keys stored by M4 and later builds are kept.
 
 After an upgrade, `custodio register` brings a copy that the snap runs up to date at once (the units do it at the next
