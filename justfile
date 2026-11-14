@@ -32,7 +32,7 @@ lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
     taplo fmt --check
-    {{shell_scripts}} | xargs -r shellcheck
+    {{shell_scripts}} | xargs -r -P "$(nproc)" -n 16 shellcheck -x
     actionlint
     zizmor --offline .github/workflows
     cargo deny check
@@ -69,10 +69,11 @@ lint-fuzz:
 api-contract:
     cargo test -p custodiod --test api_contract --locked
 
-# Unit tests.
+# Unit and integration tests. nextest runs the test binaries in parallel and skips doctests, which run last.
 test:
-    cargo test --workspace --locked
-    cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
+    cargo nextest run --workspace --locked
+    cargo nextest run -p custodio-pkcs11 --features fuzzing --lib --locked
+    cargo test --workspace --doc --locked
 
 # The gate of every feature: lints and every Rust test (unit and integration). The package, install and e2e
 # script tests run in `just check`, at the checkpoints and the release. A pass stamps the tree in
@@ -90,7 +91,7 @@ quick:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
     taplo fmt --check
-    {{shell_scripts}} | xargs -r shellcheck
+    {{shell_scripts}} | xargs -r -P "$(nproc)" -n 16 shellcheck -x
     just deps-check
     scripts/check-files.sh
     scripts/check-test-label.sh
