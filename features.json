@@ -149,7 +149,7 @@
         "F183"
       ],
       "verify": "just quick && scripts/test-check-register-deps.sh && scripts/check-register-deps.sh && scripts/test-user-refresh-units.sh && scripts/test-snap-base-fit.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F185",
