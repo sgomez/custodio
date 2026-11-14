@@ -18,9 +18,9 @@ mutant() { # NAME SED-EXPRESSION: a copy of cli-lib.sh whose judgement is weaken
     if cmp -s "$ROOT/e2e/cli-lib.sh" "$tmp/$1/cli-lib.sh"; then bad "mutant $1 changes nothing"; fi
     if bash "$tmp/$1/cli-selftest.sh" > /dev/null 2>&1; then bad "mutant $1 was not caught"; fi
 }
-mutant type-ignored 's/grep -qxF "  type: \$3" ||/true ||/'
-mutant subject-ignored 's/grep -qxF "  subject: \$4" ||/true ||/'
-mutant end-ignored 's/grep -qxF "  valid until: \$5" ||/true ||/'
+mutant type-ignored 's/grep -qxF "  type: \$3" <<< "\$block" ||/true ||/'
+mutant subject-ignored 's/grep -qxF "  subject: \$4" <<< "\$block" ||/true ||/'
+mutant end-ignored 's/grep -qxF "  valid until: \$5" <<< "\$block" ||/true ||/'
 mutant only-ignored 's/\[ "\$want" = "\$got" \] ||/true ||/'
 mutant none-exit 's/\[ "\$2" = 0 \] || echo "the list of an account/true || echo "the list of an account/'
 mutant none-keys 's/! grep -q .\^id: . "\$1" || echo "\$1 shows a key block/true || echo "\$1 shows a key block/'
