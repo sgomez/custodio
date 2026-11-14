@@ -1,4 +1,5 @@
 use super::*;
+use std::os::fd::AsFd;
 
 #[test]
 fn request_uses_system_bus_name_subject_and_interaction() -> Result<(), AuthError> {
@@ -48,4 +49,16 @@ fn auth_errors_display() {
         AuthError::Unavailable("why".into()).to_string(),
         "polkit unavailable: why"
     );
+}
+
+#[test]
+fn process_subject_carries_the_uid_as_int32_the_way_polkit_reads_it() {
+    let file = std::fs::File::open("/dev/null").expect("open /dev/null");
+    let ((kind, details), action, _, flags, _) = process_request(file.as_fd(), 1001_i32, ACTION_ID);
+    assert_eq!(kind, "unix-process");
+    // polkit reads `uid` as an int32; any other type is ignored and ends in "'pidfd' specified withtout 'uid'"
+    assert_eq!(details.get("uid"), Some(&Variant::from(1001_i32)));
+    assert!(details.contains_key("pidfd"));
+    assert_eq!(action, ACTION_ID);
+    assert_eq!(flags, 1);
 }

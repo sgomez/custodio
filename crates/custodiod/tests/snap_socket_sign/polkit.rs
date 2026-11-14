@@ -97,7 +97,12 @@ impl FakePolkit {
         cancellation_id: String,
     ) -> zbus::fdo::Result<(bool, bool, HashMap<String, String>)> {
         let _ = (details, cancellation_id);
-        let uid = subject.1.get("uid").and_then(|v| u32::try_from(v).ok());
+        // real polkit reads `uid` as an int32 and ignores any other type
+        let uid = subject
+            .1
+            .get("uid")
+            .and_then(|v| i32::try_from(v).ok())
+            .and_then(|v| u32::try_from(v).ok());
         let fd_pid = subject
             .1
             .get("pidfd")

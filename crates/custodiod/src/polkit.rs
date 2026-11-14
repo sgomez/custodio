@@ -146,11 +146,12 @@ pub trait ProcessAuthorizer: Send + Sync {
 
 /// `CheckAuthorization` arguments for a `unix-process` subject. Every error of polkit, a polkit that does not know
 /// the `pidfd` key included, ends in [`AuthError::Unavailable`]: there is no retry with another subject.
-fn process_request<'a>(pidfd: BorrowedFd<'a>, uid: u32, action: &'a str) -> Request<'a> {
+fn process_request<'a>(pidfd: BorrowedFd<'a>, uid: i32, action: &'a str) -> Request<'a> {
     let subject = (
         "unix-process",
         HashMap::from([
             ("pidfd", Variant::from(Fd::from(pidfd))),
+            // polkit reads `uid` as an int32 and ignores any other type
             ("uid", Variant::from(uid)),
         ]),
     );
@@ -165,6 +166,9 @@ impl ProcessAuthorizer for PolkitAuthorizer {
         action: &'a str,
     ) -> BoxFuture<'a, Result<(), AuthError>> {
         Box::pin(async move {
+            // a uid polkit cannot name is not asked about: fail closed
+            let uid = i32::try_from(uid)
+                .map_err(|_| AuthError::Unavailable("the uid is out of range".to_owned()))?;
             let body = process_request(pidfd, uid, action);
             let reply = self
                 .connection
