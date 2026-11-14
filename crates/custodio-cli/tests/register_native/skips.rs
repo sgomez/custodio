@@ -148,6 +148,7 @@ fn command_result(f: &Fixture, m: &Path) -> (Result<(), String>, String) {
     let args = custodio_cli::register_native::RegisterArgs {
         module: Some(m.to_owned()),
         remove: false,
+        refresh_only: false,
     };
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let r = custodio_cli::register_native::register_command(
@@ -377,14 +378,16 @@ fn only_handled_profiles_change() {
     f.root("snap/firefox/common/.mozilla/firefox", &["s.default"]);
     fs::write(f.home().join("notes.txt"), "x").unwrap();
     let handled = root.join("a.default");
+    // the Firefox snap is handled since F183: its profile and its copy are the other two lines
+    let snap = f.home().join("snap/firefox");
     let outside = |s: std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>| {
         s.into_iter()
-            .filter(|(k, _)| !k.starts_with(&handled))
+            .filter(|(k, _)| !k.starts_with(&handled) && !k.starts_with(&snap))
             .collect::<Vec<_>>()
     };
     let before = outside(f.snapshot());
     let report = f.run(&m, false);
-    assert_eq!(report.lines.len(), 1);
+    assert_eq!(report.lines.len(), 3, "{report:?}");
     assert_eq!(outside(f.snapshot()), before);
     assert_ne!(listed(&handled, &m), 0);
 }
@@ -398,14 +401,16 @@ fn the_register_command_line() {
         a(&["--remove"]),
         Some(RegisterArgs {
             module: None,
-            remove: true
+            remove: true,
+            refresh_only: false
         })
     );
     assert_eq!(
         a(&["--module", "/x/lib.so", "--remove"]),
         Some(RegisterArgs {
             module: Some("/x/lib.so".into()),
-            remove: true
+            remove: true,
+            refresh_only: false
         })
     );
     for bad in [

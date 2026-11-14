@@ -1,4 +1,8 @@
 //! Fixture homes, real `modutil`/`certutil`, and the built module, for the `register_native` tests.
+#![allow(
+    dead_code,
+    reason = "each test crate that includes this fixture uses a different part of it"
+)]
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;

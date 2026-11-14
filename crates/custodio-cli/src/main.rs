@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::io;
+use std::path::Path;
 use std::process::ExitCode;
 
 use custodio_cli::agent::process::Pkttyagent;
@@ -9,7 +10,10 @@ use custodio_cli::agent::{Process, WithAgent};
 use custodio_cli::browser_files::local_address;
 use custodio_cli::bus::DbusImporter;
 use custodio_cli::register_discover::{Environment, NSS_CONFIG};
-use custodio_cli::register_native::{RegisterArgs, RegisterError, RunError, register_command};
+use custodio_cli::register_native::{
+    RegisterArgs, RegisterError, RunError, default_journal_socket, refresh_only_command,
+    register_command,
+};
 use custodio_cli::tty::Terminal;
 use custodio_cli::{
     CliError, Command, finish, import_command, list_command, parse_command, run_delete,
@@ -26,15 +30,22 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
         nss_config: NSS_CONFIG.into(),
         local_address: local_address(),
     };
-    register_command(
-        args,
-        &env,
-        rustix::process::geteuid().as_raw(),
-        |name| std::env::var_os(name),
-        &mut io::stdout(),
-        &mut io::stderr(),
-    )
-    .map_err(CliError::Register)
+    let euid = rustix::process::geteuid().as_raw();
+    let var = |name: &str| std::env::var_os(name);
+    if args.refresh_only {
+        return refresh_only_command(
+            args,
+            &env,
+            euid,
+            var,
+            Path::new(default_journal_socket()),
+            &mut io::stdout(),
+            &mut io::stderr(),
+        )
+        .map_err(CliError::Register);
+    }
+    register_command(args, &env, euid, var, &mut io::stdout(), &mut io::stderr())
+        .map_err(CliError::Register)
 }
 
 fn run() -> Result<(), CliError> {

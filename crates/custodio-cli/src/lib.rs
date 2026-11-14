@@ -23,13 +23,14 @@ pub mod failure;
 pub mod list;
 pub mod register_discover;
 pub mod register_native;
+pub mod register_snap;
 pub mod storage;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
        custodio list\n\
        custodio delete <key id>\n\
-       custodio register [--module <path>] [--remove]\n\
+       custodio register [--module <path>] [--remove | --refresh-only]\n\
 The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
 arguments or the environment.";
 

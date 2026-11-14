@@ -13,7 +13,7 @@ custodio \- import, list and delete keys of the custodio signing service
 .br
 .B custodio register
 [\fB\-\-module\fR \fIpath\fR]
-[\fB\-\-remove\fR]
+[\fB\-\-remove\fR | \fB\-\-refresh\-only\fR]
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -94,7 +94,18 @@ A profile whose browser is open is skipped and named: close the browser and run 
 Those skips and failures make the exit status 1; a system that already loads p11\-kit (nothing to register) does not.
 It refuses to run as root or under sudo (exit status 2): it edits the profiles of the user who runs it.
 It needs no authorization and does not use the service.
-The Firefox snap is not handled by this command.
+For the Firefox snap, which cannot read
+.IR /usr/lib/custodio ,
+it also keeps a copy of the module at
+.IR ~/snap/firefox/common/libcustodio_pkcs11.so ,
+written beside its target and renamed into place (a link at that path is replaced, never followed), and registers that copy in the snap's profiles.
+A copy is made only when the snap has a profile.
+If a snap profile already has an entry for the installed module, that entry is kept and the copy is still placed, but that profile does not use it:
+the copy is not a sign that a profile points to it.
+On every run, a copy whose bytes differ from the module is replaced at the same path and reported as
+.BR refreshed ;
+a run never creates a copy where there was none unless it registers a snap profile.
+If a copy cannot be replaced, the command names it and exits with status 1.
 .TP
 .B \-\-module \fIpath\fR
 Register this library instead of the installed one.
@@ -106,6 +117,18 @@ This includes an entry added by hand, so it is wider than the entries
 .B register
 added itself.
 The module file need not exist.
+It also deletes the snap copy.
+If a snap profile is open, that profile keeps its entry and the copy stays, the profile is named, and the exit status is 1.
+.TP
+.B \-\-refresh\-only
+Only replace the snap copy if it exists and its bytes differ from the module's; do nothing else (no profile is read, and
+.BR modutil (1)
+is not needed).
+It never creates a copy, and does nothing, with exit status 0, if there is no installed module.
+The outcome (\fBrefreshed\fR, up to date, no copy, no installed module, or the failure and its reason) is written to your journal with the identifier \fBcustodio\-register\fR, at error priority for a failure.
+A journal that cannot be reached is reported on standard error and does not change the exit status.
+It cannot be combined with
+.BR \-\-remove .
 .PP
 When standard input is a terminal,
 .B import
