@@ -1,0 +1,13 @@
+# The base of the Firefox snap (stable channel) and what it provides to the module copy that `custodio register` places in
+# ~/snap/firefox/common (F171). scripts/check-snap-base.sh (`just snap-base-fit`) fails when the shipped libcustodio_pkcs11.so needs a
+# GLIBC_x.y above the base's glibc or a NEEDED library the base does not list. Researched 2026-11-14 in the VM of F171; the dev
+# container has no snap and no network route to the store, so the base snap itself could not be unpacked here.
+#
+# base = NAME | GLIBC | SOURCE
+# library = BASE | SONAME | STATUS | SOURCE      (STATUS: verified, or inferred, with the reason)
+#
+# A NEEDED library that is not listed fails the gate, so an unlisted one is never taken to be there.
+base = core26 | 2.43 | docs/findings/F171.md: firefox rev 9181 has `base: core26` in meta/snap.yaml; `ldd --version` inside `snap run --shell firefox` prints `Ubuntu GLIBC 2.43-2ubuntu2.4` (core26 rev 750)
+library = core26 | libc.so.6 | verified | docs/findings/F171.md: /proc/self/maps of the app shows libc.so.6 from /usr/lib/x86_64-linux-gnu
+library = core26 | ld-linux-x86-64.so.2 | inferred | the loader belongs to libc6 (`dpkg -L libc6` lists /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 in the dev container) and the same libc6 is the base's libc.so.6 above; every dynamically linked process maps it
+library = core26 | libgcc_s.so.1 | inferred | `dpkg -s libc6` has `Depends: libgcc-s1` (dev container; libgcc-s1 ships /usr/lib/x86_64-linux-gnu/libgcc_s.so.1), and the base's libc6 is installed above; not seen in the snap

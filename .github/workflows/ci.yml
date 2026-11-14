@@ -255,6 +255,8 @@ jobs:
         run: just package-parity
       - name: just glibc-ceiling
         run: just glibc-ceiling
+      - name: just snap-base-fit
+        run: just snap-base-fit
       # ubuntu's apt cannot install Debian 13's lintian or Fedora's rpmlint: all three linters run in their distribution's container.
       - name: just package-lint
         run: just package-lint

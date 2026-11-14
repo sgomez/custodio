@@ -137,6 +137,7 @@ package-gate-test:
     scripts/test-check-packages-deps.sh
     scripts/test-check-parity.sh
     scripts/test-glibc-ceiling.sh
+    scripts/test-snap-base-fit.sh
     scripts/test-package-lint.sh
     scripts/test-package-lint-lists.sh
 
@@ -397,7 +398,7 @@ signoff +gates:
     workflows=()
     for gate in "$@"; do
         case $gate in
-            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling package-lint \
+            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling snap-base-fit package-lint \
                     coverage-gate memory-safety
                 workflows+=(ci.yml) ;;
             mutants) mkdir -p target
@@ -466,7 +467,7 @@ package version="":
 
 # The gates on the packages: `just package` (which checks their contents), then the same files, modes and owners in all three
 # (packaging/parity-exceptions.txt lists accepted differences), no glibc symbol version above the ceiling, and the linters on the packages. Later package gates join here.
-package-gates: package package-parity glibc-ceiling package-lint
+package-gates: package package-parity glibc-ceiling snap-base-fit package-lint
 
 # Fails on any lintian finding on the .deb, rpmlint finding on the .rpm or namcap finding on the Arch package in target/packages that is not in
 # the list of packaging/lint/<linter>.txt with a reason, and on a list entry that matches nothing. A linter runs on the host when it has the
@@ -482,6 +483,12 @@ package-parity:
 # Fails when an ELF file in a package in target/packages needs a glibc symbol version above the ceiling of packaging/glibc-ceiling.txt.
 glibc-ceiling:
     scripts/check-glibc-ceiling.sh
+
+# Fails when the module the .deb in target/packages ships (the same file in all three packages) needs a glibc symbol version above the glibc
+# of the Firefox snap's base, or a library the base is not recorded to provide (packaging/snap-bases.txt, F171). Given an ELF path instead of
+# a directory it checks that file: `just snap-base-fit target/release/libcustodio_pkcs11.so`.
+snap-base-fit target="target/packages":
+    scripts/check-snap-base.sh {{target}}
 
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
