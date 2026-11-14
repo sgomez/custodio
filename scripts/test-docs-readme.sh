@@ -29,57 +29,8 @@ timeout 900 cargo build --quiet --locked -p custodio-it --example docs_api_serve
 # The shared helper: the same files and the same default paths as the threat-model test.
 REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md)
 
-# A stub modutil: records its arguments and edits pkcs11.txt as `-add NAME -libfile LIB` and `-delete NAME` would.
-make_stub() { # make_stub BINDIR
-    mkdir -p "$1"
-    cat > "$1/modutil" << 'STUB'
-#!/bin/sh
-echo "$*" >> "$STUB_LOG"
-dir=${2#sql:}
-case $3 in
-    -add) printf 'library=%s\nname=%s\n\n' "$6" "$4" >> "$dir/pkcs11.txt" ;;
-    -delete)
-        touch "$dir/pkcs11.txt"
-        awk -v n="$4" 'BEGIN { RS = ""; ORS = "\n\n" } $0 !~ "name=" n "(\n|$)"' "$dir/pkcs11.txt" > "$dir/pkcs11.new"
-        mv "$dir/pkcs11.new" "$dir/pkcs11.txt"
-        ;;
-esac
-STUB
-    chmod +x "$1/modutil"
-    ln -s "$CLI" "$1/custodio"
-}
-
-# The effect of the register commands, checked after the block that ran them. Argument: the first command of the block.
-make_check() { # make_check FILE
-    cat > "$1" << 'CHECK'
-#!/bin/bash
-set -u
-log=$CHECK_DIR/checked
-native=$HOME/.mozilla/firefox/abcd1234.default-release
-snap=$HOME/snap/firefox/common/.mozilla/firefox/efgh5678.default
-copy=$HOME/snap/firefox/common/libcustodio_pkcs11.so
-case $1 in
-    "custodio register")
-        # A host whose NSS loads p11-kit skips native profiles (the code's rule); the effect is then checked on the snap profile only.
-        if [ "${NATIVE_SKIPPED:-0}" = 0 ]; then
-            grep -qxF -- "-dbdir sql:$native -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so -force" "$STUB_LOG" || { echo "no -add of the installed module in the native profile" >&2; exit 1; }
-            grep -qxF -- "library=/usr/lib/custodio/libcustodio_pkcs11.so" "$native/pkcs11.txt" 2> /dev/null || { echo "the native profile has no entry" >&2; exit 1; }
-        fi
-        [ -f "$copy" ] || { echo "no snap copy" >&2; exit 1; }
-        grep -qxF -- "-dbdir sql:$snap -add Custodio -libfile $copy -force" "$STUB_LOG" || { echo "no -add of the copy in the snap profile" >&2; exit 1; }
-        grep -qxF -- "library=$copy" "$snap/pkcs11.txt" || { echo "the snap profile has no entry" >&2; exit 1; }
-        echo registered >> "$log"
-        ;;
-    "custodio register --remove")
-        [ ! -e "$copy" ] || { echo "the snap copy is still there" >&2; exit 1; }
-        ! grep -qs custodio "$snap/pkcs11.txt" "$native/pkcs11.txt" || { echo "an entry is still there" >&2; exit 1; }
-        grep -q -- "-delete Custodio" "$STUB_LOG" || { echo "no -delete" >&2; exit 1; }
-        echo removed >> "$log"
-        ;;
-esac
-CHECK
-    chmod +x "$1"
-}
+# shellcheck source=scripts/lib/docs-register-fixture.sh
+. scripts/lib/docs-register-fixture.sh
 
 # run_readme DOC DIR: the console blocks of DOC on a fresh bus, server, HOME and overlay; the status of the runner and the checks.
 run_readme() {
@@ -87,16 +38,10 @@ run_readme() {
     mkdir -p "$d/ov" "$d/ctl" "$d/state" "$d/work" "$d/home" "$d/stage/custodio"
     chmod 700 "$d/state"
     : > "$d/stage/custodio/libcustodio_pkcs11.so"
-    make_stub "$d/bin"
-    make_check "$d/check.sh"
+    reg_stub "$d/bin"
+    reg_check "$d/check.sh"
     cp crates/custodiod/tests/fixtures/p256.p12 "$d/work/ana.p12"
-    # A native Firefox profile and the snap's, each with the index file the way Firefox writes it.
-    local root
-    for pair in ".mozilla/firefox:abcd1234.default-release" "snap/firefox/common/.mozilla/firefox:efgh5678.default"; do
-        root=$d/home/${pair%%:*}
-        mkdir -p "$root/${pair##*:}"
-        printf '[General]\nVersion=2\n\n[Profile0]\nName=default\nIsRelative=1\nPath=%s\nDefault=1\n' "${pair##*:}" > "$root/profiles.ini"
-    done
+    reg_home "$d"
     cat > "$d/bus.conf" << CONF
 <busconfig>
   <type>session</type>
@@ -144,17 +89,7 @@ CONF
     sed -n 's/^/    /p' "$d/run.out" "$d/run.err" | tail -n 30 >&2
     return "$rc"
 }
-mkdir -p "$TMP/probe/ov"
-
-# The namespace must work here: a failure says so instead of skipping.
-probe_dir=$TMP/probe
-mkdir -p "$probe_dir/stage/custodio"
-: > "$probe_dir/stage/custodio/libcustodio_pkcs11.so"
-unshare -rm sh -c '
-    mount -t tmpfs tmpfs "$1/ov" && mkdir "$1/ov/up" "$1/ov/wk" &&
-    mount -t overlay overlay -o "lowerdir=$1/stage:/usr/lib,upperdir=$1/ov/up,workdir=$1/ov/wk" /usr/lib &&
-    exec unshare --user --map-user="$2" --map-group="$2" test -e /usr/lib/custodio/libcustodio_pkcs11.so' \
-    sh "$probe_dir" "$(($(id -u) == 0 ? 1000 : $(id -u)))" 2> "$probe_dir/err" || { echo "test-docs-readme: unshare cannot give the test a module at /usr/lib/custodio: $(tail -n 2 "$probe_dir/err")" >&2; exit 1; }
+NAME=test-docs-readme reg_probe "$TMP/probe" || exit 1
 
 [ -s "$DOC" ] || { echo "test-docs-readme: $DOC is missing or empty" >&2; exit 1; }
 

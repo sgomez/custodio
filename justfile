@@ -169,6 +169,8 @@ test-scripts:
     scripts/test-docs-api.sh
     scripts/test-docs-install.sh
     scripts/test-docs-readme.sh
+    scripts/test-docs-install-register.sh
+    scripts/test-docs-release-notes.sh
     scripts/test-docs-threat-model.sh
     scripts/test-docs-manual.sh
     scripts/test-docs-manual-m3.sh

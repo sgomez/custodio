@@ -15,7 +15,8 @@ Keys are RSA 2048 or ECDSA P-256.
 It stops a process running as you from signing by mistake. It does not protect against an attacker
 running as the same uid, against root, or your intent: the dialog cannot prove what is being
 signed. What it protects, from whom and what it leaves out is in the [threat model](docs/threat-model.md); to
-report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milestones.md](docs/milestones.md).
+report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milestones.md](docs/milestones.md); what the first public release contains is in the
+[release notes](docs/release-notes-v0.8.0.md).
 
 ## Names
 
