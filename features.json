@@ -161,7 +161,7 @@
         "F184"
       ],
       "verify": "just quick && scripts/test-docs-readme.sh && scripts/test-docs-threat-model.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F186",
