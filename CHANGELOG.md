@@ -56,6 +56,7 @@
 - *(F187)* Let the rpm own the two user wants directories
 - *(F187)* Let the vm guest take libnss3-tools from the package
 - *(F188)* Make the release write its version into cargo.toml and the lockfiles
+- *(F97)* Match the cli list block with here-strings, not a pipe that races sigpipe
 
 ### 📚 Documentation
 
@@ -156,6 +157,9 @@
 - *(e2e)* Check the upgraded service after the case instead of sleeping 5 s
 - *(e2e)* Seed the m3 upgrade case with the four imports at once
 - *(F187)* Expect the firefox socket calls in the package lifecycle scripts
+- Drop the workflow and docs-wording script tests
+- Fold the repeated e2e case checks into one place
+- Trim the package lifecycle layers to what each one alone shows
 
 ### ⚙️ Miscellaneous Tasks
 
