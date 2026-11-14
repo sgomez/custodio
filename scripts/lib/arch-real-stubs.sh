@@ -18,9 +18,9 @@ cat > /usr/bin/systemctl <<'STUB'
 . /usr/local/stub/lib.sh
 log systemctl "$@"
 case "$1" in
-is-active) [ -e /tmp/stub/active ] || exit 3 ;;
-stop) rm -f /tmp/stub/active; effect stopped ;;
-start) : > /tmp/stub/active; effect started ;;
+is-active) case "$3" in custodio-firefox.socket) [ -e /tmp/stub/sock-active ] || exit 3 ;; *) [ -e /tmp/stub/active ] || exit 3 ;; esac ;;
+stop) case "$2" in custodio-firefox.socket) rm -f /tmp/stub/sock-active; effect sock-stopped ;; *) rm -f /tmp/stub/active; effect stopped ;; esac ;;
+start) case "$2" in custodio-firefox.socket) : > /tmp/stub/sock-active; effect sock-started ;; *) : > /tmp/stub/active; effect started ;; esac ;;
 restart) : > /tmp/stub/active; effect restarted ;;
 try-restart) if [ -e /tmp/stub/active ]; then effect restarted; fi ;;
 esac

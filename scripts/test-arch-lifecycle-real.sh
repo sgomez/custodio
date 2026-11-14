@@ -206,10 +206,10 @@ scenario f42era "$arch_with"
 for s in upgrade-active upgrade-inactive; do
     [ "$(rc_of $s)" = 0 ] || bad "f42era $s: pacman failed: $(tail -n 5 "$OUT/$s.out")"
     hooks_once $s present
-    never_enable $s
+    if [ "$s" = upgrade-active ]; then never_enable $s socket_down; else never_enable $s; fi
     state_same $s
 done
-restart_after_reloads upgrade-active
+restart_after_reloads upgrade-active socket_down
 [ "$(count upgrade-inactive "$EFFECT_RESTART")" = 0 ] || bad "f42era: a stopped service was restarted"
 if L upgrade-inactive | grep -E ' systemctl stop|EFFECT stopped|EFFECT started' > /dev/null; then bad "f42era: a stop or start in the inactive upgrade"; fi
 [ "$(cat "$OUT/upgrade-active.active")" = active ] || bad "f42era: the service is not active after the upgrade"

@@ -101,7 +101,11 @@ grep -qx '/usr/lib/custodio/custodiod' <<< "$oldpath_files" || { echo "test-rpm-
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
-RELOAD=$'systemctl daemon-reload\nsystemctl reload dbus.service'
+SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+RELOAD=$'systemctl daemon-reload\n'"systemctl enable $SOCK"$'\nsystemctl reload dbus.service'
+START_SOCK="systemctl start $SOCK"
+RELOAD_ERASE=$'systemctl daemon-reload\nsystemctl reload dbus.service'
+ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 CATALOG='journalctl --update-catalog'
 MARKER=run/custodio-restart-after-upgrade
 RESTART='systemctl restart custodio.service'
@@ -153,7 +157,7 @@ want_notice() { # LABEL
     grep -qF 'account custodio was kept' <<< "$err" || bad "$1: the notice does not say the account is kept: $err"
     [ -z "$out" ] || bad "$1: output on stdout: $out"
 }
-no_enable() { if grep -E '(^| )(enable|start|preset|mask)( |$)' <<< "$calls" > /dev/null; then bad "$1: enable, start or preset: $calls"; fi; }
+no_enable() { if grep -v "$SOCK" <<< "$calls" | grep -E '(^| )(enable|start|preset|mask)( |$)' > /dev/null; then bad "$1: enable, start or preset: $calls"; fi; }
 
 # cases NEW [OLD]: every scenario with the package NEW as the one being installed or upgraded to, and OLD (an older build of this tree) as the
 # one it replaces. A mutant is built in both versions, since the %preun and %postun of an upgrade come from the old package.
@@ -164,7 +168,7 @@ cases() {
     new_root
     rpm_in -i "$new"
     want_ok "install"
-    want_calls "install" "$BUS"$'\n''systemd-sysusers -'$'\n'"$RELOAD"$'\n'"$CATALOG"
+    want_calls "install" "$BUS"$'\n''systemd-sysusers -'$'\n'"$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     [ "$(cat "$root/stub/policy-at-sysusers" 2> /dev/null)" = absent ] || bad "install: the account was not created before the bus policy was unpacked: $(cat "$root/stub/policy-at-sysusers" 2> /dev/null)"
     grep -q '^custodio:' "$root/etc/passwd" || bad "install: the account was not created"
     [ -e "$root/usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf" ] || bad "install: the bus policy was not installed"
@@ -206,10 +210,10 @@ cases() {
             rpm_in -U "$new"
             want_ok "$label"
             if [ "$running" = yes ]; then
-                want_calls "$label" "$BUS"$'\n''systemd-sysusers -'$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"$'\n'"$RESTART"
+                want_calls "$label" "$BUS"$'\n''systemd-sysusers -'$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"$'\n'"systemctl stop custodio.service"$'\n'"$START_SOCK"$'\n'"$RESTART"
                 active || bad "$label: the service is not running afterwards"
             else
-                want_calls "$label" "$BUS"$'\n''systemd-sysusers -'$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"
+                want_calls "$label" "$BUS"$'\n''systemd-sysusers -'$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
                 active && bad "$label: a stopped service was started"
             fi
             [ "$(grep -c "^$RESTART" <<< "$calls")" -le 1 ] || bad "$label: more than one restart"
@@ -234,7 +238,7 @@ cases() {
     : > "$root/stub/had-account"
     rpm_in -e custodio
     want_ok "erase"
-    want_calls "erase" 'systemctl stop custodio.service'$'\n'"$RELOAD"$'\n'"$ACTIVE"
+    want_calls "erase" "systemctl stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''systemctl stop custodio.service'$'\n'"$RELOAD_ERASE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
     want_notice "erase"
     active && bad "erase: the service runs afterwards"
     grep -q '^custodio:' "$root/etc/passwd" || bad "erase: the account is gone"
@@ -315,6 +319,10 @@ mutant restart-in-postun-only post '/^if \[ "\${1:-0}" -ge 2 \]/,/^fi/d'
 mutant stop-on-upgrade preun 's|-eq 0 \]|-ge 0 ]|'
 mutant notice-on-upgrade postun 's|-eq 0 \]|-ge 0 ]|'
 mutant enable-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl enable custodio.service|'
+mutant no-socket-enable post 's|^systemctl enable custodio-firefox.socket.*|:|'
+mutant no-socket-start post 's|^    systemctl start custodio-firefox.socket.*|    :|'
+mutant no-socket-stop preun 's|^    systemctl stop custodio-firefox.socket.*|    :|'
+mutant no-socket-disable preun 's|^    systemctl disable custodio-firefox.socket.*|    :|'
 mutant no-stop-on-erase preun 's|^    systemctl stop custodio.service.*|    :|'
 mutant delete-state postun 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/custodio/\n&|'
 # The next mutant (the whole restart removed from %post) is what a package that restarts only from the old package's %postun looks like to the

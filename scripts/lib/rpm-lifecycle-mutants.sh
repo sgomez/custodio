@@ -52,6 +52,11 @@ mutant restart-on-install post 's|-ge 2 \] && \[ -e /run|-ge 1 ] \&\& [ -e /run|
 mutant restart-no-count post 's|if \[ "\${1:-0}" -ge 2 \] && |if |'
 # shellcheck disable=SC2016
 mutant restart-eq-1 post 's|-ge 2 \] && \[ -e /run|-eq 1 ] \&\& [ -e /run|'
+mutant no-socket-enable post 's|^systemctl enable custodio-firefox.socket.*|:|'
+mutant no-socket-start post 's|^    systemctl start custodio-firefox.socket.*|    :|'
+mutant no-socket-stop preun 's|^    systemctl stop custodio-firefox.socket.*|    :|'
+mutant no-socket-disable preun 's|^    systemctl disable custodio-firefox.socket.*|    :|'
+mutant no-socket-final-stop postun 's|^        systemctl stop custodio-firefox.socket.*|        :|'
 mutant restart-before-reload post 's|^systemctl daemon-reload .*|systemctl restart custodio.service\n&|'
 mutant restart-before-bus-reload post 's|^systemctl reload dbus.service .*|systemctl restart custodio.service\n&|'
 mutant restart-before-catalog post 's|^journalctl --update-catalog .*|systemctl restart custodio.service\n&|'

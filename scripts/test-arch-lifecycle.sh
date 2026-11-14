@@ -17,14 +17,20 @@
 #   pre_install, pre_upgrade   BUS; systemd-sysusers -.  Exit 0. A bus without ProcessFD, or a failing systemd-sysusers, or none on PATH:
 #                              the account is still created (the installation goes on whatever the status), the messages are on stderr, exit 1
 #                              (also when both fail). Only the embedded check function equals packaging/bus-check.sh.
-#   post_install, post_upgrade nothing: no call, no output, no file changed, exit 0 (the hooks do it).
-#   pre_remove                 systemctl stop custodio.service. Exit 0 even when systemctl fails.
-#   post_remove                systemctl is-active --quiet custodio.service and, only when it says active, systemctl stop custodio.service;
+#   post_install               systemctl enable custodio-firefox.socket; systemctl start custodio-firefox.socket (F173). No output, no file changed.
+#   post_upgrade               systemctl enable custodio-firefox.socket; systemctl is-active --quiet custodio-firefox.socket; only when that
+#                              says inactive: systemctl is-active --quiet custodio.service and, when active, systemctl stop custodio.service,
+#                              systemctl start custodio-firefox.socket, systemctl start custodio.service; when the service is stopped only
+#                              the socket start. Exit 0, no output, no file changed.
+#   pre_remove                 systemctl stop custodio-firefox.socket; systemctl disable custodio-firefox.socket; systemctl stop custodio.service.
+#                              Exit 0 even when systemctl fails.
+#   post_remove                systemctl is-active --quiet custodio-firefox.socket and, only when active, its stop; then
+#                              systemctl is-active --quiet custodio.service and, only when it says active, systemctl stop custodio.service;
 #                              then the notice on STDERR (stdout stays empty). Exit 0.
 #   zz-custodio-restart.hook   (PostTransaction, Operation Upgrade only, Target custodio) systemd-hook restart custodio.service, which is
 #                              systemctl try-restart: the stub restarts the service only if it is active. The hook never fires on a first
 #                              installation or a removal (the Trigger is read from the file), and its name sorts after dbus-reload.hook.
-# No script enables, starts, restarts or presets the unit. None changes, reads, lists or prints anything under the state directory; the account
+# No script enables, starts, restarts or presets the service unit (only the socket is enabled and started). None changes, reads, lists or prints anything under the state directory; the account
 # is never removed (no userdel, groupdel). The failed-check path of pre_upgrade is stub-only: in a real upgrade the PreTransaction hook
 # aborts before pre_upgrade runs (scripts/test-install-real.sh), so pre_upgrade sees a refusing bus only on a reinstall without the hook.
 # Offline (chroot, image build): no bus socket, systemctl failing, /run and /var read-only change no exit status of the post and remove scripts.
@@ -55,9 +61,9 @@ cat > "$SKELETON/usr/bin/systemctl" <<'STUB'
 echo "systemctl $*" >> /recorded-calls
 [ ! -e /stub/fail ] || exit 1
 case "$1" in
-is-active) [ -e /stub/active ] || exit 3 ;;
-stop) rm -f /stub/active ;;
-start) : > /stub/active; echo start >> /stub/starts ;;
+is-active) case "$3" in custodio-firefox.socket) [ -e /stub/sock-active ] || exit 3 ;; *) [ -e /stub/active ] || exit 3 ;; esac ;;
+stop) case "$2" in custodio-firefox.socket) rm -f /stub/sock-active ;; *) rm -f /stub/active ;; esac ;;
+start) case "$2" in custodio-firefox.socket) : > /stub/sock-active ;; *) : > /stub/active; echo start >> /stub/starts ;; esac ;;
 restart) : > /stub/active; echo restart >> /stub/restarts ;;
 try-restart) if [ -e /stub/active ]; then echo restart >> /stub/restarts; fi ;;
 esac
@@ -81,6 +87,8 @@ bf_in_root "$SKELETON" true || { echo "test-arch-lifecycle: cannot make a user n
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 SYSUSERS='systemd-sysusers -'
 ACTIVE='systemctl is-active --quiet custodio.service'
+SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 RESTART_HOOK=$'systemd-hook restart custodio.service\nsystemctl try-restart custodio.service'
 SRC=$ROOT/packaging/arch
 HOOK=zz-custodio-restart.hook
@@ -102,8 +110,9 @@ cases() {
         snap=$(root_snapshot)
         run post_install
         want_ok "post_install $L"
-        want_calls "post_install $L" ""
+        want_calls "post_install $L" "systemctl enable $SOCK"$'\n'"systemctl start $SOCK"
         [ -z "$out$err" ] || bad "post_install $L printed: $out$err"
+        [ -e "$root/stub/sock-active" ] || bad "post_install $L: the socket was not started"
         [ "$(root_snapshot)" = "$snap" ] || bad "post_install $L changed files"
         [ ! -e "$root/fs-calls" ] || bad "post_install $L called a file tool: $(cat "$root/fs-calls")"
         no_enable "post_install $L"
@@ -123,7 +132,7 @@ cases() {
     : > "$root/stub/active"
     run pre_install
     run post_install
-    want_calls "post_install (active)" ""
+    want_calls "post_install (active)" "systemctl enable $SOCK"$'\n'"systemctl start $SOCK"
     [ "$(restarts)" = 0 ] || bad "install with an active service restarted it"
 
     # ---- a refusing bus: the installation goes on, so the account is made anyway; the status is the check's ----
@@ -194,7 +203,9 @@ cases() {
     active || bad "pre_upgrade: the service was stopped"
     run post_upgrade
     want_ok "post_upgrade"
-    want_calls "post_upgrade (running)" ""
+    want_calls "post_upgrade (running)" "systemctl enable $SOCK"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"$'\n''systemctl stop custodio.service'$'\n'"systemctl start $SOCK"$'\n''systemctl start custodio.service'
+    active || bad "post_upgrade: the running service is not running afterwards"
+    [ -e "$root/stub/sock-active" ] || bad "post_upgrade: the socket is not started"
     [ -z "$out$err" ] || bad "post_upgrade printed: $out$err"
     [ "$(restarts)" = 0 ] || bad "post_upgrade restarted the service (the hook does, after both reloads)"
     run_hook
@@ -205,13 +216,21 @@ cases() {
     no_account_removal "upgrade"
     state_intact "upgrade (running)"
     ! grep -qE '(^| )(stop|start)( |$)' <<< "$calls" || bad "upgrade: stop or start was called: $calls"
+    # The socket is already up (a second upgrade): it is only enabled; nothing is stopped, started or restarted.
+    new_root
+    : > "$root/stub/active"
+    : > "$root/stub/sock-active"
+    run post_upgrade
+    want_calls "post_upgrade (socket up)" "systemctl enable $SOCK"$'\n'"$ACTIVE_SOCK"
+    active || bad "post_upgrade (socket up): the service was stopped"
 
     # ---- upgrade, service not running: the hook's try-restart leaves it alone ----
     new_root
     run pre_upgrade
     want_calls "pre_upgrade (stopped)" "$BUS"$'\n'"$SYSUSERS"
     run post_upgrade
-    want_calls "post_upgrade (stopped)" ""
+    want_calls "post_upgrade (stopped)" "systemctl enable $SOCK"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"$'\n'"systemctl start $SOCK"
+    active && bad "post_upgrade: a stopped service was started"
     run_hook
     want_ok "restart hook (stopped)"
     [ "$(restarts)" = 0 ] || bad "the hook restarted a stopped service"
@@ -239,12 +258,12 @@ cases() {
     : > "$root/stub/active"
     run pre_remove
     want_ok "pre_remove"
-    want_calls "pre_remove" 'systemctl stop custodio.service'
+    want_calls "pre_remove" "systemctl stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''systemctl stop custodio.service'
     active && bad "pre_remove: the service still runs"
     state_intact "pre_remove"
     run post_remove
     want_ok "post_remove"
-    want_calls "post_remove" "$ACTIVE"
+    want_calls "post_remove" "$ACTIVE_SOCK"$'\n'"$ACTIVE"
     want_notice "post_remove"
     state_intact "remove"
     no_account_removal "remove"
@@ -257,8 +276,9 @@ cases() {
     : > "$root/stub/active"
     run pre_remove
     : > "$root/stub/active"
+    : > "$root/stub/sock-active"
     run post_remove
-    want_calls "post_remove (reactivated)" "$ACTIVE"$'\n''systemctl stop custodio.service'
+    want_calls "post_remove (reactivated)" "$ACTIVE_SOCK"$'\n'"systemctl stop $SOCK"$'\n'"$ACTIVE"$'\n''systemctl stop custodio.service'
     active && bad "post_remove: the service runs after the stop"
     want_notice "post_remove (reactivated)"
     state_intact "remove (reactivated)"
