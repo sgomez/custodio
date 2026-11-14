@@ -14,6 +14,9 @@ workspace = true
 [features]
 # Swaps the service for a fixed fake and exposes `fuzzing::run`; only for the fuzz target.
 fuzzing = []
+# Lets a test replace `/run` as the base of the snap socket directory. Off in every shipped build; only
+# `custodio-it`'s `[dev-dependencies]` names it (`scripts/check-test-socket-dir.sh`).
+test-socket-dir = []
 
 [dependencies]
 custodio-client = { path = "../custodio-client", version = "0.1.0" }
@@ -22,7 +25,12 @@ libc = "0.2.191"
 pkcs1 = { version = "=0.8.0-rc.5", default-features = false, features = ["alloc"] }
 sha2 = "0.11.1"
 x509-cert = { version = "0.3.0", default-features = false }
-zbus = { version = "6", default-features = false, features = ["comms", "proxy", "default-rt"] }
+zbus = { version = "6", default-features = false, features = [
+  "comms",
+  "proxy",
+  "default-rt",
+  "p2p",
+] }
 
 [dev-dependencies]
 cryptoki = "0.12.1"

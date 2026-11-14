@@ -1,0 +1,251 @@
+//! The calls this release's module makes are pinned (F178): destination, path, interface, member, the signature of
+//! the arguments and the signature of the reply it accepts. A stale copy of the module keeps working only while these
+//! stay; a future incompatible change must give an old copy no slots, never a wrong signature (`docs/api.md`,
+//! "Compatibility rule").
+//!
+//! Arrangement: the module runs as a child (this binary re-executed, `unshare -Ur` so the test directory is root-owned
+//! for the module's check) against a recording double on the snap socket: a peer-to-peer server that notes the first
+//! message and answers with a body the test chooses. Only the socket transport is pinned here; the bus destination is
+//! the constant `BUS_NAME` of the client crate, which `docs/api.md` and `api_contract` already compare with the service.
+
+use std::error::Error;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixListener;
+use std::process::Command;
+use std::sync::mpsc;
+use std::thread;
+
+use custodio_client::{BUS_NAME, OBJECT_PATH};
+use custodio_pkcs11::backend::{Backend, BackendError, DbusBackend, SignParams};
+use zbus::connection::{AuthMechanism, Builder};
+use zbus::{Guid, MessageStream, block_on};
+
+type TestResult = Result<(), Box<dyn Error>>;
+
+const MODE_VAR: &str = "MODULE_COMPAT_CHILD";
+
+/// One call of the module: the destination (`None` on the socket, which has no bus), path, interface, member, the
+/// signature of the arguments and the signature of the reply the module accepts.
+type Pin = (
+    Option<&'static str>,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+);
+
+/// Written once from the module's behaviour; changing it is a deliberate edit.
+const PINNED: [Pin; 2] = [
+    (
+        None,
+        "/com/rfirma/Custodio1",
+        "com.rfirma.Custodio1",
+        "ListKeys",
+        "",
+        "a(sssay)",
+    ),
+    (
+        None,
+        "/com/rfirma/Custodio1",
+        "com.rfirma.Custodio1",
+        "Sign",
+        "suuuay",
+        "ay",
+    ),
+];
+
+/// The error names the module maps: (name, result).
+const ERRORS: [(&str, &str); 4] = [
+    ("com.rfirma.Custodio1.Error.PolkitDenied", "Denied"),
+    ("com.rfirma.Custodio1.Error.InvalidArgs", "Invalid"),
+    ("com.rfirma.Custodio1.Error.Unavailable", "Unavailable"),
+    ("com.rfirma.Custodio1.Error.FromTheFuture", "Unavailable"),
+];
+
+#[derive(Clone)]
+enum Answer {
+    Keys(Vec<(String, String, String, Vec<u8>)>),
+    Bytes(Vec<u8>),
+    Text(String),
+    Error(&'static str),
+}
+
+/// Serves one connection on the socket, notes the first message, answers it, and returns what it saw.
+fn double(listener: UnixListener, answer: Answer) -> mpsc::Receiver<Pin2> {
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        let Ok((stream, _)) = listener.accept() else {
+            return;
+        };
+        let _ = block_on(async {
+            let conn = Builder::unix_stream(stream)
+                .server(Guid::generate())
+                .p2p()
+                .auth_mechanism(AuthMechanism::Anonymous)
+                .build()
+                .await?;
+            let mut messages = MessageStream::from(&conn);
+            let msg = futures_next(&mut messages).await.ok_or("no message")??;
+            let header = msg.header();
+            let seen = (
+                header.destination().map(ToString::to_string),
+                header.path().map(ToString::to_string).unwrap_or_default(),
+                header
+                    .interface()
+                    .map(ToString::to_string)
+                    .unwrap_or_default(),
+                header.member().map(ToString::to_string).unwrap_or_default(),
+                {
+                    // zbus shows the arguments of a call as one struct; on the wire they are the bare list.
+                    let sig = msg.body().signature().to_string();
+                    sig.strip_prefix('(')
+                        .and_then(|s| s.strip_suffix(')'))
+                        .map_or(sig.clone(), str::to_owned)
+                },
+            );
+            let _ = tx.send(seen);
+            match answer {
+                Answer::Keys(k) => drop(conn.reply(&header, &k).await?),
+                Answer::Bytes(b) => drop(conn.reply(&header, &b).await?),
+                Answer::Text(t) => drop(conn.reply(&header, &t).await?),
+                Answer::Error(name) => {
+                    let error = zbus::Message::error(&header, name).build(&"x")?;
+                    conn.send(&error).await?;
+                }
+            }
+            // Keep the connection until the module hangs up.
+            let _ = futures_next(&mut messages).await;
+            Ok::<_, Box<dyn Error>>(())
+        });
+    });
+    rx
+}
+
+type Pin2 = (Option<String>, String, String, String, String);
+
+async fn futures_next(s: &mut MessageStream) -> Option<zbus::Result<zbus::Message>> {
+    use zbus::export::futures_core::Stream;
+    std::future::poll_fn(|cx| std::pin::Pin::new(&mut *s).poll_next(cx)).await
+}
+
+#[test]
+fn module_child() {
+    let Ok(mode) = std::env::var(MODE_VAR) else {
+        return;
+    };
+    let params = SignParams {
+        mechanism: 0x1041,
+        hash: 0,
+        salt_len: 0,
+    };
+    match mode.as_str() {
+        "list" => println!(
+            "RESULT {:?}",
+            DbusBackend.list_certificates().map(|k| k.len())
+        ),
+        "sign" => println!(
+            "RESULT {:?}",
+            DbusBackend.sign("ec", params, &[7; 32]).map(|s| s.len())
+        ),
+        _ => println!("RESULT unknown"),
+    }
+}
+
+/// Runs the module child for `mode` against `answer`; returns the call the double saw and the module's result.
+fn run(mode: &str, answer: Answer) -> Result<(Pin2, String), Box<dyn Error>> {
+    let base = tempfile::tempdir()?;
+    let dir = base.path().join("snap.firefox");
+    std::fs::create_dir(&dir)?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    let rx = double(UnixListener::bind(dir.join("custodio.sock"))?, answer);
+    let out = Command::new("unshare")
+        .arg("-Ur")
+        .arg(std::env::current_exe()?)
+        .args(["--exact", "module_child", "--nocapture", "--test-threads=1"])
+        .env(MODE_VAR, mode)
+        .env("SNAP_INSTANCE_NAME", "firefox")
+        .env("CUSTODIO_TEST_SOCKET_BASE_DIR", base.path())
+        .output()?;
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let seen = rx.recv()?;
+    let result = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find_map(|l| l.split_once("RESULT ").map(|(_, r)| r.to_owned()))
+        .ok_or("no result line")?;
+    Ok((seen, result))
+}
+
+fn good(member: &str) -> Answer {
+    if member == "ListKeys" {
+        Answer::Keys(vec![("ec".into(), "ec".into(), "host".into(), vec![1])])
+    } else {
+        Answer::Bytes(vec![1, 2, 3])
+    }
+}
+
+#[test]
+fn the_modules_calls_are_pinned() -> TestResult {
+    for (pin, mode) in PINNED.iter().zip(["list", "sign"]) {
+        let (seen, result) = run(mode, good(pin.3))?;
+        assert_eq!(
+            seen,
+            (
+                pin.0.map(str::to_owned),
+                pin.1.into(),
+                pin.2.into(),
+                pin.3.into(),
+                pin.4.into()
+            ),
+            "{mode}"
+        );
+        assert!(
+            result.starts_with("Ok("),
+            "{mode}: the pinned reply signature {} is accepted: {result}",
+            pin.5
+        );
+    }
+    // The constants the pin stands for are the client crate's.
+    assert_eq!((PINNED[0].1, PINNED[0].2), (OBJECT_PATH, BUS_NAME));
+    Ok(())
+}
+
+#[test]
+fn the_pin_notices_a_different_call() -> TestResult {
+    // Control: a different arrangement of the same double gives a record that differs from the table.
+    let (seen, _) = run("sign", good("Sign"))?;
+    assert_ne!(seen.3, PINNED[0].3);
+    Ok(())
+}
+
+#[test]
+fn a_changed_reply_signature_gives_no_slots_and_no_signature() -> TestResult {
+    let (_, listed) = run("list", Answer::Text("not keys".into()))?;
+    assert_eq!(listed, "Err(Unavailable)");
+    let (_, signed) = run("sign", Answer::Text("not bytes".into()))?;
+    assert_eq!(signed, "Err(Unavailable)");
+    let (_, signed) = run("sign", Answer::Keys(vec![]))?;
+    assert_eq!(signed, "Err(Unavailable)");
+    Ok(())
+}
+
+#[test]
+fn the_error_names_the_module_maps_are_pinned() -> TestResult {
+    for (name, want) in ERRORS {
+        let (_, result) = run("sign", Answer::Error(name))?;
+        assert_eq!(result, format!("Err({want})"), "{name}");
+    }
+    Ok(())
+}
+
+#[test]
+fn error_names_are_those_of_the_client_crate() {
+    assert!(custodio_client::ERROR_NAMES.contains(&ERRORS[0].0));
+    assert!(custodio_client::ERROR_NAMES.contains(&ERRORS[1].0));
+}
+
+const _: Option<BackendError> = None;

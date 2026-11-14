@@ -2,6 +2,9 @@
 //! D-Bus implementation.
 #![forbid(unsafe_code)]
 
+use std::os::unix::net::UnixStream;
+
+use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Connection, block_on};
 
 use custodio_client::{
@@ -41,7 +44,14 @@ pub trait Backend: Send + Sync {
     fn sign(&self, id: &str, params: SignParams, data: &[u8]) -> Result<Vec<u8>, BackendError>;
 }
 
-/// Talks to `custodiod` on the system bus. A connection is opened for every call and dropped
+mod socket;
+#[cfg(feature = "test-socket-dir")]
+mod test_dir;
+
+use socket::Transport;
+pub use socket::{SNAP_INSTANCE_VAR, SOCKET_PATH_TEMPLATE};
+
+/// Talks to `custodiod` on the system bus, or, inside a snap (`SNAP_INSTANCE_NAME` set), on the snap's socket. A connection is opened for every call and dropped
 /// after it, so no connection, thread or lock outlives a call and nothing survives `fork` in a
 /// state the child could misuse; the cost is a few milliseconds per call.
 #[derive(Debug, Default, Clone, Copy)]
@@ -80,12 +90,30 @@ fn map_error(e: &zbus::Error) -> BackendError {
     }
 }
 
+/// A connection for one call, and the destination to name in it (none on the socket: it is peer to peer).
+async fn connect() -> Result<(Connection, Option<&'static str>), zbus::Error> {
+    match socket::current() {
+        Transport::Bus => Ok((Connection::system().await?, Some(BUS_NAME))),
+        Transport::Socket(path) => {
+            let stream = UnixStream::connect(path).map_err(zbus::Error::from)?;
+            let connection = Builder::unix_stream(stream)
+                .p2p()
+                .auth_mechanism(AuthMechanism::Anonymous)
+                .build()
+                .await?;
+            Ok((connection, None))
+        }
+        // Inside a snap with no trustworthy socket: the same as a service that is not there.
+        Transport::None => Err(zbus::Error::Unsupported),
+    }
+}
+
 impl Backend for DbusBackend {
     fn list_certificates(&self) -> Result<Vec<(String, Vec<u8>)>, BackendError> {
         block_on(async {
-            let connection = Connection::system().await?;
+            let (connection, destination) = connect().await?;
             let reply = connection
-                .call_method(Some(BUS_NAME), OBJECT_PATH, Some(BUS_NAME), "ListKeys", &())
+                .call_method(destination, OBJECT_PATH, Some(BUS_NAME), "ListKeys", &())
                 .await?;
             reply
                 .body()
@@ -103,9 +131,9 @@ impl Backend for DbusBackend {
     fn sign(&self, id: &str, params: SignParams, data: &[u8]) -> Result<Vec<u8>, BackendError> {
         let body = (id, params.mechanism, params.hash, params.salt_len, data);
         block_on(async {
-            let connection = Connection::system().await?;
+            let (connection, destination) = connect().await?;
             let reply = connection
-                .call_method(Some(BUS_NAME), OBJECT_PATH, Some(BUS_NAME), "Sign", &body)
+                .call_method(destination, OBJECT_PATH, Some(BUS_NAME), "Sign", &body)
                 .await?;
             reply.body().deserialize::<Vec<u8>>()
         })

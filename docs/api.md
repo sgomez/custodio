@@ -228,6 +228,12 @@ no `Hello`), authenticates with `ANONYMOUS` and calls the same object path and i
 on the bus. The key owner is always the uid the kernel reports for the connection, never a value in the handshake or an
 argument. `Sign` asks polkit about the peer's process on every call.
 
+Which transport a client uses is decided by one variable. The PKCS#11 module, when `SNAP_INSTANCE_NAME` is set (even
+empty), connects to `/run/snap.$SNAP_INSTANCE_NAME/custodio.sock` and never touches the bus; unset, it uses the bus. An
+invalid instance name (snapd's grammar: `<snap>` or `<snap>_<key>`), a missing socket, a refused connection or a
+directory that is not owned by root or is writable by group or others gives no slots, with no fallback to the bus. A
+connection is opened for each call and closed after it.
+
 Only two methods are served there; every other method, interface or path fails with the standard
 `org.freedesktop.DBus.Error.UnknownMethod`, `UnknownInterface` or `UnknownObject`, asks no polkit, writes no journal
 entry and changes nothing. Arguments, results and errors of the two are those of the bus methods above.
@@ -417,6 +423,12 @@ What `docs/audit.md` fixes for the journal, see [its compatibility rule](audit.m
 are only added to, never changed, and a client parses fields, not `MESSAGE`. For this interface the same holds as far
 as this document promises it: the method, argument, error and action names listed here keep their names and meaning,
 and new ones may appear, so handle an error name you do not know as a failure of the call.
+
+A copy of the PKCS#11 module outlives updates (it is code in the user's home that no update replaces), so a future
+incompatible change of a method, a signature or an error name must give an old copy no slots and a journal entry, never
+a wrong signature. The module's side is already so: a reply whose signature it does not expect is a failure of the call
+(no slots, `CKR_DEVICE_ERROR` on sign), never a guessed value. `crates/custodio-it/tests/module_compat.rs` pins the
+calls this release's module makes.
 
 ## Examples
 
