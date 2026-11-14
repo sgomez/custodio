@@ -17,14 +17,10 @@ use error_table::error_table;
 /// `CKR_DEVICE_ERROR` (pinned by `composed_failure_ends_the_operation`).
 #[test]
 fn every_service_name_maps_to_the_error_it_always_did() -> TestResult {
-    // All ten documented names are in the table.
-    assert_eq!(
-        error_table()
-            .iter()
-            .filter(|(n, _)| n.starts_with("com.rfirma.Custodio1.Error.") && !n.contains("Future"))
-            .count(),
-        10
-    );
+    // Every name of the client crate is in the table.
+    for name in custodio_client::ERROR_NAMES {
+        assert!(error_table().iter().any(|(n, _)| *n == name), "{name}");
+    }
     for (name, want) in error_table() {
         assert_eq!(map_error(&method_error(name)?), want, "{name}");
     }

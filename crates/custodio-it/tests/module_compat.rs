@@ -5,8 +5,10 @@
 //!
 //! Arrangement: the module runs as a child (this binary re-executed, `unshare -Ur` so the test directory is root-owned
 //! for the module's check) against a recording double on the snap socket: a peer-to-peer server that notes the first
-//! message and answers with a body the test chooses. Only the socket transport is pinned here; the bus destination is
-//! the constant `BUS_NAME` of the client crate, which `docs/api.md` and `api_contract` already compare with the service.
+//! message and answers with a body the test chooses; on the bus the same double owns the service's name on a private
+//! `dbus-daemon`. `a_current_service_answers_the_pinned_calls` runs the real service on both transports (the snap
+//! socket service of `snap_rig`, and the `Custodio` object on a private bus) and compares what it introspects and
+//! answers with the same pin, so the pin and the service cannot drift apart.
 
 use std::error::Error;
 use std::os::unix::fs::PermissionsExt;
@@ -19,6 +21,14 @@ use custodio_client::{BUS_NAME, OBJECT_PATH};
 use custodio_pkcs11::backend::{Backend, BackendError, DbusBackend, SignParams};
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Guid, MessageStream, block_on};
+
+#[path = "module_compat/live.rs"]
+mod live;
+#[allow(
+    dead_code,
+    reason = "the rig is shared with snap_transport.rs, which uses other parts"
+)]
+mod snap_rig;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
@@ -59,7 +69,8 @@ const PINNED: [Pin; 2] = [
 const ERRORS: [(&str, &str); 4] = [
     ("com.rfirma.Custodio1.Error.PolkitDenied", "Denied"),
     ("com.rfirma.Custodio1.Error.InvalidArgs", "Invalid"),
-    ("com.rfirma.Custodio1.Error.Unavailable", "Unavailable"),
+    ("com.rfirma.Custodio1.Error.NoSuchKey", "Unavailable"),
+    // A name this release does not know.
     ("com.rfirma.Custodio1.Error.FromTheFuture", "Unavailable"),
 ];
 
@@ -340,11 +351,74 @@ fn errors_map_the_same_on_both_transports() -> TestResult {
     Ok(())
 }
 
+/// What the double records of a call a client sends to it over the socket (no module involved).
+fn record_call(
+    member: &str,
+    send: impl FnOnce(&zbus::Connection, Option<&str>),
+) -> Result<Pin2, Box<dyn Error>> {
+    let base = tempfile::tempdir()?;
+    let rx = double(UnixListener::bind(base.path().join("s"))?, good(member));
+    let stream = std::os::unix::net::UnixStream::connect(base.path().join("s"))?;
+    let client = block_on(
+        Builder::unix_stream(stream)
+            .p2p()
+            .auth_mechanism(AuthMechanism::Anonymous)
+            .build(),
+    )?;
+    send(&client, None);
+    Ok(rx.recv()?)
+}
+
+fn as_pin(pin: &Pin) -> Pin2 {
+    (
+        pin.0.map(str::to_owned),
+        pin.1.into(),
+        pin.2.into(),
+        pin.3.into(),
+        pin.4.into(),
+    )
+}
+
+/// The negative control of the pin: a client that sends `Sign` with a changed argument list (one `u32` fewer, then
+/// the arguments in another order) leaves a record that is not the pinned one, while the right list leaves exactly it.
 #[test]
 fn the_pin_notices_a_different_call() -> TestResult {
-    // Control: a different arrangement of the same double gives a record that differs from the table.
-    let (seen, _) = run("sign", good("Sign"))?;
-    assert_ne!(seen.3, PINNED[0].3);
+    let data: &[u8] = &[7; 32];
+    let right = record_call("Sign", |c, d| {
+        let _ = block_on(c.call_method(
+            d,
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "Sign",
+            &("ec", 0x1041u32, 0u32, 0u32, data),
+        ));
+    })?;
+    assert_eq!(right.3, "Sign");
+    assert_eq!(right.4, PINNED[1].4, "the helper sends the pinned call");
+    let fewer = record_call("Sign", |c, d| {
+        let _ = block_on(c.call_method(
+            d,
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "Sign",
+            &("ec", 0x1041u32, 0u32, data),
+        ));
+    })?;
+    assert_ne!(fewer.4, PINNED[1].4, "{fewer:?}");
+    let swapped = record_call("Sign", |c, d| {
+        let _ = block_on(c.call_method(
+            d,
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "Sign",
+            &(0x1041u32, "ec", 0u32, 0u32, data),
+        ));
+    })?;
+    assert_ne!(swapped.4, PINNED[1].4, "{swapped:?}");
+    let other_member = record_call("ListKeys", |c, d| {
+        let _ = block_on(c.call_method(d, OBJECT_PATH, Some(BUS_NAME), "ListKeys", &()));
+    })?;
+    assert_ne!(other_member, as_pin(&PINNED[1]));
     Ok(())
 }
 
@@ -370,8 +444,15 @@ fn the_error_names_the_module_maps_are_pinned() -> TestResult {
 
 #[test]
 fn error_names_are_those_of_the_client_crate() {
-    assert!(custodio_client::ERROR_NAMES.contains(&ERRORS[0].0));
-    assert!(custodio_client::ERROR_NAMES.contains(&ERRORS[1].0));
+    // Every pinned name that is not meant to be unknown is a name of the client crate; the unknown one is not.
+    for (name, _) in ERRORS {
+        let unknown = name.ends_with("FromTheFuture");
+        assert_eq!(
+            custodio_client::ERROR_NAMES.contains(&name),
+            !unknown,
+            "{name}"
+        );
+    }
 }
 
 const _: Option<BackendError> = None;
