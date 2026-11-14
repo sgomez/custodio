@@ -12,8 +12,9 @@ use std::sync::{Mutex, Once, PoisonError};
 use std::time::Duration;
 
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::fd::OwnedFd;
 use rustix::io::Errno;
-use rustix::pipe::pipe;
+use rustix::pipe::{PipeFlags, pipe_with};
 
 use super::{AgentSpawner, Stop};
 
@@ -65,7 +66,7 @@ impl AgentSpawner for Pkttyagent {
         if !install_handler() {
             return Err(io::Error::other("no signal handler"));
         }
-        let (notified, notify) = pipe().map_err(io::Error::from)?;
+        let (notified, notify) = notify_pipe()?;
         let child = Command::new("setpriv")
             .arg("--pdeathsig=KILL")
             .arg("--")
@@ -80,6 +81,12 @@ impl AgentSpawner for Pkttyagent {
         wait_for_close(&notified, NOTIFY_WAIT);
         Ok(Box::new(Running))
     }
+}
+
+/// The notify pipe (read end, write end). Close-on-exec: the child must hold the write end only
+/// as its stdout, or closing that never ends the wait.
+fn notify_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+    pipe_with(PipeFlags::CLOEXEC).map_err(io::Error::from)
 }
 
 /// Waits until the write end is closed (the agent registered, or ended), at most `wait`.
