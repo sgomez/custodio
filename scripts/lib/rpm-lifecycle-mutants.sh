@@ -33,13 +33,21 @@ mutant() { # NAME SCRIPT SED-EXPRESSION
     cp -r "$ROOT/packaging/rpm" "$dir"
     sed -i "$3" "$dir/$2"
     cmp -s "$dir/$2" "$ROOT/packaging/rpm/$2" && { bad "mutant $1 changes nothing"; return; }
+    # In a subshell that stops at the first failed check: the rest of the cases say nothing more about this mutant.
+    local rc=0
+    set +e
     SRC=$dir
-    mutant_mode=1
-    mutant_hit=0
-    cases
-    mutant_mode=0
+    (set -e; mutant_mode=2; cases)
+    rc=$?
     SRC=$ROOT/packaging/rpm
-    [ "$mutant_hit" = 1 ] || bad "mutant '$1' survived"
+    set -e
+    chmod -R u+w "$BF_DIR"/root.* 2> /dev/null || true
+    rm -rf "$BF_DIR"/root.*
+    case $rc in
+    97) ;;
+    0) bad "mutant '$1' survived" ;;
+    *) bad "mutant '$1': the cases stopped with status $rc" ;;
+    esac
 }
 mutant enable-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl enable custodio.service|'
 mutant preset-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl preset custodio.service|'

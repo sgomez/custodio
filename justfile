@@ -177,7 +177,6 @@ test-scripts:
     scripts/test-docs-manual-m5.sh
     scripts/test-docs-manual-m6.sh
     scripts/test-install-real.sh
-    scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
     scripts/test-deb-lifecycle-real.sh
     scripts/test-rpm-scripts-static.sh

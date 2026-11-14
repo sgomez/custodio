@@ -245,7 +245,8 @@ grep -qF 'systemd-sysusers failed' "$OUT/$s.out" || bad "failsysusers-upgrade: t
 grep -qF 'command failed to execute correctly' "$OUT/$s.out" || bad "failsysusers-upgrade: pacman did not report the failing pre_upgrade"
 grep -qx "custodio 0.1.1-1" "$OUT/$s.version" || bad "failsysusers-upgrade: the upgrade did not go on: $(cat "$OUT/$s.version")"
 
-# ---- the mutants: the checks of the flow must fail for each ----
+# ---- the mutants: the checks of the flow must fail for each. Only what the real pacman shows (the order against the unpack, the order of
+# the hooks, a unit enabled by a link); the other mutants are in scripts/lib/arch-lifecycle-mutants.sh ----
 # Each mutant has its own package, fixture files and container, so they run at once, each in a subshell whose exit status is its $fail.
 mutant_pids=()
 mutant_flow() { # runs in the background; mutant_wait collects them
@@ -270,15 +271,8 @@ mutant_flow_run() { # NAME NFPM-SED FILE SED [FILE SED]...
 {
     mutant_flow account-in-post '' pre_install 's|^custodio_create_account \|\| custodio_status=1|:|' \
         post_install "s|^:\$|systemd-sysusers - <<'X'\nu custodio - \"Custodio signing service\" -\nX|"
-    mutant_flow reloads-in-post '' post_install 's|^:$|systemctl daemon-reload\njournalctl --update-catalog|' post_upgrade 's|^:$|systemctl daemon-reload\njournalctl --update-catalog|'
-    mutant_flow restart-unconditional '' zz-custodio-restart.hook 's|^Exec = .*|Exec = /usr/bin/systemctl restart custodio.service|'
     mutant_flow restart-hook-too-early 's|hooks/zz-custodio-restart.hook|hooks/custodio-restart.hook|' zz-custodio-restart.hook 's|^Operation = Upgrade|Operation = Upgrade|; s|^Description = .*|Description = Restarting early|'
-    mutant_flow restart-in-post-upgrade '' post_upgrade 's|^:$|systemctl try-restart custodio.service|'
-    mutant_flow no-stop-in-pre-remove '' pre_remove 's|^systemctl stop custodio.service.*|:|'
-    mutant_flow delete-state-in-post-remove '' post_remove 's|^if systemctl is-active.*|rm -rf /var/lib/private/custodio\n&|'
-    mutant_flow remove-account-in-post-remove '' post_remove 's|^if systemctl is-active.*|userdel custodio\n&|'
     mutant_flow enable-by-link-in-post-install '' post_install 's|^:$|mkdir -p /etc/systemd/system/multi-user.target.wants\nln -s /usr/lib/systemd/system/custodio.service /etc/systemd/system/multi-user.target.wants/custodio.service|'
-    mutant_flow enable-in-post-install '' post_install 's|^:$|systemctl enable custodio.service|'
 }
 mutant_wait
 

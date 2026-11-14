@@ -242,7 +242,8 @@ DP_STRICT=1 dp -i "$new_deb"
 [ "$rc" -eq 0 ] || bad "systemd 257: dpkg refused the package: $out"
 [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "systemd 257: the files are missing"
 
-# ---- the checks see a bad package: account creation moved from preinst to postinst ----
+# ---- the checks see a bad package: account creation moved from preinst to postinst (what only the real dpkg shows: the order
+# against the unpack; the other mutants are in scripts/lib/deb-lifecycle-mutants.sh) ----
 mutate_fixture() { # NAME FILE SED
     local before_dir=$FX_DIR/packaging/deb
     cp -r "$ROOT/packaging/deb/." "$before_dir/"
@@ -263,9 +264,5 @@ mutant_run() { # NAME FILE SED
 }
 mutant_run account-in-postinst preinst 's|^        custodio_create_account .*|        :|'
 mutant_run account-in-postinst-late postinst 's|^    systemctl daemon-reload.*|&\n    systemd-sysusers - < /dev/null|'
-mutant_run enable-on-install postinst 's|^    journalctl --update-catalog .*|&\n    deb-systemd-invoke enable custodio.service|'
-# shellcheck disable=SC2016 # a sed expression, not shell
-mutant_run restart-always postinst 's|if \[ -n "\$2" \] \&\& \[ -e /run/custodio-restart-after-upgrade \]; then|if true; then|'
-mutant_run delete-on-purge postrm 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/private/custodio\n&|'
 
 exit "$fail"

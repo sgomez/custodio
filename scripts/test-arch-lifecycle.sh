@@ -49,7 +49,11 @@ fail=0
 mutant_mode=0
 mutant_hit=0
 bad() {
-    if [ "$mutant_mode" = 1 ]; then mutant_hit=1; else echo "test-arch-lifecycle: $*" >&2; fail=1; fi
+    case $mutant_mode in
+    1) mutant_hit=1 ;;
+    2) exit 97 ;;
+    *) echo "test-arch-lifecycle: $*" >&2; fail=1 ;;
+    esac
 }
 
 SKELETON=$BF_DIR/skeleton

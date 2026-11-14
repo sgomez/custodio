@@ -309,24 +309,7 @@ mutant() { # NAME SCRIPT SED-EXPRESSION
     mutant_mode=0
     [ "$mutant_hit" = 1 ] || bad "mutant '$1' survived"
 }
-mutant sysusers-ignored-failure pre 's|custodio_create_account \|\| exit 1|custodio_create_account \|\| true|'
-mutant bus-check-ignored pre 's|^custodio_bus_check \|\| exit 1|custodio_bus_check \|\| true|'
-# shellcheck disable=SC2016 # sed expressions
-mutant restart-always post 's|if \[ "\${1:-0}" -ge 2 \] && \[ -e /run/custodio-restart-after-upgrade \]; then|if [ "${1:-0}" -ge 1 ]; then|'
-mutant restart-before-bus-reload post 's|^systemctl reload dbus.service .*|systemctl restart custodio.service\n&|'
-# shellcheck disable=SC2016 # sed expressions
-mutant restart-in-postun-only post '/^if \[ "\${1:-0}" -ge 2 \]/,/^fi/d'
-mutant stop-on-upgrade preun 's|-eq 0 \]|-ge 0 ]|'
-mutant notice-on-upgrade postun 's|-eq 0 \]|-ge 0 ]|'
-mutant enable-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl enable custodio.service|'
-mutant no-socket-enable post 's|^systemctl enable custodio-firefox.socket.*|:|'
-mutant no-socket-start post 's|^    systemctl start custodio-firefox.socket.*|    :|'
-mutant no-socket-stop preun 's|^    systemctl stop custodio-firefox.socket.*|    :|'
-mutant no-socket-disable preun 's|^    systemctl disable custodio-firefox.socket.*|    :|'
-mutant no-stop-on-erase preun 's|^    systemctl stop custodio.service.*|    :|'
-mutant delete-state postun 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/custodio/\n&|'
-# The next mutant (the whole restart removed from %post) is what a package that restarts only from the old package's %postun looks like to the
-# upgrade over the F42-era package, which has no %postun: no restart at all. The account moved out of %pre is a mutant of its own, below.
+# Only what the real rpm shows, the order against the unpack; the other mutants are in scripts/lib/rpm-lifecycle-mutants.sh.
 mutant account-in-post pre '/^custodio_create_account || exit 1$/d'
 
 # The account creation moved to %post: with the rule above only %pre may create it, the policy is "present" and %pre has no sysusers call.
