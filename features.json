@@ -85,7 +85,7 @@
         "F177"
       ],
       "verify": "just quick && cargo test -p custodio-it --test snap_transport --locked && cargo test -p custodio-it --test module_compat --locked && just mutants-diff F178",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F179",
