@@ -106,7 +106,7 @@ contents:
   - src: LICENSE
     dst: /usr/share/licenses/custodio/LICENSE
     file_info: {mode: 0644, owner: root, group: root}
-  # rpm owns no directory it is not told about, so `dnf remove` would leave these three behind (found by the removal case of the e2e suite,
+  # rpm owns no directory it is not told about, so `dnf remove` would leave these behind (the two user `*.target.wants` of F184 too) (found by the removal case of the e2e suite,
   # F49). dpkg and pacman own the parents of the files they list; for them these entries would add nothing.
   - dst: /usr/lib/custodio
     type: dir
@@ -121,6 +121,14 @@ contents:
     packager: rpm
     file_info: {mode: 0755, owner: root, group: root}
   - dst: /usr/share/licenses/custodio
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/lib/systemd/user/default.target.wants
+    type: dir
+    packager: rpm
+    file_info: {mode: 0755, owner: root, group: root}
+  - dst: /usr/lib/systemd/user/paths.target.wants
     type: dir
     packager: rpm
     file_info: {mode: 0755, owner: root, group: root}

@@ -49,7 +49,7 @@ cfg = yaml.safe_load(read("packaging/nfpm.yaml"))
 files, links = {}, {}  # dst -> src, for files and symlinks of every format
 for item in cfg["contents"]:
     dst = item["dst"]
-    if not dst.startswith(USER_DIR + "/"):
+    if not dst.startswith(USER_DIR + "/") or item.get("type") == "dir":  # the rpm-only directory entries own the two `*.target.wants`
         continue
     if item.get("packager") is not None:
         bad(f"{dst} is limited to packager {item['packager']}; the user units ship in every format")

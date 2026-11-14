@@ -50,6 +50,9 @@ RPM_ONLY_DIRS = {
     "/usr/libexec/custodio": 0o755,
     "/usr/share/doc/custodio": 0o755,
     "/usr/share/licenses/custodio": 0o755,
+    # F184: no package owns these two (found by the removal case on alma10 and fedora44, F187)
+    "/usr/lib/systemd/user/default.target.wants": 0o755,
+    "/usr/lib/systemd/user/paths.target.wants": 0o755,
 }
 
 UNIT = "/usr/lib/systemd/system/custodio.service"
