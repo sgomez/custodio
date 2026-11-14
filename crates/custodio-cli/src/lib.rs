@@ -16,10 +16,12 @@ pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
+pub mod browser_files;
 pub mod bus;
 pub mod delete;
 pub mod failure;
 pub mod list;
+pub mod register_discover;
 pub mod storage;
 pub mod tty;
 

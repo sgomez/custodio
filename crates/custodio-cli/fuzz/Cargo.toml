@@ -1,0 +1,30 @@
+[package]
+name = "custodio-cli-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+custodio-cli = { path = ".." }
+libfuzzer-sys = "0.4"
+
+[[bin]]
+name = "profile_index"
+path = "fuzz_targets/profile_index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nss_modules"
+path = "fuzz_targets/nss_modules.rs"
+test = false
+doc = false
+bench = false
+
+# Keep out of the main workspace: fuzz targets need nightly and sanitizer flags.
+[workspace]
