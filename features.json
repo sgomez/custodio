@@ -138,7 +138,7 @@
         "F182"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test register_snap --locked && cargo test -p custodio-cli --test register_acceptance --locked && scripts/test-e2e-vm-snap.sh && just mutants-diff F183",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F184",
