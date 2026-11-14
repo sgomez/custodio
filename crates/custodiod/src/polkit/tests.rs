@@ -52,8 +52,8 @@ fn auth_errors_display() {
 }
 
 #[test]
-fn process_subject_carries_the_uid_as_int32_the_way_polkit_reads_it() {
-    let file = std::fs::File::open("/dev/null").expect("open /dev/null");
+fn process_subject_carries_the_uid_as_int32_the_way_polkit_reads_it() -> std::io::Result<()> {
+    let file = std::fs::File::open("/dev/null")?;
     let ((kind, details), action, _, flags, _) = process_request(file.as_fd(), 1001_i32, ACTION_ID);
     assert_eq!(kind, "unix-process");
     // polkit reads `uid` as an int32; any other type is ignored and ends in "'pidfd' specified withtout 'uid'"
@@ -61,4 +61,5 @@ fn process_subject_carries_the_uid_as_int32_the_way_polkit_reads_it() {
     assert!(details.contains_key("pidfd"));
     assert_eq!(action, ACTION_ID);
     assert_eq!(flags, 1);
+    Ok(())
 }
