@@ -14,6 +14,15 @@ snap_problems() {
     printf '%s\n' "$o" | sed '/^$/d'
 }
 
+# snap_make_profile ROOT: a Firefox profile root with one profile `s.default` (profiles.ini and an empty NSS database), which is what `custodio register` acts on.
+# A first `snap run --shell firefox` creates no profile and a headless first start is not used, so the harness makes it (F183).
+snap_make_profile() {
+    local root=$1
+    mkdir -p "$root/s.default" || return 1
+    printf '[General]\nVersion=2\n\n[Profile0]\nName=default\nIsRelative=1\nPath=s.default\nDefault=1\n' > "$root/profiles.ini" || return 1
+    certutil -N --empty-password -d "sql:$root/s.default" > /dev/null || return 1
+}
+
 # snap_profile_load: enforce mode, replacing any earlier load
 snap_profile_load() {
     "$SN_PARSER" -r "$SN_PROFILE" || return 1

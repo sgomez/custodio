@@ -12,11 +12,12 @@ use std::process::{Command, Stdio};
 
 use crate::browser_files::{FileError, LockState, read_bounded};
 use crate::list::escape;
-use crate::register_discover::{Environment, Profile, SNAP_NAME, Skipped, discover};
-use crate::register_snap::{
-    CopyState, DEFAULT_JOURNAL_SOCKET, Refresh, copy_path, journal_datagram, place_copy,
-    refresh_copy, refresh_only, remove_copy, send_to_journal,
+pub use crate::register_cli::{
+    Refusal, RegisterArgs, RegisterError, default_journal_socket, parse_register_args,
+    refresh_only_command, refuse_root_and_sudo, register_command,
 };
+use crate::register_discover::{Environment, Profile, Skipped, discover};
+use crate::register_snap::{copy_path, snap_lines};
 
 /// Where every package installs the module.
 pub const INSTALLED_MODULE: &str = "/usr/lib/custodio/libcustodio_pkcs11.so";
@@ -257,41 +258,6 @@ impl fmt::Display for RunError {
 
 impl std::error::Error for RunError {}
 
-/// Why the command refuses to run: it edits the user's own profiles, never root's or a sudo user's.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Refusal {
-    Root,
-    Sudo,
-}
-
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Root => f.write_str("custodio register: refused to run as root; run it as the user whose browsers should see Custodio"),
-            Self::Sudo => f.write_str("custodio register: refused to run under sudo (SUDO_USER or SUDO_UID is set); run it as the user whose browsers should see Custodio"),
-        }
-    }
-}
-
-impl std::error::Error for Refusal {}
-
-/// Refuse effective uid 0 and any `SUDO_USER`/`SUDO_UID`.
-///
-/// # Errors
-/// The [`Refusal`] that applies.
-pub fn refuse_root_and_sudo(
-    euid: u32,
-    var: impl Fn(&str) -> Option<OsString>,
-) -> Result<(), Refusal> {
-    if euid == 0 {
-        return Err(Refusal::Root);
-    }
-    if var("SUDO_USER").is_some() || var("SUDO_UID").is_some() {
-        return Err(Refusal::Sudo);
-    }
-    Ok(())
-}
-
 /// Whether `program` is a file in a directory of `PATH` (an absolute `program` is its own path: `join` replaces).
 fn program_exists(program: &OsStr) -> bool {
     let p = Path::new(program);
@@ -459,7 +425,7 @@ pub fn remove_profile(program: &OsStr, profile: &Path) -> Outcome {
     }
 }
 
-fn handle(profile: &Profile, options: &Options, module: &Path) -> Outcome {
+pub(crate) fn handle(profile: &Profile, options: &Options, module: &Path) -> Outcome {
     if let Some(scratch) = scratch_of(&profile.path) {
         remove_scratch(&scratch);
     }
@@ -473,70 +439,6 @@ fn handle(profile: &Profile, options: &Options, module: &Path) -> Outcome {
         return Outcome::Skipped(Skipped::P11Kit.to_string());
     }
     register_profile(&options.modutil, &profile.path, module)
-}
-
-/// The lines of the snap: its copy of the module and its profiles.
-fn snap_lines(snap: &[&Profile], copy: &Path, options: &Options) -> Vec<Line> {
-    let line = |path: &Path, outcome| Line {
-        browser: SNAP_NAME,
-        path: path.to_owned(),
-        outcome,
-    };
-    let held = |p: &Profile| matches!(p.lock, LockState::Held(_));
-    let mut lines = Vec::new();
-    if options.remove {
-        for p in snap {
-            lines.push(line(&p.path, handle(p, options, copy)));
-        }
-        if lines.iter().any(|l| l.outcome.is_fixable_skip()) {
-            if fs::symlink_metadata(copy).is_ok() {
-                lines.push(line(copy, Outcome::CopyKept));
-            }
-        } else {
-            match remove_copy(copy) {
-                Ok(true) => lines.push(line(copy, Outcome::CopyRemoved)),
-                Ok(false) => {}
-                Err(why) => lines.push(line(copy, Outcome::CopyFailed(why))),
-            }
-        }
-        return lines;
-    }
-    // A copy is placed for a profile that can be registered; one that is there is refreshed whatever the profiles are.
-    let placed = if snap.iter().any(|p| !held(p)) {
-        place_copy(copy, &options.module)
-    } else {
-        refresh_copy(copy, &options.module)
-    };
-    let usable = match placed {
-        Ok(CopyState::Placed) => {
-            lines.push(line(copy, Outcome::CopyPlaced));
-            true
-        }
-        Ok(CopyState::Refreshed) => {
-            lines.push(line(copy, Outcome::CopyRefreshed));
-            true
-        }
-        Ok(CopyState::UpToDate) => {
-            lines.push(line(copy, Outcome::CopyUpToDate));
-            true
-        }
-        Ok(CopyState::Absent) => false,
-        Err(why) => {
-            lines.push(line(copy, Outcome::CopyFailed(why)));
-            copy.exists()
-        }
-    };
-    for p in snap {
-        let outcome = if !usable && !held(p) {
-            Outcome::Skipped(
-                "the copy of the module is not there, so there is nothing to register".to_owned(),
-            )
-        } else {
-            handle(p, options, copy)
-        };
-        lines.push(line(&p.path, outcome));
-    }
-    lines
 }
 
 /// Register (or remove) in every native profile found, and keep the Firefox snap's copy of the module.
@@ -569,152 +471,4 @@ pub fn run(env: &Environment, options: &Options) -> Result<Report, RunError> {
         lines.extend(snap_lines(&snap, &copy, options));
     }
     Ok(Report { lines })
-}
-
-/// What the command line of `custodio register` asks for.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct RegisterArgs {
-    /// `--module PATH`: register this library instead of [`INSTALLED_MODULE`].
-    pub module: Option<PathBuf>,
-    /// `--remove`: remove every Custodio entry instead.
-    pub remove: bool,
-    /// `--refresh-only`: only replace a stale copy of the module in the Firefox snap, and log the outcome.
-    pub refresh_only: bool,
-}
-
-/// Parse the arguments after `register`: `[--module PATH] [--remove | --refresh-only]`, each at most once.
-///
-/// # Errors
-/// `None` for anything else (the caller prints the usage text).
-#[must_use]
-pub fn parse_register_args<I: IntoIterator<Item = String>>(args: I) -> Option<RegisterArgs> {
-    let mut it = args.into_iter();
-    let mut parsed = RegisterArgs::default();
-    let mut module_seen = false;
-    while let Some(arg) = it.next() {
-        match arg.as_str() {
-            "--module" => {
-                let path = it.next().filter(|p| !p.is_empty())?;
-                if std::mem::replace(&mut module_seen, true) {
-                    return None;
-                }
-                parsed.module = Some(PathBuf::from(path));
-            }
-            "--remove" if !parsed.remove => parsed.remove = true,
-            "--refresh-only" if !parsed.refresh_only => parsed.refresh_only = true,
-            _ => return None,
-        }
-    }
-    (!(parsed.remove && parsed.refresh_only)).then_some(parsed)
-}
-
-/// Why `custodio register` ends without success.
-#[derive(Debug)]
-pub enum RegisterError {
-    Refused(Refusal),
-    Run(RunError),
-    /// This many profiles were skipped for a reason the person can fix; each was named above.
-    Skipped(usize),
-    /// Refresh-only mode could not replace the copy.
-    Refresh(String),
-}
-
-impl fmt::Display for RegisterError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Refused(r) => write!(f, "{r}"),
-            Self::Run(e) => write!(f, "{e}"),
-            Self::Skipped(n) => write!(
-                f,
-                "custodio: {n} profile(s) skipped; fix what is named above and run this again"
-            ),
-            Self::Refresh(why) => write!(f, "custodio: {why}"),
-        }
-    }
-}
-
-impl std::error::Error for RegisterError {}
-
-/// `custodio register`: refuse root and sudo, run, print one line per profile on `out` and the fixable skips on `err`.
-///
-/// # Errors
-/// See [`RegisterError`].
-pub fn register_command<W: io::Write, E: io::Write>(
-    args: &RegisterArgs,
-    env: &Environment,
-    euid: u32,
-    var: impl Fn(&str) -> Option<OsString>,
-    out: &mut W,
-    err: &mut E,
-) -> Result<(), RegisterError> {
-    refuse_root_and_sudo(euid, var).map_err(RegisterError::Refused)?;
-    let module = args
-        .module
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(INSTALLED_MODULE));
-    let options = Options {
-        module,
-        modutil: OsString::from(MODUTIL),
-        remove: args.remove,
-    };
-    let report = run(env, &options).map_err(RegisterError::Run)?;
-    if report.lines.is_empty() {
-        let _ = writeln!(out, "No native browser profiles found.");
-    }
-    let mut skipped = 0;
-    for line in &report.lines {
-        let _ = writeln!(out, "{line}");
-        if line.outcome.is_fixable_skip() {
-            skipped += 1;
-            let _ = writeln!(err, "custodio: {line}");
-        }
-    }
-    if skipped > 0 {
-        return Err(RegisterError::Skipped(skipped));
-    }
-    Ok(())
-}
-
-/// `custodio register --refresh-only`: refuse root and sudo, replace a stale copy, say what happened on `out` and in the
-/// journal at `journal`. A journal that cannot be reached is reported on `err` and changes nothing else.
-///
-/// # Errors
-/// [`RegisterError::Refused`], or [`RegisterError::Refresh`] when the copy could not be replaced.
-pub fn refresh_only_command<W: io::Write, E: io::Write>(
-    args: &RegisterArgs,
-    env: &Environment,
-    euid: u32,
-    var: impl Fn(&str) -> Option<OsString>,
-    journal: &Path,
-    out: &mut W,
-    err: &mut E,
-) -> Result<(), RegisterError> {
-    refuse_root_and_sudo(euid, var).map_err(RegisterError::Refused)?;
-    let module = args
-        .module
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(INSTALLED_MODULE));
-    let copy = copy_path(&env.home);
-    let outcome = refresh_only(&env.home, &module);
-    let _ = writeln!(out, "{SNAP_NAME} {}: {outcome}", copy.display());
-    if let Err(e) = send_to_journal(journal, &journal_datagram(&outcome, &copy)) {
-        let _ = writeln!(
-            err,
-            "custodio: cannot write to the journal at {}: {e}",
-            journal.display()
-        );
-    }
-    match outcome {
-        Refresh::Failed(why) => Err(RegisterError::Refresh(format!(
-            "cannot replace the copy {}: {why}",
-            copy.display()
-        ))),
-        _ => Ok(()),
-    }
-}
-
-/// The journal socket `custodio register --refresh-only` writes to.
-#[must_use]
-pub const fn default_journal_socket() -> &'static str {
-    DEFAULT_JOURNAL_SOCKET
 }

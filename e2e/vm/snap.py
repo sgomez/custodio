@@ -6,7 +6,7 @@ is not snap.firefox.* in enforce mode, the socket is unreachable, the bus is not
 Evidence files (DIR/): record (key=value), snap-list.out, snap-known.out, dir.stat, sock.stat (`stat -c %F|%U|%G|%a|%n`), list.out/list.rc
 (the client's `token<TAB>LABEL` lines), keys.alice, keys.foreign (labels, one per line), sign-NAME.{pid,rc,crt,digest,sig,kind}, subjects (the
 agent's `ACTION PID UID`), alice.uid, journal.json (`journalctl -o json` of the service during the group), bus-in.out, bus-out.out, audit.log,
-unconf.*/root.*/other.* (client output, rc, refusal.log, signs.before/after), um-METHOD.out, um.*."""
+register.out, register.rc (the `custodio register` of the place phase), module.sha, copy.sha (hashes of the installed module and of the snap copy), unconf.*/root.*/other.* (client output, rc, refusal.log, signs.before/after), um-METHOD.out, um.*."""
 import json
 import os
 import subprocess
@@ -62,10 +62,30 @@ def tokens(d, prefix="list"):
     return [x.split("\t", 1)[1] for x in lines(d, prefix + ".out") if x.startswith("token\t")]
 
 
+def j_register(d):
+    """The command that placed the copy (F183): it succeeded, said the snap profile is registered, and the copy is the installed module."""
+    p = []
+    rc = read(d, "register.rc").strip()
+    if rc != "0":
+        p.append(f"custodio register exited with '{rc}', not 0")
+    report = lines(d, "register.out")
+    if not any(x.startswith("Firefox (snap) ") and ": registered" in x for x in report):
+        p.append("the report of custodio register does not say the Firefox snap profile was registered")
+    if any(": skipped" in x or "copy failed" in x for x in report):
+        p.append("the report of custodio register has a skipped or failed line")
+    module, copy = read(d, "module.sha").strip(), read(d, "copy.sha").strip()
+    if not module or module == "missing":
+        p.append("the installed module has no hash")
+    elif copy != module:
+        p.append(f"the snap copy of the module ({copy or 'no hash'}) is not the installed module ({module})")
+    return p
+
+
 def j_record(d, _):
-    p = need(d, "record", "snap-list.out", "snap-known.out")
+    p = need(d, "record", "snap-list.out", "snap-known.out", "register.out", "register.rc", "module.sha", "copy.sha")
     if p:
         return p
+    p += j_register(d)
     r = kv(d, "record")
     for k in RECORD_KEYS:
         if not r.get(k):

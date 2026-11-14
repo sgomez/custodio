@@ -11,7 +11,10 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::browser_files::LockState;
 use crate::list::escape;
+use crate::register_discover::{Profile, SNAP_NAME};
+use crate::register_native::{Line, Options, Outcome, handle};
 
 /// The copy, relative to the home directory.
 pub const COPY_REL: &str = "snap/firefox/common/libcustodio_pkcs11.so";
@@ -232,4 +235,68 @@ pub fn send_to_journal(socket: &Path, datagram: &[u8]) -> io::Result<()> {
     } else {
         Err(io::Error::new(io::ErrorKind::WriteZero, "short send"))
     }
+}
+
+/// The lines of the snap: its copy of the module and its profiles.
+pub(crate) fn snap_lines(snap: &[&Profile], copy: &Path, options: &Options) -> Vec<Line> {
+    let line = |path: &Path, outcome| Line {
+        browser: SNAP_NAME,
+        path: path.to_owned(),
+        outcome,
+    };
+    let held = |p: &Profile| matches!(p.lock, LockState::Held(_));
+    let mut lines = Vec::new();
+    if options.remove {
+        for p in snap {
+            lines.push(line(&p.path, handle(p, options, copy)));
+        }
+        if lines.iter().any(|l| l.outcome.is_fixable_skip()) {
+            if fs::symlink_metadata(copy).is_ok() {
+                lines.push(line(copy, Outcome::CopyKept));
+            }
+        } else {
+            match remove_copy(copy) {
+                Ok(true) => lines.push(line(copy, Outcome::CopyRemoved)),
+                Ok(false) => {}
+                Err(why) => lines.push(line(copy, Outcome::CopyFailed(why))),
+            }
+        }
+        return lines;
+    }
+    // A copy is placed for a profile that can be registered; one that is there is refreshed whatever the profiles are.
+    let placed = if snap.iter().any(|p| !held(p)) {
+        place_copy(copy, &options.module)
+    } else {
+        refresh_copy(copy, &options.module)
+    };
+    let usable = match placed {
+        Ok(CopyState::Placed) => {
+            lines.push(line(copy, Outcome::CopyPlaced));
+            true
+        }
+        Ok(CopyState::Refreshed) => {
+            lines.push(line(copy, Outcome::CopyRefreshed));
+            true
+        }
+        Ok(CopyState::UpToDate) => {
+            lines.push(line(copy, Outcome::CopyUpToDate));
+            true
+        }
+        Ok(CopyState::Absent) => false,
+        Err(why) => {
+            lines.push(line(copy, Outcome::CopyFailed(why)));
+            copy.exists()
+        }
+    };
+    for p in snap {
+        let outcome = if !usable && !held(p) {
+            Outcome::Skipped(
+                "the copy of the module is not there, so there is nothing to register".to_owned(),
+            )
+        } else {
+            handle(p, options, copy)
+        };
+        lines.push(line(&p.path, outcome));
+    }
+    lines
 }

@@ -2,8 +2,9 @@
 # Runs as an ordinary user in one logind session (`su -l`) with WORK set by e2e/vm/snap.sh (F179). The test agent of the session approves; its state is
 # $WORK/snap/agent-USER (requests, subjects). Usage: snap-user.sh PHASE
 #   import   imports the user's keys (sn-USER-rsa, sn-USER-ec) with the CLI; nothing else
-#   place    the first `snap run --shell firefox` (the snap creates ~/snap/firefox), then the module copy and the client go to ~/snap/firefox/common/ by hand
-#            (a byte copy of the installed module: the registration command and the refresh are F183)
+#   place    the first `snap run --shell firefox` (the snap creates ~/snap/firefox), a profile made by snap_make_profile (the snap makes none), then
+#            `custodio register` places the module copy in ~/snap/firefox/common/ and registers it (F183); only the test client is copied by hand
+#            (it is the harness's, not the product's). The report, the exit status and the hashes of the module and the copy are kept in $WORK/snap
 #   sign     under `snap run --shell firefox`: the client lists the keys, reads the certificates and signs three times (rsa, ec, rsa); the pids are kept
 #   bus      the bus call from the confinement and the identical call outside it (the same tool: snap-client.py call bus ListKeys)
 #   unknown  from the confinement: ImportP12, DeleteKey, ReplaceCertificate as method calls on the socket
@@ -12,6 +13,8 @@
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 : "${WORK:?}"
+# shellcheck source=e2e/vm/snap-lib.sh
+source /e2e/vm/snap-lib.sh
 phase=$1
 user=$(id -un)
 SN=$WORK/snap
@@ -48,7 +51,14 @@ place)
     insnap 'echo $SNAP_INSTANCE_NAME $HOME' > "$SN/first-run.out" 2>&1 || rc=$?
     [ "$rc" -eq 0 ] || { cat "$SN/first-run.out" >&2; fail "snap run --shell firefox failed as $user (exit $rc)"; }
     mkdir -p "$H"
-    install -m 755 /usr/lib/custodio/libcustodio_pkcs11.so "$MOD"
+    snap_make_profile "$H/.mozilla/firefox" || fail "the snap profile could not be made (certutil failed)"
+    rc=0
+    custodio register > "$SN/register.out" 2> "$SN/register.err" || rc=$?
+    echo "$rc" > "$SN/register.rc"
+    sha256sum < /usr/lib/custodio/libcustodio_pkcs11.so | cut -d' ' -f1 > "$SN/module.sha"
+    { sha256sum < "$MOD" 2> /dev/null || echo missing; } | cut -d' ' -f1 > "$SN/copy.sha"
+    [ "$rc" -eq 0 ] || { cat "$SN/register.out" "$SN/register.err" >&2; fail "custodio register failed as $user (exit $rc)"; }
+    grep -q '^Firefox (snap) .*: registered' "$SN/register.out" || { cat "$SN/register.out" >&2; fail "custodio register did not report the snap profile registered"; }
     install -m 755 /e2e/vm/snap-client.py "$CL"
     cmp /usr/lib/custodio/libcustodio_pkcs11.so "$MOD" || fail "the module copy differs from the installed module"
     ;;

@@ -22,7 +22,8 @@ fi
 source "$here/../tpmkind-lib.sh"
 # shellcheck source=e2e/vm/snap-lib.sh
 source "$here/snap-lib.sh"
-for tool in openssl python3 journalctl apparmor_parser aa-exec snap runuser; do command -v "$tool" > /dev/null || fail "$tool is not installed"; done
+# modutil and certutil (libnss3-tools) are installed in the guest with the other test tools by run.sh until the package declares the dependency (F184)
+for tool in openssl python3 journalctl apparmor_parser aa-exec snap runuser modutil certutil custodio; do command -v "$tool" > /dev/null || fail "$tool is not installed"; done
 
 SN=$WORK/snap
 rm -rf "${SN:?}"
@@ -56,6 +57,7 @@ id -u alice > "$SN/alice.uid"
 user_phase bob import
 user_phase alice import
 user_phase alice place
+while IFS= read -r line; do echo "E2E-SNAP-REGISTER $line"; done < "$SN/register.out"
 printf 'sn-alice-rsa\nsn-alice-ec\n' > "$SN/keys.alice"
 printf 'sn-bob-rsa\nsn-bob-ec\n' > "$SN/keys.foreign"
 

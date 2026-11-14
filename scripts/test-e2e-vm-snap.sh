@@ -54,6 +54,9 @@ cat > snap-list.out << 'EOF2'
 Name     Version  Rev   Tracking       Publisher  Notes
 firefox  160.0-1  9181  latest/stable  mozilla**  -
 EOF2
+echo 0 > register.rc
+printf 'Firefox (snap) /home/alice/snap/firefox/common/libcustodio_pkcs11.so: copy placed\nFirefox (snap) /home/alice/snap/firefox/common/.mozilla/firefox/s.default: registered\n' > register.out
+echo 5d41402abc4b2a76b9719d911017c592 > module.sha; cp module.sha copy.sha
 printf 'type: snap-revision\nauthority-id: canonical\nsnap-revision: 9181\ndeveloper-id: mozilla\n' > snap-known.out
 echo 'directory|root|root|755|/run/snap.firefox' > dir.stat
 echo 'socket|root|root|666|/run/snap.firefox/custodio.sock' > sock.stat
@@ -102,6 +105,14 @@ for f in snap_revision snap_base snapd_deb snapd_snap apparmor dbus_daemon peer_
     ctl "rec-unknown-$f" snap-record "sed -i 's/^$f=.*/$f=unknown/' record"
 done
 MSG='a person must look' ctl rec-label snap-record "sed -i 's/(enforce)/(complain)/' record"
+# the registration command of the place phase
+MSG='exited with' ctl reg-failed snap-record 'echo 1 > register.rc'
+MSG='registered' ctl reg-skipped snap-record "sed -i 's/: registered/: skipped, a browser has it open/' register.out"
+MSG='skipped or failed' ctl reg-copy-failed snap-record "echo 'Firefox (snap) /x: copy failed, cannot create' >> register.out"
+MSG='is not the installed module' ctl reg-copy-differs snap-record 'echo 0000 > copy.sha'
+MSG='is not the installed module' ctl reg-copy-missing snap-record 'echo missing > copy.sha'
+MSG='registered' ctl reg-no-report snap-record ': > register.out'
+MSG='register.rc is missing' ctl reg-no-rc snap-record 'rm register.rc'
 # the socket directory
 ctl dir-775 snap-socket-dir "echo 'directory|root|root|775|/run/snap.firefox' > dir.stat"
 ctl dir-alice snap-socket-dir "echo 'directory|alice|root|755|/run/snap.firefox' > dir.stat"
@@ -166,6 +177,38 @@ done
 mkdir -p "$tmp/fake"; printf 'import sys\nsys.exit(0)\n' > "$tmp/fake/snap.py"
 [ -z "$(SN_E2E=$tmp/fake snap_problems snap-bus-denied "$tmp/c-bus-succeeded")" ] || bad "the stub judge is not silent (the control is broken)"
 out=$(python3 -I "$E/vm/snap.py" snap-bus-denied "$tmp/c-bus-succeeded"); [ -n "$out" ] || bad "the real judge accepts the bus call that succeeded"
+
+# ---- the profile the guest's place phase makes, then the real command registers it (F179's harness, F183's command)
+bin=$ROOT/target/debug/custodio-cli
+[ -x "$bin" ] || cargo build --quiet --locked -p custodio-cli || bad "the command could not be built"
+stub=$(find /usr/lib /usr/lib64 -name libsoftokn3.so -print -quit 2> /dev/null) || true # a loadable shared object: modutil refuses anything else
+[ -n "$stub" ] || bad "no shared object for the stub module"
+mkdir -p "$tmp/mod"
+cp "$stub" "$tmp/mod/libcustodio_pkcs11.so"
+reg() { # HOME: the real command on it, as the place phase runs it, with the module of this run
+    HOME=$1 "$bin" register --module "$tmp/mod/libcustodio_pkcs11.so"
+}
+mkdir -p "$tmp/home"
+snap_make_profile "$tmp/home/snap/firefox/common/.mozilla/firefox" || bad "snap_make_profile failed on a temporary home"
+out=$(reg "$tmp/home") || bad "custodio register failed on the home the function made: $out"
+grep -q '^Firefox (snap) .*s.default: registered' <<< "$out" || bad "the command did not report the snap profile registered: $out"
+cmp -s "$tmp/mod/libcustodio_pkcs11.so" "$tmp/home/snap/firefox/common/libcustodio_pkcs11.so" || bad "the copy is not the module"
+modutil -dbdir "sql:$tmp/home/snap/firefox/common/.mozilla/firefox/s.default" -list < /dev/null | grep -q 'common/libcustodio_pkcs11.so' || bad "the profile does not list the copy"
+# the judge accepts that report and the copy's hash as the place phase records them
+cp -r "$g" "$tmp/c-real"
+printf '%s\n' "$out" > "$tmp/c-real/register.out"
+p=$(snap_problems snap-record "$tmp/c-real"); [ -z "$p" ] || bad "the judge rejects the report of the real command: $p"
+# a home where the function was not run: no profile, no copy
+mkdir -p "$tmp/home2"
+out=$(reg "$tmp/home2") || bad "custodio register failed on an empty home"
+! grep -q 'registered' <<< "$out" || bad "a home without the profile reports a registration: $out"
+[ ! -e "$tmp/home2/snap" ] || bad "the command made a snap directory on a home without the snap"
+printf '%s\n' "$out" > "$tmp/c-real/register.out"
+[ -n "$(snap_problems snap-record "$tmp/c-real")" ] || bad "the judge accepts the report of a home without the profile"
+# the harness shell scripts are clean
+if command -v shellcheck > /dev/null; then
+    shellcheck -x "$E/vm/snap-user.sh" "$E/vm/snap-lib.sh" "$E/vm/snap.sh" || bad "shellcheck found problems in the snap harness"
+fi
 
 # ---- the test profile is always unloaded
 printf '#!/bin/sh\necho "$@" >> "$PARSER_LOG"\n' > "$tmp/parser"

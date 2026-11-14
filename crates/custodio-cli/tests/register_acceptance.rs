@@ -5,7 +5,7 @@ mod fixture;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 
 use custodio_cli::register_snap::COPY_REL;
 use fixture::{Fixture, add_by_hand, entries, modutil_list, write_entry};
@@ -90,62 +90,86 @@ impl Browser {
     }
 }
 
-#[test]
-fn acceptance_10_on_one_home() {
-    let f = Fixture::new();
-    let m = f.module("a");
-    let ms = m.to_str().unwrap();
-    let legacy = f.root(".mozilla/firefox", &["l.default"]).join("l.default");
-    let xdg = f
-        .root(".config/mozilla/firefox", &["x.default"])
-        .join("x.default");
-    let snap = f
-        .root("snap/firefox/common/.mozilla/firefox", &["s.default"])
-        .join("s.default");
-    let copy = f.home().join(COPY_REL);
-    let all: [&Path; 3] = [&legacy, &xdg, &snap];
-    // a hand-registered entry under another name, and a foreign module in each
-    add_by_hand(&legacy, "my token", &m);
-    for p in all {
-        write_entry(p, "foreign", "/old/libother.so");
-    }
-    let foreign_before: Vec<_> = all.iter().map(|p| others(p)).collect();
-    let run = |extra: &[&str]| {
-        let mut a = vec!["register", "--module", ms];
-        a.extend_from_slice(extra);
-        f.binary(&a, &path(), &[])
-    };
-    let shown = |o: &std::process::Output| {
-        format!(
-            "{}{}",
-            String::from_utf8_lossy(&o.stdout),
-            String::from_utf8_lossy(&o.stderr)
-        )
-    };
+/// The home of acceptance 10: a legacy and an XDG Firefox profile, a hand-registered entry under another name, a foreign
+/// module in each, and the Firefox snap with a profile.
+struct Scenario {
+    f: Fixture,
+    module: PathBuf,
+    legacy: PathBuf,
+    xdg: PathBuf,
+    snap: PathBuf,
+    copy: PathBuf,
+}
 
+impl Scenario {
+    fn new() -> Self {
+        let f = Fixture::new();
+        let module = f.module("a");
+        let legacy = f.root(".mozilla/firefox", &["l.default"]).join("l.default");
+        let xdg = f
+            .root(".config/mozilla/firefox", &["x.default"])
+            .join("x.default");
+        let snap = f
+            .root("snap/firefox/common/.mozilla/firefox", &["s.default"])
+            .join("s.default");
+        let copy = f.home().join(COPY_REL);
+        add_by_hand(&legacy, "my token", &module);
+        for p in [&legacy, &xdg, &snap] {
+            write_entry(p, "foreign", "/old/libother.so");
+        }
+        Self {
+            f,
+            module,
+            legacy,
+            xdg,
+            snap,
+            copy,
+        }
+    }
+
+    fn all(&self) -> [&Path; 3] {
+        [&self.legacy, &self.xdg, &self.snap]
+    }
+
+    fn run(&self, extra: &[&str]) -> Output {
+        let mut a = vec!["register", "--module", self.module.to_str().unwrap()];
+        a.extend_from_slice(extra);
+        self.f.binary(&a, &path(), &[])
+    }
+}
+
+fn shown(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+#[test]
+fn acceptance_10_registration_on_one_home() {
+    let s = Scenario::new();
+    let ms = s.module.to_str().unwrap();
     // a locked native profile is skipped and named, the others are done, the exit is non-zero
-    let browser = Browser::open(&xdg);
-    let locked = run(&[]);
+    let browser = Browser::open(&s.xdg);
+    let locked = s.run(&[]);
     assert_eq!(locked.status.code(), Some(1), "{}", shown(&locked));
     let text = shown(&locked);
     assert!(
         text.contains("x.default") && text.contains("close the browser"),
         "{text}"
     );
-    assert_eq!(
-        exactly_one_in_each(&[legacy.as_path(), snap.as_path()]),
-        Ok(())
-    );
+    assert_eq!(exactly_one_in_each(&[&s.legacy, &s.snap]), Ok(()));
     assert!(
-        exactly_one_in_each(&[xdg.as_path()]).is_err(),
+        exactly_one_in_each(&[&s.xdg]).is_err(),
         "the locked profile was not touched"
     );
     browser.close();
 
-    let first = run(&[]);
+    let first = s.run(&[]);
     assert_eq!(first.status.code(), Some(0), "{}", shown(&first));
-    assert_eq!(exactly_one_in_each(&all), Ok(()));
-    let hand: Vec<_> = entries(&legacy)
+    assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
+    let hand: Vec<_> = entries(&s.legacy)
         .into_iter()
         .filter(|e| e.library == ms)
         .collect();
@@ -154,51 +178,50 @@ fn acceptance_10_on_one_home() {
         (1, "my token"),
         "the hand entry keeps its name"
     );
-    let snap_entry: Vec<_> = entries(&snap)
+    let snap_entry: Vec<_> = entries(&s.snap)
         .into_iter()
         .filter(|e| e.library.ends_with("libcustodio_pkcs11.so"))
         .collect();
     assert_eq!(
         snap_entry[0].library,
-        copy.to_str().unwrap(),
+        s.copy.to_str().unwrap(),
         "the snap profile points to the copy"
     );
-    assert_eq!(fs::read(&copy).unwrap(), fs::read(&m).unwrap());
+    assert_eq!(fs::read(&s.copy).unwrap(), fs::read(&s.module).unwrap());
 
     // a second run leaves the whole home equal
-    let one = f.snapshot();
-    assert_eq!(run(&[]).status.code(), Some(0));
-    assert_eq!(f.snapshot(), one);
+    let one = s.f.snapshot();
+    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(s.f.snapshot(), one);
 
     // root and sudo are refused, the home is equal
-    let root = f
-        .command(&["register", "--module", ms], &path(), &[], true)
-        .output()
-        .unwrap();
-    let sudo = f.binary(
-        &["register", "--module", ms],
-        &path(),
-        &[("SUDO_UID", "1000")],
-    );
+    let args = ["register", "--module", ms];
+    let root = s.f.command(&args, &path(), &[], true).output().unwrap();
+    let sudo = s.f.binary(&args, &path(), &[("SUDO_UID", "1000")]);
     assert_eq!(root.status.code(), Some(2), "{root:?}");
     assert_eq!(sudo.status.code(), Some(2), "{sudo:?}");
-    assert_eq!(f.snapshot(), one);
+    assert_eq!(s.f.snapshot(), one);
+}
 
-    // removal with a locked profile: the others are cleaned, the locked one keeps its entry
-    let browser = Browser::open(&xdg);
-    let removal = run(&["--remove"]);
+#[test]
+fn acceptance_10_removal_on_one_home() {
+    let s = Scenario::new();
+    let foreign_before: Vec<_> = s.all().iter().map(|p| others(p)).collect();
+    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
+
+    // a locked profile keeps its entry; the others are cleaned and the exit is non-zero
+    let browser = Browser::open(&s.xdg);
+    let removal = s.run(&["--remove"]);
     assert_eq!(removal.status.code(), Some(1), "{}", shown(&removal));
     assert!(shown(&removal).contains("x.default"));
-    assert_eq!(exactly_one_in_each(&[xdg.as_path()]), Ok(()));
-    assert!(
-        exactly_one_in_each(&[legacy.as_path()]).is_err()
-            && exactly_one_in_each(&[snap.as_path()]).is_err()
-    );
+    assert_eq!(exactly_one_in_each(&[&s.xdg]), Ok(()));
+    assert!(exactly_one_in_each(&[&s.legacy]).is_err() && exactly_one_in_each(&[&s.snap]).is_err());
     browser.close();
 
-    let removal = run(&["--remove"]);
+    let removal = s.run(&["--remove"]);
     assert_eq!(removal.status.code(), Some(0), "{}", shown(&removal));
-    for p in all {
+    for p in s.all() {
         assert!(
             entries(p)
                 .iter()
@@ -207,8 +230,8 @@ fn acceptance_10_on_one_home() {
             p.display()
         );
     }
-    assert!(fs::symlink_metadata(&copy).is_err(), "no copy");
-    let foreign_after: Vec<_> = all.iter().map(|p| others(p)).collect();
+    assert!(fs::symlink_metadata(&s.copy).is_err(), "no copy");
+    let foreign_after: Vec<_> = s.all().iter().map(|p| others(p)).collect();
     assert_eq!(
         foreign_after, foreign_before,
         "every other entry as before the first run"
