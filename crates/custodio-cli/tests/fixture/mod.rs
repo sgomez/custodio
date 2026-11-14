@@ -232,3 +232,110 @@ pub fn write_entry(profile: &Path, name: &str, library: &str) {
     write!(text, "library={library}\nname={name}\n\n").unwrap();
     fs::write(path, text).unwrap();
 }
+
+static SERVER_BUILT: Once = Once::new();
+
+/// The real service on a private bus (the test-only server of `custodio-it` runs the service code with a scripted
+/// polkit that approves), with the key and certificate of `p256.p12` imported through the service.
+pub struct Service {
+    pub address: String,
+    bus: std::process::Child,
+    server: std::process::Child,
+    _state: TempDir,
+}
+
+impl Service {
+    /// Builds the server from the current tree (once), then starts it. A failure to build or start fails the test.
+    pub fn start(key: &str) -> Self {
+        use std::io::{BufRead, BufReader};
+        use std::process::Stdio;
+        let exe = std::env::current_exe().unwrap();
+        let dir = exe.parent().and_then(Path::parent).unwrap().to_path_buf();
+        SERVER_BUILT.call_once(|| {
+            let mut build =
+                Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+            build.args([
+                "build",
+                "--quiet",
+                "--locked",
+                "-p",
+                "custodio-it",
+                "--example",
+                "docs_api_server",
+            ]);
+            build.arg("--target-dir").arg(dir.parent().unwrap());
+            if !cfg!(debug_assertions) {
+                build.arg("--release");
+            }
+            assert!(
+                build.status().is_ok_and(|s| s.success()),
+                "building the test server failed"
+            );
+        });
+        let server_bin = dir.join("examples/docs_api_server");
+        assert!(
+            server_bin.exists(),
+            "{} was not built",
+            server_bin.display()
+        );
+        let mut bus = Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut address = String::new();
+        BufReader::new(bus.stdout.take().unwrap())
+            .read_line(&mut address)
+            .unwrap();
+        let address = address.trim().to_owned();
+        let state = tempfile::tempdir().unwrap();
+        fs::create_dir(state.path().join("keys")).unwrap();
+        fs::set_permissions(state.path().join("keys"), fs::Permissions::from_mode(0o700)).unwrap();
+        fs::create_dir(state.path().join("ctl")).unwrap();
+        fs::write(state.path().join("ctl/mode"), "approve").unwrap();
+        let mut server = Command::new(&server_bin)
+            .arg(&address)
+            .arg(state.path().join("keys"))
+            .arg(state.path().join("ctl"))
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdout = server.stdout.take().unwrap();
+        let service = Self {
+            address,
+            bus,
+            server,
+            _state: state,
+        };
+        let mut ready = String::new();
+        BufReader::new(stdout).read_line(&mut ready).unwrap();
+        assert_eq!(ready.trim(), "ready", "the test server did not start");
+        service.import(key);
+        service
+    }
+
+    fn import(&self, key: &str) {
+        use custodio_cli::Importer;
+        let conn =
+            zbus::block_on(zbus::connection::Builder::address(self.address.as_str()).build())
+                .unwrap();
+        let p12 = fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../custodio-it/tests/fixtures/p256.p12"
+        ))
+        .unwrap();
+        let password = secrecy::SecretString::from("test-password".to_owned());
+        custodio_cli::bus::DbusImporter::new(conn)
+            .import_p12(key, &p12, &password)
+            .expect("the import through the service");
+    }
+}
+
+impl Drop for Service {
+    fn drop(&mut self) {
+        for child in [&mut self.server, &mut self.bus] {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}

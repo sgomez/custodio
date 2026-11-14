@@ -10,6 +10,10 @@ custodio \- import, list and delete keys of the custodio signing service
 .br
 .B custodio delete
 .I key id
+.br
+.B custodio register
+[\fB\-\-module\fR \fIpath\fR]
+[\fB\-\-remove\fR]
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -71,6 +75,37 @@ takes exactly one argument, the key id, and no options;
 to delete a key whose id starts with a dash, write
 .B \-\-
 before it.
+.PP
+.B register
+makes the module visible to the native browsers (Firefox, Thunderbird, LibreWolf, Floorp, Waterfox) of the user who runs it.
+It lists their profiles (legacy
+.I ~/.mozilla/firefox
+and XDG roots) and adds the installed module,
+.IR /usr/lib/custodio/libcustodio_pkcs11.so ,
+to each with NSS's
+.BR modutil (1),
+which must be installed (\fBlibnss3\-tools\fR or \fBnss\-tools\fR).
+An entry whose library is that file is recognised under any name and never added twice;
+an entry for a Custodio module file that no longer exists is updated;
+no other entry is touched.
+Each profile is edited on a copy, and one file is replaced in one step, so an interruption leaves the old state or the new one.
+It prints one line per browser and profile with what it found and did.
+A profile whose browser is open is skipped and named: close the browser and run it again.
+Those skips and failures make the exit status 1; a system that already loads p11\-kit (nothing to register) does not.
+It refuses to run as root or under sudo (exit status 2): it edits the profiles of the user who runs it.
+It needs no authorization and does not use the service.
+The Firefox snap is not handled by this command.
+.TP
+.B \-\-module \fIpath\fR
+Register this library instead of the installed one.
+It must exist: otherwise one error is printed and nothing is changed.
+.TP
+.B \-\-remove
+Remove every entry whose library is a Custodio module file (\fBlibcustodio_pkcs11.so\fR), whatever its name.
+This includes an entry added by hand, so it is wider than the entries
+.B register
+added itself.
+The module file need not exist.
 .PP
 When standard input is a terminal,
 .B import

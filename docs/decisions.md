@@ -237,3 +237,10 @@ Format: a title and three short bullets, a couple of lines each:
 - Decision: the peer-to-peer server on a snap socket accepts `ANONYMOUS` only and sets no `.user_id()`; `AUTH EXTERNAL` is rejected unread. Whose keys are listed is the uid of `SO_PEERCRED` and nothing else. `SO_PEERCRED` is read with `rustix` and `SO_PEERPIDFD` with `nix` (both safe); the one `getsockopt(SO_PEERSEC)` is the only `unsafe` outside the PKCS#11 FFI layer, audited, alone in `crates/custodio-peer` (a person approved it for F175; `custodiod` keeps `forbid(unsafe_code)`). Details: `docs/findings/F170.md`.
 - Why: `EXTERNAL` compares a uid the peer writes, and under `PrivateUsers=identity` an unmapped uid shows as 65534; `rustix` and `nix` have no `SO_PEERSEC` wrapper.
 - Rejected: `EXTERNAL` with `.user_id()` set per connection; `unsafe` inside `custodiod`; the `/proc/<pid>/attr/current` label (racy, not the connect-time label).
+
+## 2026-11-14 — `register_native` builds the module and the test server itself (F182)
+- Decision: `crates/custodio-cli/tests/register_native.rs` runs `cargo build --locked` (once, same target dir) for
+  `custodio-pkcs11` and for the `custodio-it` example `docs_api_server`, and fails if either is missing. No dev-dependency.
+- Why: `scripts/deps_check.py` forbids any path from a client crate to `custodiod`, dev edges included; `cargo test -p
+  custodio-cli` builds neither the `cdylib` nor an example.
+- Rejected: `custodio-cli -[dev]-> custodio-it` or `custodiod` (fails `just deps-check`); skipping when a binary is absent.
