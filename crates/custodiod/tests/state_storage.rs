@@ -7,7 +7,10 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use StateStorage::{Encrypted, NotEncrypted, Unknown};
-use custodiod::storage::{StateStorage, classify, classify_state_dir, classify_with};
+use custodiod::storage::{
+    StateStorage, classify, classify_state_dir, classify_with, fscrypt_flag, has_fscrypt,
+};
+use rustix::fs::StatxAttributes;
 
 type Res = Result<(), Box<dyn Error>>;
 
@@ -589,4 +592,43 @@ fn entry_point_unset_state_directory_is_unknown() {
         classify_state_dir(Some("/nonexistent/custodio".into())),
         Unknown
     );
+}
+
+#[test]
+fn the_fscrypt_bit_needs_the_mask_and_the_attribute() {
+    let on = StatxAttributes::ENCRYPTED;
+    let off = StatxAttributes::empty();
+    assert!(fscrypt_flag(on, on));
+    assert!(!fscrypt_flag(on, off));
+    assert!(!fscrypt_flag(off, on));
+    assert!(!fscrypt_flag(off, off));
+}
+
+#[test]
+fn has_fscrypt_reads_the_real_directory() -> Res {
+    let dir = tempfile::tempdir()?;
+    assert!(!has_fscrypt(dir.path())?);
+    assert!(has_fscrypt(&dir.path().join("missing")).is_err());
+    Ok(())
+}
+
+#[test]
+fn a_partition_of_a_partition_is_unknown() -> Res {
+    let mut t = Tree::new()?;
+    plain(&t)?;
+    t.part("nvme0n1/nvme0n1p1", "nvme0n1p1p1", "259:2")?;
+    assert_eq!(t.on("259:2", "ext4")?.verdict(), Unknown);
+    Ok(())
+}
+
+#[test]
+fn octal_looking_digits_without_a_backslash_are_kept() -> Res {
+    let mut t = Tree::new()?;
+    plain(&t)?;
+    let dir = t.path().join("x040");
+    fs::create_dir(&dir)?;
+    t.mount(&dir.to_string_lossy(), "259:1", "ext4");
+    t.write()?;
+    assert_eq!(classify_with(&t.path(), &dir, &|_| Ok(false)), NotEncrypted);
+    Ok(())
 }

@@ -181,6 +181,7 @@ fn returns(result: StateStorage, wire: &str) -> TestResult {
     assert_eq!(rig.storage()?, ("s".to_owned(), wire.to_owned()));
     assert_eq!(rig.storage()?.1, wire);
     assert_eq!(rig.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(rig.sink.state_storage(), [result]);
     Ok(())
 }
 

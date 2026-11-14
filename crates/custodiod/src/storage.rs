@@ -94,15 +94,18 @@ pub fn classify_with(
 }
 
 /// Whether the filesystem marks `dir` as fscrypt-encrypted. A filesystem that cannot (mask lacks the bit) is `false`.
-fn has_fscrypt(dir: &Path) -> io::Result<bool> {
+///
+/// # Errors
+/// The `statx` error.
+pub fn has_fscrypt(dir: &Path) -> io::Result<bool> {
     let stat = statx(CWD, dir, AtFlags::empty(), StatxFlags::empty())?;
-    if !stat
-        .stx_attributes_mask
-        .contains(StatxAttributes::ENCRYPTED)
-    {
-        return Ok(false);
-    }
-    Ok(stat.stx_attributes.contains(StatxAttributes::ENCRYPTED))
+    Ok(fscrypt_flag(stat.stx_attributes_mask, stat.stx_attributes))
+}
+
+/// The fscrypt bit of a `statx` answer: set, and the filesystem able to say.
+#[must_use]
+pub fn fscrypt_flag(mask: StatxAttributes, attributes: StatxAttributes) -> bool {
+    mask.contains(StatxAttributes::ENCRYPTED) && attributes.contains(StatxAttributes::ENCRYPTED)
 }
 
 /// `major:minor` of the filesystem that holds `dir`, when its type is on the block list.
@@ -146,20 +149,19 @@ impl<'a> Mount<'a> {
 /// The kernel writes space, tab, newline and backslash as `\040`, `\011`, `\012`, `\134`.
 fn unescape(field: &str) -> OsString {
     use std::os::unix::ffi::OsStringExt;
-    let bytes = field.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while let Some(&b) = bytes.get(i) {
-        let octal = bytes
-            .get(i + 1..i + 4)
+    let mut out = Vec::with_capacity(field.len());
+    let mut rest = field.as_bytes();
+    while let Some((&b, tail)) = rest.split_first() {
+        let octal = tail
+            .get(..3)
             .filter(|d| b == b'\\' && d.iter().all(|c| (b'0'..=b'7').contains(c)))
             .and_then(|d| u8::from_str_radix(std::str::from_utf8(d).ok()?, 8).ok());
         if let Some(byte) = octal {
             out.push(byte);
-            i += 4;
+            rest = tail.get(3..).unwrap_or_default();
         } else {
             out.push(b);
-            i += 1;
+            rest = tail;
         }
     }
     OsString::from_vec(out)
