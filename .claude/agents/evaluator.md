@@ -96,5 +96,8 @@ Reply: first line exactly `APPROVED` or `REVISE`, then up to 20 lines of what to
    - New or changed files in `docs/findings/` follow the rules at the top of `docs/findings.md`:
      conclusions and the lines that prove them, no pasted whole outputs, an index line.
 
-Reply: first line exactly `PASS` or `NEEDS_WORK`, then up to 30 lines of findings, most important
-first, each with `file:line` and what to change.
+Reply: first line exactly `PASS` or `NEEDS_WORK`. After `NEEDS_WORK`, a second line `Class: <word>`
+for the most important finding: `test-gap` (the product is wrong or unproven and no test fails),
+`contract` (a step or its evidence is missing), `security`, `docs`, or `process` (commits, scope,
+files that are not the builder's). Then up to 30 lines of findings, most important first, each with
+`file:line` and what to change.

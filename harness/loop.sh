@@ -51,6 +51,14 @@ stop_if_asked() {
   die "AGENT_STOP found, stopping." 0
 }
 
+# record_failures <stamp> <id>: the tests that failed in the builder session, one row each, to review the suite later.
+record_failures() {
+  jq -rR 'fromjson? | select(.type == "user") | .message.content[]? | select(.type == "tool_result") | .content
+          | if type == "array" then .[] | .text? // empty else . end' "$LOG_DIR/$1-build.log.jsonl" 2>/dev/null \
+    | sed -nE 's/^test (.+) \.\.\. FAILED$/\1/p; s/^ +(FAIL|TIMEOUT) \[[^]]*\] +//p' | sort -u \
+    | sed "s/^/$1\t$2\t/" >> .harness/test-failures.tsv || true
+}
+
 # halt <reason> <what to do>: a stop that needs a person; just status shows both.
 halt() { printf '%s\n%s\n' "$1" "$2" > "$STATE/stopped"; die "$1" 2; }
 # verdict <log> <ok> <bad>: <ok> or <bad>, or nothing when the reply does not say which.
@@ -226,6 +234,7 @@ The previous builder session ($LOG_DIR/$resumed) was stopped or cut before it co
 uncommitted work is in the working tree: check it with git status and git diff, keep what holds,
 and continue from it.}"
   resumed= && rm -f "$STATE/interrupted"
+  record_failures "$stamp" "$id"
   [ -e BLOCKED.md ] && continue
   # A builder cut by the timeout keeps its uncommitted work for the next builder, as after a stop; so does
   # one that ended its turn while background subagents still edited (claude then kills them).
@@ -326,6 +335,11 @@ and continue from it.}"
   log "$id: evaluating"
   evaluate "$LOG_DIR/$stamp-eval.log" PASS NEEDS_WORK \
     "Mode: implementation. Feature: $feature. Contract: $c. Changes: git diff $(cat "$STATE/$id.base")..HEAD. Verify log: $LOG_DIR/$stamp-verify.log"
+
+  # The verdict and, when rejected, the class the evaluator gave it (.claude/agents/evaluator.md).
+  printf '%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$id" "$got" \
+    "$(sed -nE 's/^[[:space:]`*]*Class:[[:space:]]*([a-z-]+).*/\1/p' "$LOG_DIR/$stamp-eval.log" | head -n 1)" \
+    >> .harness/eval-verdicts.tsv
 
   gated "$id"
   stash_leftovers "$stamp-eval"
