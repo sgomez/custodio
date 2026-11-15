@@ -20,6 +20,7 @@ pub use storage::{StateStorage, StorageReader};
 pub mod agent;
 pub mod browser_files;
 pub mod bus;
+pub mod colour;
 pub mod delete;
 pub mod failure;
 pub mod help;

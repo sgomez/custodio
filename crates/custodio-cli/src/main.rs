@@ -54,7 +54,16 @@ fn run() -> Result<(), CliError> {
     }
     if let Command::Help(topic) = &command {
         // A closed standard output is not a failure of the tool.
-        let _ = io::stdout().write_all(custodio_cli::help::text(*topic).as_bytes());
+        let out_tty = rustix::termios::isatty(io::stdout());
+        let on = custodio_cli::colour::enabled(
+            out_tty,
+            out_tty,
+            std::env::var_os("NO_COLOR")
+                .map(|v| v.to_string_lossy().into_owned())
+                .as_deref(),
+        );
+        let text = custodio_cli::colour::headings(&custodio_cli::help::text(*topic), on);
+        let _ = io::stdout().write_all(text.as_bytes());
         return Ok(());
     }
     let bus = DbusImporter::system().map_err(|e| CliError::SystemBus(e.to_string()))?;
