@@ -23,7 +23,7 @@
       "description": "docs/findings/F191.md, headed '## F191' and indexed, settles where the .deb, .rpm and Arch package (all built by nfpm from packaging/nfpm.yaml) put the bash, zsh and fish completion files so that each shell loads them with no configuration on every supported target (bash-completion's directory, zsh's vendor directory, which differs between the Debian family and Fedora or Arch, fish's vendor directory), and whether that forces a difference between formats that docs/decisions/packaging.md's parity rules must record. It also settles how completion gets the person's key ids from the service through `custodio` quickly, with no polkit request and nothing written (ListKeys, its cost, a timeout, the service absent), and the time bound acceptance 12 can set. Its 'Decision: ' line is what F205 and F205 implement (SPEC open question 4).",
       "depends_on": [],
       "verify": "f=docs/findings/F191.md && grep -q '^## F191' \"$f\" && for w in '/usr/share/bash-completion/completions' '/usr/share/zsh/vendor-completions' '/usr/share/zsh/site-functions' '/usr/share/fish/vendor_completions.d' 'fpath' 'nfpm' 'parity' 'ListKeys' 'polkit' 'debian13' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F191.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F192",
