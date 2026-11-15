@@ -23,6 +23,7 @@ pub mod failure;
 pub mod list;
 pub mod register_cli;
 pub mod register_discover;
+mod register_modutil;
 pub mod register_native;
 pub mod register_snap;
 pub mod storage;

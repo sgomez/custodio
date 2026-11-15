@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use custodio_cli::browser_files::{HeldReason, LockState};
-use custodio_cli::register_discover::{BROWSERS, Environment, Profile, Skipped, discover};
+use custodio_cli::register_discover::{BROWSERS, Environment, Profile, discover};
 use tempfile::TempDir;
 
 const LOCAL: Ipv4Addr = Ipv4Addr::new(10, 1, 2, 3);
@@ -48,7 +48,6 @@ impl Home {
         Environment {
             home: self.path(),
             xdg_config_home: self.xdg.clone(),
-            nss_config: self.path().join("etc/nss.config"),
             local_address: LOCAL,
         }
     }
@@ -340,62 +339,6 @@ fn the_snap_profile_is_listed_only_with_a_profile() {
     // a native Firefox next to it stays separate
     h.root(".mozilla/firefox", &["n.default"]);
     assert_eq!(h.found().len(), 2);
-}
-
-#[test]
-fn p11_kit_system_skips_native_profiles_but_not_the_snap() {
-    let h = Home::new();
-    h.root(".mozilla/firefox", &["n.default"]);
-    h.root(".thunderbird", &["t.default"]);
-    h.root("snap/firefox/common/.mozilla/firefox", &["s.default"]);
-    let nss = h.env().nss_config;
-    fs::create_dir_all(nss.parent().unwrap()).unwrap();
-
-    let skipped = |h: &Home| -> Vec<(bool, Option<Skipped>)> {
-        let mut v: Vec<_> = h.found().into_iter().map(|p| (p.snap, p.skipped)).collect();
-        v.sort_by_key(|(snap, _)| *snap);
-        v
-    };
-    let none = vec![(false, None), (false, None), (true, None)];
-    // no file
-    assert_eq!(skipped(&h), none);
-    // with the line, in a realistic file
-    fs::write(
-        &nss,
-        "# crypto-policies\nlibrary=p11-kit-proxy.so\nname=p11-kit-proxy\n",
-    )
-    .unwrap();
-    let got = skipped(&h);
-    assert_eq!(
-        got,
-        vec![
-            (false, Some(Skipped::P11Kit)),
-            (false, Some(Skipped::P11Kit)),
-            (true, None)
-        ]
-    );
-    assert!(Skipped::P11Kit.to_string().contains("p11-kit"));
-    // the line with CRLF and surrounding blanks
-    fs::write(&nss, "name=x\r\n  library=p11-kit-proxy.so \r\n").unwrap();
-    assert_eq!(skipped(&h), got);
-    // negative controls
-    for text in [
-        "",
-        "name=p11-kit-proxy\n",
-        "#library=p11-kit-proxy.so\n",
-        "# library=p11-kit-proxy.so\n",
-        "library=p11-kit-proxy.so.1\n",
-        "library=/usr/lib/p11-kit-proxy.so\n",
-        "xlibrary=p11-kit-proxy.so\n",
-    ] {
-        fs::write(&nss, text).unwrap();
-        assert_eq!(skipped(&h), none, "{text:?}");
-    }
-    // an unreadable path (a directory) is an error naming it, not "not p11-kit"
-    fs::remove_file(&nss).unwrap();
-    fs::create_dir(&nss).unwrap();
-    let err = discover(&h.env()).unwrap_err();
-    assert!(err.to_string().contains("nss.config"));
 }
 
 #[test]

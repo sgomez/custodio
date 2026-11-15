@@ -9,7 +9,7 @@ use custodio_cli::agent::process::Pkttyagent;
 use custodio_cli::agent::{Process, WithAgent};
 use custodio_cli::browser_files::local_address;
 use custodio_cli::bus::DbusImporter;
-use custodio_cli::register_discover::{Environment, NSS_CONFIG};
+use custodio_cli::register_discover::Environment;
 use custodio_cli::register_native::{
     RegisterArgs, RegisterError, RunError, default_journal_socket, refresh_only_command,
     register_command,
@@ -27,7 +27,6 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
     let env = Environment {
         home: home.into(),
         xdg_config_home: std::env::var_os("XDG_CONFIG_HOME"),
-        nss_config: NSS_CONFIG.into(),
         local_address: local_address(),
     };
     let euid = rustix::process::geteuid().as_raw();

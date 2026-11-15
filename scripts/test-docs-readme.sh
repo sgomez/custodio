@@ -62,19 +62,13 @@ CONF
     srv_pid=$!
     timeout 20 sh -c 'until grep -q ready "$1"; do sleep 0.1; done' _ "$d/server.out" || { echo "test-docs-readme: the test server did not start" >&2; kill "$bus_pid" "$srv_pid"; return 1; }
 
-    local uid ignore=''
+    local uid
     uid=$(id -u)
     [ "$uid" != 0 ] || uid=1000
-    # A host whose NSS loads p11-kit (Fedora-like) skips native profiles: their lines are then not compared.
-    local skipped=0
-    if grep -qx '[[:space:]]*library=p11-kit-proxy.so[[:space:]]*' /etc/crypto-policies/back-ends/nss.config 2> /dev/null; then
-        skipped=1
-        ignore='^Firefox /'
-    fi
     # The overlay's directories go on a tmpfs of the namespace, so the result does not depend on TMPDIR or the root filesystem.
-    HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d NATIVE_SKIPPED=$skipped \
+    HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d \
         DBUS_SYSTEM_BUS_ADDRESS=$(head -n 1 "$d/address") \
-        DOCS_PASSWORD=test-password DOCS_ANSWER=yes DOCS_HOME_SHOWN=/home/ana DOCS_IGNORE_RE=$ignore DOCS_CHECK=$d/check.sh \
+        DOCS_PASSWORD=test-password DOCS_ANSWER=yes DOCS_HOME_SHOWN=/home/ana DOCS_CHECK=$d/check.sh \
         timeout 300 unshare -rm sh -c '
             mount -t tmpfs tmpfs "$1/ov" && mkdir "$1/ov/up" "$1/ov/wk" &&
             mount -t overlay overlay -o "lowerdir=$1/stage:/usr/lib,upperdir=$1/ov/up,workdir=$1/ov/wk" /usr/lib &&

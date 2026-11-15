@@ -99,7 +99,6 @@ impl Fixture {
         Environment {
             home: self.home(),
             xdg_config_home: None,
-            nss_config: self.dir.path().join("nss.config"),
             local_address: LOCAL,
         }
     }
