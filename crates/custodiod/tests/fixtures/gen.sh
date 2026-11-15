@@ -28,6 +28,12 @@ openssl req -new -x509 -key "$tmp/legacy.key" -subj "/CN=custodio test legacy" -
   -out "$tmp/legacy.crt"
 openssl pkcs12 -export -legacy -inkey "$tmp/legacy.key" -in "$tmp/legacy.crt" \
   -passout pass:test-password -out rsa2048-legacy.p12
+# The rsa2048 key as NSS (Firefox) exports it: BER with indefinite lengths, which OpenSSL does not write.
+# Needs certutil and pk12util (libnss3-tools, nss-tools).
+mkdir "$tmp/nssdb"
+certutil -N -d "sql:$tmp/nssdb" --empty-password
+pk12util -i rsa2048.p12 -d "sql:$tmp/nssdb" -W test-password >/dev/null
+pk12util -o rsa2048-nss.p12 -n rsa2048 -d "sql:$tmp/nssdb" -W test-password >/dev/null
 # A second, unrelated P-256 key and certificate (for key/certificate mismatch tests).
 make p256-other -algorithm EC -pkeyopt ec_paramgen_curve:P-256
 
