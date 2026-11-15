@@ -31,7 +31,7 @@
       "description": "The completion test of F205 drives the real shells, which the dev container lacks. harness/Containerfile and every CI job that runs the CLI's tests install bash-completion, zsh and fish from the distribution, with a comment saying why. Rebuilding the dev container is a person's step: once the Containerfile and CI change is committed, the builder writes BLOCKED.md asking for the rebuild, and the feature passes on the rebuilt container (as F104 did).",
       "depends_on": [],
       "verify": "just quick && test -r /usr/share/bash-completion/bash_completion && zsh -fc 'autoload -U compinit && compinit -u -D && print ok' | grep -qx ok && fish --no-config -c 'echo ok' | grep -qx ok",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F193",
