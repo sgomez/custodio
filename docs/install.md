@@ -128,8 +128,9 @@ portal and the snap is then denied access to the file.
 The command skips what the system already handles. On Fedora and RHEL/Alma, the packaged Firefox needs nothing: the
 system NSS loads `p11-kit-proxy.so`, and the proxy loads every module in `/usr/share/p11-kit/modules/`, Custodio's among
 them. The command asks NSS whether it loads the proxy and, if so, leaves native profiles alone. Elsewhere (Debian,
-Ubuntu, Arch, even with `crypto-policies` installed) it registers the module. Checked on Arch (Omarchy 4);
-on Ubuntu 26.04 with `crypto-policies`, `modutil -list` shows the module after the command, but Firefox was not run.
+Ubuntu, Arch, even with `crypto-policies` installed) it registers the module. Checked on Arch (Omarchy 4) and, with
+Firefox running, on Fedora 44, where the token appears through the proxy, and on Ubuntu 26.04 with and without
+`crypto-policies`.
 
 Register by hand, with `modutil`, in two cases: **Mozilla's own Firefox on Fedora and RHEL/Alma** (it uses its bundled NSS, which
 does not load p11-kit, and the command skips it there), and a browser the command does not
