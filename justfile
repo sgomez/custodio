@@ -340,10 +340,15 @@ asan:
 mutants *args:
     #!/usr/bin/env bash
     set -uo pipefail
-    mkdir -p target # cargo-mutants does not create the parent of --output, missing on a fresh checkout
+    # cargo-mutants does not create the parent of --output, missing on a fresh checkout. It copies the tree once per
+    # job into TMPDIR and builds there: under target/, not in /tmp, which is small. The tests keep the caller's
+    # TMPDIR: a socket path under target/ is longer than SUN_LEN.
+    mkdir -p target/mutants-tmp
+    printf '[env]\nTMPDIR = { value = "%s", force = true }\n' "${TMPDIR:-/tmp}" > target/mutants-env.toml
+    export TMPDIR="$PWD/target/mutants-tmp"
     export NEXTEST_PROFILE=mutants # .config/nextest.toml
     # A wedged cargo build otherwise hangs the run: the test timeout does not cover builds.
-    extra=(--build-timeout 600)
+    extra=(--build-timeout 600 --cargo-test-arg=--config --cargo-test-arg="$PWD/target/mutants-env.toml")
     # MUTANTS_ITERATE=1 skips mutants a previous run caught or found unviable; valid while src/ is unchanged.
     [ "${MUTANTS_ITERATE:-}" = 1 ] && extra+=(--iterate)
     status=0
