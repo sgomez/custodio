@@ -29,7 +29,10 @@ Every point in the feature description must appear under Evidence, with evidence
 if the feature were wrong. Prove each behaviour once, at the cheapest level that would catch it
 being wrong. If another feature's description or `verify` in features.json names the same check,
 point to that feature under Scope instead of proving it here. A few negative controls show that a
-test can fail; build no mutant sets beyond what `verify` runs. Package gates, the install and
+test can fail; build no mutant sets beyond what `verify` runs. A script the harness itself runs (an
+`e2e/` driver or case script, a gate, a judge) is proven by the run that uses it: plan no test of it
+against a stub engine, a simulated guest or a fake peer, and no mutants of test code. A scanner or
+judge a gate relies on gets one negative control per rule, on a fixture file. Package gates, the install and
 lifecycle tests and `just e2e` run at the checkpoint features, not here: a
 requirement that only they prove is listed under Scope as proven at the checkpoint. A feature
 whose `verify` runs `just e2e-cases` proves its own cases with them. If the feature is too big for about five steps, say so under Scope and

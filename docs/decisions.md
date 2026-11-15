@@ -222,11 +222,12 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: a run record names one image, and a moving "newest" would change results between runs.
 - Rejected: the newest release by signature (needs a listing; the image can change under a run).
 
-## 2026-11-11 — VM harness: no self-tests against a fake QEMU
-- Decision: never test `e2e/vm/vm.sh` with a fake QEMU or swtpm. CI boots the real VM only on
-  milestone PRs; whoever changes the launcher runs `just e2e-vm full|lacking`.
-- Why: flaky; they tested tooling, not custodio.
-- Rejected: hardening the fakes.
+## 2026-11-11 — Test harness: nothing simulated, one control per judge
+- Decision: never run `e2e/` drivers, case scripts or `e2e/vm/vm.sh` against a stub engine, a simulated guest or a fake
+  QEMU, swtpm or peer, and build no mutants of test code. A scanner or judge a gate relies on gets one negative control per
+  rule. CI boots the real VM only on milestone PRs; whoever changes a driver or the launcher runs `just e2e` or `just e2e-vm`.
+- Why: they tested tooling, not custodio, were flaky, and were a third of the script suite's lines and most of its time.
+- Rejected: hardening the fakes; a control for every way to break each rule.
 
 ## 2026-11-12 — No setting to refuse the encrypted kinds in v1
 - Decision: import still falls back to the encrypted kinds (approver).

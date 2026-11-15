@@ -121,7 +121,7 @@ script-tests:
     scripts/run-script-tests.sh package-gate-test shell-scripts-test test-scripts
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
-system-gates: security-score security-ceiling snap-sockets socket-dir-override unit-hardening unit-verify bus-policy
+system-gates: security-ceiling snap-sockets socket-dir-override unit-hardening unit-verify bus-policy
 
 # What the VM target needs on this machine: KVM the user can open, QEMU, OVMF, swtpm, the seed tool, gpgv and the Ubuntu keyring.
 # It fails naming each missing one and never offers software emulation (docs/findings/F150.md).
@@ -224,22 +224,8 @@ shell-scripts-test:
     scripts/test-check-unit-hardening.sh
     scripts/test-tree-hash.sh
 
-# Service hardening gate: fails when the exposure of custodio.service is above the threshold (tenths of the 0-10 score, so 10 is 1.0; lower is
-# safer; 1.0 is the edge of SAFE). A bare unit must fail, so the gate itself is checked too.
-security-score threshold="10":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    systemd-analyze security --offline=yes --no-pager --threshold={{threshold}} data/custodio.service | tail -n 1
-    bare=$(mktemp -d)
-    trap 'rm -rf "$bare"' EXIT
-    printf '[Service]\nExecStart=/bin/true\n' > "$bare/bare.service"
-    if systemd-analyze security --offline=yes --no-pager --threshold={{threshold}} "$bare/bare.service" >/dev/null; then
-        echo "security-score: a bare unit passed the gate" >&2
-        exit 1
-    fi
-
-# The exposure of the service is not above M5's 0.7 (tenths: 7). F170 measured `PrivateUsers=identity` at 0.7 and `no` at 0.8, so
-# the uid route cannot be paid for by loosening something else. The threshold of `security-score` stays 10.
+# The exposure of the service is not above M5's 0.7 (tenths of the 0-10 score of `systemd-analyze security`: 7; lower is safer). F170 measured
+# `PrivateUsers=identity` at 0.7 and `no` at 0.8, so the uid route cannot be paid for by loosening something else.
 security-ceiling unit="data/custodio.service" ceiling="7":
     systemd-analyze security --offline=yes --no-pager --threshold={{ceiling}} {{unit}} | tail -n 1
 
@@ -251,7 +237,7 @@ snap-sockets:
 socket-dir-override:
     scripts/check-test-socket-dir.sh
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override), so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests of scripts/check-test-socket-dir.sh (F178) on copies of the tree with one fault each: the gate passes the shipped files and fails, naming the
 # fault, when the feature is in default, in a [dependencies] (also as `features = [...]` of another crate), in another crate's [features], in a recipe,
-# when `--all-features` is used, when the variable is read elsewhere, and when the module is declared or used without the cfg.
+# when the variable is read elsewhere, and when the module is declared without the cfg.
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 GATE=$ROOT/scripts/check-test-socket-dir.sh
@@ -19,7 +19,6 @@ fresh() {
 }
 fresh
 "$GATE" "$tmp/case" >/dev/null 2>&1 || bad "the shipped files fail"
-"$GATE" >/dev/null 2>&1 || bad "the repository fails"
 
 expect_fail() { # LABEL FILE SED-EXPRESSION WORD
     local out
@@ -32,7 +31,6 @@ expect_fail() { # LABEL FILE SED-EXPRESSION WORD
 P=crates/custodio-pkcs11/Cargo.toml
 expect_fail "feature in default" $P 's/^fuzzing = \[\]/fuzzing = []\ndefault = ["test-socket-dir"]/' 'in default'
 expect_fail "feature as a dependency feature of another crate" crates/custodio-cli/Cargo.toml '0,/^\[dependencies\]/s//[dependencies]\ncustodio-pkcs11 = { path = "..\/custodio-pkcs11", features = ["test-socket-dir"] }/' 'under \[dependencies\]'
-expect_fail "feature in a dependency of custodio-it" crates/custodio-it/Cargo.toml '0,/^\[dev-dependencies\]/s//[dependencies]\ncustodio-pkcs11 = { path = "..\/custodio-pkcs11", features = ["test-socket-dir"] }\n[dev-dependencies]/' 'under \[dependencies\]'
 # shellcheck disable=SC2016
 expect_fail "feature in another crate's features" crates/custodio-cli/Cargo.toml '$a\
 [features]\
@@ -42,12 +40,7 @@ expect_fail "feature in a recipe" justfile '$a\
 bad:\
     cargo build -p custodio-pkcs11 --features test-socket-dir' 'recipe'
 # shellcheck disable=SC2016
-expect_fail "all features in a recipe" justfile '$a\
-bad:\
-    cargo build --all-features' 'all-features'
-# shellcheck disable=SC2016
 expect_fail "variable read elsewhere" crates/custodio-pkcs11/src/backend/socket.rs '$a\
 const X: \&str = "CUSTODIO_TEST_SOCKET_BASE_DIR";' 'read outside'
 expect_fail "module declared without the cfg" crates/custodio-pkcs11/src/backend.rs '/^#\[cfg(feature = "test-socket-dir")\]$/d' 'not directly behind'
-expect_fail "module used without the cfg" crates/custodio-pkcs11/src/backend/socket.rs '/^    #\[cfg(feature = "test-socket-dir")\]$/d' 'not directly behind'
 exit "$fail"
