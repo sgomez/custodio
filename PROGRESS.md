@@ -51,3 +51,6 @@ with an empty context.
 ### 2026-11-15 — F192 — attempt 2
 - Done: dev container rebuilt; `zsh`, `fish` and bash-completion are present. `just quick` green and the three probes of the `verify` pass. No code changed.
 - Next session: none for F192.
+
+### 2026-11-15 — F192 — attempt 3
+- Done: fixed the evaluator's finding: `mutants-diff.yml` TPM install step regained its `if: steps.signoff.outputs.signed != 'true'`; the shell install step has its own copy. Both sync script tests pass.

@@ -76,6 +76,7 @@ jobs:
           fetch-depth: 0
       # tss-esapi builds against the TSS2 headers (libtss2-dev); tests and tools use a software TPM (swtpm, tpm2-tools).
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
+        if: steps.signoff.outputs.signed != 'true'
       # The CLI's completion test drives the real shells (bash with bash-completion, zsh, fish).
       - run: sudo apt-get install -y --no-install-recommends bash-completion zsh fish
         if: steps.signoff.outputs.signed != 'true'
