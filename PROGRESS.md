@@ -82,3 +82,17 @@ with an empty context.
 - Done: fixed finding 1: `refresh_only_command`'s journal error is now two lines (what went wrong, escaped, then `systemctl status systemd-journald`);
   `refresh_only.rs` asserts both lines on the unreachable-journal case. `just quick` green; `mutants-diff F193` 102 tested, 0 missed.
 - Notes 2-5 not changed (non-blocking).
+
+### 2026-11-15 — F194 — attempt 1
+- Done (steps 1-5 ticked, step 6 partly): `cert_text.rs` (`fields`, `escape` with C0/DEL/C1, bidi, format, private-use and tag chars as `\xNN`/`\u{N}`;
+  `fuzz_cert_fields`; sha2 added to custodio-cli), `tests/cert_text.rs`, fixture `cert-p256-other-hostile.der` (gen.sh; hostile subject and a different
+  hostile issuer, same key as p256-other, serial 0x1095), `list.rs` rewritten (table without header, one row per key, note once; `run_show`, `ListFailure::UnknownId`,
+  `show_command`; `list_command` unchanged so `storage_warning.rs` passes as is), parse `list [[--] <id>]`, help, man page, README example, error text + error
+  unit tests list the new case, fuzz target `cert_fields` (build, lint, smoke pass; negative control `just fuzz-smoke "cert_fieldz"` → "target cert_fieldz is missing or did not run", exit 1).
+  `custodio-it`: shared `tests/list_rig/mod.rs`, `list.rs` on the new format, new `list_view.rs` (4 tests, 0.05 s). Evidence run so far: custodio-cli tests, `list`, `list_view`: pass.
+  `mutants` list has cert_text.rs and list.rs.
+- Decisions: the table has no header (so rows == keys); subject column is the common name (RFC 4514 if none), the full view shows RFC 4514 from x509-cert (it writes C0/DEL as `\1b`)
+  then our escape; the weaker-storage note is only in the table.
+- Not done: step 6 e2e consumers of the old block layout (`e2e/cli-lib.sh`, `rd-lib.sh`, `ops-user.sh`, `cli-user.sh`, `cli-pty-user.sh`, `upgrade-accts-*.sh`, `tpmkind.py`,
+  `fallback.py`, `upgradekinds.py`, `*-selftest.sh`, ...; find with `grep -rn "id: \|custodio list" e2e`): key them on the id column (first word of a row), selftests feed a hostile subject.
+  Step 7: `just quick` (was green before the e2e work except nothing known), `mutants-diff F194` (never run; cert_text.rs has no unit tests of its own yet, expect survivors in `must_escape` ranges, `hex`, `common_name`), `just test-scripts` for the touched scripts.
