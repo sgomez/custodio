@@ -157,3 +157,7 @@ just setup
 ```
 
 `just` lists every task; `just check` runs the fast checks.
+
+Some tests run as root of a user namespace (`unshare -Ur`). Where they fail with
+`unshare: write failed /proc/self/uid_map: Operation not permitted` (AppArmor on some Ubuntu systems,
+unprivileged containers), allow it with `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
