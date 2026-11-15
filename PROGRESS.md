@@ -47,3 +47,7 @@ with an empty context.
   `bash-completion zsh fish` with a comment. Also exempted `e2e.yml:changes` in the TPM check (it was red at HEAD). `just quick` green.
 - Not done: the dev container still lacks the shells; the `verify` needs the rebuild (BLOCKED.md).
 - Next session: after the rebuild, run the `verify`; nothing else.
+
+### 2026-11-15 — F192 — attempt 2
+- Done: dev container rebuilt; `zsh`, `fish` and bash-completion are present. `just quick` green and the three probes of the `verify` pass. No code changed.
+- Next session: none for F192.
