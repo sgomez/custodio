@@ -124,6 +124,10 @@ By a person, after the features:
 
 ## Unassigned
 
+- **Firefox sees key changes without a restart:** the module's slot is fixed and it has no
+  `C_WaitForSlotEvent`, so Firefox reads the token once. A removable slot that reports the token as taken out
+  and put back is the usual technique; not tried here, nor its effect on LibreOffice and rFirma. M7 only
+  says that a restart is needed.
 - **Chromium and Thunderbird snaps:** the same snapd rules should let them use a socket of their own
   in `/run/snap.<snap>/` (inferred, `docs/reports/firefox-snap.md`); M6 ships only Firefox.
 - **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
