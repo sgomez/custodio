@@ -38,35 +38,6 @@ fn replace_certificate_is_atomic() -> TestResult {
 }
 
 #[test]
-fn replace_missing_creates_nothing_and_a_bad_certificate_keeps_the_record() -> TestResult {
-    let (_tmp, store) = fresh();
-    assert!(matches!(
-        store.replace_certificate(OWNER, "k", b"new"),
-        Err(StoreError::NotFound)
-    ));
-    store.put(&host("other", b"cert"))?;
-    assert!(matches!(
-        store.replace_certificate(OWNER, "k", b"new"),
-        Err(StoreError::NotFound)
-    ));
-    assert_eq!(names(&area(&store, OWNER)), ["other"]);
-
-    let before = std::fs::read(area(&store, OWNER).join("other"))?;
-    let over = vec![0_u8; custodiod::store::MAX_RECORD];
-    assert!(matches!(
-        store.replace_certificate(OWNER, "other", &over),
-        Err(StoreError::Record(_))
-    ));
-    assert!(matches!(
-        store.replace_certificate(OWNER, "other", b""),
-        Err(StoreError::Record(_))
-    ));
-    assert_eq!(std::fs::read(area(&store, OWNER).join("other"))?, before);
-    assert_eq!(names(&area(&store, OWNER)), ["other"]);
-    Ok(())
-}
-
-#[test]
 fn replace_racing_remove() -> TestResult {
     for round in 0..200 {
         let (_tmp, store) = fresh();

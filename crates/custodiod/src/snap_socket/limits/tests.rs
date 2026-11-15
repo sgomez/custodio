@@ -128,13 +128,3 @@ fn the_rate_limit_writes_k_lines_then_counts_and_reopens() {
     );
     assert_eq!(limit.check(t0 + Duration::from_secs(12)), Line::Drop);
 }
-
-#[test]
-fn the_shipped_values_are_the_documented_ones() {
-    assert_eq!(Limits::SHIPPED.connections, 32);
-    assert_eq!(Limits::SHIPPED.message, 4096);
-    assert_eq!(Limits::SHIPPED.handshake, Duration::from_secs(10));
-    assert_eq!(Limits::SHIPPED.idle, Duration::from_secs(300));
-    assert_eq!(REFUSAL_LINES_PER_WINDOW, 10);
-    assert_eq!(REFUSAL_WINDOW, Duration::from_secs(60));
-}

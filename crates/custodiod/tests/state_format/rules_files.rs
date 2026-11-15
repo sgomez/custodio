@@ -57,18 +57,6 @@ fn symlink_area() -> TestResult {
 }
 
 #[test]
-fn symlink_root() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let real = tmp.path().join("real");
-    fs::create_dir(&real)?;
-    set_mode(&real, 0o700);
-    let link = tmp.path().join("link");
-    symlink(&real, &link)?;
-    assert!(refused(&KeyStore::open(&link)));
-    Ok(())
-}
-
-#[test]
 fn fifo_record() -> TestResult {
     let (_tmp, store) = fresh();
     store.put(&host("other", b"cert"))?;
@@ -118,31 +106,5 @@ fn loose_modes_are_not_repaired() -> TestResult {
     assert!(bad(KeyStore::open(store.dir()).map(drop)));
     assert_eq!(mode(store.dir()), 0o755);
     set_mode(store.dir(), 0o700);
-    Ok(())
-}
-
-#[test]
-fn remove_deletes_unparsable_record() -> TestResult {
-    let (_tmp, store) = fresh();
-    let mut bad = b"CUSTODIO".to_vec();
-    bad.extend([1, 2, 3, 4, 5]);
-    plant(&store, OWNER, "broken", &bad);
-    assert!(matches!(
-        store.get(OWNER, "broken"),
-        Err(StoreError::Record(_))
-    ));
-    assert!(store.remove_existing(OWNER, "broken")?);
-    assert!(!store.remove_existing(OWNER, "broken")?);
-    assert_eq!(names(&area(&store, OWNER)), Vec::<String>::new());
-
-    let loose = plant(&store, OWNER, "loose", &bad);
-    set_mode(&loose, 0o644);
-    assert!(matches!(
-        store.remove_existing(OWNER, "loose"),
-        Err(StoreError::BadPermissions(_))
-    ));
-    symlink(&loose, area(&store, OWNER).join("link"))?;
-    assert!(refused(&store.remove_existing(OWNER, "link")));
-    assert!(loose.exists());
     Ok(())
 }

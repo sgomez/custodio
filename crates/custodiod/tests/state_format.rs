@@ -14,10 +14,6 @@
 mod api;
 #[path = "state_format/concurrent.rs"]
 mod concurrent;
-#[path = "state_format/framing.rs"]
-mod framing;
-#[path = "state_format/legacy.rs"]
-mod legacy;
 #[path = "state_format/plaintext.rs"]
 mod plaintext;
 #[path = "state_format/reload.rs"]

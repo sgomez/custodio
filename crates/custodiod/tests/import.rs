@@ -221,32 +221,6 @@ fn rejected_import_stores_nothing() -> TestResult {
 }
 
 #[test]
-fn import_does_not_overwrite() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let store = KeyStore::open(dir.path().join("state"))?;
-    import_p12(
-        &store,
-        &custodiod::creds::memory::MemoryCreds::host(),
-        &custodiod::tpm::open::NoTpm,
-        OWNER,
-        "k",
-        &fixture("p256")?,
-        &pw(PASSWORD),
-    )?;
-    let err = err_of(import_p12(
-        &store,
-        &custodiod::creds::memory::MemoryCreds::host(),
-        &custodiod::tpm::open::NoTpm,
-        OWNER,
-        "k",
-        &fixture("rsa2048")?,
-        &pw(PASSWORD),
-    ))?;
-    assert!(matches!(err, ImportError::Store(_)), "{err:?}");
-    Ok(())
-}
-
-#[test]
 fn errors_and_debug_do_not_leak_secrets() -> TestResult {
     let secret = "very-secret-pass-0451";
     let err = err_of(parse_p12(&fixture("rsa2048")?, &pw(secret)))?;

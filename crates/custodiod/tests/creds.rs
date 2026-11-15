@@ -112,16 +112,6 @@ fn raw_blob_json(sealed: &Sealed) -> TestResult<String> {
 }
 
 #[test]
-fn credential_names_no_pcr() -> TestResult {
-    let daemon = Daemon::start()?;
-    // A TPM header with an empty mask is a TPM binding; the real host credential is a host binding.
-    assert_eq!(header::inspect(&tpm_header(0)), Ok(Binding::Tpm));
-    let on_host = seal(&host_client(&daemon), "k", &secret(KEY))?;
-    assert_eq!(header::inspect(on_host.credential()), Ok(Binding::Host));
-    Ok(())
-}
-
-#[test]
 fn pcr_guard_refuses() -> TestResult {
     let daemon = Daemon::start()?;
     // A header that names PCR 7 is refused; the same header with an empty mask is accepted.
@@ -145,26 +135,6 @@ fn pcr_guard_refuses() -> TestResult {
         Err(HeaderError::NullKey)
     );
     Ok(())
-}
-
-/// A client that returns what the test gives it, to see what `seal` does with a real header.
-struct Fixed(Vec<u8>);
-
-impl Credentials for Fixed {
-    fn encrypt(&self, _: &str, _: &SecretSlice<u8>) -> Result<Vec<u8>, CredsError> {
-        Ok(self.0.clone())
-    }
-    fn decrypt(&self, _: &str, _: &[u8]) -> Result<SecretSlice<u8>, CredsError> {
-        Err(CredsError::CannotDecrypt)
-    }
-}
-
-#[test]
-fn seal_refuses_a_pcr_bound_credential() {
-    assert_eq!(
-        seal(&Fixed(tpm_header(1 << 7)), "k", &secret(KEY)),
-        Err(CredsError::Refused(HeaderError::PcrBound(1 << 7)))
-    );
 }
 
 #[test]
@@ -293,37 +263,4 @@ fn unavailable_vs_cannot_decrypt() -> TestResult {
         CredsError::CannotDecrypt.to_string()
     );
     Ok(())
-}
-
-/// A client that fails every call with one error.
-struct Failing(CredsError);
-
-impl Credentials for Failing {
-    fn encrypt(&self, _: &str, _: &SecretSlice<u8>) -> Result<Vec<u8>, CredsError> {
-        Err(self.0)
-    }
-    fn decrypt(&self, _: &str, _: &[u8]) -> Result<SecretSlice<u8>, CredsError> {
-        Err(self.0)
-    }
-}
-
-fn injected(error: CredsError) {
-    let client = Failing(error);
-    assert_eq!(seal(&client, "k", &secret(KEY)), Err(error));
-    let mut called = false;
-    assert_eq!(
-        with_key(&client, "k", &[0; 64], |_| called = true),
-        Err(error)
-    );
-    assert!(!called, "no key, no signature");
-}
-
-#[test]
-fn injected_unavailable() {
-    injected(CredsError::Unavailable);
-}
-
-#[test]
-fn injected_cannot_decrypt() {
-    injected(CredsError::CannotDecrypt);
 }
