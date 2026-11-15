@@ -31,6 +31,7 @@ jobs:
     permissions:
       contents: read
       statuses: read
+      pull-requests: read
     steps:
       # A PR whose head commit is signed off as `mutants` (`just signoff mutants`, or `just release`) does not
       # run it again; only someone with write access can sign off. A milestone PR (a milestone/ branch of this
@@ -41,6 +42,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
           MILESTONE: >-
             ${{ startsWith(github.head_ref, 'milestone/') &&
             github.event.pull_request.head.repo.full_name == github.repository }}
@@ -59,6 +61,13 @@ jobs:
           if [ "$MILESTONE" = true ]; then
             echo "::error::$SHA has no signoff/mutants: run just release on the milestone branch"
             exit 1
+          fi
+          # A PR that changes only Markdown that no test reads (README.md, docs/api.md and docs/audit.md are read) skips
+          # them too.
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          if [ -n "$files" ] && ! grep -qvE '\.md$' <<< "$files" \
+              && ! grep -qxE 'README\.md|docs/(api|audit)\.md' <<< "$files"; then
+            echo "only documentation: skipped"; echo signed=true >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.signoff.outputs.signed != 'true'

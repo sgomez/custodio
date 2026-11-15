@@ -367,7 +367,7 @@ mutants-diff id *args:
     just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
     if [ "$(stamp "$@")" = "$run" ]; then echo "$run" > target/mutants-diff-ok; fi
 
-# Gates: `ci` (ci.yml's jobs but commitlint, in the dev container), `mutants` (the mutants diff against main). Instead
+# Gates: `ci` (ci.yml's jobs but commitlint, and `test-scripts`, which CI does not run, in the dev container), `mutants` (the mutants diff against main). Instead
 # of `git push`: nothing is pushed or signed unless every gate passes on HEAD. E.g. `just signoff ci mutants`.
 # Runs CI checks locally on HEAD, then pushes it and signs it off (gh-signoff); CI skips them.
 [positional-arguments]
@@ -383,7 +383,7 @@ signoff +gates:
     workflows=()
     for gate in "$@"; do
         case $gate in
-            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling snap-base-fit package-lint \
+            ci) in_box lint system-gates package-gate-test shell-scripts-test test-scripts test package package-parity glibc-ceiling snap-base-fit package-lint \
                     coverage-gate memory-safety
                 workflows+=(ci.yml) ;;
             mutants) mkdir -p target
