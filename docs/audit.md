@@ -142,7 +142,8 @@ data or a signature.
 | `stored` | 6 | Authorized, decoded and stored |
 | `denied` | 5 | polkit denied the request |
 | `authorization_unavailable` | 4 | polkit could not decide, or the caller was unknown; nothing was stored |
-| `wrong_password` | 4 | Authorized, but the password did not open the file; nothing was stored |
+| `wrong_password` | 4 | Authorized, but the password did not open the file (the MAC does not verify, or a file without a MAC does not decrypt); nothing was stored |
+| `unreadable_file` | 4 | Authorized, but the file is not readable PKCS#12 whatever the password, or holds no usable key and certificate (none, several, or a key without a certificate); nothing was stored. Added later under the compatibility rule |
 | `unsupported_key` | 4 | Authorized, but the file holds no key of a supported type; nothing was stored |
 | `storage_failure` | 3 | Authorized and decoded, but the key could not be stored; `CUSTODIO_CAUSE` says why |
 

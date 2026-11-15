@@ -15,8 +15,8 @@ use std::sync::atomic::Ordering;
 
 use custodio_client::{
     ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_INTERNAL, ERROR_INVALID_ARGS,
-    ERROR_KEY_ID_TAKEN, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_UNSUPPORTED_KEY_TYPE,
-    ERROR_WRONG_PASSWORD_OR_BAD_P12, MAX_P12_LEN,
+    ERROR_KEY_ID_TAKEN, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_UNREADABLE_P12,
+    ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD, MAX_P12_LEN,
 };
 use custodiod::audit::{
     AuditError, AuditKeyType, AuditSink, Caller, Entry, FailingSink, ImportOutcome, MemorySink,
@@ -164,7 +164,10 @@ fn cases() -> Result<Vec<Case>, Box<dyn Error>> {
     no_credentials.reply = Err(ERROR_AUTHORIZATION_UNAVAILABLE);
     let mut wrong_password = Case::new("wrong password", Answer::Yes, O::WrongPassword);
     wrong_password.p12 = EC_P12.to_vec();
-    wrong_password.reply = Err(ERROR_WRONG_PASSWORD_OR_BAD_P12);
+    wrong_password.reply = Err(ERROR_WRONG_PASSWORD);
+    let mut unreadable = Case::new("unreadable file", Answer::Yes, O::UnreadableFile);
+    unreadable.p12 = b"not a p12".to_vec();
+    unreadable.reply = Err(ERROR_UNREADABLE_P12);
     let mut unsupported = Case::new("unsupported key", Answer::Yes, O::UnsupportedKey);
     unsupported.p12 = fixture_file("rsa3072")?;
     unsupported.password = PASSWORD;
@@ -180,6 +183,7 @@ fn cases() -> Result<Vec<Case>, Box<dyn Error>> {
         unavailable,
         no_credentials,
         wrong_password,
+        unreadable,
         unsupported,
         storage,
     ])

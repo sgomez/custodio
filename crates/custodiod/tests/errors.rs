@@ -116,31 +116,19 @@ fn import_failures_have_their_names() -> TestResult {
             ServiceError::KeyIdTaken,
         );
         let cases: Vec<(Vec<u8>, &str, ServiceError)> = vec![
-            (
-                EC_P12.to_vec(),
-                "wrong",
-                ServiceError::WrongPasswordOrBadP12,
-            ),
-            (
-                b"not a p12".to_vec(),
-                PASSWORD,
-                ServiceError::WrongPasswordOrBadP12,
-            ),
+            (EC_P12.to_vec(), "wrong", ServiceError::WrongPassword),
+            (b"not a p12".to_vec(), PASSWORD, ServiceError::UnreadableP12),
             (
                 rebuilt(&[("rsa2048", false)])?,
                 PASSWORD,
-                ServiceError::WrongPasswordOrBadP12,
+                ServiceError::UnreadableP12,
             ),
             (
                 rebuilt(&[("rsa2048", true), ("p256", true)])?,
                 PASSWORD,
-                ServiceError::WrongPasswordOrBadP12,
+                ServiceError::UnreadableP12,
             ),
-            (
-                no_private_key()?,
-                PASSWORD,
-                ServiceError::WrongPasswordOrBadP12,
-            ),
+            (no_private_key()?, PASSWORD, ServiceError::UnreadableP12),
             (fx("ed25519")?, PASSWORD, ServiceError::UnsupportedKeyType),
             (fx("rsa3072")?, PASSWORD, ServiceError::UnsupportedKeyType),
             (fx("p384")?, PASSWORD, ServiceError::UnsupportedKeyType),
@@ -321,6 +309,8 @@ fn the_wire_names_are_the_client_constants() -> TestResult {
             custodio_client::ERROR_TEMPORARILY_UNAVAILABLE,
             ERROR_UNSUPPORTED_KEY_TYPE,
             ERROR_WRONG_PASSWORD_OR_BAD_P12,
+            custodio_client::ERROR_WRONG_PASSWORD,
+            custodio_client::ERROR_UNREADABLE_P12,
         ];
         for e in ServiceError::ALL {
             assert!(all.contains(&e.error_name()), "{e:?}");

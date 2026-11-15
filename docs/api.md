@@ -132,7 +132,7 @@ The order is fixed: (1) the arguments are checked against the bounds below (`Inv
 identified; (3) the caller's own ids are checked (`KeyIdTaken`); (4) polkit is asked once, with
 `AllowUserInteraction`, under the action `com.rfirma.custodio.import-certificate` (`PolkitDenied`, or
 `AuthorizationUnavailable` if polkit cannot be asked); (5) only after approval is the `.p12` decoded with the
-password (`WrongPasswordOrBadP12`, `UnsupportedKeyType`, `CertificateMismatch`) and stored. So a wrong password
+password (`WrongPassword`, `UnreadableP12`, `WrongPasswordOrBadP12`, `UnsupportedKeyType`, `CertificateMismatch`) and stored. So a wrong password
 is reported as `PolkitDenied` or `AuthorizationUnavailable` when polkit refuses, and the `.p12` is never opened
 without approval. Every call asks again; nothing is cached. A refused call changes nothing.
 
@@ -283,8 +283,9 @@ otherwise, the call changed nothing.
 - error `com.rfirma.Custodio1.Error.PolkitDenied`: polkit refused the call (`Sign`, `ImportP12`, `DeleteKey` or `ReplaceCertificate`). Message `not authorized`.
 - error `com.rfirma.Custodio1.Error.AuthorizationUnavailable`: polkit could not be asked or the caller could not
   be identified. Message `authorization unavailable`.
-- error `com.rfirma.Custodio1.Error.WrongPasswordOrBadP12`: the `.p12` did not open or is not usable, including a
-  `.p12` with no private key, several private keys, or a key without a certificate. Message `wrong password or unreadable .p12 file`.
+- error `com.rfirma.Custodio1.Error.WrongPassword`: `ImportP12` only: the `.p12` has a MAC and it does not verify with the password. Ask for the password again. Message `wrong password for the .p12 file`.
+- error `com.rfirma.Custodio1.Error.UnreadableP12`: `ImportP12` only: the `.p12` is not readable PKCS#12 whatever the password, or it is readable and holds no usable key and certificate (no private key, several private keys, or a key without a certificate). Export the file again. Message `unreadable .p12 file or no usable key and certificate`.
+- error `com.rfirma.Custodio1.Error.WrongPasswordOrBadP12`: `ImportP12` only: the `.p12` has no MAC and does not decrypt, so a wrong password and a damaged file cannot be told apart. Message `wrong password or unreadable .p12 file`. The two errors above were added later under the compatibility rule; a client that does not know them treats them like this one.
 - error `com.rfirma.Custodio1.Error.UnsupportedKeyType`: the key is neither RSA 2048 nor ECDSA P-256. Message `unsupported key type`.
 - error `com.rfirma.Custodio1.Error.CertificateMismatch`: the certificate does not belong to the private key (`ImportP12`, `ReplaceCertificate`). Message `certificate does not match the key`.
 - error `com.rfirma.Custodio1.Error.AuditUnavailable`: the audit record could not be written, so nothing was done (an imported key is removed again; a key being deleted is restored; a replaced certificate is put back). Message `audit unavailable`.
@@ -459,6 +460,7 @@ same key, and a certificate for another key.
 $ openssl ecparam -name prime256v1 -genkey -noout -out demo.key
 $ openssl req -new -x509 -key demo.key -subj /CN=demo -days 30 -out demo.pem
 $ openssl pkcs12 -export -inkey demo.key -in demo.pem -passout pass:secret -out demo.p12
+$ openssl pkcs12 -export -nomac -inkey demo.key -in demo.pem -passout pass:secret -out demo-nomac.p12
 $ openssl req -new -x509 -key demo.key -subj /CN=renewed -days 60 -outform der -out renewed.der
 $ openssl ecparam -name prime256v1 -genkey -noout -out other.key
 $ openssl req -new -x509 -key other.key -subj /CN=other -days 30 -outform der -out other.der
@@ -486,10 +488,24 @@ $ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Cus
 Call failed: authorization unavailable
 ```
 
-A wrong password is only reported after the person approved, as `WrongPasswordOrBadP12`:
+A wrong password is only reported after the person approved. When the file has a MAC that does not verify, it is `WrongPassword`:
+
+```console op=ImportP12 polkit=approve action=com.rfirma.custodio.import-certificate error=WrongPassword
+$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo $(wc -c < demo.p12) $(od -An -v -tu1 demo.p12) wrong
+Call failed: wrong password for the .p12 file
+```
+
+A file that is not PKCS#12 is `UnreadableP12`, whatever the password:
+
+```console op=ImportP12 polkit=approve action=com.rfirma.custodio.import-certificate error=UnreadableP12
+$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo 3 1 2 3 secret
+Call failed: unreadable .p12 file or no usable key and certificate
+```
+
+A file without a MAC that does not decrypt stays `WrongPasswordOrBadP12`:
 
 ```console op=ImportP12 polkit=approve action=com.rfirma.custodio.import-certificate error=WrongPasswordOrBadP12
-$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo $(wc -c < demo.p12) $(od -An -v -tu1 demo.p12) wrong
+$ busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 com.rfirma.Custodio1 ImportP12 says demo $(wc -c < demo-nomac.p12) $(od -An -v -tu1 demo-nomac.p12) wrong
 Call failed: wrong password or unreadable .p12 file
 ```
 

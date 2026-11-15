@@ -29,7 +29,7 @@ OP_ACTION = {
     "Sign": "com.rfirma.custodio.sign",
 }
 TRIGGERED = ["PolkitDenied", "NoSuchKey", "KeyIdTaken", "InvalidArgs", "CertificateMismatch",
-             "WrongPasswordOrBadP12", "AuthorizationUnavailable"]
+             "WrongPasswordOrBadP12", "WrongPassword", "UnreadableP12", "AuthorizationUnavailable"]
 ERROR_PREFIX = "com.rfirma.Custodio1.Error."
 BUS_NAME = "com.rfirma.Custodio1"
 

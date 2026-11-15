@@ -85,7 +85,7 @@ fn accepts_the_ber_that_nss_exports() -> TestResult {
 fn rejects_wrong_password_of_a_ber_file() -> TestResult {
     let der = err_of(parse_p12(&fixture("rsa2048")?, &pw("nope")))?;
     let ber = err_of(parse_p12(&fixture("rsa2048-nss")?, &pw("nope")))?;
-    assert!(matches!(ber, ImportError::Parse(_)), "{ber:?}");
+    assert!(matches!(ber, ImportError::WrongPassword), "{ber:?}");
     assert_eq!(ber.to_string(), der.to_string());
     Ok(())
 }
@@ -117,7 +117,7 @@ fn rejects_ed25519() -> TestResult {
 #[test]
 fn rejects_wrong_password() -> TestResult {
     let err = err_of(parse_p12(&fixture("rsa2048")?, &pw("nope")))?;
-    assert!(matches!(err, ImportError::Parse(_)), "{err:?}");
+    assert!(matches!(err, ImportError::WrongPassword), "{err:?}");
     Ok(())
 }
 
@@ -127,7 +127,7 @@ fn rejects_garbage_empty_and_truncated() -> TestResult {
     let truncated = good.get(..40).ok_or("fixture too short")?;
     for data in [&b""[..], b"not a p12 at all", truncated] {
         let err = err_of(parse_p12(data, &pw(PASSWORD)))?;
-        assert!(matches!(err, ImportError::Parse(_)), "{err:?}");
+        assert!(matches!(err, ImportError::Unreadable(_)), "{err:?}");
     }
     Ok(())
 }
@@ -140,7 +140,7 @@ fn rejects_oversized_input() -> TestResult {
     // The limit itself is allowed: it reaches the parser.
     let limit = vec![0_u8; MAX_P12_LEN];
     let err = err_of(parse_p12(&limit, &pw(PASSWORD)))?;
-    assert!(matches!(err, ImportError::Parse(_)), "{err:?}");
+    assert!(matches!(err, ImportError::Unreadable(_)), "{err:?}");
     Ok(())
 }
 

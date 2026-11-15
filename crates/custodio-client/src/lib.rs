@@ -29,10 +29,13 @@ pub const ERROR_POLKIT_DENIED: &str = "com.rfirma.Custodio1.Error.PolkitDenied";
 /// The caller could not be identified or polkit could not be asked, so nothing was signed.
 pub const ERROR_AUTHORIZATION_UNAVAILABLE: &str =
     "com.rfirma.Custodio1.Error.AuthorizationUnavailable";
-/// The `.p12` could not be opened: wrong password, corrupt file, or a file that holds no private
-/// key, more than one, or a key without a certificate.
+/// A `.p12` without a MAC that does not decrypt: a wrong password and a corrupt file look the same.
 pub const ERROR_WRONG_PASSWORD_OR_BAD_P12: &str =
     "com.rfirma.Custodio1.Error.WrongPasswordOrBadP12";
+/// The `.p12` has a MAC and it does not verify with the password: retype the password.
+pub const ERROR_WRONG_PASSWORD: &str = "com.rfirma.Custodio1.Error.WrongPassword";
+/// The `.p12` is not readable PKCS#12, or holds no usable key and certificate, whatever the password.
+pub const ERROR_UNREADABLE_P12: &str = "com.rfirma.Custodio1.Error.UnreadableP12";
 /// The key is neither RSA 2048 nor ECDSA P-256.
 pub const ERROR_UNSUPPORTED_KEY_TYPE: &str = "com.rfirma.Custodio1.Error.UnsupportedKeyType";
 /// No certificate in the `.p12` carries the public key of the private key.
@@ -53,13 +56,15 @@ pub const ERROR_INTERNAL: &str = "com.rfirma.Custodio1.Error.Internal";
 
 /// Every `ERROR_*` name above, once. The contract check compares this list with the service and the document,
 /// so a name added above must be added here.
-pub const ERROR_NAMES: [&str; 14] = [
+pub const ERROR_NAMES: [&str; 16] = [
     ERROR_INVALID_ARGS,
     ERROR_NO_SUCH_KEY,
     ERROR_KEY_ID_TAKEN,
     ERROR_POLKIT_DENIED,
     ERROR_AUTHORIZATION_UNAVAILABLE,
     ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_WRONG_PASSWORD,
+    ERROR_UNREADABLE_P12,
     ERROR_UNSUPPORTED_KEY_TYPE,
     ERROR_CERTIFICATE_MISMATCH,
     ERROR_AUDIT_UNAVAILABLE,

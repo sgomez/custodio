@@ -360,7 +360,7 @@ fn import_refusals_never_decode() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Control: approval reaches the decoder.
     let (got, polkit, decoded) = import_with(|| Ok(()), Some(":1.1"))?;
-    assert_eq!(got, Err(ServiceError::WrongPasswordOrBadP12));
+    assert_eq!(got, Err(ServiceError::UnreadableP12));
     assert_eq!((polkit, decoded), (1, 1));
     Ok(())
 }
@@ -372,13 +372,15 @@ use crate::import::ImportError;
 /// Every `ImportError`, with the outcome it is recorded as: a literal table, not the code's own rule.
 #[test]
 fn every_import_error_has_its_outcome() {
-    use ImportOutcome::{StorageFailure, UnsupportedKey, WrongPassword};
+    use ImportOutcome::{StorageFailure, UnreadableFile, UnsupportedKey, WrongPassword};
     let table = [
         (ImportError::TooLarge, StorageFailure),
-        (ImportError::Parse("x".into()), WrongPassword),
-        (ImportError::NoPrivateKey, WrongPassword),
-        (ImportError::MultipleKeys, WrongPassword),
-        (ImportError::NoCertificate, WrongPassword),
+        (ImportError::WrongPassword, WrongPassword),
+        (ImportError::WrongPasswordOrBad, WrongPassword),
+        (ImportError::Unreadable("x".into()), UnreadableFile),
+        (ImportError::NoPrivateKey, UnreadableFile),
+        (ImportError::MultipleKeys, UnreadableFile),
+        (ImportError::NoCertificate, UnreadableFile),
         (ImportError::CertificateMismatch, UnsupportedKey),
         (ImportError::UnsupportedKey("x".into()), UnsupportedKey),
         (
@@ -490,7 +492,9 @@ fn every_import_error_has_its_cause() {
     let rc = ResponseCode(0x143);
     let table = [
         (ImportError::TooLarge, Some(C::Internal)),
-        (ImportError::Parse("x".into()), None),
+        (ImportError::WrongPassword, None),
+        (ImportError::WrongPasswordOrBad, None),
+        (ImportError::Unreadable("x".into()), None),
         (ImportError::NoPrivateKey, None),
         (ImportError::MultipleKeys, None),
         (ImportError::NoCertificate, None),

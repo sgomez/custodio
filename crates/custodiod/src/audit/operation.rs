@@ -118,6 +118,8 @@ pub enum ImportOutcome {
     AuthorizationUnavailable,
     /// Approved, but the password did not open the file.
     WrongPassword,
+    /// Approved, but the file is not readable PKCS#12 or holds no usable key and certificate.
+    UnreadableFile,
     /// Approved, but the file holds no key Custodio accepts.
     UnsupportedKey,
     /// Approved, but the key could not be stored.
@@ -195,18 +197,20 @@ impl PurgeOutcome {
 impl ImportOutcome {
     /// Every outcome; the exhaustive match stops compiling when a variant is added.
     #[must_use]
-    pub const fn all() -> [Self; 6] {
+    pub const fn all() -> [Self; 7] {
         match Self::Stored {
             Self::Stored
             | Self::Denied
             | Self::AuthorizationUnavailable
             | Self::WrongPassword
+            | Self::UnreadableFile
             | Self::UnsupportedKey
             | Self::StorageFailure => [
                 Self::Stored,
                 Self::Denied,
                 Self::AuthorizationUnavailable,
                 Self::WrongPassword,
+                Self::UnreadableFile,
                 Self::UnsupportedKey,
                 Self::StorageFailure,
             ],
@@ -221,6 +225,7 @@ impl ImportOutcome {
             Self::Denied => "denied",
             Self::AuthorizationUnavailable => "authorization_unavailable",
             Self::WrongPassword => "wrong_password",
+            Self::UnreadableFile => "unreadable_file",
             Self::UnsupportedKey => "unsupported_key",
             Self::StorageFailure => "storage_failure",
         }
@@ -232,7 +237,10 @@ impl ImportOutcome {
         match self {
             Self::Stored => 6,
             Self::Denied => 5,
-            Self::AuthorizationUnavailable | Self::WrongPassword | Self::UnsupportedKey => 4,
+            Self::AuthorizationUnavailable
+            | Self::WrongPassword
+            | Self::UnreadableFile
+            | Self::UnsupportedKey => 4,
             Self::StorageFailure => 3,
         }
     }
@@ -243,6 +251,7 @@ impl ImportOutcome {
             Self::Denied => "import denied",
             Self::AuthorizationUnavailable => "import authorization unavailable, nothing stored",
             Self::WrongPassword => "import failed, wrong password",
+            Self::UnreadableFile => "import failed, unreadable file",
             Self::UnsupportedKey => "import failed, unsupported key",
             Self::StorageFailure => "import failed after approval, key not stored",
         }

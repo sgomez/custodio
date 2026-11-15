@@ -66,5 +66,9 @@ name = "it"
 path = "tests/it.rs"
 
 [[test]]
+name = "import_split"
+path = "tests/import_split.rs"
+
+[[test]]
 name = "fd_leak"
 path = "tests/fd_leak.rs"

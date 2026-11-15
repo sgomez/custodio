@@ -27,17 +27,21 @@ pub(super) const fn audit_key_type(kind: KeyKind) -> AuditKeyType {
 
 /// The outcome an import that failed after approval is recorded as.
 ///
-/// Every variant is named, so a new one does not compile until it is mapped. A wrong password is
-/// the nearest outcome for every file that cannot be read as one key with a certificate; a
+/// Every variant is named, so a new one does not compile until it is mapped. A MAC that does not verify, and
+/// a file without one that does not decrypt, are a wrong password; a file that cannot be read as one key with a
+/// certificate is an unreadable file; a
 /// certificate that does not match the key is an unsupported key. `TooLarge` is refused by the
 /// argument check before polkit, so it cannot happen here; it is a storage failure because the
 /// store, not the caller, would have produced it.
 pub(super) const fn import_outcome(e: &ImportError) -> ImportOutcome {
     match e {
-        ImportError::Parse(_)
+        ImportError::WrongPassword | ImportError::WrongPasswordOrBad => {
+            ImportOutcome::WrongPassword
+        }
+        ImportError::Unreadable(_)
         | ImportError::NoPrivateKey
         | ImportError::MultipleKeys
-        | ImportError::NoCertificate => ImportOutcome::WrongPassword,
+        | ImportError::NoCertificate => ImportOutcome::UnreadableFile,
         ImportError::UnsupportedKey(_) | ImportError::CertificateMismatch => {
             ImportOutcome::UnsupportedKey
         }
@@ -57,7 +61,9 @@ pub(super) const fn import_outcome(e: &ImportError) -> ImportOutcome {
 /// anything that came from the tool or the file never reach it.
 pub(super) const fn import_cause(e: &ImportError) -> Option<ImportCause> {
     match e {
-        ImportError::Parse(_)
+        ImportError::WrongPassword
+        | ImportError::WrongPasswordOrBad
+        | ImportError::Unreadable(_)
         | ImportError::NoPrivateKey
         | ImportError::MultipleKeys
         | ImportError::NoCertificate

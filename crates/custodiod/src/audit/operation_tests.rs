@@ -170,7 +170,7 @@ fn check(e: &OperationEntry, id: &str, row: Row) {
 
 #[test]
 fn import_outcomes() -> TestResult {
-    let rows: [(ImportOutcome, &str, &str, &str); 6] = [
+    let rows: [(ImportOutcome, &str, &str, &str); 7] = [
         (ImportOutcome::Stored, "stored", "6", "key imported"),
         (ImportOutcome::Denied, "denied", "5", "import denied"),
         (
@@ -184,6 +184,12 @@ fn import_outcomes() -> TestResult {
             "wrong_password",
             "4",
             "import failed, wrong password",
+        ),
+        (
+            ImportOutcome::UnreadableFile,
+            "unreadable_file",
+            "4",
+            "import failed, unreadable file",
         ),
         (
             ImportOutcome::UnsupportedKey,
