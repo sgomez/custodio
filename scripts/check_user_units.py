@@ -174,9 +174,11 @@ if shutil.which("systemd-analyze"):
             copies.append(copy)
         env = {**os.environ, "XDG_RUNTIME_DIR": runtime}
         done = subprocess.run(["systemd-analyze", "--user", "verify", *copies], env=env, capture_output=True, text=True, check=False)
-        output = (done.stdout + done.stderr).replace(work + "/", "").strip()
+        # A warning about a unit of the host that is not ours (it names neither a copy nor a unit) is not a finding.
+        ours = [line for line in (done.stdout + done.stderr).splitlines() if work in line or any(name in line for name in units)]
+        output = "\n".join(ours).replace(work + "/", "").strip()
         if done.returncode != 0:
-            bad(f"systemd-analyze verify exited {done.returncode}: {output}")
+            bad(f"systemd-analyze verify exited {done.returncode}: {(done.stdout + done.stderr).strip()}")
         elif output:
             bad(f"systemd-analyze verify exited 0 but printed output: {output}")
 else:
