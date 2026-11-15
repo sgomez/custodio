@@ -295,6 +295,16 @@ fn skip_reasons_decide_the_exit_code() {
     let recorded = fs::read_to_string(&marker).unwrap();
     probe_dir(&f, recorded.lines().next().unwrap());
     assert!(!recorded.contains(native.to_str().unwrap()), "{recorded}");
+    // NSS is not asked for a removal, nor on a home with only the snap
+    let asked = |f: &Fixture, args: &[&str]| {
+        let _ = fs::remove_file(&marker);
+        f.binary(args, &stub, &[("MARKER", marker.to_str().unwrap())]);
+        let recorded = fs::read_to_string(&marker).unwrap_or_default();
+        recorded.contains(" -create") || recorded.contains(" -list")
+    };
+    assert!(!asked(&f, &["register", "--remove"]));
+    fs::remove_dir_all(native.parent().unwrap()).unwrap();
+    assert!(!asked(&f, &["register", "--module", m.to_str().unwrap()]));
     // an unwritable profile directory
     let f = Fixture::new();
     let m = f.module("a");
