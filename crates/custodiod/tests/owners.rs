@@ -1,13 +1,8 @@
 //! Two callers with different uids through the replaceable credentials interface: every call is
 //! scoped to the uid the bus reports for its own connection. A private `dbus-daemon`, a fake polkit.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 
 use std::collections::HashMap;
 use std::future::{Future, ready};

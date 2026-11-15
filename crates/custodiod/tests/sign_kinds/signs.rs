@@ -10,13 +10,13 @@
 use custodiod::audit::Outcome;
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::common::uid;
-use crate::kit::{
+use super::bus::Answer;
+use super::common::uid;
+use super::kit::{
     ERR_DENIED, ERR_MISMATCH, ERR_NO_KEY, Family, ID, STORAGES, Setup, Storage, p12_certificate,
     second_certificate,
 };
-use crate::rig::{SUBJECTS, TestResult};
+use super::rig::{SUBJECTS, TestResult};
 
 #[test]
 fn signs_each_kind() -> TestResult {
@@ -192,7 +192,7 @@ fn replace_lost_key() -> TestResult {
                 let second = second_certificate(&setup.rig, subject);
                 assert_eq!(
                     setup.replace(ID, &second).await,
-                    Err(crate::kit::ERR_INTERNAL.to_owned()),
+                    Err(super::kit::ERR_INTERNAL.to_owned()),
                     "{who}"
                 );
                 assert_eq!(setup.record_bytes(), bytes, "{who}");

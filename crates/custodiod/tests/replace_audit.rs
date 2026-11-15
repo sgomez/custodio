@@ -2,25 +2,16 @@
 //! certificate before the entry is submitted, and puts the old one back if the entry cannot be
 //! submitted. Private bus, fake polkit, a sink that can fail, count and block.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 #[path = "replace_audit/concurrent.rs"]
 mod concurrent;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/deadline.rs"]
-mod deadline;
+use crate::deadline;
 #[path = "replace_audit/failing.rs"]
 mod failing;
 #[path = "replace_audit/outputs.rs"]
 mod outputs;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/scan.rs"]
-mod scan;
+use crate::scan;
 
 use std::error::Error;
 use std::fs;

@@ -241,7 +241,7 @@ fn entry_names_the_caller_not_the_service() -> TestResult {
     let mut pids = Vec::new();
     for _ in 0..2 {
         let mut child = Command::new(std::env::current_exe()?)
-            .args(["--exact", "leaks::child_client", "--test-threads=1"])
+            .args(["--exact", "audit::leaks::child_client", "--test-threads=1"])
             .env(CHILD_ENV, &f.bus.address)
             .stdout(std::process::Stdio::null())
             .spawn()?;

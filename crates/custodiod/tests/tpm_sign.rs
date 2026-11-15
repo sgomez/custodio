@@ -12,11 +12,7 @@
 mod blobs;
 #[path = "tpm_sign/every.rs"]
 mod every;
-#[path = "tpm_sign/oracle.rs"]
-mod oracle;
+use crate::oracle;
 #[path = "tpm_sign/refusals.rs"]
 mod refusals;
-// Shared with `tpm_import`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::support;

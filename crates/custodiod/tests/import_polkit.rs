@@ -1,13 +1,8 @@
 //! `ImportP12` over a private bus: arguments, the caller's own id, then polkit once under the import
 //! action, and only after approval the decoding of the `.p12`. A counting decoder proves when it runs.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 
 use std::error::Error;
 use std::path::{Path, PathBuf};

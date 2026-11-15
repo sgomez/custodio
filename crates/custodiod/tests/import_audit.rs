@@ -2,16 +2,9 @@
 //! entry that cannot be recorded means the key is not kept. Private bus, fake polkit, in-memory and
 //! failing sinks.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/scan.rs"]
-mod scan;
+use crate::bus;
+use crate::common;
+use crate::scan;
 
 use std::error::Error;
 use std::fs;

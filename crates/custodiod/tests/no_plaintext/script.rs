@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use crate::support::{Kind, TestKey, hex};
+use super::support::{Kind, TestKey, hex};
 
 pub fn script() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/check-no-plaintext.sh")

@@ -67,7 +67,7 @@ lint-fuzz:
 
 # The client document docs/api.md against the live service, the error type and the policy file (also part of `test`).
 api-contract:
-    cargo test -p custodiod --test api_contract --locked
+    cargo test -p custodiod --test it --locked api_contract::
 
 # Unit and integration tests. nextest runs the test binaries in parallel and skips doctests, which run last.
 test:

@@ -13,8 +13,8 @@ use custodiod::creds::CredsError;
 use custodiod::creds::memory::MemoryCreds;
 use custodiod::tpm::open::{NoTpm, Production, TestTcti};
 
-use crate::rig::{ERR_CREDS, ERR_TPM, Rig, SpyCreds, TestResult, fault, lacks_import};
-use crate::row::{Row, run};
+use super::rig::{ERR_CREDS, ERR_TPM, Rig, SpyCreds, TestResult, fault, lacks_import};
+use super::row::{Row, run};
 
 #[test]
 fn device_unopenable() -> TestResult {

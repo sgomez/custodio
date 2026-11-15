@@ -17,36 +17,14 @@
     clippy::panic
 )]
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-// Shared with `creds`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "creds/env.rs"]
-mod env;
-// Shared with `sign_kinds`: this target does not use every helper of it.
-#[allow(dead_code, unused_imports)]
-#[path = "sign_kinds/kit.rs"]
-mod kit;
-// Shared with `tpm_sign`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "tpm_sign/oracle.rs"]
-mod oracle;
-// Shared with `storage_choice`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "storage_choice/rig.rs"]
-mod rig;
+use crate::bus;
+use crate::common;
+use crate::env;
+use crate::kit;
+use crate::rig;
 #[path = "tpm_lifecycle/world.rs"]
 mod world;
-// Shared with `tpm_import`: this target does not use every helper of it.
-#[allow(dead_code, unused_imports)]
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::support;
 
 use custodiod::audit::{Outcome, SignCause};
 use custodiod::creds::Credentials;

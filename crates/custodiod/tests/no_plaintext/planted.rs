@@ -12,9 +12,9 @@ use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
-use crate::common::{EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD};
-use crate::rig::TestResult;
-use crate::script::{encodings, forms, key_pem, named, openssl, run_script};
+use super::common::{EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD};
+use super::rig::TestResult;
+use super::script::{encodings, forms, key_pem, named, openssl, run_script};
 
 const KEYS: [(&str, &[u8]); 2] = [("rsa2048", RSA_SENTINEL_P12), ("p256", EC_SENTINEL_P12)];
 
@@ -229,7 +229,7 @@ fn bad_input_is_not_clean() -> TestResult {
         vec![fx.state.clone()],
         vec![fx.state.clone(), fx.p12.clone(), fx.p12.clone()],
     ] {
-        let out = std::process::Command::new(crate::script::script())
+        let out = std::process::Command::new(super::script::script())
             .args(args)
             .stdin(std::process::Stdio::null())
             .output()?;

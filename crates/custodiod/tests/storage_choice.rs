@@ -4,27 +4,14 @@
 //! The TPM and the credential service are the two access points the service takes; every reason is injected through
 //! them. The store, the journal and the TPM are read back afterwards.
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 #[path = "storage_choice/fails_closed.rs"]
 mod fails_closed;
 #[path = "storage_choice/kinds.rs"]
 mod kinds;
 #[path = "storage_choice/order.rs"]
 mod order;
-// The rig is shared with `sign_kinds`, which uses other parts of it than this target does.
-#[allow(dead_code)]
-#[path = "storage_choice/rig.rs"]
-mod rig;
+use crate::rig;
 #[path = "storage_choice/row.rs"]
 mod row;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "tpm_import/support.rs"]
-mod support;

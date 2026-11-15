@@ -1,16 +1,13 @@
 //! One audit entry per `Sign` call that reaches authorization, failing closed. A private
 //! `dbus-daemon`, a fake polkit, the real `BusCredentials` and replaced sinks.
 
-#[path = "audit/bus.rs"]
-mod bus;
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 #[path = "audit/failing.rs"]
 mod failing;
 #[path = "audit/leaks.rs"]
 mod leaks;
-#[path = "audit/scan.rs"]
-mod scan;
+use crate::scan;
 #[path = "audit/timing.rs"]
 mod timing;
 

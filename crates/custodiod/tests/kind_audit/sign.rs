@@ -12,11 +12,11 @@ use custodiod::audit::{Entry, Outcome, SignCause};
 use custodiod::creds::CredsError;
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::case::{Case, Fail};
-use crate::kit::{ERR_INTERNAL, ERR_KEY_LOST, ERR_UNAVAILABLE, Family, STORAGES, Setup};
-use crate::rig::{SUBJECTS, TestResult, pkcs8_of};
-use crate::secrets::{Secrets, assert_sign_clean};
+use super::bus::Answer;
+use super::case::{Case, Fail};
+use super::kit::{ERR_INTERNAL, ERR_KEY_LOST, ERR_UNAVAILABLE, Family, STORAGES, Setup};
+use super::rig::{SUBJECTS, TestResult, pkcs8_of};
+use super::secrets::{Secrets, assert_sign_clean};
 
 pub fn value(e: &Entry, name: &str) -> Option<String> {
     e.fields()
@@ -90,9 +90,9 @@ async fn failure_rows(lost: bool) -> TestResult {
             assert_eq!(
                 value(e, "CUSTODIO_STORAGE_KIND").as_deref(),
                 Some(match fail.storage() {
-                    crate::kit::Storage::Tpm => "tpm",
-                    crate::kit::Storage::EncryptedTpm => "encrypted-tpm",
-                    crate::kit::Storage::EncryptedHost => "encrypted-host",
+                    super::kit::Storage::Tpm => "tpm",
+                    super::kit::Storage::EncryptedTpm => "encrypted-tpm",
+                    super::kit::Storage::EncryptedHost => "encrypted-host",
                 }),
                 "{who}"
             );
@@ -134,7 +134,7 @@ fn sign_other_entries() -> TestResult {
                 let who = format!("{storage:?} {}", subject.reply);
                 let setup = Setup::new(storage, subject).await?;
                 let family = Family::of(subject)[0];
-                let wire = crate::kit::Storage::kind(storage).wire();
+                let wire = super::kit::Storage::kind(storage).wire();
                 // A signature: `signed`, the kind, the mechanism, no cause.
                 setup.sign(family).await?;
                 let e = last(&setup);
@@ -171,7 +171,7 @@ fn sign_other_entries() -> TestResult {
         // An `Internal` failure: the credential service refuses the request. Neither lost nor transient.
         for subject in SUBJECTS {
             let who = format!("internal {}", subject.reply);
-            let setup = Setup::new(crate::kit::Storage::EncryptedHost, subject).await?;
+            let setup = Setup::new(super::kit::Storage::EncryptedHost, subject).await?;
             let family = Family::of(subject)[0];
             setup
                 .svc

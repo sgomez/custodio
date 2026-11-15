@@ -6,25 +6,13 @@
 //! and the real `systemd-creds` is the e2e cases' part. The test derives the encodings itself, with the `rsa` and `p256`
 //! crates and `openssl`, so the script cannot agree with itself.
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 #[path = "no_plaintext/planted.rs"]
 mod planted;
-// Shared with `storage_choice`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "storage_choice/rig.rs"]
-mod rig;
+use crate::rig;
 #[path = "no_plaintext/script.rs"]
 mod script;
 #[path = "no_plaintext/service.rs"]
 mod service;
-// Shared with `tpm_import`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::support;

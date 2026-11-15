@@ -15,9 +15,9 @@ use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::common::SENTINEL_PASSWORD;
-use crate::rig::{
+use super::bus::Answer;
+use super::common::SENTINEL_PASSWORD;
+use super::rig::{
     Counting, ERR_TPM, Rig, SUBJECTS, SpyCreds, Svc, TestResult, fault, lacks_import, pkcs8_of,
     plaintext_in_store,
 };

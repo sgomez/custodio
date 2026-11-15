@@ -10,11 +10,11 @@
 use custodiod::sign::{Mechanism, PssHash};
 use zbus::block_on;
 
-use crate::cell::{Running, cells};
-use crate::common::{CKM_ECDSA, CKM_RSA_PKCS};
-use crate::kit::{CKM_RSA_PKCS_PSS, CKM_SHA256, ID};
-use crate::oracle::{flip, p256_rows, rsa_rows};
-use crate::rig::TestResult;
+use super::cell::{Running, cells};
+use super::common::{CKM_ECDSA, CKM_RSA_PKCS};
+use super::kit::{CKM_RSA_PKCS_PSS, CKM_SHA256, ID};
+use super::oracle::{flip, p256_rows, rsa_rows};
+use super::rig::TestResult;
 
 /// `(mechanism, hash, salt length)` as `Sign` takes them.
 pub fn wire(mechanism: Mechanism) -> (u32, u32, u32) {

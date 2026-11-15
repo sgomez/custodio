@@ -18,12 +18,12 @@ use custodiod::sign::PssHash;
 use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 
-use crate::bus::Answer;
-use crate::common::{
+use super::bus::Answer;
+use super::common::{
     CKM_ECDSA, CKM_RSA_PKCS, SENTINEL_PASSWORD, assert_entry, digest, digest_info, uid,
 };
-use crate::oracle::{digest_info_prefix, ecdsa_der, pss_opts, recovered, strs, verifies};
-use crate::rig::{Counting, Res, Rig, SUBJECTS, SpyCreds, Subject, Svc, lacks_import};
+use super::oracle::{digest_info_prefix, ecdsa_der, pss_opts, recovered, strs, verifies};
+use super::rig::{Counting, Res, Rig, SUBJECTS, SpyCreds, Subject, Svc, lacks_import};
 
 pub const ID: &str = "k";
 pub const CKM_RSA_PKCS_PSS: u32 = 0x000D;

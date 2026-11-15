@@ -39,8 +39,7 @@ const UID: u32 = 4001;
 const OTHER_UID: u32 = 4002;
 const SENTINEL_P12: &[u8] = include_bytes!("fixtures/p256-sentinel.p12");
 
-#[path = "snap_socket_sign/polkit.rs"]
-mod polkit;
+use crate::snap_polkit as polkit;
 use polkit::{Answer, Bus, Call, FakePolkit, GarbledPolkit};
 
 /// What the seam supplies for the next connection.

@@ -10,22 +10,8 @@
     clippy::panic
 )]
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-// The rig is shared with `storage_choice`, which uses other parts of it than this target does.
-#[allow(dead_code)]
-#[path = "storage_choice/rig.rs"]
-mod rig;
-// Shared with `tpm_import`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::common;
+use crate::rig;
 
 use custodio_client::{KNOWN_KINDS, Kind as ClientKind};
 use custodiod::creds::CredsError;
@@ -36,8 +22,8 @@ use custodiod::tpm::open::{NoTpm, TestTcti};
 use secrecy::SecretString;
 use zbus::block_on;
 
-use crate::common::{SENTINEL_PASSWORD, uid};
-use crate::rig::{KindSvc, SUBJECTS, Subject, TestResult, lacks_import};
+use self::common::{SENTINEL_PASSWORD, uid};
+use self::rig::{KindSvc, SUBJECTS, Subject, TestResult, lacks_import};
 
 const KINDS: [Kind; 3] = [Kind::Tpm, Kind::EncryptedTpm, Kind::EncryptedHost];
 

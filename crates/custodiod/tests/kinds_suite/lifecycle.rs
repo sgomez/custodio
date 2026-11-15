@@ -11,9 +11,9 @@ use std::collections::BTreeSet;
 
 use zbus::block_on;
 
-use crate::cell::{Running, cells};
-use crate::kit::{ERR_MISMATCH, ERR_NO_KEY, ID, p12_certificate, second_certificate};
-use crate::rig::TestResult;
+use super::cell::{Running, cells};
+use super::kit::{ERR_MISMATCH, ERR_NO_KEY, ID, p12_certificate, second_certificate};
+use super::rig::TestResult;
 
 #[test]
 fn import_each_kind() -> TestResult {
@@ -137,7 +137,7 @@ fn replace_each_kind() -> TestResult {
             }
 
             // Another key's certificate fails with the mismatch name and changes nothing.
-            let other = crate::rig::SUBJECTS
+            let other = super::rig::SUBJECTS
                 .iter()
                 .find(|s| s.reply != cell.subject.reply)
                 .unwrap();

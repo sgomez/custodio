@@ -12,8 +12,8 @@ use std::sync::Arc;
 use custodiod::tpm::TpmAccess;
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::rig::{
+use super::bus::Answer;
+use super::rig::{
     Counting, SUBJECTS, SpyCreds, Subject, Svc, TestResult, pkcs8_of, plaintext_in_store,
 };
 
@@ -50,7 +50,7 @@ pub fn run<T: TpmAccess + 'static>(
                 subject.reply,
                 "{who}"
             );
-            assert_eq!(svc.store.list(crate::common::uid())?, ["k"], "{who}");
+            assert_eq!(svc.store.list(super::common::uid())?, ["k"], "{who}");
             assert!(!plaintext_in_store(&svc, &pkcs8_of(subject)), "{who}");
             Ok::<_, Box<dyn std::error::Error>>(())
         })?;

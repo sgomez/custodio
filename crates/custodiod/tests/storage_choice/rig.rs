@@ -22,13 +22,13 @@ use custodiod::tpm::{OpenError, Session, TpmAccess};
 use secrecy::SecretSlice;
 use zbus::Connection;
 
-use crate::bus::{Answer, Bus, FakePolkit, call, error_name};
-use crate::common::{EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, uid};
+use super::bus::{Answer, Bus, FakePolkit, call, error_name};
+use super::common::{EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, uid};
 
 pub type Res<T> = Result<T, Box<dyn std::error::Error>>;
 pub type TestResult = Res<()>;
 
-pub use crate::support::Rig;
+pub use super::support::Rig;
 
 /// Both key types with their sentinel `.p12` and the names the API and the journal use.
 pub const SUBJECTS: [Subject; 2] = [
@@ -403,7 +403,7 @@ impl Svc {
 pub fn plaintext_in_store(svc: &Svc, needle: &[u8]) -> bool {
     svc.files()
         .iter()
-        .any(|f| crate::support::contains(&std::fs::read(f).unwrap(), needle))
+        .any(|f| super::support::contains(&std::fs::read(f).unwrap(), needle))
 }
 
 /// The PKCS#8 DER of the key in a sentinel `.p12`.
