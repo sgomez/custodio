@@ -160,6 +160,8 @@ test-scripts:
     scripts/test-sysusers-sync.sh
     scripts/check-tpm-install-sync.sh
     scripts/test-tpm-install-sync.sh
+    scripts/check-shell-install-sync.sh
+    scripts/test-shell-install-sync.sh
     scripts/test-with-swtpm.sh
     scripts/test-vm-credread.sh
     scripts/test-vm-host-check.sh
