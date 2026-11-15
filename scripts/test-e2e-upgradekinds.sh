@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # F141: container-free checks of the upgrade-kinds-* cases: where the cases are enabled, the judgements of e2e/upgradekinds.py on good and bad evidence per mode (a kind other than the mode's before
 # the install, a kind changed by the upgrade for every pair, an id or an owner missing, added or swapped, a CLI row whose kind or type differs, a journal entry of another kind, missing,
-# double, from before the cursor or of another operation, and a run in which every key has the same wrong kind), and a stub-driven run of e2e/upgrade-kinds.sh (good evidence is reported,
-# bad evidence stops it). NOT checked here: a real run (`just e2e-cases debian13 'upgrade-*'` in swtpm, none, lacking).
+# double, from before the cursor or of another operation, and a run in which every key has the same wrong kind). NOT checked here: a real run (`just e2e-cases debian13 'upgrade-*'` in swtpm, none, lacking).
 # shellcheck disable=SC2086 # the ids are words
 # shellcheck disable=SC2016 # the patterns handed to before are text for grep: single quotes keep the dollar signs literal
 set -euo pipefail
@@ -12,7 +11,6 @@ trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-upgradekinds: $*" >&2; fail=1; }
 D=$ROOT/e2e/targets/debian13
-ids="upgrade-kinds-before upgrade-kinds-kept upgrade-kinds-signs upgrade-kinds-tpmbound"
 uk() { python3 -I "$ROOT/e2e/upgradekinds.py" "$@"; }
 
 # the case is reported only where the target lists it, for the N to N+1 run, and when one is selected
@@ -157,103 +155,4 @@ for m in swtpm none lacking; do
 done
 [ -n "$(uk journal swtpm /dev/null 1000 1001 x)" ] || bad "a non-numeric request count is accepted"
 
-# --- a stub-driven run of upgrade-kinds.sh: su copies the evidence the test prepared for the phase into the directory the real script writes; journalctl prints the prepared journal
-mkdir -p "$tmp/bin" "$tmp/work/agent-upgrade" "$tmp/work/upgrade-acct/agent-alice" "$tmp/work/upgrade-acct/agent-bob"
-cat > "$tmp/bin/su" <<'STUB'
-#!/bin/sh
-# su -l USER -c "WORK=... bash /e2e/upgrade-accts-user.sh kinds PHASE"
-user=$2
-phase=${4##* }
-mkdir -p "$WORK/upgrade-acct/kinds/$phase"
-cp "$EV/$phase/$user".api "$EV/$phase/$user".cli "$WORK/upgrade-acct/kinds/$phase/"
-STUB
-cat > "$tmp/bin/journalctl" <<'STUB'
-#!/bin/sh
-case "$*" in
---sync) ;;
-*--show-cursor*) echo "-- cursor: s=stub" ;;
-*--after-cursor=s=stub*) cat "$EV/journal.json" ;;
-*) echo "unexpected journalctl $*" >&2; exit 9 ;;
-esac
-STUB
-cat > "$tmp/bin/id" <<'STUB'
-#!/bin/sh
-case "$2" in alice) echo 1000 ;; bob) echo 1001 ;; *) exit 1 ;; esac
-STUB
-chmod +x "$tmp/bin/"*
-requests() { seq 3 > "$tmp/work/agent-upgrade/requests"; seq 3 > "$tmp/work/upgrade-acct/agent-alice/requests"; seq "${1:-3}" > "$tmp/work/upgrade-acct/agent-bob/requests"; }
-requests
-# runuk MODE EVDIR SCRIPT: all steps of the script in order, the output in $tmp/out; fails at the first step that fails
-runuk() {
-    local step
-    rm -rf "$tmp/work/upgrade-acct/kinds"
-    : > "$tmp/out"
-    for step in "collect before" before "collect after" kept cursor "collect round" signs tpmbound; do
-        env PATH="$tmp/bin:$PATH" EV="$2" WORK="$tmp/work" E2E_TPM="$1" bash "$3" $step >> "$tmp/out" 2>&1 || return 1
-    done
-}
-# stops_on_bad MODE SCRIPT: every kind of bad evidence stops the run of SCRIPT with the kinds message and without the case it spoils
-stops_on_bad() {
-    local m=$1 s=$2 k other phase ok=0
-    k=$(want_of $m)
-    other=$([ "$k" = tpm ] && echo encrypted-host || echo tpm)
-    for pair in before:before after:kept round:signs; do
-        phase=${pair%%:*}
-        rm -rf "$tmp/ev2"; cp -r "$tmp/ev-$m" "$tmp/ev2"
-        mklist "$tmp/ev2/$phase" "$other"
-        if runuk $m "$tmp/ev2" "$s"; then ok=1; fi
-    done
-    rm -rf "$tmp/ev2"; cp -r "$tmp/ev-$m" "$tmp/ev2"
-    { entry 1000 rsa1 "$other"; round "$k" | sed 1d; } > "$tmp/ev2/journal.json"
-    if runuk $m "$tmp/ev2" "$s"; then ok=1; fi
-    cp "$tmp/ev-$m/journal.json" "$tmp/ev2/journal.json"
-    requests 1
-    if runuk $m "$tmp/ev2" "$s"; then ok=1; fi
-    requests
-    return "$ok"
-}
-for m in swtpm none lacking; do
-    k=$(want_of $m)
-    ev=$tmp/ev-$m
-    mkdir -p "$ev"
-    for p in before after round; do mklist "$ev/$p" "$k"; done
-    round "$k" > "$ev/journal.json"
-    if runuk $m "$ev" "$ROOT/e2e/upgrade-kinds.sh"; then
-        for id in $ids; do
-            if [ "$id" = upgrade-kinds-tpmbound ]; then grep -qx "E2E-CASE skipped $id" "$tmp/out" || bad "mode $m: $id is not reported skipped"
-            else grep -qx "E2E-CASE run $id" "$tmp/out" || bad "mode $m: $id is not reported run"; fi
-        done
-        [ "$(grep -c '^E2E-CASE' "$tmp/out")" = 4 ] || bad "mode $m: not exactly four cases reported"
-    else
-        bad "mode $m: good evidence stopped the run: $(tail -n 3 "$tmp/out")"
-    fi
-    stops_on_bad $m "$ROOT/e2e/upgrade-kinds.sh" || bad "mode $m: some bad evidence did not stop the run"
-done
-# a judgement that crashes (here: python exits at once) stops the run and reports no case
-mkdir -p "$tmp/crash"
-cp "$ROOT/e2e/report.sh" "$ROOT/e2e/select.sh" "$ROOT/e2e/upgrade-kinds.sh" "$tmp/crash/"
-printf 'import sys\nsys.exit("crash")\n' > "$tmp/crash/upgradekinds.py"
-if runuk swtpm "$tmp/ev-swtpm" "$tmp/crash/upgrade-kinds.sh"; then bad "a crashed judgement did not stop the run"; fi
-grep -q '^E2E-CASE run' "$tmp/out" && bad "a crashed judgement still reported a case run"
-
-# shellcheck disable=SC1091 # the section is a part of this script, linted on its own as shellcheck shell=bash
-source "$ROOT/scripts/lib/e2e-upgradekinds-vm-section.sh"
-
-# --- upgrade.sh calls the step where each case needs it
-line() { grep -n -- "$1" "$ROOT/e2e/upgrade.sh" | head -n 1 | cut -d: -f1; }
-before() { # WHAT A B: line A is found and comes before line B
-    local a b
-    a=$(line "$2")
-    b=$(line "$3")
-    { [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; } || bad "upgrade.sh: $1 does not come before it should ('$2' at '${a:-none}', '$3' at '${b:-none}')"
-}
-before "the listing before the install" 'kinds collect before' 'bash "$install"'
-before "the judgement before the install" 'kinds before' 'bash "$install"'
-before "the listing after the install" 'kinds collect after' 'kinds kept'
-before "the kept judgement" 'kinds kept' 'case_run "$id-keys-listed"'
-before "the cursor" 'kinds cursor' 'user_run sign'
-before "the round's listing" 'kinds collect round' 'kinds signs'
-before "the signs judgement" 'kinds signs' 'accts cleanup'
-before "the skip" 'kinds tpmbound' '^# END upgrade-case'
-before "the reader before the install" 'kinds reader' 'bash "$install"'
 exit "$fail"

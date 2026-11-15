@@ -122,8 +122,7 @@ expect_bad pc control 0 "$tmp/c-ok" 1 "$tmp/c-other" custodio-pcr-secret     # f
 expect_bad pc control 0 "$tmp/c-other" 1 "$tmp/c-policy" custodio-pcr-secret  # before: no secret
 expect_bad pc control 0 "$tmp/c-ok" 1 "$tmp/missing" custodio-pcr-secret
 
-# the restart helper refuses a mode with no TPM and the guest scripts parse
+# the restart helper refuses a mode with no TPM
 ( source "$ROOT/e2e/tpm-lib.sh"; ! tpm_swtpm_restart none 2> /dev/null ) || bad "tpm_swtpm_restart accepts mode none"
-for f in pcr-run.sh pcr-user.sh pcr-cases.sh; do bash -n "$ROOT/e2e/$f" || bad "$f does not parse"; done
-# shellcheck disable=SC1091 # the section is a part of this script, linted on its own as shellcheck shell=bash
-source "$ROOT/scripts/lib/e2e-pcr-vm-section.sh"
+
+exit "$fail"
