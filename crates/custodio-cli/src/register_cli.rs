@@ -175,8 +175,11 @@ pub fn refresh_only_command<W: io::Write, E: io::Write>(
     if let Err(e) = send_to_journal(journal, &journal_datagram(&outcome, &copy)) {
         let _ = writeln!(
             err,
-            "custodio: cannot write to the journal at {}: {e}",
-            journal.display()
+            "custodio: {}\ncheck that systemd-journald runs: systemctl status systemd-journald",
+            crate::list::escape(&format!(
+                "cannot write to the journal at {}: {e}",
+                journal.display()
+            ))
         );
     }
     match outcome {

@@ -77,3 +77,8 @@ with an empty context.
   `custodio-it` delete/list) now expect the two lines. `just quick` green.
 - Step 12 done: `mutants-diff F193` 101 tested, 0 missed (one run, 2 min); help, output_rules, fuzz-build, lint-fuzz, fuzz-smoke pass; `just quick` green.
 - Next session: none for F193.
+
+### 2026-11-15 — F193 — attempt 3
+- Done: fixed finding 1: `refresh_only_command`'s journal error is now two lines (what went wrong, escaped, then `systemctl status systemd-journald`);
+  `refresh_only.rs` asserts both lines on the unreachable-journal case. `just quick` green; `mutants-diff F193` 102 tested, 0 missed.
+- Notes 2-5 not changed (non-blocking).

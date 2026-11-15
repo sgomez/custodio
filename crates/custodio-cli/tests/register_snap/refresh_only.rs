@@ -94,6 +94,12 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
         err.contains("journal") && err.contains("/nonexistent/journal"),
         "{err}"
     );
+    let lines: Vec<&str> = err.lines().collect();
+    assert_eq!(lines.len(), 2, "{err}");
+    assert!(
+        lines[1].contains("systemctl status systemd-journald"),
+        "{err}"
+    );
     plant(&s.copy, b"stale");
     fs::set_permissions(dir, fs::Permissions::from_mode(0o555)).unwrap();
     let (result, _, err) = command(
