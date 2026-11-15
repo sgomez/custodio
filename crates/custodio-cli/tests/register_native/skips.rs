@@ -331,6 +331,20 @@ fn a_killed_run_leaves_the_old_state_and_the_next_run_cleans_up() {
         )
         .spawn()
         .unwrap();
+    // The stub writes its pid before it opens the FIFO: a run that ends without it would block the open below for ever.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while fs::read_to_string(&pid_file).map_or(true, |pid| pid.is_empty()) {
+        let ended = child.try_wait().unwrap();
+        assert!(
+            ended.is_none(),
+            "register ended before modutil ran: {ended:?}"
+        );
+        assert!(
+            std::time::Instant::now() < deadline,
+            "modutil did not start"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     let mut line = String::new();
     fs::File::open(&up)
         .unwrap()

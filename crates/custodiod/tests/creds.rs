@@ -171,9 +171,8 @@ fn seal_refuses_a_pcr_bound_credential() {
 #[test]
 fn no_plaintext_outside_memory() -> TestResult {
     // Made at run time: a log or a transcript that holds this source must not hold the marker.
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_nanos();
+    let start = std::time::SystemTime::now();
+    let nanos = start.duration_since(std::time::UNIX_EPOCH)?.as_nanos();
     let marker_text = format!("nofile-{}-{nanos:x}-plaintext", std::process::id());
     let marker: &[u8] = marker_text.as_bytes();
     let marker_b64 = base64_of(marker)?.into_bytes();
@@ -192,7 +191,7 @@ fn no_plaintext_outside_memory() -> TestResult {
         daemon.dir.path(),
         cwd.as_path(),
     ];
-    let found = files_holding(&roots, &[marker, &marker_b64]);
+    let found = files_holding(&roots, &[marker, &marker_b64], start);
     // The test's own source and binary hold the literal; a leftover file would be somewhere else.
     let leaked: Vec<_> = found
         .iter()
@@ -201,7 +200,16 @@ fn no_plaintext_outside_memory() -> TestResult {
     assert!(leaked.is_empty(), "plaintext in {leaked:?}");
     // Control: the search does find a file that holds the marker.
     std::fs::write(daemon.dir.path().join("control"), marker)?;
-    assert_eq!(files_holding(&[daemon.dir.path()], &[marker]).len(), 1);
+    assert_eq!(
+        files_holding(&[daemon.dir.path()], &[marker], start).len(),
+        1
+    );
+    // and not one last changed before the test.
+    let later = start + std::time::Duration::from_secs(3600);
+    assert_eq!(
+        files_holding(&[daemon.dir.path()], &[marker], later),
+        Vec::<std::path::PathBuf>::new()
+    );
     assert!(
         !on_host
             .credential()
