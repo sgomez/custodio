@@ -50,6 +50,11 @@ Everything in this repository is in English: code, comments, docs, commit messag
   the feature list and the time budgets; only the loop marks a feature as passing.
 - Never weaken a gate to get green: no deleting or `#[ignore]`-ing tests, no lowering thresholds,
   no `#[allow(...)]` without a comment that justifies it, no turning a `just` recipe into a no-op.
+- A test that proves what another test already proves is not a gate. Remove it in a `test:` commit
+  of its own, never to turn a red run green; the commit names the test that stays and says that
+  coverage of the product code did not drop.
+- Do not test the tests: no tests of fakes, of test helpers or of a constant's value. A scanner or
+  judge that a gate relies on gets one negative control.
 - Key material and passwords live in `secrecy` / `zeroize` types and never reach `Debug`, logs or
   error messages.
 - Every signature calls polkit. Never cache an authorization.
