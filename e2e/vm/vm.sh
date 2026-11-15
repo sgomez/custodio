@@ -21,7 +21,7 @@
 # /dev/disk/by-id/virtio-custodio-payload and reads it with `tar -xf` (no filesystem, no mkfs, no root on the host). The serial channel is
 # 15 KB/s (BLOCKED, F160): files of megabytes travel on this drive, the channel carries commands and results. The same drive comes back after
 # `cycle`. FILE must exist and be readable (else `start` refuses before anything starts); its size should be a multiple of 512 (a tar is).
-# Settings (all optional; the self-tests use them): VM_PAYLOAD, VM_BOOT_TIMEOUT (240), VM_KVM_DEV (/dev/kvm), VM_QEMU, VM_IMAGE_SH, VM_OVMF_CODE, VM_OVMF_VARS,
+# Settings (all optional): VM_PAYLOAD, VM_BOOT_TIMEOUT (240), VM_KVM_DEV (/dev/kvm), VM_QEMU, VM_IMAGE_SH, VM_OVMF_CODE, VM_OVMF_VARS,
 # VM_SWTPM and VM_SWTPM_PREFIX (e2e/vm/swtpm-path.sh), TMPDIR.
 # Guest account: ubuntu / custodio-throwaway-test, a throwaway credential of a VM that is never reachable from a network (user networking,
 # no port forward).
