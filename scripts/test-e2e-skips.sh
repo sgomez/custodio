@@ -2,7 +2,6 @@
 # F45: the skip list format and its enforcement (e2e/check-cases.sh), with no container engine. Where each behaviour is checked:
 #   here            the format of skip.list; the case accounting (run, skipped, missing, unknown, duplicated); whole-name matching;
 #                   unused entries; the rule of each case family per TPM mode; that the committed lists are well formed and the suite reports through one function
-#   test-e2e-host.sh  that the host script runs the accounting on the guest's real output and fails the run on it (stub engine)
 #   just e2e        the real distribution (the required real run; nothing here replaces it)
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

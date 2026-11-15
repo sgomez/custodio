@@ -189,17 +189,13 @@ test-scripts:
     scripts/test-e2e-skips.sh
     scripts/test-e2e-vm-cases.sh
     scripts/test-vm-gap-map.sh
-    scripts/test-e2e-vm-host.sh
+    scripts/test-e2e-vm-judge.sh
     scripts/test-e2e-vm-kinds.sh
     scripts/test-e2e-vm-silent.sh
     scripts/test-e2e-vm-snap.sh
     scripts/test-e2e-select.sh
     scripts/test-e2e-selftests.sh
-    scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
-    scripts/test-e2e-host.sh
-    scripts/test-e2e-host-oldpath.sh
-    scripts/test-e2e-tpm-host.sh
     scripts/test-e2e-sign.sh
     scripts/test-e2e-noplain.sh
     scripts/test-e2e-tpmdup.sh
@@ -210,13 +206,9 @@ test-scripts:
     scripts/test-e2e-tpmslots.sh
     scripts/test-e2e-journalkind.sh
     scripts/test-e2e-upgradekinds.sh
-    scripts/test-e2e-m3.sh
     scripts/test-e2e-m3-judge.sh
-    scripts/test-e2e-m3-run.sh
-    scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
     scripts/test-set-version.sh
-    scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-oldpath.sh

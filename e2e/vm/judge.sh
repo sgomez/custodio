@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# The VM-only cases (F160), sourced by the guest of a VM run (guest.sh with E2E_VM=1) and by scripts/test-e2e-vm-host.sh, which runs the judging
+# The VM-only cases (F160), sourced by the guest of a VM run (guest.sh with E2E_VM=1) and by scripts/test-e2e-vm-judge.sh, which runs the judging
 # functions on fixtures. A judge prints its problems, one per line, and nothing when the case holds; vm_report prints the E2E-CASE line or fails.
 # Every path is a variable so that a test can point it at a fixture:
 #   VM_TPMRM        the resource-manager device (default /dev/tpmrm0)
