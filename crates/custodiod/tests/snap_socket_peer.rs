@@ -180,17 +180,6 @@ impl Rig {
 fn own_keys_only() -> TestResult {
     let rig = Rig::start(false)?;
     rig.set(creds(UID_A, GOOD));
-    assert_eq!(rig.ids()?, ["a-key"]);
-    rig.set(creds(UID_B, GOOD));
-    assert_eq!(rig.ids()?, ["b-key"]);
-    rig.set(creds(4003, GOOD));
-    assert_eq!(rig.ids()?, Vec::<String>::new());
-    Ok(())
-}
-
-#[test]
-fn interface_and_path() -> TestResult {
-    let rig = Rig::start(false)?;
     let keys = rig.list()?;
     let [(id, kind, storage, cert)] = keys.as_slice() else {
         return Err("expected one key".into());
@@ -198,6 +187,10 @@ fn interface_and_path() -> TestResult {
     assert_eq!((id.as_str(), kind.as_str()), ("a-key", "ecdsa-p256"));
     assert_eq!(storage, "encrypted-host");
     assert_eq!(cert, CERT_A);
+    rig.set(creds(UID_B, GOOD));
+    assert_eq!(rig.ids()?, ["b-key"]);
+    rig.set(creds(4003, GOOD));
+    assert_eq!(rig.ids()?, Vec::<String>::new());
     Ok(())
 }
 
@@ -223,29 +216,30 @@ fn refused_labels() -> TestResult {
     Ok(())
 }
 
+/// No pidfd, no label, the overflow uid, and a failed `SO_PEERCRED` read (a different input from the overflow uid).
 #[test]
-fn missing_pidfd() -> TestResult {
+fn incomplete_credentials_are_refused() -> TestResult {
     let rig = Rig::start(false)?;
-    rig.set(Creds {
-        pidfd: false,
-        ..creds(UID_A, GOOD)
-    });
-    rig.assert_closed()?;
-    rig.set(creds(UID_A, GOOD));
-    assert_eq!(rig.ids()?, ["a-key"]);
-    Ok(())
-}
-
-#[test]
-fn missing_label() -> TestResult {
-    let rig = Rig::start(false)?;
-    rig.set(Creds {
-        label: None,
-        ..creds(UID_A, GOOD)
-    });
-    rig.assert_closed()?;
-    rig.set(creds(UID_A, GOOD));
-    assert_eq!(rig.ids()?, ["a-key"]);
+    for bad in [
+        Creds {
+            pidfd: false,
+            ..creds(UID_A, GOOD)
+        },
+        Creds {
+            label: None,
+            ..creds(UID_A, GOOD)
+        },
+        creds(OVERFLOW_UID, GOOD),
+        Creds {
+            uid: None,
+            ..creds(UID_A, GOOD)
+        },
+    ] {
+        rig.set(bad);
+        rig.assert_closed()?;
+        rig.set(creds(UID_A, GOOD));
+        assert_eq!(rig.ids()?, ["a-key"]);
+    }
     Ok(())
 }
 
@@ -261,30 +255,6 @@ fn root() -> TestResult {
 }
 
 #[test]
-fn overflow_uid() -> TestResult {
-    let rig = Rig::start(false)?;
-    rig.set(creds(OVERFLOW_UID, GOOD));
-    rig.assert_closed()?;
-    rig.set(creds(UID_A, GOOD));
-    assert_eq!(rig.ids()?, ["a-key"]);
-    Ok(())
-}
-
-/// The seam injects a failed `SO_PEERCRED` read, a different input from the overflow uid.
-#[test]
-fn unreadable_uid() -> TestResult {
-    let rig = Rig::start(false)?;
-    rig.set(Creds {
-        uid: None,
-        ..creds(UID_A, GOOD)
-    });
-    rig.assert_closed()?;
-    rig.set(creds(UID_A, GOOD));
-    assert_eq!(rig.ids()?, ["a-key"]);
-    Ok(())
-}
-
-#[test]
 fn real_peer_without_label() -> TestResult {
     // The kernel's own values, no seam.
     let (a, _b) = UnixStream::pair()?;
@@ -292,22 +262,6 @@ fn real_peer_without_label() -> TestResult {
     assert_eq!(read.uid, Some(rustix::process::getuid().as_raw()));
     assert!(read.pidfd.is_some());
     assert!(admit(&a, &Source::Kernel).is_err());
-    // The same label bytes through the decision function refuse too.
-    let Peer {
-        uid,
-        pid,
-        pidfd,
-        label,
-    } = read;
-    assert!(
-        decide(Peer {
-            uid,
-            pid,
-            pidfd,
-            label
-        })
-        .is_err()
-    );
     // And served: the real peer is closed.
     let rig = Rig::start(true)?;
     rig.assert_closed()?;

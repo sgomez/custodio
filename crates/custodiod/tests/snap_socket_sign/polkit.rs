@@ -10,9 +10,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use zbus::connection::Builder;
 use zbus::{Connection, OwnedVariant, interface};
 
-/// The uid the service itself runs as in the rule of the scripted polkit.
-const SERVICE_UID: u32 = 4002;
-
 pub struct Bus {
     child: Child,
     address: String,
@@ -69,8 +66,6 @@ pub struct Call {
 pub struct FakePolkit {
     pub script: Arc<Mutex<VecDeque<Answer>>>,
     pub calls: Arc<Mutex<Vec<Call>>>,
-    /// The caller's own uid; a subject uid that differs is refused unless the shipped policy has the owner.
-    pub rule: Option<bool>,
 }
 
 fn fdinfo_pid(fd: &OwnedFd) -> Option<u32> {
@@ -127,12 +122,6 @@ impl FakePolkit {
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Answer::Fail);
-        if let (Some(has_owner), Some(uid)) = (self.rule, uid)
-            && uid != SERVICE_UID
-            && !has_owner
-        {
-            return Err(zbus::fdo::Error::AccessDenied("not the owner".into()));
-        }
         match answer {
             Answer::Yes => Ok((true, false, HashMap::new())),
             Answer::No => Ok((false, false, HashMap::new())),

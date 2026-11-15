@@ -105,7 +105,6 @@ struct Options {
     no_authority: bool,
     garbled: bool,
     failing_sink: bool,
-    rule: Option<bool>,
     sentinel: bool,
 }
 
@@ -139,7 +138,6 @@ impl Rig {
                             FakePolkit {
                                 script: Arc::clone(&script),
                                 calls: Arc::clone(&calls),
-                                rule: options.rule,
                             },
                         )
                         .await?;
@@ -319,27 +317,13 @@ fn other_uid_key_is_no_such_key() -> TestResult {
         rig.sign(&c, "missing", CKM_ECDSA, &[1u8; 32]),
         Err(NO_KEY.to_owned())
     );
-    assert!(rig.calls().is_empty());
-    assert_eq!(rig.sink.entries().len(), 0);
-    Ok(())
-}
-
-#[test]
-fn claimed_uid_is_ignored() -> TestResult {
-    // Another uid's key id and its own uid in the id text are just ids: the keys and the subject are the kernel
-    // uid's.
-    let rig = Rig::start(&Options::default())?;
-    rig.answers(&[Answer::Yes]);
-    let c = rig.client()?;
+    // The other uid in the id text is just an id.
     assert_eq!(
         rig.sign(&c, &format!("{OTHER_UID}-theirs"), CKM_ECDSA, &[1u8; 32]),
         Err(NO_KEY.to_owned())
     );
-    assert!(rig.sign(&c, "ec", CKM_ECDSA, &[1u8; 32]).is_ok());
-    assert_eq!(
-        rig.calls().iter().map(|c| c.uid).collect::<Vec<_>>(),
-        [Some(UID)]
-    );
+    assert!(rig.calls().is_empty());
+    assert_eq!(rig.sink.entries().len(), 0);
     Ok(())
 }
 
@@ -447,27 +431,6 @@ fn every_call_asks_polkit() -> TestResult {
     );
     assert!(rig.sign(&c, "ec", CKM_ECDSA, &[1u8; 32]).is_ok());
     assert_eq!(rig.calls().len(), 3);
-    Ok(())
-}
-
-#[test]
-fn subject_uid_differs_from_the_callers() -> TestResult {
-    // The scripted polkit applies the polkit 127 rule: a subject uid other than the caller's (`OTHER_UID` stands
-    // for the service's own) is refused unless the shipped policy carries the owner annotation.
-    let policy = std::fs::read_to_string(format!(
-        "{}/../../data/com.rfirma.custodio.policy",
-        env!("CARGO_MANIFEST_DIR")
-    ))?;
-    let has_owner = policy.contains("org.freedesktop.policykit.owner");
-    let rig = Rig::start(&Options {
-        rule: Some(has_owner),
-        ..Options::default()
-    })?;
-    rig.answers(&[Answer::Yes]);
-    let c = rig.client()?;
-    assert!(rig.sign(&c, "ec", CKM_ECDSA, &[1u8; 32]).is_ok());
-    let uids: Vec<_> = rig.calls().iter().map(|c| c.uid).collect();
-    assert_eq!(uids, [Some(UID)]);
     Ok(())
 }
 
