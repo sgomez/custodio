@@ -123,6 +123,25 @@ writes no journal entry and changes nothing. Bus only; the snap socket does not 
 - out: `s`
 - bounds: none.
 
+### Method `StateStorageReason`
+
+Why `StateStorage` is `unknown`: one of the values below, found at the same time as `StateStorage` (once, at start) and
+returned by every call. The empty string when `StateStorage` is `encrypted` or `not-encrypted`, so a value is present
+exactly when the answer is `unknown`. Added after `StateStorage`; names and values are only added, none changed. Read-only:
+it asks no polkit, writes no journal entry and changes nothing. Bus only; the snap socket does not serve it. A client that
+gets `UnknownMethod` is talking to a service that predates it and shows nothing. The values:
+
+- reason `no-mount`: no mount covers the state directory, or the mount table cannot be read. Check that the service runs with its unit and that `/proc` is available to it.
+- reason `not-block-filesystem`: the state directory is on a filesystem that is not on one block device (tmpfs, overlay, a network filesystem, btrfs, or an anonymous device). The service cannot tell whether it is encrypted; keep the state directory on a local ext4, xfs or similar filesystem.
+- reason `sysfs-incomplete`: the device tree under `/sys/dev/block` is missing or unreadable for this device, or loops or is too deep. A device that is still being set up shows this; read it again after a restart of the service.
+- reason `layer-not-classified`: a layer the service does not classify is in the chain (RAID that is not all encrypted, a device-mapper device that is neither LVM nor dm-crypt, a disk with no hardware link or with devices stacked on it).
+- reason `members-disagree`: the members of an LVM or RAID layer are not all alike (some encrypted, some not).
+- reason `fscrypt-not-excluded`: the filesystem may encrypt the directory itself (fscrypt), or the check could not be made.
+- reason `state-dir-unresolved`: the state directory itself cannot be resolved (`STATE_DIRECTORY` unset or not there).
+
+- out: `s`
+- bounds: none.
+
 ### Method `ImportP12`
 
 Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind that was chosen. A different user may use the same `id`;

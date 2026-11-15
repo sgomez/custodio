@@ -85,10 +85,6 @@ mod snap_socket_sign;
 mod snap_socket_surface;
 #[path = "state_format.rs"]
 mod state_format;
-#[path = "state_storage.rs"]
-mod state_storage;
-#[path = "storage_api.rs"]
-mod storage_api;
 #[path = "storage_choice.rs"]
 mod storage_choice;
 #[path = "tpm_access.rs"]
@@ -118,6 +114,9 @@ fn every_test_file_is_a_module_here() -> Result<(), Box<dyn std::error::Error>> 
             && name != "it.rs"
             && name != "fd_leak.rs"
             && name != "import_split.rs"
+            && name != "state_storage.rs"
+            && name != "storage_api.rs"
+            && name != "storage_stability.rs"
         {
             assert!(
                 listed.contains(&format!("#[path = \"{name}\"]")),

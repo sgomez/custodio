@@ -104,7 +104,11 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
-                || custodiod::storage::StateStorage::Unknown,
+                || {
+                    custodiod::storage::Diagnosis::unknown(
+                        custodiod::storage::UnknownReason::NoMount,
+                    )
+                },
             )
             .await?;
             let client = Builder::address(address.as_str()).build().await?;
@@ -173,7 +177,11 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
-                || custodiod::storage::StateStorage::Unknown,
+                || {
+                    custodiod::storage::Diagnosis::unknown(
+                        custodiod::storage::UnknownReason::NoMount,
+                    )
+                },
             )
             .await?;
             assert!(service.unique_name().is_some());

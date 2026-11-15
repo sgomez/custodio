@@ -17,6 +17,7 @@
 //! - certificate size: `N` bytes   the certificate bound, in `ReplaceCertificate`
 //! - property `Name`: `sig`, `access`
 //! - kind `wire-string`        one line per storage kind (the prose that explains a kind is free)
+//! - reason `wire-string`      one line per value of `StateStorageReason` (the prose that explains it is free)
 //! - error `com.rfirma.Custodio1.Error.Name`
 //! - action `com.rfirma.custodio.name`
 //! ```
@@ -32,6 +33,7 @@ use std::sync::Arc;
 use custodio_client::{BUS_NAME, ERROR_NAMES, KNOWN_KINDS, MAX_CERT_LEN, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
 use custodiod::error::ServiceError;
+use custodiod::storage::UnknownReason;
 use custodiod::store::Kind;
 
 const INTERFACE: &str = "com.rfirma.Custodio1";
@@ -110,6 +112,7 @@ struct Doc {
     methods: Items,
     errors: Items,
     kinds: Items,
+    reasons: Items,
     actions: Items,
     p12_size: Option<String>,
     cert_size: Option<String>,
@@ -121,6 +124,7 @@ fn parse_doc(text: &str) -> Doc {
         methods: Items::new(),
         errors: Items::new(),
         kinds: Items::new(),
+        reasons: Items::new(),
         actions: Items::new(),
         p12_size: None,
         cert_size: None,
@@ -173,6 +177,8 @@ fn parse_doc(text: &str) -> Doc {
             }
         } else if line.starts_with("- kind ") {
             doc.kinds.extend(ticks.first().map(|s| (*s).to_owned()));
+        } else if line.starts_with("- reason ") {
+            doc.reasons.extend(ticks.first().map(|s| (*s).to_owned()));
         } else if line.starts_with("- error ") {
             doc.errors.extend(ticks.first().map(|s| (*s).to_owned()));
         } else if line.starts_with("- action ") {
@@ -215,6 +221,8 @@ struct Sources {
     kinds: Items,
     /// The kinds `custodio-client` knows.
     client_kinds: Items,
+    /// The wire strings of `StateStorageReason`, from the function the bus answers with.
+    reasons: Items,
     actions: Items,
 }
 
@@ -227,6 +235,7 @@ fn differences(text: &str, sources: &Sources) -> Vec<String> {
     diff("error", &sources.client_errors, &doc.errors, &mut out);
     diff("kind", &sources.kinds, &doc.kinds, &mut out);
     diff("kind", &sources.client_kinds, &doc.kinds, &mut out);
+    diff("reason", &sources.reasons, &doc.reasons, &mut out);
     out.extend(
         sources
             .errors
@@ -326,6 +335,10 @@ fn sources() -> Result<Sources, Box<dyn Error>> {
         client_errors: ERROR_NAMES.iter().map(|&e| e.to_owned()).collect(),
         kinds: live_kinds()?,
         client_kinds: KNOWN_KINDS.iter().map(|&k| k.to_owned()).collect(),
+        reasons: UnknownReason::ALL
+            .iter()
+            .map(|r| r.name().to_owned())
+            .collect(),
         actions: policy_actions(&std::fs::read_to_string(manifest(
             "../../data/com.rfirma.custodio.policy",
         ))?),
@@ -406,6 +419,15 @@ fn edited_copies_of_the_document_fail() -> Result<(), Box<dyn Error>> {
     expect_fail(&no_kind, &sources, "encrypted-tpm", SOURCE_MISSING);
     let extra_kind = format!("{text}\n- kind `bogus-kind`\n");
     expect_fail(&extra_kind, &sources, "bogus-kind", DOC_MISSING);
+
+    // A reason value removed, renamed and invented.
+    let no_reason = edited(&text, "- reason `members-disagree`", "- gone");
+    expect_fail(&no_reason, &sources, "members-disagree", SOURCE_MISSING);
+    let renamed = edited(&text, "- reason `no-mount`", "- reason `no-mounts`");
+    expect_fail(&renamed, &sources, "no-mount", SOURCE_MISSING);
+    expect_fail(&renamed, &sources, "no-mounts", DOC_MISSING);
+    let extra_reason = format!("{text}\n- reason `bogus-reason`\n");
+    expect_fail(&extra_reason, &sources, "bogus-reason", DOC_MISSING);
 
     // A service double that returns a kind the document does not list (and the client does not know).
     let mut double = sources.clone();

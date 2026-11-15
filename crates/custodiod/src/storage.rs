@@ -55,13 +55,133 @@ const CRYPT_PREFIXES: [&str; 3] = ["CRYPT-LUKS1-", "CRYPT-LUKS2-", "CRYPT-PLAIN-
 const LVM_PREFIX: &str = "LVM-";
 const DEFAULT_STATE_DIR: &str = "/var/lib/custodio";
 
+/// Why the answer is [`StateStorage::Unknown`]: one value per group of causes (`docs/findings/F189.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnknownReason {
+    /// No mount covers the state directory, or the mount table cannot be read.
+    NoMount,
+    /// The covering mount is not a filesystem on one block device (tmpfs, overlay, network, anonymous device).
+    NotBlockFilesystem,
+    /// The sysfs chain is missing or incomplete: a node, `dm/uuid` or `slaves/` cannot be read, the shape of a
+    /// partition is wrong, or the chain loops or is too deep.
+    SysfsIncomplete,
+    /// A layer the service does not classify: RAID that is not all encrypted, a dm target other than LVM and
+    /// dm-crypt, a disk without a hardware link or with devices stacked on it.
+    LayerNotClassified,
+    /// The members of an LVM or RAID layer do not all give the same answer.
+    MembersDisagree,
+    /// The filesystem may encrypt the directory itself, or the check failed.
+    FscryptNotExcluded,
+    /// The state directory itself cannot be resolved.
+    StateDirUnresolved,
+}
+
+impl UnknownReason {
+    /// Every value, in the order of `docs/api.md`.
+    pub const ALL: [Self; 7] = [
+        Self::NoMount,
+        Self::NotBlockFilesystem,
+        Self::SysfsIncomplete,
+        Self::LayerNotClassified,
+        Self::MembersDisagree,
+        Self::FscryptNotExcluded,
+        Self::StateDirUnresolved,
+    ];
+
+    /// The value on the bus.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::NoMount => "no-mount",
+            Self::NotBlockFilesystem => "not-block-filesystem",
+            Self::SysfsIncomplete => "sysfs-incomplete",
+            Self::LayerNotClassified => "layer-not-classified",
+            Self::MembersDisagree => "members-disagree",
+            Self::FscryptNotExcluded => "fscrypt-not-excluded",
+            Self::StateDirUnresolved => "state-dir-unresolved",
+        }
+    }
+}
+
+/// The verdict and, for `unknown` only, its reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Diagnosis {
+    storage: StateStorage,
+    reason: Option<UnknownReason>,
+}
+
+impl Default for Diagnosis {
+    /// What a service that was not told anything answers: `unknown`, with no mount found.
+    fn default() -> Self {
+        Self::unknown(UnknownReason::NoMount)
+    }
+}
+
+impl Diagnosis {
+    /// An `unknown` with its reason.
+    #[must_use]
+    pub const fn unknown(reason: UnknownReason) -> Self {
+        Self {
+            storage: StateStorage::Unknown,
+            reason: Some(reason),
+        }
+    }
+
+    /// A proven answer: no reason.
+    #[must_use]
+    pub const fn proven(found: Found) -> Self {
+        Self {
+            storage: match found {
+                Found::Encrypted => StateStorage::Encrypted,
+                Found::NotEncrypted => StateStorage::NotEncrypted,
+            },
+            reason: None,
+        }
+    }
+
+    /// The wire value of the reason: empty when there is none.
+    #[must_use]
+    pub const fn reason_name(self) -> &'static str {
+        match self.reason {
+            Some(reason) => reason.name(),
+            None => "",
+        }
+    }
+
+    #[must_use]
+    pub const fn storage(self) -> StateStorage {
+        self.storage
+    }
+
+    /// `Some` exactly when [`Self::storage`] is `unknown`.
+    #[must_use]
+    pub const fn reason(self) -> Option<UnknownReason> {
+        self.reason
+    }
+}
+
+/// A proven chain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Found {
+    Encrypted,
+    NotEncrypted,
+}
+
+type Walked = Result<Found, UnknownReason>;
+
 /// The production entry point: classifies the real `/` for the directory systemd names in `STATE_DIRECTORY`
-/// (the default when unset is the unit's own, `/var/lib/custodio`). Only `main` calls it.
+/// (the default when unset is the unit's own, `/var/lib/custodio`).
 #[must_use]
 pub fn classify_state_dir(state_directory: Option<OsString>) -> StateStorage {
+    diagnose_state_dir(state_directory).storage
+}
+
+/// [`classify_state_dir`] with the reason of an `unknown`. Only `main` calls it.
+#[must_use]
+pub fn diagnose_state_dir(state_directory: Option<OsString>) -> Diagnosis {
     let dir = state_directory.unwrap_or_else(|| OsString::from(DEFAULT_STATE_DIR));
     // `STATE_DIRECTORY` may hold several directories separated by ':'; the unit has one.
-    classify(Path::new("/"), Path::new(&dir))
+    diagnose_with(Path::new("/"), Path::new(&dir), &has_fscrypt)
 }
 
 /// Classifies `state_dir` over `root` (`root/proc/self/mountinfo`, `root/sys/dev/block`). The directory itself is
@@ -78,22 +198,33 @@ pub fn classify_with(
     state_dir: &Path,
     fscrypt: &dyn Fn(&Path) -> io::Result<bool>,
 ) -> StateStorage {
-    let Ok(dir) = fs::canonicalize(state_dir) else {
-        return StateStorage::Unknown;
-    };
-    let Some(device) = mounted_device(root, &dir) else {
-        return StateStorage::Unknown;
-    };
-    let node = root.join("sys/dev/block").join(device);
-    let Ok(node) = fs::canonicalize(node) else {
-        return StateStorage::Unknown;
-    };
-    let verdict = walk(&node, &mut Vec::new());
-    if verdict == StateStorage::NotEncrypted && !matches!(fscrypt(&dir), Ok(false)) {
-        // The filesystem may encrypt this directory itself, or the check failed: not proven either way.
-        return StateStorage::Unknown;
+    diagnose_with(root, state_dir, fscrypt).storage
+}
+
+/// [`classify_with`] with the reason of an `unknown`.
+#[must_use]
+pub fn diagnose_with(
+    root: &Path,
+    state_dir: &Path,
+    fscrypt: &dyn Fn(&Path) -> io::Result<bool>,
+) -> Diagnosis {
+    match chain(root, state_dir, fscrypt) {
+        Ok(found) => Diagnosis::proven(found),
+        Err(reason) => Diagnosis::unknown(reason),
     }
-    verdict
+}
+
+fn chain(root: &Path, state_dir: &Path, fscrypt: &dyn Fn(&Path) -> io::Result<bool>) -> Walked {
+    let dir = fs::canonicalize(state_dir).map_err(|_| UnknownReason::StateDirUnresolved)?;
+    let device = mounted_device(root, &dir)?;
+    let node = root.join("sys/dev/block").join(device);
+    let node = fs::canonicalize(node).map_err(|_| UnknownReason::SysfsIncomplete)?;
+    let found = walk(&node, &mut Vec::new())?;
+    if found == Found::NotEncrypted && !matches!(fscrypt(&dir), Ok(false)) {
+        // The filesystem may encrypt this directory itself, or the check failed: not proven either way.
+        return Err(UnknownReason::FscryptNotExcluded);
+    }
+    Ok(found)
 }
 
 /// Whether the filesystem marks `dir` as fscrypt-encrypted. A filesystem that cannot (mask lacks the bit) is `false`.
@@ -112,8 +243,9 @@ pub fn fscrypt_flag(mask: StatxAttributes, attributes: StatxAttributes) -> bool 
 }
 
 /// `major:minor` of the filesystem that holds `dir`, when its type is on the block list.
-fn mounted_device(root: &Path, dir: &Path) -> Option<String> {
-    let table = fs::read_to_string(root.join("proc/self/mountinfo")).ok()?;
+fn mounted_device(root: &Path, dir: &Path) -> Result<String, UnknownReason> {
+    let table =
+        fs::read_to_string(root.join("proc/self/mountinfo")).map_err(|_| UnknownReason::NoMount)?;
     let mut best: Option<(usize, Mount)> = None;
     for mount in table.lines().filter_map(Mount::parse) {
         if !dir.starts_with(&mount.point) {
@@ -125,9 +257,13 @@ fn mounted_device(root: &Path, dir: &Path) -> Option<String> {
             best = Some((depth, mount));
         }
     }
-    let (_, mount) = best?;
+    let (_, mount) = best.ok_or(UnknownReason::NoMount)?;
     let usable = BLOCK_FILESYSTEMS.contains(&mount.fstype) && !mount.device.starts_with("0:");
-    usable.then(|| mount.device.to_owned())
+    if usable {
+        Ok(mount.device.to_owned())
+    } else {
+        Err(UnknownReason::NotBlockFilesystem)
+    }
 }
 
 struct Mount<'a> {
@@ -171,9 +307,9 @@ fn unescape(field: &str) -> OsString {
 }
 
 /// The verdict for the device whose sysfs directory is `node`; `path` holds the directories being followed.
-fn walk(node: &Path, path: &mut Vec<PathBuf>) -> StateStorage {
+fn walk(node: &Path, path: &mut Vec<PathBuf>) -> Walked {
     if path.len() >= MAX_DEPTH || path.iter().any(|p| p == node) {
-        return StateStorage::Unknown;
+        return Err(UnknownReason::SysfsIncomplete);
     }
     path.push(node.to_owned());
     let verdict = walk_node(node, path);
@@ -181,67 +317,61 @@ fn walk(node: &Path, path: &mut Vec<PathBuf>) -> StateStorage {
     verdict
 }
 
-fn walk_node(node: &Path, path: &mut Vec<PathBuf>) -> StateStorage {
+fn walk_node(node: &Path, path: &mut Vec<PathBuf>) -> Walked {
     if node.join("dm").is_dir() {
-        let Ok(uuid) = fs::read_to_string(node.join("dm/uuid")) else {
-            return StateStorage::Unknown;
-        };
+        let uuid =
+            fs::read_to_string(node.join("dm/uuid")).map_err(|_| UnknownReason::SysfsIncomplete)?;
         let uuid = uuid.trim_end();
+        if uuid.is_empty() {
+            return Err(UnknownReason::SysfsIncomplete);
+        }
         if CRYPT_PREFIXES.iter().any(|p| uuid.starts_with(p)) {
-            return StateStorage::Encrypted;
+            return Ok(Found::Encrypted);
         }
         if uuid.starts_with(LVM_PREFIX) {
             return members(node, path, false);
         }
-        return StateStorage::Unknown;
+        return Err(UnknownReason::LayerNotClassified);
     }
     if node.join("md").is_dir() {
         // Only a set whose every member is encrypted is proven; plain RAID is not classified.
         return members(node, path, true);
     }
     if node.join("partition").is_file() {
-        let Some(disk) = node.parent() else {
-            return StateStorage::Unknown;
-        };
+        let disk = node.parent().ok_or(UnknownReason::SysfsIncomplete)?;
         return if disk.join("dev").is_file() && !disk.join("partition").exists() {
             walk(disk, path)
         } else {
-            StateStorage::Unknown
+            Err(UnknownReason::SysfsIncomplete)
         };
     }
     // A physical disk: a hardware `device` link, nothing stacked on it (loop, zram and nbd have no such link).
     let stacked = fs::read_dir(node.join("slaves")).is_ok_and(|mut d| d.next().is_some());
     if node.join("device").exists() && node.join("dev").is_file() && !stacked {
-        StateStorage::NotEncrypted
+        Ok(Found::NotEncrypted)
     } else {
-        StateStorage::Unknown
+        Err(UnknownReason::LayerNotClassified)
     }
 }
 
 /// The verdict over `node/slaves`: all members the same, else unknown. `only_encrypted` turns *not encrypted* into
 /// *unknown* (md).
-fn members(node: &Path, path: &mut Vec<PathBuf>, only_encrypted: bool) -> StateStorage {
-    let Ok(dir) = fs::read_dir(node.join("slaves")) else {
-        return StateStorage::Unknown;
-    };
-    let mut seen: Option<StateStorage> = None;
+fn members(node: &Path, path: &mut Vec<PathBuf>, only_encrypted: bool) -> Walked {
+    let dir = fs::read_dir(node.join("slaves")).map_err(|_| UnknownReason::SysfsIncomplete)?;
+    let mut seen: Option<Found> = None;
     for entry in dir {
-        let Ok(entry) = entry else {
-            return StateStorage::Unknown;
-        };
-        let Ok(member) = fs::canonicalize(entry.path()) else {
-            return StateStorage::Unknown;
-        };
-        let verdict = walk(&member, path);
+        let entry = entry.map_err(|_| UnknownReason::SysfsIncomplete)?;
+        let member = fs::canonicalize(entry.path()).map_err(|_| UnknownReason::SysfsIncomplete)?;
+        let found = walk(&member, path)?;
         match seen {
-            None => seen = Some(verdict),
-            Some(first) if first == verdict => {}
-            Some(_) => return StateStorage::Unknown,
+            None => seen = Some(found),
+            Some(first) if first == found => {}
+            Some(_) => return Err(UnknownReason::MembersDisagree),
         }
     }
     match seen {
-        Some(StateStorage::NotEncrypted) if only_encrypted => StateStorage::Unknown,
-        Some(v) => v,
-        None => StateStorage::Unknown,
+        Some(Found::NotEncrypted) if only_encrypted => Err(UnknownReason::LayerNotClassified),
+        Some(v) => Ok(v),
+        None => Err(UnknownReason::SysfsIncomplete),
     }
 }

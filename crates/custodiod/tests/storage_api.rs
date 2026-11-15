@@ -17,7 +17,7 @@ use custodiod::creds::memory::MemoryCreds;
 use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
 use custodiod::import::import_p12;
 use custodiod::startup::start;
-use custodiod::storage::StateStorage;
+use custodiod::storage::{Diagnosis, Found, StateStorage, UnknownReason};
 use custodiod::store::KeyStore;
 use custodiod::tpm::open::NoTpm;
 use secrecy::SecretString;
@@ -82,7 +82,7 @@ fn daemon() -> Result<(Daemon, String), Box<dyn Error>> {
 }
 
 impl Rig {
-    fn start(result: StateStorage, journal: Option<&Path>) -> Result<Self, Box<dyn Error>> {
+    fn start(result: Diagnosis, journal: Option<&Path>) -> Result<Self, Box<dyn Error>> {
         let (daemon, address) = daemon()?;
         let tmp = tempfile::tempdir()?;
         let store = Arc::new(KeyStore::open(tmp.path().join("keys"))?);
@@ -153,6 +153,19 @@ impl Rig {
         Ok((body.signature().to_string(), body.deserialize::<String>()?))
     }
 
+    fn reason(&self) -> Result<(String, String), Box<dyn Error>> {
+        let client = self.client()?;
+        let reply = block_on(client.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(INTERFACE),
+            "StateStorageReason",
+            &(),
+        ))?;
+        let body = reply.body();
+        Ok((body.signature().to_string(), body.deserialize::<String>()?))
+    }
+
     fn snapshot(&self) -> Result<BTreeMap<PathBuf, Vec<u8>>, Box<dyn Error>> {
         fn walk(dir: &Path, out: &mut BTreeMap<PathBuf, Vec<u8>>) -> std::io::Result<()> {
             for entry in std::fs::read_dir(dir)? {
@@ -171,8 +184,17 @@ impl Rig {
     }
 }
 
+/// The diagnosis a classifier stub returns for a verdict (an `unknown` carries a real, non-default reason).
+fn diagnosis(result: StateStorage) -> Diagnosis {
+    match result {
+        StateStorage::Encrypted => Diagnosis::proven(Found::Encrypted),
+        StateStorage::NotEncrypted => Diagnosis::proven(Found::NotEncrypted),
+        StateStorage::Unknown => Diagnosis::unknown(UnknownReason::MembersDisagree),
+    }
+}
+
 fn returns(result: StateStorage, wire: &str) -> TestResult {
-    let rig = Rig::start(result, None)?;
+    let rig = Rig::start(diagnosis(result), None)?;
     // Twice, to show the value is stored: the classifier stub fails on a second call.
     assert_eq!(rig.storage()?, ("s".to_owned(), wire.to_owned()));
     assert_eq!(rig.storage()?.1, wire);
@@ -197,9 +219,32 @@ fn bus_returns_unknown() -> TestResult {
 }
 
 #[test]
+fn bus_returns_the_reason_of_each_unknown() -> TestResult {
+    for reason in UnknownReason::ALL {
+        let rig = Rig::start(Diagnosis::unknown(reason), None)?;
+        // Twice: the stub classifier fails on a second call, so the start value is what is stored.
+        assert_eq!(rig.reason()?, ("s".to_owned(), reason.name().to_owned()));
+        assert_eq!(rig.reason()?.1, reason.name());
+        assert_eq!(rig.storage()?.1, "unknown");
+        assert_eq!(rig.calls.load(Ordering::SeqCst), 1);
+    }
+    Ok(())
+}
+
+#[test]
+fn bus_reason_is_empty_unless_unknown() -> TestResult {
+    for found in [Found::Encrypted, Found::NotEncrypted] {
+        let rig = Rig::start(Diagnosis::proven(found), None)?;
+        assert_eq!(rig.reason()?, ("s".to_owned(), String::new()));
+    }
+    Ok(())
+}
+
+#[test]
 fn bus_asks_no_polkit() -> TestResult {
-    let rig = Rig::start(StateStorage::NotEncrypted, None)?;
+    let rig = Rig::start(diagnosis(StateStorage::NotEncrypted), None)?;
     rig.storage()?;
+    rig.reason()?;
     assert_eq!(rig.asked.load(Ordering::SeqCst), 0);
     // Control: a call that does ask polkit moves the counter (a signature of an imported key).
     import_p12(
@@ -225,11 +270,13 @@ fn bus_asks_no_polkit() -> TestResult {
 
 #[test]
 fn bus_changes_no_state() -> TestResult {
-    let rig = Rig::start(StateStorage::Unknown, None)?;
+    let rig = Rig::start(diagnosis(StateStorage::Unknown), None)?;
     let before = rig.snapshot()?;
     let entries = rig.sink.state_storage();
     rig.storage()?;
     rig.storage()?;
+    rig.reason()?;
+    rig.reason()?;
     assert_eq!(rig.snapshot()?, before);
     assert_eq!(rig.sink.state_storage(), entries);
     assert_eq!(rig.sink.entries(), []);
@@ -248,7 +295,7 @@ fn start_journals_storage_field() -> TestResult {
         let path = dir.path().join("journal.sock");
         let socket = UnixDatagram::bind(&path)?;
         socket.set_read_timeout(Some(Duration::from_secs(2)))?;
-        let rig = Rig::start(result, Some(&path))?;
+        let rig = Rig::start(diagnosis(result), Some(&path))?;
         let mut buf = vec![0_u8; 65536];
         let n = socket.recv(&mut buf)?;
         let text = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
@@ -283,7 +330,7 @@ fn start_survives_an_unwritable_journal() -> TestResult {
         sink,
         Arc::new(MemoryCreds::host()),
         Arc::new(NoTpm),
-        || StateStorage::Unknown,
+        || Diagnosis::unknown(UnknownReason::NoMount),
     ));
     // The service runs and answers; only the entry is missing.
     let connection = result.map_err(|e| e.to_string())?;

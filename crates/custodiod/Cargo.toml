@@ -72,3 +72,16 @@ path = "tests/import_split.rs"
 [[test]]
 name = "fd_leak"
 path = "tests/fd_leak.rs"
+
+# Their own binaries, because F196's `verify` names them (`cargo test --test <name>`).
+[[test]]
+name = "state_storage"
+path = "tests/state_storage.rs"
+
+[[test]]
+name = "storage_api"
+path = "tests/storage_api.rs"
+
+[[test]]
+name = "storage_stability"
+path = "tests/storage_stability.rs"

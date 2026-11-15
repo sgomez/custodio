@@ -13,7 +13,7 @@ use custodiod::creds::systemd::SystemdCreds;
 use custodiod::polkit::PolkitAuthorizer;
 use custodiod::snap_socket::{self, Signing};
 use custodiod::startup::start;
-use custodiod::storage::classify_state_dir;
+use custodiod::storage::diagnose_state_dir;
 use custodiod::store::KeyStore;
 use custodiod::tpm::{TpmAccess, open::from_environment};
 use zbus::{Connection, block_on};
@@ -39,7 +39,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             Arc::clone(&journal),
             Arc::clone(&key_credentials) as Arc<dyn Credentials>,
             Arc::clone(&tpm),
-            || classify_state_dir(env::var_os("STATE_DIRECTORY")),
+            || diagnose_state_dir(env::var_os("STATE_DIRECTORY")),
         )
         .await?;
         // The socket asks the same polkit, over the same connection, about the peer's process.
