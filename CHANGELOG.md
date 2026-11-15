@@ -1,4 +1,4 @@
-## [0.8.0] - 2026-11-14
+## [0.8.0] - 2026-11-15
 
 ### 🚀 Features
 
@@ -160,6 +160,7 @@
 - Drop the workflow and docs-wording script tests
 - Fold the repeated e2e case checks into one place
 - Trim the package lifecycle layers to what each one alone shows
+- Drop the fake-qemu self-tests of the vm harness
 
 ### ⚙️ Miscellaneous Tasks
 
