@@ -7,6 +7,7 @@
 use std::fmt;
 
 use p12_keystore::Pkcs12Archive;
+use p12_keystore::error::Error as P12Error;
 use p256::elliptic_curve::sec1::ToSec1Point;
 use pkcs8::PrivateKeyInfoRef;
 use pkcs8::der::{
@@ -20,6 +21,7 @@ use crate::store::{KeyStore, Kind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::import::ImportError as TpmImportError;
 
+mod ber;
 pub mod choice;
 pub mod protect;
 
@@ -140,9 +142,31 @@ pub fn parse_p12(data: &[u8], password: &SecretString) -> Result<ParsedP12, Impo
         return Err(ImportError::TooLarge);
     }
     // The archive API keeps key bags that have no `localKeyId`; `KeyStore` would drop them.
-    let archive = Pkcs12Archive::from_pkcs12(data, password.expose_secret())
-        .map_err(|e| ImportError::Parse(e.to_string()))?;
+    let archive = match Pkcs12Archive::from_pkcs12(data, password.expose_secret()) {
+        Err(P12Error::DerError(not_der)) => from_ber(data, password, not_der),
+        other => other,
+    }
+    .map_err(|e| ImportError::Parse(e.to_string()))?;
     check_archive(&archive)
+}
+
+/// A `.p12` in BER, as NSS (Firefox) writes it; `not_der` is why it is not DER, returned when it is not BER
+/// either. The MAC is checked on the outer rewrite, whose `AuthenticatedSafe` is the file's byte for byte;
+/// only a file that passes has its inner rewrite decoded, which carries no MAC.
+fn from_ber(
+    data: &[u8],
+    password: &SecretString,
+    not_der: pkcs8::der::Error,
+) -> Result<Pkcs12Archive, P12Error> {
+    let Some(outer) = ber::outer(data) else {
+        return Err(P12Error::DerError(not_der));
+    };
+    match Pkcs12Archive::from_pkcs12(&outer, password.expose_secret()) {
+        Err(P12Error::DerError(_)) => {}
+        other => return other,
+    }
+    let inner = ber::inner(&outer).ok_or(P12Error::InvalidData)?;
+    Pkcs12Archive::from_pkcs12(&inner, password.expose_secret())
 }
 
 /// The checks of [`parse_p12`] on an already decoded archive.

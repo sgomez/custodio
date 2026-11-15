@@ -71,6 +71,25 @@ fn accepts_rsa_2048_with_legacy_encryption() -> TestResult {
     Ok(())
 }
 
+// NSS (Firefox) exports BER with indefinite lengths; the fixture holds the key and certificate of `rsa2048`.
+#[test]
+fn accepts_the_ber_that_nss_exports() -> TestResult {
+    let p = parse("rsa2048-nss")?;
+    assert_eq!(p.kind, KeyKind::Rsa2048);
+    assert_eq!(p.certificate, parse("rsa2048")?.certificate);
+    Ok(())
+}
+
+// The same refusal as for a DER file: the MAC over the file's own bytes fails, before anything is decoded.
+#[test]
+fn rejects_wrong_password_of_a_ber_file() -> TestResult {
+    let der = err_of(parse_p12(&fixture("rsa2048")?, &pw("nope")))?;
+    let ber = err_of(parse_p12(&fixture("rsa2048-nss")?, &pw("nope")))?;
+    assert!(matches!(ber, ImportError::Parse(_)), "{ber:?}");
+    assert_eq!(ber.to_string(), der.to_string());
+    Ok(())
+}
+
 #[test]
 fn accepts_p256() -> TestResult {
     assert_eq!(parse("p256")?.kind, KeyKind::EcdsaP256);
