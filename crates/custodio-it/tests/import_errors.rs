@@ -213,7 +213,7 @@ fn import(importer: &DbusImporter, file: PathBuf, id: &str, password: &str) -> R
     );
     let cli = result.map_err(CliError::Import);
     let mut stderr = Vec::new();
-    let status = finish(&cli, &mut stderr);
+    let status = finish(&cli, &mut stderr, false);
     assert_eq!(status, exit_status(&cli));
     let result = cli.map_err(|e| match e {
         CliError::Import(f) => f,

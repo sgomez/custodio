@@ -62,19 +62,20 @@ fn success_is_0_every_failure_is_1_usage_is_2() {
 #[test]
 fn finish_writes_the_diagnostic_of_a_failure_only() {
     let mut err = Vec::new();
-    assert_eq!(finish(&Ok(()), &mut err), 0);
+    assert_eq!(finish(&Ok(()), &mut err, false), 0);
     assert_eq!(err, b"" as &[u8]);
     for e in every_failure() {
         let mut err = Vec::new();
-        assert_eq!(finish(&Err(e), &mut err), 1);
+        assert_eq!(finish(&Err(e), &mut err, false), 1);
         assert_ne!(err, b"" as &[u8]);
     }
     let mut err = Vec::new();
-    assert_eq!(finish(&Err(CliError::Args(ArgError::Usage)), &mut err), 2);
     assert_eq!(
-        String::from_utf8_lossy(&err).trim_end(),
-        custodio_cli::USAGE
+        finish(&Err(CliError::Args(ArgError::Usage)), &mut err, false),
+        2
     );
+    let text = String::from_utf8_lossy(&err);
+    assert!(text.trim_end().ends_with(custodio_cli::USAGE), "{text}");
 }
 
 fn run(args: &[&str]) -> io::Result<Output> {

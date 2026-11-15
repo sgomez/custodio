@@ -22,6 +22,7 @@ pub mod browser_files;
 pub mod bus;
 pub mod colour;
 pub mod delete;
+pub mod error;
 pub mod failure;
 pub mod help;
 pub mod list;
@@ -233,9 +234,10 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
 }
 
 /// Writes the diagnostic of a failed run to `err` (nothing on success) and returns the exit status.
-pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W) -> u8 {
+/// `coloured` puts the `custodio:` prefix of the first line in bold.
+pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W, coloured: bool) -> u8 {
     if let Err(e) = result {
-        let _ = writeln!(err, "{e}");
+        let _ = writeln!(err, "{}", colour::prefix(&error::render(e), coloured));
     }
     exit_status(result)
 }

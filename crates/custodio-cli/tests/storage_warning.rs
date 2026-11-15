@@ -91,7 +91,7 @@ fn run_list(svc: &Svc) -> Run {
 }
 
 fn finish_run(result: &Result<(), CliError>, out: &[u8], mut err: Vec<u8>) -> Run {
-    let status = finish(result, &mut err);
+    let status = finish(result, &mut err, false);
     Run {
         out: String::from_utf8_lossy(out).into_owned(),
         err: String::from_utf8_lossy(&err).into_owned(),

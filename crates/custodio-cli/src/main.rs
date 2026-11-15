@@ -55,13 +55,7 @@ fn run() -> Result<(), CliError> {
     if let Command::Help(topic) = &command {
         // A closed standard output is not a failure of the tool.
         let out_tty = rustix::termios::isatty(io::stdout());
-        let on = custodio_cli::colour::enabled(
-            out_tty,
-            out_tty,
-            std::env::var_os("NO_COLOR")
-                .map(|v| v.to_string_lossy().into_owned())
-                .as_deref(),
-        );
+        let on = colour_on(out_tty);
         let text = custodio_cli::colour::headings(&custodio_cli::help::text(*topic), on);
         let _ = io::stdout().write_all(text.as_bytes());
         return Ok(());
@@ -91,6 +85,19 @@ fn run() -> Result<(), CliError> {
     }
 }
 
+/// Whether a stream that is (or is not) a terminal gets colour: see `custodio_cli::colour`.
+fn colour_on(stream_is_terminal: bool) -> bool {
+    custodio_cli::colour::enabled(
+        stream_is_terminal,
+        rustix::termios::isatty(io::stdout()),
+        std::env::var_os("NO_COLOR")
+            .map(|v| v.to_string_lossy().into_owned())
+            .as_deref(),
+    )
+}
+
 fn main() -> ExitCode {
-    ExitCode::from(finish(&run(), &mut io::stderr()))
+    let result = run();
+    let on = colour_on(rustix::termios::isatty(io::stderr()));
+    ExitCode::from(finish(&result, &mut io::stderr(), on))
 }

@@ -24,7 +24,7 @@ pub struct FileError {
 }
 
 impl FileError {
-    fn new(file: &str, reason: impl Into<String>) -> Self {
+    pub(crate) fn new(file: &str, reason: impl Into<String>) -> Self {
         Self {
             file: file.to_owned(),
             reason: reason.into(),

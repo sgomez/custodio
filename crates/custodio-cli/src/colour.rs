@@ -44,6 +44,15 @@ pub fn headings(help: &str, on: bool) -> String {
     out
 }
 
+/// `text` with a leading `custodio:` in bold when `on`.
+#[must_use]
+pub fn prefix(text: &str, on: bool) -> String {
+    match text.strip_prefix("custodio:") {
+        Some(rest) if on => format!("{}{rest}", bold("custodio:", true)),
+        _ => text.to_owned(),
+    }
+}
+
 /// `text` without the escape sequences this module writes.
 #[must_use]
 pub fn strip(text: &str) -> String {

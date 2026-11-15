@@ -274,7 +274,7 @@ impl Rig {
         let mut stdout = Vec::new();
         let result = run_list(&self.client, &mut stdout).map_err(CliError::List);
         let mut stderr = Vec::new();
-        let status = finish(&result, &mut stderr);
+        let status = finish(&result, &mut stderr, false);
         assert_eq!(status, exit_status(&result));
         Listed {
             result,
@@ -390,7 +390,7 @@ fn a_service_error_shows_the_message_of_its_name_and_no_key_line() -> TestResult
             .stderr
             .contains(&ServiceFailure::AuthorizationUnavailable.message())
     );
-    assert!(!listed.stderr.contains("ec"));
+    assert!(!listed.stderr.contains("id: ec"));
     assert_eq!(rig.polkit_calls(), asked);
     Ok(())
 }

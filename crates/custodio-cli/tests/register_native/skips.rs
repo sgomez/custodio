@@ -98,7 +98,11 @@ fn the_default_module_path_is_the_installed_one() {
     );
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert_eq!(err.lines().count(), 1, "{err}");
+    assert_eq!(
+        err.lines().count(),
+        2,
+        "what went wrong, then the next step: {err}"
+    );
     assert!(err.contains(installed), "{err}");
     assert!(!marker.exists());
     assert_eq!(f.snapshot(), before);
@@ -120,7 +124,11 @@ fn a_missing_module_file_is_one_error() {
     );
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
-    assert_eq!(err.lines().count(), 1, "{err}");
+    assert_eq!(
+        err.lines().count(),
+        2,
+        "what went wrong, then the next step: {err}"
+    );
     assert!(err.contains(absent));
     assert!(!marker.exists());
     assert_eq!(f.snapshot(), before);
@@ -157,8 +165,8 @@ fn a_missing_modutil_is_an_error_naming_it() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert_eq!(
         err.lines().count(),
-        1,
-        "one error, not one per profile: {err}"
+        2,
+        "one error (two lines), not one per profile: {err}"
     );
     assert!(err.contains("modutil was not found"), "{err}");
     assert_eq!(f.snapshot(), before);

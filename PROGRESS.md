@@ -67,3 +67,13 @@ with an empty context.
   10 (replace printers, update `exit.rs`), 11 (`tests/output_rules.rs`, add `error.rs` to the mutants list), 12 (`mutants-diff`, once, 10-15 min).
 - Next session should: do steps 8-12 in that order; `custodio_cli::colour::{enabled,bold,headings,strip}` is ready for the error prefix.
   Binary for tests is `CARGO_BIN_EXE_custodio-cli`.
+
+### 2026-11-15 — F193 — attempt 2
+- Done (steps 7-11 ticked): `error.rs` (`render`: what went wrong, then the next step; control characters escaped; `Args` text is static),
+  `ServiceFailure` gained `TpmFailed`, `CredentialsUnavailable`, `KeyLost`, `TemporarilyUnavailable` and `next_step()`; `finish` takes a
+  `coloured` flag and `colour::prefix` bolds `custodio:`; `main` decides colour per stream; `tests/output_rules.rs` (pipes and ptys,
+  `NO_COLOR` unset/empty/"1"/"0"/"x"); error unit tests over every variant (wildcard-free matches) and every name of docs/api.md with a
+  fixture control; `error.rs` is in the `mutants` list. Tests that asserted one-line stderr (`register_native/skips.rs`,
+  `custodio-it` delete/list) now expect the two lines. `just quick` green.
+- Not done: step 12 (`just mutants-diff F193`, then the rest of the verify: help test, fuzz-build, lint-fuzz, fuzz-smoke).
+- Next session should: run `timeout 1700 just mutants-diff F193` once; kill survivors narrowed with `--re`.
