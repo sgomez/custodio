@@ -34,14 +34,16 @@ sed 's/^k2\(.*\)tpm$/k2\1encrypted-tpm/' "$tmp/api" > "$tmp/api2"; expect_bad ap
 sed 's/^k1\(.*\)tpm$/k1\1encrypted-host/' "$tmp/api" > "$tmp/api3"; expect_bad api-encrypted-host tk api "$tmp/api3" k1:rsa2048 k2:ecdsa-p256
 { cat "$tmp/api"; echo 'k1	rsa2048	tpm'; } > "$tmp/api4"; expect_bad api-twice tk api "$tmp/api4" k1:rsa2048 k2:ecdsa-p256
 
-blk() { printf 'id: %s\n  type: %s\n  kind: %s\n  subject: CN=x\n  valid until: 2030-01-01\n' "$@"; }
+blk() { printf '%s  %s  %s  x  2030-01-01\n' "$@"; }
 { blk k1 rsa2048 tpm; blk k2 ecdsa-p256 tpm; blk other rsa2048 encrypted-host; } > "$tmp/cli"
 expect_ok cli tk cli "$tmp/cli" k1:rsa2048 k2:ecdsa-p256
 { blk k1 rsa2048 encrypted-tpm; blk k2 ecdsa-p256 tpm; } > "$tmp/cli2"; expect_bad cli-encrypted-tpm tk cli "$tmp/cli2" k1:rsa2048 k2:ecdsa-p256
 { blk k1 rsa2048 tpm; blk k2 ecdsa-p256 encrypted-host; } > "$tmp/cli3"; expect_bad cli-encrypted-host tk cli "$tmp/cli3" k1:rsa2048 k2:ecdsa-p256
 { blk k1 rsa2048 tpm; } > "$tmp/cli4"; expect_bad cli-missing tk cli "$tmp/cli4" k1:rsa2048 k2:ecdsa-p256
 { blk k1 rsa2048 tpm; blk k2 rsa2048 tpm; } > "$tmp/cli5"; expect_bad cli-wrong-type tk cli "$tmp/cli5" k1:rsa2048 k2:ecdsa-p256
-printf 'You have no keys in the custodio service.\n' > "$tmp/cli6"; expect_bad cli-none tk cli "$tmp/cli6" k1:rsa2048
+# A hostile subject is one escaped line: it cannot add a row for k2.
+printf 'k1  rsa2048  tpm  CN=y\\x0ak2  ecdsa-p256  tpm  z  2030-01-01\n' > "$tmp/cli7"; expect_bad cli-forged-row tk cli "$tmp/cli7" k1:rsa2048 k2:ecdsa-p256
+printf 'You have no keys in the custodio service.\nImport one with: custodio import <file.p12>\n' > "$tmp/cli6"; expect_bad cli-none tk cli "$tmp/cli6" k1:rsa2048
 
 row() { printf '{"_SYSTEMD_UNIT":"%s","CUSTODIO_OPERATION":"%s","CUSTODIO_KEY_ID":"%s","CUSTODIO_OUTCOME":"%s"%s}\n' "$1" "$2" "$3" "$4" "$5"; }
 KIND=',"CUSTODIO_STORAGE_KIND":"tpm"'

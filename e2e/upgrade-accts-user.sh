@@ -32,7 +32,7 @@ read_cert() { # ID OUT: the certificate the module shows for the id
     pkcs11-tool --module "$MODULE" --token-label "$1" --label "$1" --type cert --read-object --output-file "$2" > "$ACC/$user-cert.log" 2>&1 \
         || { cat "$ACC/$user-cert.log" >&2; fail "$user: cannot read the certificate of $1"; }
 }
-listed_ids() { custodio list | sed -n 's/^id: //p'; }
+listed_ids() { custodio list | awk 'NF == 0 || /^You have no keys/ { exit } { print $1 }'; }
 p11sign() { # ID OUT: one signature through the module; the status of pkcs11-tool is returned
     local args=(--mechanism SHA256-RSA-PKCS)
     [ "$1" != ec1 ] || args=(--mechanism ECDSA-SHA256 --signature-format openssl)

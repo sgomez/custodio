@@ -5,7 +5,7 @@ The kind is compared by exact value, never by a substring: "tpm" and "encrypted-
   fallback.py import FILE ID KEYTYPE   the CLI output of `custodio import --id ID`: says it imported ID as KEYTYPE and has exactly one Storage line, of kind encrypted-host
   fallback.py why FILE...              the Storage line of each import output says the key is weaker than a TPM key and the reason: this machine has no TPM
   fallback.py api FILE ID:KEYTYPE...   owner-call.py list output ("ID<TAB>TYPE<TAB>KIND"): each ID once, with KEYTYPE and kind encrypted-host
-  fallback.py cli FILE ID:KEYTYPE...   `custodio list` output: the block of each ID once, with `type: KEYTYPE` and `kind: encrypted-host`
+  fallback.py cli FILE ID:KEYTYPE...   `custodio list` output: the row of each ID once, with the type KEYTYPE and the kind encrypted-host
 F161: `fallback.py --mode lacking|full SUBCOMMAND ...` judges a VM run. lacking: kind encrypted-tpm, and `why` wants "weaker than a TPM key" and the reason "lacks a capability".
 full: kind tpm for every key and `why` wants no word "weaker" in any output. No --mode (or --mode none) is the container run above.
 """
@@ -94,21 +94,18 @@ def api_problems(path, specs):
 
 
 def cli_problems(path, specs):
-    blocks, cur = {}, None
+    blocks = {}
     for ln in read(path).split("\n"):
-        m = re.fullmatch(r"id: (.*)", ln)
-        if m:
-            cur = m.group(1)
-            blocks.setdefault(cur, []).append({})
-        elif cur is not None:
-            m = re.fullmatch(r"  (type|kind): (.*)", ln)
-            if m:
-                blocks[cur][-1][m.group(1)] = m.group(2)
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        f = re.split(r"  +", ln)
+        if len(f) >= 3:
+            blocks.setdefault(f[0], []).append({"type": f[1], "kind": f[2]})
     out = []
     for key_id, key_type in expected(specs):
         mine = blocks.get(key_id, [])
         if len(mine) != 1:
-            out.append(f"{path}: {len(mine)} blocks for {key_id}, expected 1")
+            out.append(f"{path}: {len(mine)} rows for {key_id}, expected 1")
             continue
         if mine[0].get("type") != key_type:
             out.append(f"{key_id}: type {mine[0].get('type')!r}, expected {key_type!r}")

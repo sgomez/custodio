@@ -20,16 +20,7 @@ expect_ok not-sha rd_not_sha_problems l "$tmp/old" "$tmp/new"
 expect_bad not-sha-same rd_not_sha_problems l "$tmp/new" "$tmp/new2"
 expect_bad not-sha-empty rd_not_sha_problems l "$tmp/empty" "$tmp/new"
 
-cat > "$tmp/list" <<'LIST'
-id: a
-  type: rsa2048
-  subject: CN=f93-new
-  valid until: x
-id: b
-  type: rsa2048
-  subject: CN=f93-old
-  valid until: x
-LIST
+printf '%s\n' 'a  rsa2048  encrypted-host  f93-new  x' 'b  rsa2048  encrypted-host  f93-old  x' > "$tmp/list"
 expect_ok subject rd_subject_problems "$tmp/list" a f93-new f93-old
 expect_bad subject-old rd_subject_problems "$tmp/list" b f93-new f93-old
 expect_bad subject-both rd_subject_problems "$tmp/list" a f93-new f93-new

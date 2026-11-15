@@ -21,7 +21,7 @@ usnap() { # NAME
     local id
     {
         custodio list
-        for id in $(custodio list | sed -n 's/^id: //p'); do
+        for id in $(custodio list | awk 'NF == 0 || /^You have no keys/ { exit } { print $1 }'); do
             printf 'cert %s %s\n' "$id" "$(pkcs11-tool --module "$MODULE" --token-label "$id" --label "$id" --type cert --read-object 2> /dev/null | sha256sum | cut -d' ' -f1)"
         done
     } > "$CLI/$1.user"

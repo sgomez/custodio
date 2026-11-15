@@ -15,7 +15,7 @@ without a container. Each subcommand prints one problem per line and nothing whe
   tpmclear.py samelist LIST_A LIST_B ID...
                                          the rows of the IDs are the same in both lists
   tpmclear.py gone LIST ID...            none of the IDs is listed
-  tpmclear.py clilist FILE KIND ID...    `custodio list`: the block of each ID once, with `kind: KIND`
+  tpmclear.py clilist FILE KIND ID...    `custodio list`: the row of each ID once, with the kind KIND
   tpmclear.py state BEFORE AFTER         two listings of the state directory (find + sha256) are identical and not empty
   tpmclear.py records SCAN present|absent KIND ID...
                                          tpmdup.py scan output (uid, id, kind, parent name): each ID has a record of kind KIND (present) or none (absent)
@@ -174,21 +174,18 @@ def clilist(path, kind, ids):
     t = text(path)
     if t is None:
         return [f"{path}: cannot be read"]
-    blocks, cur = {}, None
+    blocks = {}
     for ln in t.split("\n"):
-        m = re.fullmatch(r"id: (.*)", ln)
-        if m:
-            cur = m.group(1)
-            blocks.setdefault(cur, []).append({})
-        elif cur is not None:
-            m = re.fullmatch(r"  (type|kind): (.*)", ln)
-            if m:
-                blocks[cur][-1][m.group(1)] = m.group(2)
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        f = re.split(r"  +", ln)
+        if len(f) >= 3:
+            blocks.setdefault(f[0], []).append({"type": f[1], "kind": f[2]})
     out = []
     for i in ids:
         mine = blocks.get(i, [])
         if len(mine) != 1:
-            out.append(f"{path}: {len(mine)} blocks for {i}, expected 1")
+            out.append(f"{path}: {len(mine)} rows for {i}, expected 1")
         elif mine[0].get("kind") != kind:
             out.append(f"{path}: {i} has kind {mine[0].get('kind')!r}, expected {kind!r}")
     return out

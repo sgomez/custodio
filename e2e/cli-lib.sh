@@ -9,33 +9,35 @@ CLI_ACTION_DELETE=com.rfirma.custodio.delete-certificate
 # shellcheck disable=SC2034
 CLI_ACTION_IMPORT=com.rfirma.custodio.import-certificate
 
-# cli_list_block_problems LISTFILE ID TYPE SUBJECT ENDDATE: the block of ID in `custodio list` has exactly this type, the subject line `subject: SUBJECT` and the line
-# `valid until: ENDDATE` (all taken from OpenSSL on the key and certificate that were imported, not from what the CLI might print for every key)
+# cli_list_block_problems LISTFILE ID TYPE SUBJECT ENDDATE: the row of ID in `custodio list` (id, type, kind, subject, end of validity, cells
+# separated by two spaces) has exactly this type, the common name of SUBJECT (`CN=x` is shown as `x`) and this end of validity (all taken from OpenSSL on
+# the key and certificate that were imported, not from what the CLI might print for every key)
 cli_list_block_problems() {
-    local file=$1 id=$2 block
-    block=$(awk -v id="id: $id" '$0 == id { on = 1; print; next } /^id: / { on = 0 } on { print }' "$file")
-    [ -n "$block" ] || { echo "$file: no block for $id"; return; }
-    grep -qxF "  type: $3" <<< "$block" || echo "$id: the block has no line '  type: $3': $(printf '%s' "$block" | tr '\n' '|')"
-    grep -qxF "  subject: $4" <<< "$block" || echo "$id: the block has no line '  subject: $4'"
-    grep -qxF "  valid until: $5" <<< "$block" || echo "$id: the block has no line '  valid until: $5'"
+    local file=$1 id=$2 row
+    row=$(awk -v id="$id" 'NF == 0 || /^You have no keys/ { exit } $1 == id { print; exit }' "$file")
+    [ -n "$row" ] || { echo "$file: no row for $id"; return; }
+    cell() { awk -F'  +' -v n="$1" '{ print $n }' <<< "$row"; }
+    [ "$(cell 2)" = "$3" ] || echo "$id: the row has type '$(cell 2)', expected '$3': $row"
+    [ "$(cell 4)" = "${4#CN=}" ] || echo "$id: the row has subject '$(cell 4)', expected '${4#CN=}'"
+    [ "$(cell 5)" = "$5" ] || echo "$id: the row has end of validity '$(cell 5)', expected '$5'"
 }
 # cli_list_only_problems LISTFILE ID...: the ids listed are exactly these (no other key, e.g. another account's)
 cli_list_only_problems() {
     local file=$1 want got
     shift
     want=$(printf '%s\n' "$@" | sort)
-    got=$(sed -n 's/^id: //p' "$file" | sort)
+    got=$(awk 'NF == 0 || /^You have no keys/ { exit } { print $1 }' "$file" | sort)
     [ "$want" = "$got" ] || echo "$file lists '$(printf '%s' "$got" | tr '\n' ' ')', expected '$(printf '%s' "$want" | tr '\n' ' ')'"
 }
-# cli_none_problems LISTFILE EXIT: the list of an account with no keys: exit 0, the sentence, no key block
+# cli_none_problems LISTFILE EXIT: the list of an account with no keys: exit 0, the sentence, no key row
 cli_none_problems() {
     [ "$2" = 0 ] || echo "the list of an account with no keys exited $2, expected 0"
     grep -qxF 'You have no keys in the custodio service.' "$1" || echo "$1 does not say that there are no keys"
-    ! grep -q '^id: ' "$1" || echo "$1 shows a key block although the account has none"
+    ! grep -qvxF -e 'You have no keys in the custodio service.' -e 'Import one with: custodio import <file.p12>' "$1" || echo "$1 shows more than the sentence and the import hint although the account has none"
 }
 # cli_has_keys_problems LISTFILE: the list is not the none sentence (the control that the other account's list is not empty at the same time)
 cli_has_keys_problems() {
-    grep -q '^id: ' "$1" || echo "$1 shows no key: the none case proves nothing without a non-empty list beside it"
+    awk -F'  +' 'NF == 0 || /^You have no keys/ { exit } NF >= 5 { found = 1 } END { exit !found }' "$1" || echo "$1 shows no key: the none case proves nothing without a non-empty list beside it"
     ! grep -qF 'You have no keys' "$1" || echo "$1 says there are no keys"
 }
 # cli_confirm_problems TRANSCRIPT EVENTS: the confirmation question (it says the key cannot be recovered) is in the transcript, and the agent had logged no request when the

@@ -27,13 +27,13 @@ count_problems() {
     [ "$before" -eq "$after" ] || echo "$what: went from $before to $after"
 }
 
-# list_problems FILE ID...: FILE (custodio list) has a block for every ID given as "+ID" and none for an ID given as "-ID"
+# list_problems FILE ID...: FILE (custodio list) has a row for every ID given as "+ID" and none for an ID given as "-ID"
 list_problems() {
     local file=$1 spec id
     shift
     for spec in "$@"; do
         id=${spec#?}
-        if grep -qxF "id: $id" "$file"; then
+        if grep -q "^$id  " "$file"; then
             [ "${spec%"$id"}" = + ] || echo "$file lists $id"
         else
             [ "${spec%"$id"}" = - ] || echo "$file does not list $id"

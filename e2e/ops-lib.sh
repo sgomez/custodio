@@ -34,13 +34,13 @@ ops_state_problems() {
     same_file "$before" "$after" || echo "$label: the state changed: $(diff "$before" "$after" | head -n 4 | tr '\n' '|')"
 }
 
-# ops_listed_problems FILE ID...: "+ID" must be listed in the snapshot (custodio list part: a line "id: ID"), "-ID" must not
+# ops_listed_problems FILE ID...: "+ID" must be listed in the snapshot (custodio list part: a row that starts with "ID" and two spaces), "-ID" must not
 ops_listed_problems() {
     local file=$1 spec id
     shift
     for spec in "$@"; do
         id=${spec#?}
-        if grep -qxF "id: $id" "$file"; then
+        if grep -q "^$id  " "$file"; then
             [ "${spec%"$id"}" = + ] || echo "$file lists $id"
         else
             [ "${spec%"$id"}" = - ] || echo "$file does not list $id"
