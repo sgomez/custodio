@@ -7,7 +7,7 @@
       "description": "docs/findings/F189.md, headed '## F189' and indexed in docs/findings.md, names the cause of custodiod classifying the same LVM volume on an unencrypted partition (device 252:0) as unknown at one start and not-encrypted at a later one (SPEC Design 4, open question 1), with evidence: a reproduction, the /sys/dev/block entries (dm/uuid, slaves) and the mountinfo the service read, or the code path in crates/custodiod/src/storage.rs, against the rules of docs/findings/F180.md. Its 'Decision: ' line says which route F196 takes: a fix so that the same storage gets the same answer at every start (and whether a unit setting is needed without weakening the unit), or a kept unknown whose reason the service exposes. Any F180 rule the evidence shows wrong is corrected there. If neither route is possible, the builder writes BLOCKED.md, as the spec's open question says. Changes no product code.",
       "depends_on": [],
       "verify": "f=docs/findings/F189.md && grep -q '^## F189' \"$f\" && for w in '252:0' '/sys/dev/block' 'dm/uuid' 'slaves' 'mountinfo' 'LVM' 'udev' 'storage.rs' 'F180'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F189.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F190",
