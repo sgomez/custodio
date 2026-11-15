@@ -277,3 +277,24 @@ fn the_usage_names_both_commands() {
     assert!(crate::USAGE.contains("custodio import"));
     assert!(crate::USAGE.contains("custodio list"));
 }
+
+#[test]
+fn a_list_failure_reads_as_a_sentence_with_the_id_escaped() {
+    assert_eq!(
+        ListFailure::Unreadable(2).to_string(),
+        "2 certificate(s) could not be read"
+    );
+    assert_eq!(
+        ListFailure::UnknownId("a\nb".into()).to_string(),
+        "you have no key with the id 'a\\x0ab'"
+    );
+    assert!(
+        ListFailure::Output(io::Error::other("full"))
+            .to_string()
+            .contains("cannot write the list: full")
+    );
+    assert_eq!(
+        ListFailure::Service(ServiceFailure::AuthorizationUnavailable).to_string(),
+        ServiceFailure::AuthorizationUnavailable.to_string()
+    );
+}

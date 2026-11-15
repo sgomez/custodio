@@ -98,3 +98,6 @@ with an empty context.
 - (Superseded) not done: step 6 e2e consumers of the old block layout (`e2e/cli-lib.sh`, `rd-lib.sh`, `ops-user.sh`, `cli-user.sh`, `cli-pty-user.sh`, `upgrade-accts-*.sh`, `tpmkind.py`,
   `fallback.py`, `upgradekinds.py`, `*-selftest.sh`, ...; find with `grep -rn "id: \|custodio list" e2e`): key them on the id column (first word of a row), selftests feed a hostile subject.
   Step 7: `just quick` (was green before the e2e work except nothing known), `mutants-diff F194` (never run; cert_text.rs has no unit tests of its own yet, expect survivors in `must_escape` ranges, `hex`, `common_name`), `just test-scripts` for the touched scripts.
+- Step 7 done: `just quick` green; `cert_text` (9), `list_view` (4), `help` (8) tests, `fuzz-build`, `lint-fuzz` pass; `fuzz-smoke` passed with `cert_fields` in the list (earlier commit);
+  `just mutants-diff F194`: 49 mutants, 46 caught, 3 unviable, 0 missed (2 min; after adding tests for the escape ranges, the CN types and `ListFailure` display).
+  Not run here (checkpoint): `just test-scripts`, e2e. Next session: none for F194 unless the evaluator finds something.
