@@ -47,6 +47,11 @@ fn is_root() -> bool {
     rustix::process::geteuid().is_root()
 }
 
+/// Whether this platform has a TPM device node.
+fn has_tpm_node() -> bool {
+    Path::new("/dev/tpmrm0").exists() || Path::new("/dev/tpm0").exists()
+}
+
 /// A fake `/`: `dev/` exists, with the named nodes as empty regular files of the given mode.
 fn root_with(nodes: &[(&str, u32)]) -> Res<tempfile::TempDir> {
     let root = tempfile::tempdir()?;
@@ -128,15 +133,9 @@ fn absent_when_no_device() -> TestResult {
         assess(&Production::under(dev.path()), KeyType::EccP256),
         Classification::Absent
     );
-    // The real production constructor in this container: no `/dev/tpmrm0` (it fails loudly on a host that has one).
-    assert!(
-        !Path::new("/dev/tpmrm0").exists(),
-        "this test needs a platform without /dev/tpmrm0"
-    );
-    assert_eq!(
-        assess(&Production::new(), KeyType::EccP256),
-        Classification::Absent
-    );
+    // The real production constructor looks at the real `/dev`: absent in the dev container, not on a host with a TPM.
+    let real = assess(&Production::new(), KeyType::EccP256);
+    assert_eq!(real == Classification::Absent, !has_tpm_node(), "{real:?}");
     // The test-only variable naming a socket nobody listens on: the e2e "no TPM" shape of F108.
     let missing = format!("swtpm:path={}/gone.sock", empty.path().display());
     for key in BOTH {
@@ -202,10 +201,9 @@ fn child_output(env: &[(&str, &str)]) -> Res<String> {
 
 #[test]
 fn production_ignores_environment() -> TestResult {
-    assert!(
-        !Path::new("/dev/tpmrm0").exists(),
-        "this test needs a platform without /dev/tpmrm0"
-    );
+    // What the platform's own `/dev` gives with no variable at all.
+    let bare = child_output(&[])?;
+    assert_eq!(bare == "Absent", !has_tpm_node(), "{bare}");
     let tpm = Swtpm::start()?;
     let tcti = tpm.tcti();
     let generic = [
@@ -216,7 +214,7 @@ fn production_ignores_environment() -> TestResult {
         "TEST_TCTI",
     ]
     .map(|n| (n, tcti.as_str()));
-    assert_eq!(child_output(&generic)?, "Absent");
+    assert_eq!(child_output(&generic)?, bare);
     // The same TCTI in the dedicated variable is the control: it reaches the software TPM.
     assert_eq!(
         child_output(&[(TEST_SOCKET_VARIABLE, tcti.as_str())])?,
