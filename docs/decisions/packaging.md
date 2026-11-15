@@ -73,3 +73,12 @@ Decisions about the package scripts and file layout, under the rules at the top 
   socket, then start it again (deb and rpm `restart`; Arch `systemctl start` in `post_upgrade`, and `zz-custodio-restart.hook` restarts it
   once more after the reloads). Deb uses `deb-systemd-invoke` for starts and stops (except the final start of the static service after an upgrade, which it refuses, so that one is `systemctl restart` after postinst asks `policy-rc.d` itself: exit 0 or 104 or no `policy-rc.d` restarts, anything else does not), so `policy-rc.d` is honoured.
 - Why: systemd refuses to start a socket while its service is active; a restart of the socket stops the service and leaves it down.
+
+## 2026-11-15 — The zsh completion lives in a different directory in the .deb (F191)
+- Decision: `_custodio` is in `/usr/share/zsh/vendor-completions/` in the .deb and in `/usr/share/zsh/site-functions/` in the .rpm and the
+  Arch package; bash and fish paths are the same in all three. F205 adds two presence entries to `packaging/parity-exceptions.txt`
+  (`…/vendor-completions/_custodio | deb`, `…/site-functions/_custodio | rpm,arch`).
+- Why: the default zsh `fpath` of Debian and Ubuntu has `vendor-completions` and not `site-functions`, and Fedora, Alma and Arch the reverse
+  (`docs/findings/F191.md`).
+- Rejected: shipping both in every format (a dead copy everywhere and an unowned directory in the .rpm); `site-functions` everywhere (not
+  loaded on Debian and Ubuntu).

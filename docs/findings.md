@@ -102,3 +102,4 @@ Rules:
 - [F188](findings/F188.md) — M6 acceptance 19 (Firefox snap rev 8763, ubuntu2604): TLS client auth passes with RSA 2048 and P-256; two dialogs per page load (page and favicon connections).
 - [F189](findings/F189.md) — storage classifier flip (`252:0`): not reproduced; the kernel exposes the whole LVM chain before any mount, so `unknown` is kept with an exposed reason (route 2), F180 rules stand.
 - [F190](findings/F190.md) — journald storage without root: last valid `Storage=` of the main file + drop-ins (/etc, /run, /usr/local/lib, /usr/lib), `auto` needs `stat /var/log/journal`, 259+ defaults to persistent, `/run/log/journal` proves nothing.
+- [F191](findings/F191.md) — completion locations and key ids: bash/fish dirs shared by all formats, zsh differs (.deb `vendor-completions`, .rpm/Arch `site-functions`, parity exception); `custodio __key-ids` with a 2 s timeout inside `custodio`, no polkit.
