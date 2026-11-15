@@ -40,7 +40,19 @@ Imported key 'ana' (ecdsa-p256).
 Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
 Now delete the original file: it still holds your private key.
   shred -u ana.p12   (or remove it with your file manager and empty the trash)
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
 ```
+
+If the import fails, the error says what to do. "wrong password for the .p12 file": retype the password. "the .p12
+file cannot be used": the file is not readable or does not hold exactly one private key with its certificate; export it
+again (see below). "wrong password, or the .p12 file is damaged": a file with no integrity check, where the two cannot be
+told apart; do both.
+
+### Export a certificate from Firefox
+
+In Firefox, open Settings, Privacy & Security, Certificates, View Certificates, Your Certificates. Select the certificate,
+choose Backup, and give a password. Firefox writes a `.p12` file with the private key and its certificate. Import that
+file as above. Export one certificate at a time: a file with several keys is refused.
 
 Delete the original after the import, as it says: whoever can read that file can use the key without Custodio. If you
 lose the key in Custodio, only the original `.p12` brings it back; Custodio cannot export it.
@@ -66,6 +78,7 @@ a console without a graphical polkit agent, `import` and `delete` ask for the pa
 ```console
 $ custodio delete ana
 Deleted key 'ana'.
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
 $ custodio list
 You have no keys in the custodio service.
 Import one with: custodio import <file.p12>

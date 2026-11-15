@@ -22,6 +22,14 @@ is the command-line tool of the custodio signing service.
 reads a PKCS#12 file and stores its key where the service keeps keys.
 The file password is asked on the terminal.
 It is never taken from the arguments or from the environment.
+When the import fails because of the file, the error says what to do:
+a wrong password (the file has an integrity check that does not match) asks you to retype it;
+a file that is not readable PKCS#12, or that does not hold exactly one private key with its certificate,
+asks you to export it again (the README shows how from Firefox);
+a file without an integrity check that does not decrypt could be either, and the error says both.
+After a successful import
+.B custodio
+says that Firefox and any other running program that loaded the module see the new key only after they restart.
 .PP
 .B list
 shows one row for each of your keys, in order of key id, with these columns:
@@ -92,6 +100,8 @@ so without a terminal
 .B delete
 refuses and deletes nothing.
 After you confirm, polkit asks for authorization as well; if it is refused, nothing is deleted.
+After a successful delete it says that Firefox and any other running program that loaded the module
+see the change only after they restart.
 .B delete
 takes exactly one argument, the key id, and no options;
 to delete a key whose id starts with a dash, write

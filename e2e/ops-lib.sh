@@ -9,7 +9,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/same-file.sh"
 OPS_DENIED="error com.rfirma.Custodio1.Error.PolkitDenied"
 OPS_UNAVAILABLE="error com.rfirma.Custodio1.Error.AuthorizationUnavailable"
-OPS_WRONG_PASSWORD="error com.rfirma.Custodio1.Error.WrongPasswordOrBadP12"
+OPS_WRONG_PASSWORD="error com.rfirma.Custodio1.Error.WrongPassword"
 OPS_ACTION_IMPORT=com.rfirma.custodio.import-certificate
 OPS_ACTION_DELETE=com.rfirma.custodio.delete-certificate
 OPS_ACTION_REPLACE=com.rfirma.custodio.replace-certificate

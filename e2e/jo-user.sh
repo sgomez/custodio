@@ -43,7 +43,7 @@ dbus() { # LABEL then the owner-call.py arguments: records ok / denied / mismatc
     ok) res=ok ;;
     *PolkitDenied) res=denied ;;
     *CertificateMismatch) res=mismatch ;;
-    *WrongPasswordOrBadP12) res=wrong-password ;;
+    *WrongPassword) res=wrong-password ;;
     *) res="error:${out// /_}" ;;
     esac
     observe "$label" "$res"

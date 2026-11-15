@@ -45,7 +45,7 @@ def classify(kind, status, out):
     text = out.strip()
     if text == "ok":
         return "ok"
-    for tail, word in (("PolkitDenied", "denied"), ("CertificateMismatch", "mismatch"), ("WrongPasswordOrBadP12", "wrong-password")):
+    for tail, word in (("PolkitDenied", "denied"), ("CertificateMismatch", "mismatch"), ("WrongPassword", "wrong-password")):
         if text.endswith(tail):
             return word
     return "error:" + text.replace(" ", "_")[:60]

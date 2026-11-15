@@ -113,3 +113,15 @@ with an empty context.
   `custodio-it/tests/fixtures` is the same directory), `docs/findings/F195.md` has all cells and the rule. `parse_p12` returns `Parse(String)`:
   classify on it as `MAC tag mismatch` = (a), `PKCS#5 decryption failed` = (c), structural variants = (b).
 - Next session: steps 2-6 (service first).
+
+### 2026-11-15 — F195 — attempt 2
+- Done (steps 2-5 ticked, 6 partly): `ImportError` is `WrongPassword` (MAC, library `MacError`), `WrongPasswordOrBad` (no MAC, `Pkcs5Error`), `Unreadable(String)` (any other
+  library error) plus the existing structural cases; `import::classify_p12_error`. New D-Bus errors `WrongPassword`, `UnreadableP12` (`custodio-client`, `ServiceError`),
+  new outcome `unreadable_file`. `tests/import_split.rs` (own `[[test]]`, 2 tests, 5 s): all ten cells of the finding, and the denied/unavailable cases with a counting decoder.
+  docs/api.md (errors + three `console` examples, `demo-nomac.p12`) and docs/audit.md; `just api-contract` and `scripts/test-docs-api.sh` pass; control: deleting the
+  `UnreadableP12` line of api.md made `api_document_matches_its_sources` fail ("source item missing from document").
+  CLI: `ServiceFailure::{WrongPassword, UnreadableP12}` two-line messages; `delete::RESTART_NOTE` printed after a successful import and delete; `custodio-it/tests/import_messages.rs` (5 tests, 0.13 s).
+  Man page, README (Firefox export section, notes in the examples), help text, e2e consumers (`jo-user.sh`, `appid-enter.py`, `ops-lib.sh`, `jo.py`) updated.
+  The non-interactive refusal (`NoTerminal`) is the same code path as the declined delete; `import_messages` covers both (answer `None` and `n`).
+- Not done: step 6 evidence runs: `just quick`, `just fuzz-build && just fuzz-smoke`, `just mutants-diff F195`; `import_errors`/all custodio-it tests pass.
+- Known gap: a file with a MAC whose MAC verifies but whose bags then fail to decrypt would be `WrongPasswordOrBad` (Pkcs5Error), not (b); only reachable with a corrupt file.

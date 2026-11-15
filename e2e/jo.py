@@ -29,7 +29,7 @@ OPERATIONS = {  # operation -> (MESSAGE_ID, {outcome: (PRIORITY, start of MESSAG
     "import": ("4c7163ce45d0b9faf8e7c38d098bdb22", {
         "stored": ("6", "key imported"), "denied": ("5", "import denied"),
         "authorization_unavailable": ("4", "import authorization unavailable, nothing stored"),
-        "wrong_password": ("4", "import failed, wrong password"), "unsupported_key": ("4", "import failed, unsupported key"),
+        "wrong_password": ("4", "import failed, wrong password"), "unreadable_file": ("4", "import failed, unreadable file"), "unsupported_key": ("4", "import failed, unsupported key"),
         "storage_failure": ("3", "import failed after approval, key not stored")}),
     "delete": ("13d1a981ea8f64fc1a6f390bee7fd66c", {
         "deleted": ("6", "key deleted"), "denied": ("5", "delete denied"),

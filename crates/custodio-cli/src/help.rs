@@ -39,7 +39,9 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "store the key of a PKCS#12 file in the service",
         usage: "[--id <key id>] <file.p12>",
         description: "Reads the file, asks for its password on the terminal and sends both to the service.\n\
-The password is never taken from arguments or the environment.",
+The password is never taken from arguments or the environment.\n\
+If the file cannot be used the error says whether to retype the password or to export the file again. \
+After a successful import it says that Firefox and any other running program that loaded the module see the key only after they restart.",
         args: &[(
             "<file.p12>",
             "the PKCS#12 file with one private key and its certificate",
@@ -70,7 +72,8 @@ It asks for no authorization.",
         summary: "delete one of your keys",
         usage: "[--] <key id>",
         description: "Asks on the terminal to confirm, then deletes the key and its certificate. It cannot be recovered.\n\
-Write -- before a key id that starts with a dash.",
+Write -- before a key id that starts with a dash. \
+After a successful delete it says that Firefox and any other running program that loaded the module see the change only after they restart.",
         args: &[("<key id>", "the key to delete")],
         options: &[],
         example: "custodio delete work",
