@@ -49,7 +49,7 @@
         "F193"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test cert_text --locked && just mutants-diff F194 && just fuzz-build && just lint-fuzz && just fuzz-smoke && cargo test -p custodio-it --test list_view --locked && cargo test -p custodio-cli --test help --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F195",
