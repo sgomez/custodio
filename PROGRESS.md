@@ -107,3 +107,9 @@ with an empty context.
   `-vm-kinds`, `-vm-silent`), each with a forged-row case where the judge reads rows (fallback, tpmclear, upgradekinds, purge-judge); `e2e/vm/silent.py absent`
   read the old `id:` block and now reads the first column; the README none example has the import hint and `test-docs-readme.sh`'s "output altered" control
   edits the table row; the `is_readable` doc comment is fixed. `just test-scripts` and `just quick` green.
+
+### 2026-11-15 — F195 — attempt 1
+- Done (step 1 ticked): fixtures `twokeys.p12`, `twokeys-nomac.p12` (generator `crates/custodiod/examples/gen_twokeys.rs`, called by `gen.sh`;
+  `custodio-it/tests/fixtures` is the same directory), `docs/findings/F195.md` has all cells and the rule. `parse_p12` returns `Parse(String)`:
+  classify on it as `MAC tag mismatch` = (a), `PKCS#5 decryption failed` = (c), structural variants = (b).
+- Next session: steps 2-6 (service first).

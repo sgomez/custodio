@@ -110,6 +110,9 @@ openssl pkcs12 -export -nomac -inkey "$tmp/f195-a.key" -in "$tmp/f195-a.crt" -pa
   -out good-nomac.p12 2>/dev/null
 f195 nokey -in "$tmp/f195-a.crt" -nokeys
 f195 nocert -inkey "$tmp/f195-a.key" -nocerts
+# Two keys in one file, with and without a MAC: no tool here writes them, so a small example of custodiod does.
+cargo run -q --locked --manifest-path ../../../../Cargo.toml -p custodiod --example gen_twokeys -- \
+  p256.p12 p256-other.p12 test-password .
 # Bytes that are not PKCS#12 at all.
 printf 'this is not a PKCS#12 file\n' >notp12.bin
 chmod 644 ./*.p12 ./*.bin
