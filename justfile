@@ -206,7 +206,7 @@ test-scripts:
     scripts/test-e2e-tpmslots.sh
     scripts/test-e2e-journalkind.sh
     scripts/test-e2e-upgradekinds.sh
-    scripts/test-e2e-m3-judge.sh
+    scripts/test-e2e-upgrade-purge-judge.sh
     scripts/test-check-budgets.sh
     scripts/test-set-version.sh
     scripts/test-e2e-upgrade.sh

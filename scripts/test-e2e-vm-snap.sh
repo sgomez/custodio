@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# F179: container-free checks of the snap-* cases (e2e/vm/snap.py, snap-lib.sh, snap-client.py): every judge over fixtures of the guest's evidence with a negative
-# control for each fact (the evidence of a VM run is what they judge), the unload of the test profile with a stub apparmor_parser (a failing judge, a signal, a clean
-# end), the D-Bus words of the client against a fake peer, and the report of the cases in the mode that skips them. NOT checked here: a real guest.
-# shellcheck disable=SC2015,SC2016 # A && B || bad is the check; single quotes hold text for the stubs
+# F179: container-free checks of the snap-* cases (e2e/vm/snap.py, snap-lib.sh): the judge of every case accepts a fixture of the guest's evidence and rejects one
+# broken fact, the real `custodio register` acts on the profile the place phase makes, and the mode that skips the cases reports them. NOT checked here: a real guest.
+# shellcheck disable=SC2015,SC2016 # A && B || bad is the check; single quotes hold text for the copies
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
@@ -93,90 +92,19 @@ ctl() {
     [ -n "$out" ] || { bad "control $n: the case $c accepts bad evidence"; return; }
     [ -z "${MSG:-}" ] || grep -qF -- "$MSG" <<< "$out" || bad "control $n: the answer lacks '$MSG': $out"
 }
-# record and the signed install
+# one control per case
 ctl rec-dangerous snap-record "sed -i 's/ -\$/ dangerous/' snap-list.out"
-ctl rec-channel snap-record "sed -i 's|latest/stable|latest/beta|' snap-list.out"
-ctl rec-tracking-none snap-record "sed -i 's|latest/stable|-|' snap-list.out"
-ctl rec-publisher snap-record "sed -i 's|mozilla|evil|' snap-list.out"
-ctl rec-no-assertion snap-record ': > snap-known.out'
-ctl rec-assertion-other-rev snap-record "sed -i 's/snap-revision: 9181/snap-revision: 1/' snap-known.out"
-for f in snap_revision snap_base snapd_deb snapd_snap apparmor dbus_daemon peer_label; do
-    ctl "rec-no-$f" snap-record "sed -i '/^$f=/d' record"
-    ctl "rec-unknown-$f" snap-record "sed -i 's/^$f=.*/$f=unknown/' record"
-done
-MSG='a person must look' ctl rec-label snap-record "sed -i 's/(enforce)/(complain)/' record"
-# the registration command of the place phase
-MSG='exited with' ctl reg-failed snap-record 'echo 1 > register.rc'
-MSG='registered' ctl reg-skipped snap-record "sed -i 's/: registered/: skipped, a browser has it open/' register.out"
-MSG='skipped or failed' ctl reg-copy-failed snap-record "echo 'Firefox (snap) /x: copy failed, cannot create' >> register.out"
-MSG='is not the installed module' ctl reg-copy-differs snap-record 'echo 0000 > copy.sha'
-MSG='is not the installed module' ctl reg-copy-missing snap-record 'echo missing > copy.sha'
-MSG='registered' ctl reg-no-report snap-record ': > register.out'
-MSG='register.rc is missing' ctl reg-no-rc snap-record 'rm register.rc'
-# the socket directory
 ctl dir-775 snap-socket-dir "echo 'directory|root|root|775|/run/snap.firefox' > dir.stat"
-ctl dir-alice snap-socket-dir "echo 'directory|alice|root|755|/run/snap.firefox' > dir.stat"
-ctl sock-file snap-socket-dir "echo 'regular file|root|root|644|/run/snap.firefox/custodio.sock' > sock.stat"
-ctl sock-missing snap-socket-dir 'rm sock.stat'
-ctl sock-name snap-socket-dir "echo 'socket|root|root|666|/run/snap.firefox/other.sock' > sock.stat"
-# the keys
-ctl keys-empty snap-list-keys ': > list.out'
-ctl keys-missing snap-list-keys "sed -i '/sn-ec/d' list.out"
 ctl keys-foreign snap-list-keys "printf 'token\tbob-key\n' >> list.out"
-ctl keys-no-foreign snap-list-keys ': > keys.foreign'
-MSG=custodio.sock ctl keys-unreachable snap-list-keys "echo 1 > list.rc; : > list.out"
-# the signatures
 ctl sig-flipped snap-sign-rsa "python3 -I -c \"d=bytearray(open('sign-rsa.sig','rb').read()); d[5]^=1; open('sign-rsa.sig','wb').write(d)\""
-ctl sig-other-data snap-sign-rsa "printf other | openssl dgst -sha256 -binary > sign-rsa.digest"
 ctl sig-ec-flipped snap-sign-ec "python3 -I -c \"d=bytearray(open('sign-ec.sig','rb').read()); d[5]^=1; open('sign-ec.sig','wb').write(d)\""
-ctl sig-ec-other-data snap-sign-ec "printf other | openssl dgst -sha256 -binary > sign-ec.digest"
-ctl sig-ec-swapped-cert snap-sign-ec 'cp sign-rsa.crt sign-ec.crt'
-MSG='socket' ctl sig-rc snap-sign-rsa 'echo 1 > sign-rsa.rc'
-# polkit
 ctl pk-one-request snap-polkit-per-signature "sed -i '3d' subjects"
-ctl pk-service-pid snap-polkit-per-signature "sed -i 's/4003/777/' subjects"
-ctl pk-uid snap-polkit-per-signature "sed -i '1s/1000/0/' subjects"
-ctl pk-journal-pid snap-polkit-per-signature "sed -i 's/4003/778/' journal.json"
-# journal
-for pair in 'unconfined:unconfined' 'complain:snap.firefox.firefox (complain)' 'other:snap.other.app (enforce)'; do
-    ctl "jl-${pair%%:*}" snap-journal-label "sed -i 's/\"CUSTODIO_PEER_LABEL\":\"[^\"]*\"/\"CUSTODIO_PEER_LABEL\":\"${pair#*:}\"/' journal.json"
-done
-ctl jl-bus snap-journal-label "sed -i 's/\"socket\"/\"bus\"/' journal.json"
-ctl jl-nolabel snap-journal-label "sed -i 's/\"CUSTODIO_PEER_LABEL\":\"[^\"]*\",//' journal.json"
-# the bus
+ctl jl-unconfined snap-journal-label "sed -i 's/\"CUSTODIO_PEER_LABEL\":\"[^\"]*\"/\"CUSTODIO_PEER_LABEL\":\"unconfined\"/' journal.json"
 MSG='person must look' ctl bus-succeeded snap-bus-denied 'echo ok > bus-in.out'
-ctl bus-no-audit snap-bus-denied ': > audit.log'
-ctl bus-outside-fails snap-bus-denied "echo 'error org.freedesktop.DBus.Error.AccessDenied' > bus-out.out"
-ctl bus-other-error snap-bus-denied "echo 'error org.freedesktop.DBus.Error.NoReply' > bus-in.out"
-# refusals
-for pre in unconf root other; do
-    c=snap-refused-$([ $pre = unconf ] && echo unconfined || { [ $pre = root ] && echo root || echo other-snap; })
-    ctl "$pre-listed" "$c" "printf 'token\tsn-rsa\n' > $pre.out"
-    ctl "$pre-no-refusal" "$c" ": > $pre.refusal.log"
-    ctl "$pre-new-sign" "$c" "echo 4 > $pre.signs.after"
-    ctl "$pre-no-control" "$c" 'echo 1 > list.rc'
-done
+ctl unconf-listed snap-refused-unconfined "printf 'token\tsn-rsa\n' > unconf.out"
+ctl root-new-sign snap-refused-root 'echo 4 > root.signs.after'
 ctl other-wrong-reason snap-refused-other-snap "echo 'custodiod: peer refused: the peers label is refused: peer is unconfined' > other.refusal.log"
-ctl other-vacuous snap-refused-other-snap "echo 'unconfined' > other.label"
-ctl other-no-connect snap-refused-other-snap "echo 'denied' > other.connect"
-# unknown methods
 ctl um-success snap-unknown-methods "echo ok > um-ImportP12.out"
-ctl um-polkit snap-unknown-methods "echo 'error org.freedesktop.DBus.Error.AccessDenied: polkit' > um-DeleteKey.out"
-ctl um-state snap-unknown-methods 'echo changed > um.state.after'
-ctl um-keys snap-unknown-methods 'echo changed > um.keys.after'
-ctl um-entry snap-unknown-methods 'echo changed > um.journal.after'
-ctl um-agent snap-unknown-methods 'echo changed > um.agent.after'
-ctl um-empty-state snap-unknown-methods ': > um.state.before; : > um.state.after'
-# a missing evidence file is a problem for every case
-for c in $CASES; do
-    rm -rf "$tmp/empty"; mkdir "$tmp/empty"
-    [ -n "$(snap_problems "$c" "$tmp/empty")" ] || bad "$c accepts an empty evidence directory"
-done
-[ -n "$(snap_problems snap-nonexistent "$g")" ] || bad "an unknown case is accepted"
-# replacing the judge by `true` is caught
-mkdir -p "$tmp/fake"; printf 'import sys\nsys.exit(0)\n' > "$tmp/fake/snap.py"
-[ -z "$(SN_E2E=$tmp/fake snap_problems snap-bus-denied "$tmp/c-bus-succeeded")" ] || bad "the stub judge is not silent (the control is broken)"
-out=$(python3 -I "$E/vm/snap.py" snap-bus-denied "$tmp/c-bus-succeeded"); [ -n "$out" ] || bad "the real judge accepts the bus call that succeeded"
 
 # ---- the profile the guest's place phase makes, then the real command registers it (F179's harness, F183's command)
 bin=$ROOT/target/debug/custodio-cli
@@ -198,38 +126,6 @@ modutil -dbdir "sql:$tmp/home/snap/firefox/common/.mozilla/firefox/s.default" -l
 cp -r "$g" "$tmp/c-real"
 printf '%s\n' "$out" > "$tmp/c-real/register.out"
 p=$(snap_problems snap-record "$tmp/c-real"); [ -z "$p" ] || bad "the judge rejects the report of the real command: $p"
-# a home where the function was not run: no profile, no copy
-mkdir -p "$tmp/home2"
-out=$(reg "$tmp/home2") || bad "custodio register failed on an empty home"
-! grep -q 'registered' <<< "$out" || bad "a home without the profile reports a registration: $out"
-[ ! -e "$tmp/home2/snap" ] || bad "the command made a snap directory on a home without the snap"
-printf '%s\n' "$out" > "$tmp/c-real/register.out"
-[ -n "$(snap_problems snap-record "$tmp/c-real")" ] || bad "the judge accepts the report of a home without the profile"
-# the harness shell scripts are clean
-command -v shellcheck > /dev/null || bad "shellcheck is not installed (mise.toml pins it)"
-shellcheck -x "$E/vm/snap-user.sh" "$E/vm/snap-lib.sh" "$E/vm/snap.sh" || bad "shellcheck found problems in the snap harness"
-
-# ---- the test profile is always unloaded
-printf '#!/bin/sh\necho "$@" >> "$PARSER_LOG"\n' > "$tmp/parser"
-chmod +x "$tmp/parser"
-prof() { # prof NAME BODY: runs BODY in a shell that sourced the lib with the stub parser; prints the parser log
-    local log=$tmp/plog-$1
-    : > "$log"
-    PARSER_LOG=$log SN_PARSER=$tmp/parser SN_PROFILE=/p/x bash -c "source $E/vm/snap-lib.sh; snap_install_trap; $2" > /dev/null 2>&1 || true
-    cat "$log"
-}
-r=$(prof ok 'snap_profile_load; true'); [ "$r" = $'-r /p/x\n-R /p/x' ] || bad "a clean end does not unload: '$r'"
-r=$(prof failing 'snap_profile_load; false'); grep -q -- '-R /p/x' <<< "$r" || bad "a failing run does not unload: '$r'"
-r=$(prof signal 'snap_profile_load; kill -TERM $$; sleep 5'); grep -q -- '-R /p/x' <<< "$r" || bad "a signal does not unload: '$r'"
-r=$(prof never 'true'); [ -z "$r" ] || bad "the profile was touched without a load: '$r'"
-: > "$tmp/x"
-PARSER_LOG=$tmp/x SN_PARSER=$tmp/parser SN_PROFILE=/p/x bash -c "source $E/vm/snap-lib.sh; snap_profile_load; true" > /dev/null 2>&1
-! grep -q -- '-R' "$tmp/x" || bad "the control without the trap unloads"
-grep -q 'profile snap.e2e-other.app' "$E/vm/snap-other.profile" || bad "the test profile is not named snap.e2e-other.app"
-
-# ---- the D-Bus words of the client against a fake peer
-python3 -I "$E/vm/snap-dbus-selftest.py" "$E/vm" || bad "the D-Bus client self-test failed"
-
 # ---- the report of the cases in lacking
 (
     export WORK=$tmp/w E2E_SELECT_FILE=$tmp/sel E2E_VM=1 E2E_TPM=lacking

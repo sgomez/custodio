@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# Sourced by e2e/vm/snap.sh (the snap-* cases, F179, acceptances 17 and 18 of SPEC.md) and by scripts/test-e2e-vm-snap.sh, which runs it on fixtures and with stubs.
+# Sourced by e2e/vm/snap.sh (the snap-* cases, F179, acceptances 17 and 18 of SPEC.md) and by scripts/test-e2e-vm-snap.sh, which runs the judges on fixtures.
 # snap_problems CASE DIR: the problems of a case (judged by snap.py from the evidence in DIR); a judge that cannot run is a problem, not an empty answer.
 # The test profile of the other-snap case: loaded with apparmor_parser, unloaded on every exit (success, a failing judge, a signal).
-# Overridable for the self-test: SN_E2E (where snap.py is), SN_PARSER (apparmor_parser), SN_PROFILE (the profile file).
+# Overridable: SN_E2E (where snap.py is), SN_PARSER (apparmor_parser), SN_PROFILE (the profile file).
 SN_E2E=${SN_E2E:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 SN_PARSER=${SN_PARSER:-apparmor_parser}
 SN_PROFILE=${SN_PROFILE:-$SN_E2E/snap-other.profile}
