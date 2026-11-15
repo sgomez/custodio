@@ -9,11 +9,11 @@
 
 use std::error::Error;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread::sleep;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tempfile::TempDir;
 
@@ -206,8 +206,12 @@ pub fn varlink_as_uid(
     Ok((out.status.success(), text))
 }
 
-/// Every file under `roots` (unreadable ones skipped) that holds `needle`.
-pub fn files_holding(roots: &[&Path], needles: &[&[u8]]) -> Vec<PathBuf> {
+/// Every file under `roots` (unreadable ones skipped) changed at or after `since` that holds a needle. A file written
+/// during the test has a later change time, which no tool can set back; older files are not read.
+pub fn files_holding(roots: &[&Path], needles: &[&[u8]], since: SystemTime) -> Vec<PathBuf> {
+    let since = since
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
     let mut found = Vec::new();
     let mut todo: Vec<PathBuf> = roots.iter().map(|p| p.to_path_buf()).collect();
     while let Some(path) = todo.pop() {
@@ -226,6 +230,7 @@ pub fn files_holding(roots: &[&Path], needles: &[&[u8]]) -> Vec<PathBuf> {
             }
         } else if meta.is_file()
             && meta.len() < 64 << 20
+            && meta.ctime() >= since
             && let Ok(bytes) = fs::read(&path)
             && needles
                 .iter()
