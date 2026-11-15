@@ -13,7 +13,6 @@ in one bash per block, and the lines after a command are its standard output, co
   DOCS_PASSWORD  typed at a password prompt on /dev/tty (`custodio import` reads it there, not from stdin)
   DOCS_ANSWER    typed at the confirmation prompt of `custodio delete`
   DOCS_HOME_SHOWN  the home directory the document shows; the real $HOME in the output is rewritten to it
-  DOCS_IGNORE_RE   output lines matching it are dropped from the output and from the document before comparing
   DOCS_CHECK     a program run after each block as `$DOCS_CHECK 'FIRST COMMAND OF THE BLOCK'`; non-zero fails
 Only standard output is compared: standard error (the full-disk warning, which depends on the host) is not.
 The environment of the block (HOME, PATH, the bus address ...) is the caller's. The commands run in BASEDIR and run with a pseudo-terminal as the controlling terminal: standard output stays a pipe.
@@ -207,7 +206,6 @@ def run_doc(doc, cwd):
     `$DOCS_CHECK 'FIRST COMMAND'`, which must exit 0 (the effect of the commands: the caller knows where to look)."""
     bad, ran = [], 0
     env = dict(os.environ)
-    ignore = re.compile(os.environ["DOCS_IGNORE_RE"]) if os.environ.get("DOCS_IGNORE_RE") else None
     for info, body, line in blocks(read(doc)):
         words = info.split()
         if not words or words[0] != "console":
@@ -235,9 +233,6 @@ def run_doc(doc, cwd):
             if actual and actual[-1] == "":
                 actual.pop()
             want = list(expected)
-            if ignore:
-                actual = [x for x in actual if not ignore.search(x)]
-                want = [x for x in want if not ignore.search(x)]
             while want and want[-1] == "":
                 want.pop()
             last = i == len(cmds) - 1

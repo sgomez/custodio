@@ -8,7 +8,6 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use crate::browser_files::{FileError, LockState, read_bounded};
 use crate::list::escape;
@@ -16,7 +15,8 @@ pub use crate::register_cli::{
     Refusal, RegisterArgs, RegisterError, default_journal_socket, parse_register_args,
     refresh_only_command, refuse_root_and_sudo, register_command,
 };
-use crate::register_discover::{Environment, Profile, Skipped, discover};
+use crate::register_discover::{Environment, Profile, discover};
+use crate::register_modutil::{instead_of_registering, modutil};
 use crate::register_snap::{copy_path, snap_lines};
 
 /// Where every package installs the module.
@@ -265,28 +265,6 @@ fn program_exists(program: &OsStr) -> bool {
         .is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(p).is_file()))
 }
 
-/// Run `modutil -dbdir sql:DIR ARGS` with stdin from `/dev/null`.
-fn modutil(program: &OsStr, dir: &Path, args: &[&OsStr]) -> Result<(), String> {
-    let mut db = OsString::from("sql:");
-    db.push(dir);
-    let out = Command::new(program)
-        .arg("-dbdir")
-        .arg(db)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("cannot run modutil: {e}"))?;
-    if out.status.success() {
-        return Ok(());
-    }
-    let text = String::from_utf8_lossy(&out.stderr);
-    let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    let shown: String = escape(first.trim()).chars().take(300).collect();
-    Err(format!("modutil failed ({}): {shown}", out.status))
-}
-
 /// One edit of the module list.
 enum Step<'a> {
     Delete(&'a str),
@@ -295,28 +273,21 @@ enum Step<'a> {
 
 fn run_steps(program: &OsStr, dir: &Path, steps: &[Step<'_>]) -> Result<(), String> {
     for step in steps {
-        match step {
-            Step::Delete(name) => modutil(
-                program,
-                dir,
-                &[
-                    OsStr::new("-delete"),
-                    OsStr::new(name),
-                    OsStr::new("-force"),
-                ],
-            )?,
-            Step::Add(name, lib) => modutil(
-                program,
-                dir,
-                &[
-                    OsStr::new("-add"),
-                    OsStr::new(name),
-                    OsStr::new("-libfile"),
-                    lib.as_os_str(),
-                    OsStr::new("-force"),
-                ],
-            )?,
-        }
+        let args = match step {
+            Step::Delete(name) => vec![
+                OsStr::new("-delete"),
+                OsStr::new(name),
+                OsStr::new("-force"),
+            ],
+            Step::Add(name, lib) => vec![
+                OsStr::new("-add"),
+                OsStr::new(name),
+                OsStr::new("-libfile"),
+                lib.as_os_str(),
+                OsStr::new("-force"),
+            ],
+        };
+        modutil(program, dir, &args)?;
     }
     Ok(())
 }
@@ -425,7 +396,13 @@ pub fn remove_profile(program: &OsStr, profile: &Path) -> Outcome {
     }
 }
 
-pub(crate) fn handle(profile: &Profile, options: &Options, module: &Path) -> Outcome {
+/// `instead` replaces registration (not removal) of a profile no browser holds.
+pub(crate) fn handle(
+    profile: &Profile,
+    options: &Options,
+    module: &Path,
+    instead: Option<&Outcome>,
+) -> Outcome {
     if let Some(scratch) = scratch_of(&profile.path) {
         remove_scratch(&scratch);
     }
@@ -435,8 +412,8 @@ pub(crate) fn handle(profile: &Profile, options: &Options, module: &Path) -> Out
     if options.remove {
         return remove_profile(&options.modutil, &profile.path);
     }
-    if let Some(Skipped::P11Kit) = &profile.skipped {
-        return Outcome::Skipped(Skipped::P11Kit.to_string());
+    if let Some(outcome) = instead {
+        return outcome.clone();
     }
     register_profile(&options.modutil, &profile.path, module)
 }
@@ -459,12 +436,17 @@ pub fn run(env: &Environment, options: &Options) -> Result<Report, RunError> {
         return Err(RunError::NoModutil(options.modutil.clone()));
     }
     let (snap, native): (Vec<&Profile>, Vec<&Profile>) = profiles.iter().partition(|p| p.snap);
+    let instead = if options.remove || native.is_empty() {
+        None
+    } else {
+        instead_of_registering(options)
+    };
     let mut lines: Vec<Line> = native
         .into_iter()
         .map(|p| Line {
             browser: p.browser,
             path: p.path.clone(),
-            outcome: handle(p, options, &options.module),
+            outcome: handle(p, options, &options.module, instead.as_ref()),
         })
         .collect();
     if !snap.is_empty() || fs::symlink_metadata(&copy).is_ok() {

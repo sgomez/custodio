@@ -79,9 +79,6 @@ def fallback(doc, stublog, outdir):
             continue
         shown = tokens(mine.replace(PLACEHOLDER, "P"))[1:]
         real = ["sql:P" if t.startswith("sql:") else t for t in tokens(lines[0]) if t not in LEFT_OUT]
-        if word == "-add" and "-libfile /usr/lib/" not in lines[0]:
-            real = [t for t in real if not t.startswith("/")]  # the host skipped the native profile: the copy's path is not the page's
-            shown = [t for t in shown if not t.startswith("/")]
         if shown != real:
             bad.append(f"the page's `modutil {word}` has the options {shown}, `custodio register` passes {real} (left out: {', '.join(LEFT_OUT)})")
     profile = os.environ.get("PROFILE", "")

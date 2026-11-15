@@ -45,17 +45,37 @@ fn refuses_root_and_sudo() {
     }
     assert_eq!(f.snapshot(), before);
     assert!(!marker.exists(), "modutil never ran");
-    // control: the same invocation as the user proceeds, and the option reaches modutil as -libfile once per profile
+    // control: the same invocation as the user proceeds; the probe's listing has no p11-kit-proxy, so the option
+    // reaches modutil as -libfile once per profile
     let ok = f.binary(&args, &stub, &[("MARKER", mk)]);
     assert_eq!(ok.status.code(), Some(0), "{ok:?}");
     let recorded = fs::read_to_string(&marker).unwrap();
-    assert_eq!(recorded.lines().count(), 2);
+    let lines: Vec<&str> = recorded.lines().collect();
+    assert_eq!(lines.len(), 4, "{recorded}");
+    let probe = probe_dir(&f, lines[0]);
+    assert_eq!(lines[1], format!("-dbdir sql:{} -list", probe.display()));
     assert!(
-        recorded
-            .lines()
+        lines[2..]
+            .iter()
             .all(|l| l.contains(&format!("-libfile {ms} "))),
         "{recorded}"
     );
+}
+
+/// The scratch database of a recorded `-create` call, checked to be outside the home and gone.
+fn probe_dir(f: &Fixture, recorded: &str) -> std::path::PathBuf {
+    let dir = recorded
+        .strip_prefix("-dbdir sql:")
+        .and_then(|l| l.strip_suffix(" -create -force"))
+        .unwrap_or_else(|| panic!("not the probe's -create: {recorded}"));
+    let dir = std::path::PathBuf::from(dir);
+    assert!(
+        dir.is_absolute() && !dir.starts_with(f.home()),
+        "{}",
+        dir.display()
+    );
+    assert!(!dir.exists(), "{} is left behind", dir.display());
+    dir
 }
 
 #[test]
@@ -233,20 +253,58 @@ fn a_held_profile_is_skipped_named_and_fails_the_exit() {
 
 #[test]
 fn skip_reasons_decide_the_exit_code() {
-    // p11-kit: every native profile skipped with the reason, exit zero, nothing changed
+    // p11-kit: modutil lists the proxy in a new database, so every native profile is skipped with the reason and left
+    // as it was, the snap is still handled, and the exit is zero
     let f = Fixture::new();
     let m = f.module("a");
-    f.root(".mozilla/firefox", &["a.default"]);
-    fs::write(
-        f.dir.path().join("nss.config"),
-        "name=x\nlibrary=p11-kit-proxy.so\n",
-    )
-    .unwrap();
-    let before = f.snapshot();
-    let (result, out) = command_result(&f, &m);
-    assert!(result.is_ok());
-    assert!(out.contains("p11-kit"), "{out}");
-    assert_eq!(f.snapshot(), before);
+    let native = f.root(".mozilla/firefox", &["a.default"]).join("a.default");
+    let snap = f.root("snap/firefox/common/.mozilla/firefox", &["s.default"]);
+    let stub = f.stub(
+        "proxy",
+        &format!("{RECORD}\n[ \"$3\" = -list ] && echo '  2. p11-kit-proxy'\nexit 0"),
+    );
+    let marker = f.marker();
+    let outside_snap = |f: &Fixture| {
+        let snap = f.home().join("snap");
+        f.snapshot()
+            .into_iter()
+            .filter(|(k, _)| !k.starts_with(&snap))
+            .collect::<Vec<_>>()
+    };
+    let before = outside_snap(&f);
+    let out = f.binary(
+        &["register", "--module", m.to_str().unwrap()],
+        &stub,
+        &[("MARKER", marker.to_str().unwrap())],
+    );
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&format!(
+            "Firefox {}: skipped, the system NSS loads the p11-kit proxy (modutil lists p11-kit-proxy in a new \
+             database), which already shows Custodio",
+            native.display()
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("{}: registered", snap.join("s.default").display())),
+        "{stdout}"
+    );
+    assert_eq!(outside_snap(&f), before);
+    let recorded = fs::read_to_string(&marker).unwrap();
+    probe_dir(&f, recorded.lines().next().unwrap());
+    assert!(!recorded.contains(native.to_str().unwrap()), "{recorded}");
+    // NSS is not asked for a removal, nor on a home with only the snap
+    let asked = |f: &Fixture, args: &[&str]| {
+        let _ = fs::remove_file(&marker);
+        f.binary(args, &stub, &[("MARKER", marker.to_str().unwrap())]);
+        let recorded = fs::read_to_string(&marker).unwrap_or_default();
+        recorded.contains(" -create") || recorded.contains(" -list")
+    };
+    assert!(!asked(&f, &["register", "--remove"]));
+    fs::remove_dir_all(native.parent().unwrap()).unwrap();
+    assert!(!asked(&f, &["register", "--module", m.to_str().unwrap()]));
     // an unwritable profile directory
     let f = Fixture::new();
     let m = f.module("a");
@@ -269,31 +327,42 @@ fn a_failing_modutil_leaves_the_profile_untouched() {
     let f = Fixture::new();
     let m = f.module("a");
     let root = f.root(".mozilla/firefox", &["a.default"]);
-    let stub = f.stub(
-        "fail",
-        r#"d=${2#sql:}; echo junk >> "$d/pkcs11.txt"; echo "boom: no" >&2; exit 3"#,
+    let marker = f.marker();
+    let fail = r#"d=${2#sql:}; echo junk >> "$d/pkcs11.txt"; echo "boom: no" >&2; exit 3"#;
+    let record = format!(r#"echo "$@" >> '{}'"#, marker.display());
+    // the probe fails, then only the registration call fails
+    let probe_fails = f.stub("fail", &format!("{record}\n{fail}"));
+    let add_fails = f.stub(
+        "fail-add",
+        &format!("{record}\ncase \"$3\" in -create|-list) exit 0;; esac\n{fail}"),
     );
-    let before = f.snapshot();
-    let report = custodio_cli::register_native::run(
-        &f.env(),
-        &custodio_cli::register_native::Options {
-            module: m,
-            modutil: stub.join("modutil").into(),
-            remove: false,
-        },
-    )
-    .unwrap();
-    let Outcome::Failed(why) = &report.lines[0].outcome else {
-        panic!("{report:?}")
-    };
-    assert!(why.contains("boom"), "{why}");
-    assert!(report.has_fixable_skip());
-    assert_eq!(
-        f.snapshot(),
-        before,
-        "the three files are as they were and the scratch directory is gone"
-    );
-    assert!(root.join("a.default").exists());
+    for (stub, calls) in [(probe_fails, 1), (add_fails, 3)] {
+        let before = f.snapshot();
+        let report = custodio_cli::register_native::run(
+            &f.env(),
+            &custodio_cli::register_native::Options {
+                module: m.clone(),
+                modutil: stub.join("modutil").into(),
+                remove: false,
+            },
+        )
+        .unwrap();
+        let Outcome::Failed(why) = &report.lines[0].outcome else {
+            panic!("{report:?}")
+        };
+        assert!(why.contains("boom"), "{why}");
+        assert!(report.has_fixable_skip());
+        assert_eq!(
+            f.snapshot(),
+            before,
+            "the three files are as they were and the scratch directory is gone"
+        );
+        assert!(root.join("a.default").exists());
+        let recorded = fs::read_to_string(&marker).unwrap();
+        assert_eq!(recorded.lines().count(), calls, "{recorded}");
+        probe_dir(&f, recorded.lines().next().unwrap());
+        fs::remove_file(&marker).unwrap();
+    }
 }
 
 #[test]
@@ -310,7 +379,7 @@ fn a_killed_run_leaves_the_old_state_and_the_next_run_cleans_up() {
     }
     let stub = f.stub(
         "block",
-        r#"d=${2#sql:}; echo junk >> "$d/pkcs11.txt"; echo $$ > "$PIDF"; echo up > "$UP"; read x < "$GO"; exit 1"#,
+        r#"case "$3" in -create|-list) exit 0;; esac; d=${2#sql:}; echo junk >> "$d/pkcs11.txt"; echo $$ > "$PIDF"; echo up > "$UP"; read x < "$GO"; exit 1"#,
     );
     let before = (
         fs::read(p.join("pkcs11.txt")).unwrap(),

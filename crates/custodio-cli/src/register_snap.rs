@@ -256,7 +256,7 @@ pub(crate) fn snap_lines(snap: &[&Profile], copy: &Path, options: &Options) -> V
     let mut lines = Vec::new();
     if options.remove {
         for p in snap {
-            lines.push(line(&p.path, handle(p, options, copy)));
+            lines.push(line(&p.path, handle(p, options, copy, None)));
         }
         if lines.iter().any(|l| l.outcome.is_fixable_skip()) {
             if fs::symlink_metadata(copy).is_ok() {
@@ -302,7 +302,7 @@ pub(crate) fn snap_lines(snap: &[&Profile], copy: &Path, options: &Options) -> V
                 "the copy of the module is not there, so there is nothing to register".to_owned(),
             )
         } else {
-            handle(p, options, copy)
+            handle(p, options, copy, None)
         };
         lines.push(line(&p.path, outcome));
     }

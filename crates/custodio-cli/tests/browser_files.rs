@@ -457,7 +457,6 @@ fn parsing_and_discovery_change_nothing() {
     let env = Environment {
         home: home.path().to_owned(),
         xdg_config_home: None,
-        nss_config: home.path().join("nss.config"),
         local_address: LOCAL,
     };
     let found = discover(&env).unwrap();
