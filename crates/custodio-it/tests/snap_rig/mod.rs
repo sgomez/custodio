@@ -151,7 +151,6 @@ impl Rig {
                     polkit::FakePolkit {
                         script: Arc::clone(&script),
                         calls: Arc::clone(&calls),
-                        rule: None,
                     },
                 )
                 .await?;

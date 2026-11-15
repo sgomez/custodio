@@ -168,7 +168,7 @@ fn other_methods_are_unknown() -> TestResult {
     let before = rig.store_snapshot()?;
     let connection = rig.client()?;
     let p12 = (vec![1_u8, 2, 3], "id", "password");
-    let cases: [(&str, &str, &str, String); 6] = [
+    let cases: [(&str, &str, &str, String); 7] = [
         (
             OBJECT_PATH,
             BUS_NAME,
@@ -201,6 +201,12 @@ fn other_methods_are_unknown() -> TestResult {
         ),
         (
             OBJECT_PATH,
+            BUS_NAME,
+            "StateStorage",
+            error_of(&connection, OBJECT_PATH, BUS_NAME, "StateStorage", &())?,
+        ),
+        (
+            OBJECT_PATH,
             "com.rfirma.Custodio2",
             "ListKeys",
             error_of(
@@ -219,6 +225,7 @@ fn other_methods_are_unknown() -> TestResult {
         ),
     ];
     let expected = [
+        UNKNOWN_METHOD,
         UNKNOWN_METHOD,
         UNKNOWN_METHOD,
         UNKNOWN_METHOD,

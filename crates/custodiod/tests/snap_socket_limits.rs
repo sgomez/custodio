@@ -482,7 +482,6 @@ impl BusSide {
                     FakePolkit {
                         script,
                         calls: Arc::default(),
-                        rule: None,
                     },
                 )
                 .await?;

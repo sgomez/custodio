@@ -68,29 +68,6 @@ fn refused(dir: &Path, expected: &str) -> TestResult {
 }
 
 #[test]
-fn a_directory_of_root_that_only_root_writes_is_served() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let (listener, path) = socket(tmp.path())?;
-    let mut journal = Vec::new();
-    assert!(matches!(
-        serve(
-            NAME,
-            listener,
-            Path::new("/usr"),
-            &mut journal,
-            &service(tmp.path())?
-        ),
-        Outcome::Serving
-    ));
-    assert_eq!(journal, none());
-    let mut client = UnixStream::connect(&path)?;
-    let mut buf = Vec::new();
-    client.read_to_end(&mut buf)?;
-    assert_eq!(buf, none());
-    Ok(())
-}
-
-#[test]
 fn a_served_connection_gets_no_reply_and_the_service_goes_on() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let (listener, path) = socket(tmp.path())?;
@@ -105,6 +82,7 @@ fn a_served_connection_gets_no_reply_and_the_service_goes_on() -> TestResult {
         ),
         Outcome::Serving
     ));
+    assert_eq!(journal, none());
     let mut first = UnixStream::connect(&path)?;
     // Bytes sent first are neither read nor answered. The peer closed without reading them, so the stream ends with
     // either the end of file or a reset, and in no case with data.

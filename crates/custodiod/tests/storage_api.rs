@@ -1,12 +1,11 @@
 //! The `StateStorage` addition to the bus API and the start-up journal field (F180): the service computes the result
-//! once at start, journals it, and the bus returns that value; it asks no polkit, changes nothing, and the snap socket
-//! does not serve it.
+//! once at start, journals it, and the bus returns that value; it asks no polkit and changes nothing.
+//! `snap_socket_surface` shows that the snap socket does not serve it.
 
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::io::{BufRead, BufReader};
-use std::os::fd::BorrowedFd;
-use std::os::unix::net::{UnixDatagram, UnixListener, UnixStream};
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -17,15 +16,12 @@ use custodiod::audit::{AuditSink, JournalSink, MemorySink};
 use custodiod::creds::memory::MemoryCreds;
 use custodiod::dbus::{BUS_NAME, OBJECT_PATH};
 use custodiod::import::import_p12;
-use custodiod::polkit::{AuthError, BoxFuture, ProcessAuthorizer};
-use custodiod::snap_socket::peer::{Peer, Source};
-use custodiod::snap_socket::{Outcome, Service, Signing, serve};
 use custodiod::startup::start;
 use custodiod::storage::StateStorage;
 use custodiod::store::KeyStore;
 use custodiod::tpm::open::NoTpm;
 use secrecy::SecretString;
-use zbus::connection::{AuthMechanism, Builder};
+use zbus::connection::Builder;
 use zbus::{Connection, OwnedVariant, block_on, interface};
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -292,74 +288,5 @@ fn start_survives_an_unwritable_journal() -> TestResult {
     // The service runs and answers; only the entry is missing.
     let connection = result.map_err(|e| e.to_string())?;
     assert!(connection.unique_name().is_some());
-    Ok(())
-}
-
-fn own_pidfd() -> Option<std::os::fd::OwnedFd> {
-    let pid = rustix::process::Pid::from_raw(i32::try_from(std::process::id()).ok()?)?;
-    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
-}
-
-struct Approving;
-
-impl ProcessAuthorizer for Approving {
-    fn authorize_process<'a>(
-        &'a self,
-        _pidfd: BorrowedFd<'a>,
-        _uid: u32,
-        _action: &'a str,
-    ) -> BoxFuture<'a, Result<(), AuthError>> {
-        Box::pin(async { Ok(()) })
-    }
-}
-
-#[test]
-fn socket_does_not_serve_storage() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let store = Arc::new(KeyStore::open(tmp.path().join("keys"))?);
-    let sink = Arc::new(MemorySink::default());
-    let signing = Signing {
-        authorizer: Arc::new(Approving),
-        sink: Arc::clone(&sink) as Arc<dyn AuditSink>,
-        key_creds: None,
-        tpm: Arc::new(NoTpm),
-    };
-    let service = Service::new(store, Arc::new(|_| {}))
-        .with_signing(signing)
-        .with_source(Source::Injected(Arc::new(|_| Peer {
-            uid: Some(4001),
-            pid: Some(std::process::id()),
-            pidfd: own_pidfd(),
-            label: Some(b"snap.firefox.firefox (enforce)".to_vec()),
-        })));
-    let path = tmp.path().join("custodio.sock");
-    let outcome = serve(
-        "snap-firefox",
-        UnixListener::bind(&path)?,
-        Path::new("/usr"),
-        &mut Vec::new(),
-        &service,
-    );
-    assert!(matches!(outcome, Outcome::Serving));
-    let stream = UnixStream::connect(&path)?;
-    let client: Connection = block_on(
-        Builder::unix_stream(stream)
-            .p2p()
-            .auth_mechanism(AuthMechanism::Anonymous)
-            .build(),
-    )?;
-    let reply = block_on(client.call_method(
-        None::<&str>,
-        OBJECT_PATH,
-        Some(INTERFACE),
-        "StateStorage",
-        &(),
-    ));
-    let text = reply.err().ok_or("the socket served it")?.to_string();
-    assert!(
-        text.starts_with("org.freedesktop.DBus.Error.UnknownMethod"),
-        "{text}"
-    );
-    assert_eq!(sink.entries(), []);
     Ok(())
 }
