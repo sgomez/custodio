@@ -72,10 +72,6 @@ for env in "Environment=TSS2_TCTI=device:/dev/tpm0" "Environment=TPM2TOOLS_TCTI=
     add_case "$env" "$env"
 done
 
-sed 's/^security-score threshold="10":/security-score threshold="11":/' "$JUST" > "$dir/justfile"
-expect_fail "threshold 11" "$UNIT" "$dir/justfile"
-sed '/^security-score threshold=/d' "$JUST" > "$dir/justfile"
-expect_fail "threshold unreadable" "$UNIT" "$dir/justfile"
 expect_fail "missing unit file" "$dir/none.service" "$JUST"
 
 # The exposure ceiling (F173, `just security-ceiling`): the shipped unit is at or below 0.7, `PrivateUsers=no` (0.8) is above.

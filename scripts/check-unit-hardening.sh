@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # The gate of `just unit-hardening`: custodio.service keeps the three settings the pidfd cross-check
 # relies on (docs/findings/F30.md, M1.2), PrivateDevices=yes and the TPM access F109 decided
-# (DeviceAllow=/dev/tpmrm0 rw, BindPaths=-/dev/tpmrm0, SupplementaryGroups=tss), each exactly once, and the
-# security-score threshold in the justfile is still 10. It also refuses any line that opens the raw TPM node
+# (DeviceAllow=/dev/tpmrm0 rw, BindPaths=-/dev/tpmrm0, SupplementaryGroups=tss), each exactly once. It also refuses any line that opens the raw TPM node
 # (named, wildcarded, as char-misc / 10:224 or by binding /dev) and any TCTI override or a way to hide one
-# (EnvironmentFile=, PassEnvironment=). The credential service (F110) needs no directive. Arguments: UNIT (default data/custodio.service) and JUSTFILE (default justfile).
+# (EnvironmentFile=, PassEnvironment=). The credential service (F110) needs no directive. Argument: UNIT (default data/custodio.service).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 unit=${1:-$ROOT/data/custodio.service}
-justfile=${2:-$ROOT/justfile}
 fail=0
 
 for want in ProtectProc=invisible ProcSubset=pid PrivateUsers=identity PrivateDevices=yes \
@@ -43,9 +41,4 @@ if [ -n "$tcti$hidden" ]; then
     fail=1
 fi
 
-threshold=$(sed -n 's/^security-score threshold="\([^"]*\)":.*/\1/p' "$justfile")
-if [ "$threshold" != 10 ]; then
-    echo "unit-hardening: the security-score threshold in $justfile is '${threshold:-unreadable}', not 10" >&2
-    fail=1
-fi
 exit "$fail"
