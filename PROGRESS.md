@@ -125,3 +125,6 @@ with an empty context.
   The non-interactive refusal (`NoTerminal`) is the same code path as the declined delete; `import_messages` covers both (answer `None` and `n`).
 - Not done: step 6 evidence runs: `just quick`, `just fuzz-build && just fuzz-smoke`, `just mutants-diff F195`; `import_errors`/all custodio-it tests pass.
 - Known gap: a file with a MAC whose MAC verifies but whose bags then fail to decrypt would be `WrongPasswordOrBad` (Pkcs5Error), not (b); only reachable with a corrupt file.
+- Step 6 done: `just quick` green (1251 tests), `just api-contract`, `scripts/test-docs-api.sh`, `import_split` (2 tests, 5 s), `import_messages` (5, 0.13 s),
+  `import_errors`, all `custodio-it` tests, `just fuzz-build && just fuzz-smoke` (p12_parse ran), `just mutants-diff F195`: 18 mutants, 12 caught, 6 unviable, 0 missed (2 min).
+  Not run here (checkpoint): `just e2e`, `just test-scripts` (e2e consumers `jo-user.sh`, `appid-enter.py`, `ops-lib.sh`, `jo.py`, README examples).
