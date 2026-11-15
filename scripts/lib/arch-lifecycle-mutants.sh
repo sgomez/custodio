@@ -48,13 +48,21 @@ mutant() { # NAME SCRIPT SED-EXPRESSION
     cp -r "$ROOT/packaging/arch" "$dir"
     sed -i "$3" "$dir/$2"
     cmp -s "$dir/$2" "$ROOT/packaging/arch/$2" && { bad "mutant $1 changes nothing"; return; }
+    # In a subshell that stops at the first failed check: the rest of the cases say nothing more about this mutant.
+    local rc=0
+    set +e
     SRC=$dir
-    mutant_mode=1
-    mutant_hit=0
-    cases
-    mutant_mode=0
+    (set -e; mutant_mode=2; cases)
+    rc=$?
     SRC=$ROOT/packaging/arch
-    [ "$mutant_hit" = 1 ] || bad "mutant '$1' survived"
+    set -e
+    chmod -R u+w "$BF_DIR"/root.* 2> /dev/null || true
+    rm -rf "$BF_DIR"/root.*
+    case $rc in
+    97) ;;
+    0) bad "mutant '$1' survived" ;;
+    *) bad "mutant '$1': the cases stopped with status $rc" ;;
+    esac
 }
 # The pre-install scripts (both).
 for ms in pre_install pre_upgrade; do
@@ -86,6 +94,16 @@ for ms in post_install post_upgrade; do
     mutant "$ms-delete-state" "$ms" 's|^:$|rm -rf /var/lib/custodio/|'
     mutant "$ms-stdout" "$ms" 's|^:$|echo hello|'
 done
+mutant post_install-no-socket-enable post_install 's|^systemctl enable custodio-firefox.socket.*|:|'
+mutant post_install-no-socket-start post_install 's|^systemctl start custodio-firefox.socket.*|:|'
+mutant post_upgrade-no-socket-enable post_upgrade 's|^systemctl enable custodio-firefox.socket.*|:|'
+mutant post_upgrade-no-service-stop post_upgrade 's|^    systemctl stop custodio.service.*|    :|'
+mutant post_upgrade-no-service-start post_upgrade 's|^    systemctl start custodio.service.*|    :|'
+mutant post_upgrade-no-socket-start post_upgrade 's|^    systemctl start custodio-firefox.socket.*|    :|'
+mutant post_upgrade-always-stop post_upgrade 's|^if systemctl is-active --quiet custodio-firefox.socket; then :; elif|if false; then :; elif|'
+mutant pre_remove-no-socket-stop pre_remove 's|^systemctl stop custodio-firefox.socket.*|:|'
+mutant pre_remove-no-socket-disable pre_remove 's|^systemctl disable custodio-firefox.socket.*|:|'
+mutant post_remove-no-socket-stop post_remove 's|^    systemctl stop custodio-firefox.socket.*|    :|'
 mutant pre_remove-no-stop pre_remove 's|^systemctl stop custodio.service.*|:|'
 mutant pre_remove-no-tolerance pre_remove 's|^systemctl stop custodio.service.*|systemctl stop custodio.service|'
 mutant pre_remove-disable pre_remove 's|^systemctl stop custodio.service.*|&\nsystemctl disable custodio.service|'

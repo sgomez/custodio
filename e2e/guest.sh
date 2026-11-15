@@ -170,9 +170,7 @@ if phase_runs journal; then
 fi
 phase_done journal
 
-# The ownership cases (F91): two ordinary accounts, each with a session and an agent of its own. After the journal step, whose counts they would
-# change (they sign, import and delete), and before the upgrade, whose cases and the lifecycle's look at the state of the keys or at windows of
-# their own: the step deletes every key it imports. Needs nothing from the steps above but the setup.
+# The ownership cases (F91): two ordinary accounts, each with a session and an agent of its own. After the journal step (whose counts they would change) and before the upgrade; every key it imports is deleted.
 if phase_runs owner; then
     WORK=$work MODULE=$MODULE START=$start bash /e2e/owner-run.sh || fail "owner-run.sh failed"
 fi
@@ -227,12 +225,18 @@ if phase_runs tpm-kind; then
 fi
 phase_done tpm-kind
 
-# The silent-fallback cases (F161, VM only): the libtss2-rc library is hidden from systemd (the package stays installed), an import that needs encrypted-tpm must fail without leaving anything,
-# and with the library back the same import works (e2e/vm/silent.sh; skipped in the full VM mode). After tpm-kind and before sign; the library is always put back and the key deleted.
+# The silent-fallback cases (F161, VM only, e2e/vm/silent.sh; skipped in the full VM mode): with libtss2-rc hidden an import that needs encrypted-tpm must fail and leave nothing;
+# with it back the import works. After tpm-kind and before sign; the library is always put back and the key deleted.
 if phase_runs vm-silent; then
     WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/silent.sh" || fail "silent.sh failed"
 fi
 phase_done vm-silent
+
+# The snap cases (F179, VM full mode only): the real Firefox snap, e2e/vm/snap.sh. After vm-silent, before sign.
+if phase_runs snap; then
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/snap.sh" || fail "snap.sh failed"
+fi
+phase_done snap
 
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.

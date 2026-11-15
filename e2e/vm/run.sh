@@ -4,6 +4,8 @@
 #   run.sh --check MODE [NAME...]   only the checks that come before anything starts (the recipes run it before the packages are built)
 # The mode of the VM and the expectations of the case scripts (E2E_TPM, which the guest command carries): full -> swtpm (a complete TPM),
 # lacking -> lacking (a TPM without RSA decrypt). The VM has no `none` mode.
+# F179: with a snap-* case selected in mode full the Firefox snap is installed from stable (e2e/vm/snap-lib.sh snap_start_install) right after the tools, as a transient unit that overlaps with the shared setup;
+# the group waits for its end (e2e/vm/snap.sh). The record gains snap_revision, snap_base, snapd_deb, snapd_snap, apparmor, dbus_daemon and peer_label (`unknown` fails the run).
 # Steps (each timed in target/e2e/vm.MODE.phases.tsv): image, boot, copy, install, tools, setup, one per case group, teardown (vm.sh stop).
 #   1 image.sh  2 vm.sh start MODE with the payload (N, N+1, the e2e tree and the files the container mounts, one tar on a read-only drive)  3 extract it in the guest  4 apt-get update and install N with --no-install-recommends,
 #   then read `systemd-analyze has-tpm2` (before any test tool: tpm2-tools brings the libtss2 libraries it needs, F151)  5 test tools, in the guest only, also without recommends
@@ -22,7 +24,7 @@ OUT=${E2E_OUT:-target/e2e}
 PKG=${E2E_PACKAGES:-target/packages}
 PKG_NEXT=${E2E_PACKAGES_NEXT:-target/packages-next}
 LIST=e2e/vm/cases.list
-TOOLS='tpm2-tools openssl opensc p11-kit pkcs11-provider libnss3-tools python3-gi'
+TOOLS='tpm2-tools openssl opensc p11-kit pkcs11-provider python3-gi'
 die() { echo "e2e-vm: $*" >&2; exit 1; }
 
 mode=${1:-}
@@ -69,8 +71,8 @@ for f in "$deb" "$deb_next"; do
     grep -qw -- libtss2-rc0t64 <<< "$(dpkg-deb -f "$f" Depends)" || die "$f does not depend on libtss2-rc0t64: package N must already need it"
 done
 deps=$(dpkg-deb -f "$deb" Depends Recommends Pre-Depends) || die "cannot read the fields of $deb"
-# p11-kit and polkitd are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
-for t in tpm2-tools openssl opensc pkcs11-provider libnss3-tools python3-gi; do
+# p11-kit, polkitd and libnss3-tools (modutil, F184) are runtime dependencies of the product (nfpm.yaml); the guard names only what is a pure test tool
+for t in tpm2-tools openssl opensc pkcs11-provider python3-gi; do
     ! grep -qw -- "$t" <<< "$deps" || die "the package depends on or recommends the test tool $t: the tools are installed in the guest only"
 done
 version=$(dpkg-deb -f "$deb" Version) || version=unknown
@@ -82,6 +84,7 @@ tmp=$(mktemp -d)
 vmdir=
 declare -A F=([target]=vm [tpm]=$mode [image_serial]=unknown [kernel]=unknown [systemd]=unknown [package_version]=$version [swtpm_version]=unknown [has_tpm2]=unknown)
 steps=()
+SNAP_KEYS=(snap_revision snap_base snapd_deb snapd_snap apparmor dbus_daemon peer_label)
 status=1
 say() { echo "e2e-vm[$mode]: $*" | tee -a "$log" >&2; }
 
@@ -92,7 +95,7 @@ F[swtpm_version]=$(vm_swtpm_run --version 2> /dev/null | head -n 1 || true)
 write_record() {
     local k
     {
-        for k in target tpm image_serial kernel systemd package_version swtpm_version has_tpm2; do echo "$k=${F[$k]}"; done
+        for k in target tpm image_serial kernel systemd package_version swtpm_version has_tpm2 "${SNAP_KEYS[@]}"; do [ -n "${F[$k]+x}" ] && echo "$k=${F[$k]}"; done
         for k in "${steps[@]}"; do echo "step_${k%%=*}=${k#*=}"; done
     } > "$rec"
     {
@@ -176,6 +179,10 @@ gt 900 "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-reco
 # the test agent authenticates through PAM like a real one; as in the container image, the polkit-1 service accepts any password (the decision is the agent's)
 g "printf 'auth required pam_permit.so\\naccount required pam_permit.so\\n' | sudo tee /etc/pam.d/polkit-1 > /dev/null" >> "$log" 2>&1 || die "writing the test PAM service of polkit in the guest failed"
 step tools
+sel_snap=$(grep '^snap-' <<< "$selection" || true)
+if [ -n "$sel_snap" ] && [ "$mode" = full ]; then
+    g "sudo bash -c '. /e2e/vm/snap-lib.sh; snap_start_install'" >> "$log" 2>&1 || die "starting the install of the Firefox snap failed in the guest (AppArmor off or snapd.socket not active?)"
+fi
 
 # ---- the shared setup and the cases
 sel=$(printf '%s\n' "$selection" | tr '\n' ' ')
@@ -206,18 +213,25 @@ declare -A grp=()
 while read -r name secs; do
     case $name in
     install | service | import) setup=$((setup + secs)) ;;
-    sign | noplain | pcr | fallback | tpmclear | upgrade)
+    snap | sign | noplain | pcr | fallback | tpmclear | upgrade)
         case $name in
-        sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
+        snap) pat='^snap-' ;; sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
         tpmclear) pat='^tpm-clear-' ;; upgrade) pat='^upgrade-kinds-' ;;
         esac
         ! grep -q "$pat" <<< "$selection" || grp[$name]=$((${grp[$name]:-0} + secs)) ;;
     esac
 done < <(sed -n 's/^E2E-PHASE \([^ ]*\) \([0-9]*\)$/\1 \2/p' "$guest_out")
-for name in sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
+for name in snap sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
 steps+=("setup=$setup")
 t0=$SECONDS
 [ "$rc" -eq 0 ] || die "the guest run failed with status $rc (see $log)"
+if [ -n "$sel_snap" ] && [ "$mode" = full ]; then
+    for k in "${SNAP_KEYS[@]}"; do
+        F[$k]=$(sed -n "s/^E2E-SNAP-RECORD $k=//p" "$guest_out" | head -n 1)
+        [ -n "${F[$k]}" ] || F[$k]=unknown
+        [ "${F[$k]}" != unknown ] || die "the record field $k of the snap group is unknown (see $log)"
+    done
+fi
 printf '%s\n' "$selection" > "$tmp/sel"
 CHECK_VM=1 CHECK_TPM_MODE=$tpm bash e2e/check-cases.sh check "$LIST" e2e/vm/skip.list "$guest_out" "$tmp/sel" >> "$log" 2>&1 || { tail -n 8 "$log" >&2; die "the case accounting failed (see $log)"; }
 status=0

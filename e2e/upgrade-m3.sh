@@ -75,8 +75,13 @@ systemctl is-active --quiet custodio || fail "custodio.service was not running b
 [ "$(installed_version "$fmt")" = "$vm" ] || fail "before the upgrade the database holds $(installed_version "$fmt"), not the M3 build $vm"
 pid1=$(systemctl show -p MainPID --value custodio)
 [ "$pid1" -gt 0 ] || fail "custodio.service has no main pid before the upgrade"
-user_run alice seed > "$ACC/alice-seed.out" 2>&1 || { cat "$ACC/alice-seed.out" >&2; fail "alice's seed with the M3 build failed"; }
-user_run bob seed > "$ACC/bob-seed.out" 2>&1 || { cat "$ACC/bob-seed.out" >&2; fail "bob's seed with the M3 build failed"; }
+# The M3 CLI waits 5 s in every call from a terminal (fixed after v0.5.0), so the four imports run at once.
+user_run alice seed > "$ACC/alice-seed.out" 2>&1 &
+seed_a=$!
+user_run bob seed > "$ACC/bob-seed.out" 2>&1 &
+seed_b=$!
+wait "$seed_a" || { cat "$ACC/alice-seed.out" >&2; fail "alice's seed with the M3 build failed"; }
+wait "$seed_b" || { cat "$ACC/bob-seed.out" >&2; fail "bob's seed with the M3 build failed"; }
 files_snapshot > "$ACC/state.before"
 seed_problems=$(um3 seeded "$ua" "$ub" "$ACC/state.before") || fail "the seed judgement did not run"
 [ -z "$seed_problems" ] || { printf '%s\n' "$seed_problems" >&2; fail "the M3 build did not leave the old files of the four keys (see above)"; }
@@ -97,6 +102,7 @@ for _ in $(seq 60); do
 done
 [ "$pid2" != "$pid1" ] || fail "the service did not restart after the install (still pid $pid1)"
 systemctl is-active --quiet custodio || fail "custodio.service is not active after the upgrade"
+systemctl is-active --quiet custodio-firefox.socket || fail "custodio-firefox.socket is not listening after the upgrade (a restart of it fails while the service runs)"
 [ "$(installed_version "$fmt")" = "$vn" ] || fail "after the upgrade the database holds $(installed_version "$fmt"), not $vn"
 files_snapshot > "$ACC/state.after"
 journalctl --sync

@@ -40,3 +40,15 @@ vm-silent-journal-cause
 vm-silent-nothing-stored
 vm-silent-no-key
 vm-silent-restored-imports
+snap-record
+snap-socket-dir
+snap-list-keys
+snap-sign-rsa
+snap-sign-ec
+snap-polkit-per-signature
+snap-journal-label
+snap-bus-denied
+snap-refused-unconfined
+snap-refused-root
+snap-refused-other-snap
+snap-unknown-methods

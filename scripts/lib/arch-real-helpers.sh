@@ -27,9 +27,13 @@ hooks_once() {
     { [ -n "$d" ] && [ -n "$b" ] && [ "$d" -lt "$b" ]; } || bad "$s: the bus reload ($b) does not come after the daemon reload ($d)"
     [ -z "$(calls_of_scripts "$s")" ] || bad "$s: a script made a call that a hook makes: $(calls_of_scripts "$s")"
 }
-never_enable() { # STEP
-    if L "$1" | grep -E ' (systemctl|journalctl) (enable|start|preset|mask|disable|edit|set-property)' > /dev/null; then bad "$1: enable, start or preset was called"; fi
-    if L "$1" | grep -E ' EFFECT started' > /dev/null; then bad "$1: the service was started"; fi
+# never_enable STEP [socket_down]: the service unit is never enabled or started; only the socket of the Firefox snap (F173) is. With socket_down
+# (an upgrade from a package without the socket, a running service) post_upgrade stops the service, starts the socket and starts the service again.
+never_enable() {
+    local keep=NEVER-MATCHES-xyz
+    if [ "${2:-}" = socket_down ]; then keep=' systemctl start custodio.service'; fi
+    if L "$1" | grep -v 'custodio-firefox.socket' | grep -vF "$keep" | grep -E ' (systemctl|journalctl) (enable|start|preset|mask|disable|edit|set-property)' > /dev/null; then bad "$1: enable, start or preset was called"; fi
+    if [ "${2:-}" != socket_down ] && L "$1" | grep -E ' EFFECT started' > /dev/null; then bad "$1: the service was started"; fi
 }
 state_same() { # STEP: the state tree is the one before the first upgrade
     cmp -s "$OUT/state-before" "$OUT/$1.state" || bad "$1: the state directory changed:"$'\n'"$(diff "$OUT/state-before" "$OUT/$1.state" || true)"
@@ -46,5 +50,9 @@ restart_after_reloads() {
     { [ -n "$r" ] && [ -n "$d" ] && [ -n "$b" ] && [ "$r" -gt "$d" ] && [ "$r" -gt "$b" ]; } || bad "$s: the restart ($r) does not come after the daemon reload ($d) and the bus reload ($b)"
     L "$s" | grep -F -- "$RS" | grep -q "files=present " || bad "$s: the restart was made before the new files were there"
     L "$s" | grep -F -- "$RS" | grep -q ":: .*systemd-hook" || bad "$s: the restart was not made by the hook"
-    if L "$s" | grep -E ' systemctl stop|EFFECT stopped' > /dev/null; then bad "$s: the service was stopped during an upgrade"; fi
+    if [ "${2:-}" = socket_down ]; then
+        [ "$(count "$s" ' systemctl stop custodio.service')" = 1 ] || bad "$s: the running service was not stopped exactly once for the socket"
+        L "$s" | grep -F ' systemctl stop custodio.service' | grep -q ':: .*post_upgrade' || bad "$s: the stop was not made by post_upgrade"
+        [ "$(count "$s" ' systemctl start custodio-firefox.socket')" = 1 ] || bad "$s: the socket was not started exactly once"
+    elif L "$s" | grep -E ' systemctl stop|EFFECT stopped' > /dev/null; then bad "$s: the service was stopped during an upgrade"; fi
 }

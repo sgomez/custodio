@@ -68,11 +68,19 @@ for tag in PRETRANS POSTTRANS; do
     [ -z "$(fx_rpm -qp --qf "%{$tag}" "$(fx_file real rpm)" | grep -v '(none)' || true)" ] || bad "rpm has a $tag scriptlet"
 done
 
-# post_install and post_upgrade of the built .INSTALL call nothing (the hooks do): no recorded call, whether the stubs fail or not.
+# post_install and post_upgrade of the built .INSTALL only enable and start the socket of the Firefox snap (F173); the hooks do the rest. The calls
+# depend on the stubs: with every stub succeeding the socket is already active after the upgrade, with every stub failing it is not and the service
+# is not either.
+SOCK=custodio-firefox.socket
 for stub_exit in 0 1; do
     suffix=; [ "$stub_exit" = 0 ] || suffix=" (every stub fails)"
     for fn in post_install post_upgrade; do
-        run_case "arch $fn$suffix" "" $stub_exit bash -c ". '$tmp/archlinux/INSTALL'; $fn"
+        case $fn:$stub_exit in
+        post_install:*) want="systemctl enable $SOCK"$'\n'"systemctl start $SOCK" ;;
+        post_upgrade:0) want="systemctl enable $SOCK"$'\n'"systemctl is-active --quiet $SOCK" ;;
+        post_upgrade:1) want="systemctl enable $SOCK"$'\n'"systemctl is-active --quiet $SOCK"$'\n'"systemctl is-active --quiet custodio.service"$'\n'"systemctl start $SOCK" ;;
+        esac
+        run_case "arch $fn$suffix" "$want" $stub_exit bash -c ". '$tmp/archlinux/INSTALL'; $fn"
     done
 done
 

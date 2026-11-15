@@ -1,0 +1,15 @@
+[package]
+name = "custodio-peer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reads what the kernel says about the peer of a Unix socket: SO_PEERCRED, SO_PEERPIDFD, SO_PEERSEC"
+
+[lints]
+workspace = true
+
+[dependencies]
+libc = "0.2"
+nix = { version = "0.31.3", default-features = false, features = ["socket"] }
+rustix = { version = "1.1.6", features = ["net"] }

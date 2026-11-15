@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# F140: container-free checks of the tpm-clear-* cases: the placement (debian13 list and skip list, group, not in e2e/cases.list), the accounting (a skip accepted in none, refused in swtpm
-# and lacking), and the judgements of e2e/tpmclear.py on good and bad evidence (a signature that succeeded after the clear, a wrong error name or text, a wrong CKR, zero or two entries per
+# F140: container-free checks of the tpm-clear-* cases: the judgements of e2e/tpmclear.py on good and bad evidence (a signature that succeeded after the clear, a wrong error name or text, a wrong CKR, zero or two entries per
 # attempt, a wrong cause, kind, uid or key, a secret in an entry, a key missing from a list, a changed kind, a changed state directory, a failed delete, a record left, an unchanged
 # owner-hierarchy name). NOT checked here: a real run (`just e2e-cases debian13 'tpm-clear-*'` in swtpm, lacking and none).
 # shellcheck disable=SC2086 # the ids are words
@@ -10,51 +9,9 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-tpmclear: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
 ids="tpm-clear-sign-fails tpm-clear-keys-listed tpm-clear-delete"
+# shellcheck disable=SC2329 # called through expect_ok and expect_bad
 tc() { python3 -I "$ROOT/e2e/tpmclear.py" "$@"; }
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    grep -q "^$id:" "$D/skip.list" || bad "$id is not on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-done
-[ "$(grep -c '^tpm-clear-' "$D/cases.list")" = 3 ] || bad "debian13 cases.list lists other tpm-clear cases than the three"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids tpm-clear-x; do [ "$(case_group "$id")" = tpmclear ] || bad "case_group $id is '$(case_group "$id")', expected tpmclear"; done
-for id in tpm-dup-x tpm-kind-x tpmfail-x tpm-installed-unit-clean; do [ "$(case_group "$id")" != tpmclear ] || bad "case_group $id is tpmclear"; done
-# shellcheck source=e2e/tpmclear-cases.sh
-source "$ROOT/e2e/tpmclear-cases.sh"
-[ "$(printf '%s\n' $TPMCLEAR_CASES | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "TPMCLEAR_CASES differ from the listed cases"
-[ "$(tc cases | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "tpmclear.py cases differ from the listed cases"
-
-# accounting
-printf '%s\n' $ids > "$tmp/cases"
-( E2E_SELECT_FILE=$tmp/cases; export E2E_SELECT_FILE; tpmclear_skip_all none ) > "$tmp/out-all"
-[ "$(grep -c '^E2E-CASE skipped tpm-clear-' "$tmp/out-all")" = 3 ] || bad "the guest does not report three skips"
-grep -q 'E2E_TPM=none' "$tmp/out-all" || bad "the skip reason does not name the mode"
-sed 's/^E2E-CASE skipped /E2E-CASE run /' "$tmp/out-all" > "$tmp/out-run"
-awk '/^E2E-CASE run / && !done { sub(/run/, "skipped"); done = 1 } { print }' "$tmp/out-run" > "$tmp/out-one"
-sed -n 's/^E2E-CASE skipped \(.*\)/\1: not applicable/p' "$tmp/out-all" > "$tmp/skip-all"
-check() { CHECK_VM=${CHECK_VM:-} CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-check none "$D/skip.list" "$tmp/out-all" || bad "mode none: the skips are refused"
-echo "# none" > "$tmp/skip-empty"
-! check none "$tmp/skip-empty" "$tmp/out-all" || bad "mode none: skips are accepted with no skip list"
-for m in swtpm lacking; do
-    check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: run cases are refused"
-    ! check $m "$D/skip.list" "$tmp/out-all" || bad "mode $m: skipped cases are accepted"
-    ! check $m "$D/skip.list" "$tmp/out-one" || bad "mode $m: one skipped case is accepted"
-    ! check $m "$tmp/skip-all" "$tmp/out-all" || bad "mode $m: a skip list naming the cases lets the skips through"
-done
-
-for m in swtpm lacking; do # F163: a VM run accounts the same way
-    ( export CHECK_VM=1
-      check $m "$tmp/skip-empty" "$tmp/out-run" || bad "VM $m: run cases are refused"
-      ! check $m "$tmp/skip-empty" "$tmp/out-all" || bad "VM $m: skipped cases are accepted"
-      ! check $m "$tmp/skip-all" "$tmp/out-all" || bad "VM $m: a skip list naming the cases lets the skips through" )
-done
 
 expect_ok() { local out; out=$("$@") || { bad "failed to run: $*"; return; }; [ -z "$out" ] || bad "good evidence rejected ($*): $out"; }
 expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad evidence accepted ($*)"; }

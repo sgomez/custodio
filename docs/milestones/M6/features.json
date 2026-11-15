@@ -1,0 +1,214 @@
+{
+  "milestone": "M6",
+  "features": [
+    {
+      "id": "F170",
+      "title": "Research: who the socket peer is, as the service sees it",
+      "description": "docs/findings/F170.md settles three open questions of SPEC Design 1. (1) The real uid under PrivateUsers=: with a socket-activated test socket under a copy of the shipped unit (DynamicUser, PrivateUsers=), what SO_PEERCRED reports for a peer of another uid (the overflow uid 65534 or the real one), and the candidates: a PrivateUsers= mode that keeps uids identical (systemd 257 is the floor), another kernel-guaranteed source, dropping the user namespace; for each, the systemd-analyze exposure score against M5's. (2) The D-Bus handshake on a peer-to-peer zbus server under which identity comes only from the kernel (ANONYMOUS versus EXTERNAL). (3) Which polkit versions accept a unix-process subject {pidfd, uid} asked by a trusted caller for another uid, from polkit's sources and the version each target ships (not by running every target), measured on ubuntu2604. Ends with 'Decision: ' lines. If no uid route keeps the exposure score, it writes BLOCKED.md. Indexed in docs/findings.md.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F170.md && grep -q '^## F170' \"$f\" && for w in 'PrivateUsers=' 'SO_PEERCRED' '65534' 'systemd 257' 'exposure' 'ANONYMOUS' 'EXTERNAL' 'unix-process' 'pidfd' 'ubuntu2604'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F170.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F171",
+      "title": "Research: the Firefox snap in the M5 VM image",
+      "description": "docs/findings/F171.md answers what SPEC Design 6 puts first and the snap open questions, from the installed snap in the pinned Ubuntu 26.04 minimal cloud image of M5: whether the image ships snapd and boots with AppArmor enabled (if not, how the run installs snapd from the archive); the download size and time of the Firefox snap with its content snaps, and whether the run caches snaps by revision, verified by their signed assertions and never refreshed silently; the snap's apps and hooks and their AppArmor labels (which the socket accepts: any app or hook, or only snap.firefox.firefox); its base and glibc from snap info and meta/snap.yaml; and where its profiles live. Records the snap revision, base, snapd, AppArmor and dbus-daemon versions. Ends with 'Decision: ' lines; a base older than the module supports is a BLOCKED.md question. Indexed in docs/findings.md.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F171.md && grep -q '^## F171' \"$f\" && for w in 'snapd' 'AppArmor' 'snap run --shell firefox' 'revision' 'assertion' 'minimal' 'meta/snap.yaml' 'snap info' 'snap.firefox.firefox' 'glibc'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F171.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F172",
+      "title": "Research: native browser profiles and NSS registration with modutil",
+      "description": "docs/findings/F172.md settles the open question 'Profile locations' and prepares the registration command: native Firefox (all channels) in the legacy ~/.mozilla/firefox and the XDG location since Firefox 147, and how profiles.ini and installs.ini list them; native Thunderbird; the candidate derivatives LibreWolf, Floorp and Waterfox; what modutil does with pkcs11.txt (the library= key, add, delete, its locking) and how a running browser's lock (lock, .parentlock) is detected; the package that ships modutil per format (libnss3-tools, nss-tools, nss); and how the command recognises a system whose NSS loads p11-kit-proxy (fedora44, alma10). Measured with the dev container's NSS tools and the fedora44 container. The list it ends with is data the command reads. 'Decision: ' line; indexed.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F172.md && grep -q '^## F172' \"$f\" && for w in 'profiles.ini' '.mozilla/firefox' 'XDG' '147' 'Thunderbird' 'LibreWolf' 'Floorp' 'Waterfox' 'modutil' 'pkcs11.txt' 'parentlock' 'libnss3-tools' 'nss-tools' 'p11-kit-proxy' 'fedora44'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F172.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F173",
+      "title": "The Firefox snap socket: tmpfiles.d directory, socket unit, and the service taking it",
+      "description": "The packages ship, in every format (parity), a tmpfiles.d entry creating /run/snap.firefox/ as root 0755 and a socket unit listening on /run/snap.firefox/custodio.sock that activates custodio.service (never RuntimeDirectory=); the unit takes F170's uid route and the unit-hardening check is updated to it without loosening anything else; the exposure score is not above M5's (acceptance 1 and 15). custodiod takes the passed socket by name alongside the bus and, before serving it, checks its directory is owned by root and writable by root alone; otherwise it does not serve it and journals why, and the bus is unaffected (acceptance 8). Nothing is served yet beyond accepting and closing. scripts/check-snap-sockets.sh (in `just system-gates`) fails unless the socket unit and tmpfiles entry are exactly the Firefox ones; scripts/test-check-snap-sockets.sh has negative controls (a second snap, mode 0775, RuntimeDirectory=). Integration test crates/custodiod/tests/snap_socket_dir.rs (another owner, group- or other-writable, a symlink). The unit changes, so one container target runs end to end.",
+      "depends_on": [
+        "F170"
+      ],
+      "verify": "just quick && just system-gates && scripts/test-check-snap-sockets.sh && scripts/test-check-unit-hardening.sh && cargo test -p custodiod --test snap_socket_dir --locked && just mutants-diff F173 && just e2e debian13",
+      "passes": true
+    },
+    {
+      "id": "F174",
+      "title": "The peer label parser, with its fuzz target",
+      "description": "A parser in custodiod turns the SO_PEERSEC bytes into accept or a refusal reason for the Firefox socket. It accepts only one plain profile name of the firefox snap of the form F171 decided, followed by ' (enforce)'. It refuses stacked labels (any '//&'), child profiles ('//'), complain or unconfined mode, another snap, extra text, embedded NULs, empty input and any SELinux context (as 'not a snap label', never parsed as one). Unit tests crates/custodiod/tests/peer_label.rs cover every label case of acceptance 2. A cargo-fuzz target peer_label joins `just fuzz-smoke`'s expected list.",
+      "depends_on": [
+        "F171"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test peer_label --locked && just mutants-diff F174 && just fuzz-build && just lint-fuzz && just fuzz-smoke",
+      "passes": true
+    },
+    {
+      "id": "F175",
+      "title": "Per-connection peer check and peer-to-peer D-Bus with ListKeys for the peer's own uid",
+      "description": "On accept, custodiod reads SO_PEERCRED, SO_PEERPIDFD and SO_PEERSEC once and refuses the connection before any method unless all three are available, the label passes F174 and the uid is the real one by F170's route (the overflow uid or an unreadable uid is refused, acceptance 5). The handshake uses F170's mechanism, recorded in docs/decisions.md, and never trusts a uid the peer claims. An accepted peer gets the interface at the same name and path; ListKeys returns only its uid's keys. Tests supply the label through a test-only source that never ships; a check in `just quick` counts that nothing in data/ or packaging/ enables it (acceptance 15), tested by scripts/test-check-test-label.sh. Integration test crates/custodiod/tests/snap_socket_peer.rs: accepted and refused labels, missing pidfd or label, root, overflow uid, ownership (acceptance 2).",
+      "depends_on": [
+        "F170",
+        "F173",
+        "F174"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test snap_socket_peer --locked && scripts/test-check-test-label.sh && just mutants-diff F175",
+      "passes": true
+    },
+    {
+      "id": "F176",
+      "title": "Sign through the socket: polkit on the peer's pidfd, and the journal fields",
+      "description": "Sign on the socket finds the key by the peer's uid and asks polkit once (com.rfirma.custodio.sign, interaction allowed) on a unix-process subject of the connection's pidfd and the peer's real uid; denial gives PolkitDenied; unreachable polkit or an exited peer gives AuthorizationUnavailable; nothing is cached; where F170 found polkit lacks the subject, it fails closed (acceptance 4). The policy file gets a comment on why org.freedesktop.policykit.owner is there, and a test fails without it. Every journal entry records the transport (bus or socket), a socket call also the peer's label, in new fields documented in docs/audit.md under its compatibility rule; CUSTODIO_PID is the peer's pid; bus entries change only by the transport field (acceptance 6). Integration tests crates/custodiod/tests/snap_socket_sign.rs with the scripted polkit.",
+      "depends_on": [
+        "F175"
+      ],
+      "verify": "just quick && cargo test -p custodiod --test snap_socket_sign --locked && just mutants-diff F176",
+      "passes": true
+    },
+    {
+      "id": "F177",
+      "title": "Only ListKeys and Sign on the socket, bounds, the API contract and the socket fuzz target",
+      "description": "On the socket every method but ListKeys and Sign fails as the standard unknown-method error, asks no polkit, writes no journal entry and changes nothing; introspection lists only the two (acceptance 3). custodiod bounds concurrent connections, message size (no larger than the bus allows for the same method) and handshake and idle time; hitting one closes that connection; refused connections are journaled at a bounded rate; values and reasons documented. While a peer floods the socket, a bus client and another accepted peer still list and sign, with no AuditUnavailable from journal flooding (acceptance 7). docs/api.md documents the socket transport; `just api-contract` checks exactly ListKeys and Sign are served there. A cargo-fuzz target socket_message (a peer's bytes through handshake and dispatch, with the test label source) joins `just fuzz-smoke`. Integration tests crates/custodiod/tests/snap_socket_surface.rs and snap_socket_limits.rs.",
+      "depends_on": [
+        "F176"
+      ],
+      "verify": "just quick && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test snap_socket_surface --locked && cargo test -p custodiod --test snap_socket_limits --locked && just mutants-diff F177 && just fuzz-build && just lint-fuzz && just fuzz-smoke",
+      "passes": true
+    },
+    {
+      "id": "F178",
+      "title": "Inside a snap, the module talks to the snap's socket; the module–service compatibility is pinned",
+      "description": "With SNAP_INSTANCE_NAME set, the PKCS#11 module connects to /run/snap.$SNAP_INSTANCE_NAME/custodio.sock and never the bus; outside a snap it uses the bus as today. An invalid instance name, a missing socket, a refused connection or a directory not root-owned and root-only writable gives no slots. One connection per call with the existing fork and thread rules; error mapping unchanged (acceptance 9). The socket's base directory is overridable only in tests. A test pins the calls this release's module makes (names, signatures, errors) on the bus and the socket, so a stale copy keeps working within the release series; docs/api.md states that a future incompatible change must give an old copy no slots and a journal entry, never a wrong signature. Integration tests crates/custodio-it/tests/snap_transport.rs and module_compat.rs against the real service.",
+      "depends_on": [
+        "F177"
+      ],
+      "verify": "just quick && cargo test -p custodio-it --test snap_transport --locked && cargo test -p custodio-it --test module_compat --locked && just mutants-diff F178",
+      "passes": true
+    },
+    {
+      "id": "F179",
+      "title": "VM snap group: list and sign under the real Firefox snap, run early",
+      "description": "The VM run (mode full) installs snapd as F171 decided and the Firefox snap from stable, verified by its signed assertions and cached by revision only if F171 chose it; the record lists the snap revision, base, snapd, AppArmor and dbus-daemon versions and the label the service observed. A snap-* group in e2e/vm/cases.list with the existing case accounting: after the install /run/snap.firefox/ is root 0755 and holds custodio.sock; the harness places the module copy and a PKCS#11 client in a regular user's ~/snap/firefox/common/ (by hand until F183); under `snap run --shell firefox` the client lists the user's keys and signs with RSA 2048 and P-256, each verified with openssl, polkit asked once per signature about the client's process, each journal entry with a snap.firefox.* label; from the same confinement a bus call is denied by AppArmor; an unconfined process and root are refused at the socket, and a process under another snap's label is refused (how the label is obtained is for the contract); ImportP12, DeleteKey and ReplaceCertificate fail as unknown methods. The run fails, not skips, if the label is not snap.firefox.* in enforce mode, the socket is unreachable or the bus is not denied (acceptances 17, 18). scripts/test-e2e-vm-snap.sh judges fixture records and outputs with negative controls. This feature runs the snap group alone in the VM, to prove the route before the rest is built.",
+      "depends_on": [
+        "F171",
+        "F178"
+      ],
+      "verify": "just quick && scripts/test-e2e-vm-snap.sh && scripts/test-e2e-vm-cases.sh && scripts/test-ci-e2e-vm.sh && just e2e-vm-cases full 'snap-*'",
+      "passes": true
+    },
+    {
+      "id": "F180",
+      "title": "The encrypted state directory: classification, API and the CLI warning",
+      "description": "docs/findings/F180.md settles 'Classifying the state directory' (Design 7): how the service finds the block-device chain beneath its state directory with the unit's existing access and no external tool (/sys and the mount table under PrivateDevices=, ProtectSystem=strict, the DynamicUser state directory), how dm-crypt is recognised (dm uuid prefix CRYPT-), and the verdict for LVM on LUKS, dm-integrity, RAID, btrfs over several devices, ZFS, fscrypt, network and overlay filesystems; anything not proven dm-crypt is unknown; indexed. custodiod classifies it as encrypted, not encrypted or unknown (never unknown as encrypted) and journals the result at start; a documented read-only addition to the bus API (not the socket) exposes it, checked by `just api-contract`. custodio import and custodio list print the warning for not encrypted and unknown, pointing to the README, never blocking or changing the exit status; the man page mentions it (acceptance 14). Tests crates/custodiod/tests/state_storage.rs on fixture sysfs and mount trees for every case of the finding, crates/custodiod/tests/storage_api.rs, crates/custodio-cli/tests/storage_warning.rs.",
+      "depends_on": [
+        "F177"
+      ],
+      "verify": "just quick && grep -qF '(findings/F180.md)' docs/findings.md && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test state_storage --locked && cargo test -p custodiod --test storage_api --locked && cargo test -p custodio-cli --test storage_warning --locked && just mutants-diff F180",
+      "passes": true
+    },
+    {
+      "id": "F181",
+      "title": "Browser files: strict parsers, profile discovery and their fuzz targets",
+      "description": "custodio-cli parses, strictly and read-only, the untrusted files the registration command reads: the profile indexes of F172 (profiles.ini, installs.ini) and pkcs11.txt; malformed input is an error naming the file, never a panic. It lists, as data from F172, the profiles of every known native browser (Firefox all channels in the legacy and XDG locations, Thunderbird, the derivatives F172 confirmed) and of the Firefox snap if installed with a profile, each with its lock state; where the system NSS loads p11-kit, native profiles are marked skipped with the reason (SPEC Design 3); the snap profile never is. cargo-fuzz targets profile_index and nss_modules join `just fuzz-smoke`. Tests crates/custodio-cli/tests/browser_files.rs and register_discover.rs on fixture homes.",
+      "depends_on": [
+        "F172"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test browser_files --locked && cargo test -p custodio-cli --test register_discover --locked && just fuzz-build && just lint-fuzz && just fuzz-smoke",
+      "passes": true
+    },
+    {
+      "id": "F182",
+      "title": "The registration subcommand for native profiles, and its removal",
+      "description": "A new custodio subcommand (name and options the builder's, in the man page) registers the installed module by its installed path in each native profile with NSS's modutil (SPEC Design 3), and removes every registration it made. It refuses root and sudo; skips a profile its browser holds and names it; recognises an existing entry by its library whatever its name, never adds a second, updates in place an entry pointing to a Custodio path that no longer exists; touches only Custodio entries; prints per browser and profile what it found and did; exits non-zero on a fixable skip. Integration test crates/custodio-cli/tests/register_native.rs on a fixture home with legacy and XDG profiles and a hand-registered entry: one entry per profile, a second run byte-identical, removal leaves no Custodio entry and every other entry as it was, and, with the real service running, NSS's own modutil and certutil on a registered profile see the Custodio token and the imported certificate (acceptances 10 and 11, native part).",
+      "depends_on": [
+        "F176",
+        "F181"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test register_native --locked && just mutants-diff F182",
+      "passes": true
+    },
+    {
+      "id": "F183",
+      "title": "The Firefox snap registration, stale-copy refresh, and the VM group set up by the command",
+      "description": "For the Firefox snap, the command places a copy of the installed module at a fixed path in ~/snap/firefox/common/, written atomically, and registers it in the snap's profiles; on every run it replaces a copy whose bytes differ from the installed module at the same path; a refresh never creates a copy where there was none; a copy it cannot replace makes it exit non-zero naming it; removal deletes the copy. A refresh-only mode does only the copy refresh and logs its outcome to the user's journal (acceptances 10 and 12, command part). The VM snap group of F179 now sets the copy up with the command instead of by hand. Tests crates/custodio-cli/tests/register_snap.rs and a fixture-home acceptance test crates/custodio-cli/tests/register_acceptance.rs for acceptance 10 as a whole; scripts/test-e2e-vm-snap.sh still passes. The VM itself runs in the last feature.",
+      "depends_on": [
+        "F179",
+        "F182"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test register_snap --locked && cargo test -p custodio-cli --test register_acceptance --locked && scripts/test-e2e-vm-snap.sh && just mutants-diff F183",
+      "passes": true
+    },
+    {
+      "id": "F184",
+      "title": "Packaging: modutil dependency, the per-user refresh trigger, and the snap-base gate",
+      "description": "Every package format declares modutil as a run-time dependency under its name (F172); scripts/check-register-deps.sh compares it with packaging/nfpm.yaml, with negative controls in scripts/test-check-register-deps.sh. The packages ship, in every format, systemd user units enabled for every user that run the refresh-only mode at login and when the installed module changes; scripts/test-user-refresh-units.sh checks them with systemd-analyze verify and negative controls (acceptance 12, trigger part); scripts/package_expected.py lists the new files. packaging/snap-bases.txt records the Firefox snap's base and glibc with sources (F171), and scripts/check-snap-base.sh, the `just snap-base-fit` recipe in `just package-gates`, fails when the shipped module needs a glibc symbol version or library the base lacks; scripts/test-snap-base-fit.sh passes on a fitting fixture ELF and fails on one above the base (acceptance 13).",
+      "depends_on": [
+        "F171",
+        "F183"
+      ],
+      "verify": "just quick && scripts/test-check-register-deps.sh && scripts/check-register-deps.sh && scripts/test-user-refresh-units.sh && scripts/test-snap-base-fit.sh",
+      "passes": true
+    },
+    {
+      "id": "F185",
+      "title": "README, threat model and SECURITY.md",
+      "description": "README.md for users covers every item of SPEC Design 8's README list (storage kinds, the fallback and custodio list, the encryption warning, registering browsers and removing the registration with the command, never Firefox's Browse dialog, and the limits). One threat-model document for the released product, consolidated from M0–M6 (in scope, out of scope, not guaranteed, the Firefox snap socket and its reliance on an undocumented snapd rule, the full-disk encryption advice); SECURITY.md links it and its scope adds the snap socket and the registration command; the README links both. scripts/test-docs-readme.sh and scripts/test-docs-threat-model.sh, added to `test-scripts`, run every command these documents show as written and check every relative link resolves, with negative controls.",
+      "depends_on": [
+        "F180",
+        "F183",
+        "F184"
+      ],
+      "verify": "just quick && scripts/test-docs-readme.sh && scripts/test-docs-threat-model.sh",
+      "passes": true
+    },
+    {
+      "id": "F186",
+      "title": "docs/install.md, release notes and the manual acceptance steps",
+      "description": "docs/install.md replaces the manual modutil steps with the registration command and its removal before uninstalling, keeping the manual route as a fallback (Mozilla's Firefox on Fedora and RHEL/Alma included). Release notes for the first public release, v0.8.0 with no name (docs/decisions.md): supported systems, what is new since M5, known limits, the upgrade note that keys from before M4 were purged; linked from the README. docs/manual-acceptance.md gains the steps for acceptance 19 (an Ubuntu 26.04 desktop VM with the store Firefox snap, the registration command, a TLS server requiring a client certificate, RSA and P-256 runs, a refused dialog, the journal query, the snap revision). scripts/test-docs-install-register.sh, scripts/test-docs-release-notes.sh (supported systems against e2e/targets) and scripts/test-docs-manual-m6.sh run what they show as written, with negative controls; scripts/test-docs-install.sh still passes.",
+      "depends_on": [
+        "F185"
+      ],
+      "verify": "just quick && scripts/test-docs-install.sh && scripts/test-docs-install-register.sh && scripts/test-docs-release-notes.sh && scripts/test-docs-manual-m6.sh",
+      "passes": true
+    },
+    {
+      "id": "F187",
+      "title": "Checkpoint and last automated feature: the whole milestone",
+      "description": "Every gate on the whole milestone: full checks, API contract, fuzz smoke, memory safety, the container suite on every target, the package gates, coverage and CRAP, and the VM suite in both modes, the snap group included. A failure is fixed here; a change in snapd's rules is reported to a person, never skipped.",
+      "depends_on": [
+        "F170",
+        "F171",
+        "F172",
+        "F173",
+        "F174",
+        "F175",
+        "F176",
+        "F177",
+        "F178",
+        "F179",
+        "F180",
+        "F181",
+        "F182",
+        "F183",
+        "F184",
+        "F185",
+        "F186"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": true
+    },
+    {
+      "id": "F188",
+      "title": "By hand: TLS client authentication in the real Firefox snap, and the release documents",
+      "description": "A person follows docs/manual-acceptance.md on an Ubuntu 26.04 desktop VM with the store Firefox snap (acceptance 19): after installing the package and running the registration command, Firefox completes TLS client authentication once with an RSA and once with a P-256 key, a polkit dialog appears for each signature, refusing one fails the handshake, and the journal shows each signature with the Firefox label and pid; the record, with date, versions and snap revision, goes to docs/findings/F188.md. The same person checks the README, the threat model, SECURITY.md and the release notes against SPEC Design 8's list, in agreement with docs/api.md, docs/audit.md and docs/decisions.md (acceptance 20).",
+      "depends_on": [
+        "F186",
+        "F187"
+      ],
+      "manual": true,
+      "passes": true
+    }
+  ]
+}

@@ -3,10 +3,15 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
+use std::os::fd::BorrowedFd;
+use std::pin::Pin;
 
-use zbus::Variant;
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
+use rustix::io::retry_on_intr;
+
 use zbus::names::UniqueName;
 use zbus::{Connection, Message};
+use zbus::{Fd, Variant};
 
 /// polkit action that guards every signature.
 pub const ACTION_ID: &str = "com.rfirma.custodio.sign";
@@ -122,6 +127,76 @@ impl Authorizer for PolkitAuthorizer {
             .map_err(|e| AuthError::Unavailable(e.to_string()))?;
         interpret(&reply)
     }
+}
+
+/// A boxed future, so the process authorizer can be held as a trait object.
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Decides whether the process behind a pidfd, running as `uid`, may make one call under a polkit action. The
+/// subject is the process itself (`unix-process` with `pidfd` and `uid`); no bus name, no pid, no start time.
+pub trait ProcessAuthorizer: Send + Sync {
+    /// Returns `Ok(())` only if the person approved this one call under `action`.
+    fn authorize_process<'a>(
+        &'a self,
+        pidfd: BorrowedFd<'a>,
+        uid: u32,
+        action: &'a str,
+    ) -> BoxFuture<'a, Result<(), AuthError>>;
+}
+
+/// `CheckAuthorization` arguments for a `unix-process` subject. Every error of polkit, a polkit that does not know
+/// the `pidfd` key included, ends in [`AuthError::Unavailable`]: there is no retry with another subject.
+fn process_request<'a>(pidfd: BorrowedFd<'a>, uid: i32, action: &'a str) -> Request<'a> {
+    let subject = (
+        "unix-process",
+        HashMap::from([
+            ("pidfd", Variant::from(Fd::from(pidfd))),
+            // polkit reads `uid` as an int32 and ignores any other type
+            ("uid", Variant::from(uid)),
+        ]),
+    );
+    (subject, action, HashMap::new(), ALLOW_USER_INTERACTION, "")
+}
+
+impl ProcessAuthorizer for PolkitAuthorizer {
+    fn authorize_process<'a>(
+        &'a self,
+        pidfd: BorrowedFd<'a>,
+        uid: u32,
+        action: &'a str,
+    ) -> BoxFuture<'a, Result<(), AuthError>> {
+        Box::pin(async move {
+            // a uid polkit cannot name is not asked about: fail closed
+            let uid = i32::try_from(uid)
+                .map_err(|_| AuthError::Unavailable("the uid is out of range".to_owned()))?;
+            let body = process_request(pidfd, uid, action);
+            let reply = self
+                .connection
+                .call_method(
+                    Some(POLKIT_NAME),
+                    POLKIT_PATH,
+                    Some(POLKIT_INTERFACE),
+                    "CheckAuthorization",
+                    &body,
+                )
+                .await
+                .map_err(|e| AuthError::Unavailable(e.to_string()))?;
+            interpret(&reply)
+        })
+    }
+}
+
+/// Whether the process behind `pidfd` has exited: a pidfd becomes readable then. An unreadable state counts as
+/// exited, so the answer errs towards refusing.
+#[must_use]
+pub fn process_has_exited(pidfd: BorrowedFd<'_>) -> bool {
+    let mut fds = [PollFd::new(&pidfd, PollFlags::IN)];
+    let zero = Timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // Only "nothing is ready" means the process is still there.
+    !matches!(retry_on_intr(|| poll(&mut fds, Some(&zero))), Ok(0))
 }
 
 #[cfg(test)]

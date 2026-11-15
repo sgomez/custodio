@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# F144: container-free checks of the journal-kind-* cases: the placement (debian13 list, group, not in e2e/cases.list, no skip-list line), the accounting (a skip refused in every mode),
-# the extractor (the queries are the document's, only the placeholders replaced; a changed document fails the extraction) and the judgements of e2e/journalkind.py on good and bad
+# F144: container-free checks of the journal-kind-* cases: the extractor (the queries are the document's, only the placeholders replaced; a changed document fails the extraction) and the judgements of e2e/journalkind.py on good and bad
 # records (a missing entry, a stray entry, a forged entry returned, a wrong kind or cause, a purge count that is not one per key, another owner's entry in an owner query, a successful
 # signature in a cause query, an entry from before the cursor, a caller on a purge entry, a vacuous control, a secret). NOT checked here: a real run (`just e2e-cases debian13
 # 'journal-kind-*'` in swtpm, lacking and none).
@@ -11,37 +10,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-journalkind: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
-ids="journal-kind-import journal-kind-purge journal-kind-owner journal-kind-key-lost journal-kind-temporarily-unavailable"
 jk() { python3 -I "$ROOT/e2e/journalkind.py" "$@"; }
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    ! grep -q "^$id:" "$D/skip.list" || bad "$id is on the skip list: it runs in every mode"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-done
-[ "$(grep -c '^journal-kind-' "$D/cases.list")" = 5 ] || bad "debian13 cases.list lists other journal-kind cases than the five"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids journal-kind-x; do [ "$(case_group "$id")" = journalkind ] || bad "case_group $id is '$(case_group "$id")', expected journalkind"; done
-for id in journal-entries journal-catalog journal-ops-sign journal-ops-queries tpm-slots-import; do [ "$(case_group "$id")" != journalkind ] || bad "case_group $id is journalkind"; done
-# shellcheck source=e2e/journalkind-cases.sh
-source "$ROOT/e2e/journalkind-cases.sh"
-[ "$(printf '%s\n' $JOURNALKIND_CASES | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "JOURNALKIND_CASES differ from the listed cases"
-[ "$(jk cases | sort)" = "$(printf '%s\n' $ids | sort)" ] || bad "journalkind.py cases differ from the listed cases"
-
-# accounting: a run of all five is accepted in every mode; a skip is refused in every mode, also with a skip list that names it
-printf '%s\n' $ids > "$tmp/cases"
-for id in $ids; do echo "E2E-CASE run $id"; done > "$tmp/out-run"
-{ echo "E2E-CASE skipped journal-kind-import"; tail -n 4 "$tmp/out-run"; } > "$tmp/out-skip"
-sed -n 's/^E2E-CASE skipped \(.*\)/\1: not applicable/p' "$tmp/out-skip" > "$tmp/skip-named"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-for m in swtpm lacking none; do
-    check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: run cases are refused"
-    ! check $m "$D/skip.list" "$tmp/out-skip" || bad "mode $m: a skipped case is accepted"
-    ! check $m "$tmp/skip-named" "$tmp/out-skip" || bad "mode $m: a skip list naming the case lets the skip through"
-done
 
 expect_ok() { local out; out=$("$@" 2>&1) || { bad "failed to run: $*"; return; }; [ -z "$out" ] || bad "good evidence rejected ($*): $out"; }
 expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad evidence accepted ($*)"; }

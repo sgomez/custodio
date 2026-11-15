@@ -103,23 +103,53 @@ lack it and `systemd-creds` would fail.
 
 ## Firefox
 
-Firefox finds the module by itself only where the system NSS loads p11-kit's proxy. Fedora and RHEL/Alma
-do: their NSS reads `/etc/crypto-policies/back-ends/nss.config`, which loads `p11-kit-proxy.so`, and the proxy
-loads every module in `/usr/share/p11-kit/modules/`, Custodio's among them. Arch's and Debian's NSS read no
-such file, so there Firefox needs the module registered by hand, once per profile. Checked on Arch (Omarchy 4);
-not tried on Debian or Ubuntu.
+Firefox keeps its own list of modules in each profile, so Custodio has to be registered in it. Close Firefox and run,
+as yourself (not as root and not with `sudo`: the command writes into your home):
 
-With Firefox closed:
+```console
+$ custodio register
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+```
+
+It finds the profiles of Firefox, of its derivatives and of the Firefox snap, and prints what it did in each. The snap
+cannot read `/usr/lib`, so the command places a copy of the module in the snap's own directory and registers the copy.
+Run it again whenever you like: what is already registered stays as it is. A profile that a running browser holds is
+skipped and the command exits with an error that names it. Do this once for each user, and again for a new profile.
+The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio register --remove` before
+you uninstall the package ([Removing and purging](#removing-and-purging)).
+
+Do not load the module through Firefox's "Browse" button in the device manager: the button goes through the document
+portal and the snap is then denied access to the file.
+
+### The manual route
+
+The command skips what the system already handles. On Fedora and RHEL/Alma, the packaged Firefox needs nothing: the
+system NSS reads `/etc/crypto-policies/back-ends/nss.config`, which loads `p11-kit-proxy.so`, and the proxy loads every
+module in `/usr/share/p11-kit/modules/`, Custodio's among them. Arch's and Debian's NSS read no such file, so there the
+module has to be registered, which the command does. Checked on Arch (Omarchy 4); not tried on Debian or Ubuntu.
+
+Register by hand, with `modutil`, in two cases: **Mozilla's own Firefox on Fedora and RHEL/Alma** (it uses its bundled NSS, which
+does not load p11-kit, and the command skips it there), and a browser the command does not
+know. With the browser closed:
 
 ```bash
 modutil -dbdir sql:<profile directory> -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so
 ```
 
-The profile directory is the "Root Directory" shown in `about:profiles`. `modutil` is in Arch's `nss` package
-and in Debian's `libnss3-tools`. The same can be done in Firefox under Settings > Privacy & Security > Security
-Devices > Load, with the same path (not tried). Firefox's derivatives (LibreWolf, Thunderbird and others) take
-the same command with their own profile directory (not tried). A Flatpak or snap Firefox does not see the
-module at all.
+`modutil` asks for a confirmation; the command passes `-force` to skip it. To undo it:
+
+```bash
+modutil -dbdir sql:<profile directory> -delete Custodio
+```
+
+The profile directory is the "Root Directory" shown in `about:profiles`. `modutil` is in Arch's `nss` package, in
+Debian's `libnss3-tools` and in Fedora's and RHEL's `nss-tools`. The same can be done in Firefox under Settings >
+Privacy & Security > Security Devices > Load, with the same path (not tried; not for the snap, see above). Firefox's
+derivatives (LibreWolf, Thunderbird and others) take the same commands with their own profile directory (not tried).
+A Flatpak Firefox does not see the module at all, and the manual route does not help the snap: it needs the copy
+that the command places.
 
 ## Why a bus without ProcessFD is refused
 
@@ -168,6 +198,25 @@ gets an error, and nothing is signed. A signature never succeeds without its jou
 upgrade; the authorization of the earlier request is not kept, because every signature calls polkit.
 
 ## Removing and purging
+
+Before you uninstall, undo the registration, as each user who ran it. It is in the user's home, which the package
+cannot reach:
+
+```console
+$ custodio register --remove
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+```
+
+Then remove the package, with the tool of your system:
+
+```bash
+sudo apt-get remove custodio
+sudo dnf remove custodio
+sudo pacman -R custodio
+sudo rpm-ostree uninstall custodio
+```
 
 Removal (`apt-get remove`, `dnf remove`, `pacman -R`, `rpm-ostree uninstall`) stops the service and
 removes every packaged file. On Debian and Ubuntu, `apt-get purge` is the same as removal. Both leave

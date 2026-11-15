@@ -1,0 +1,20 @@
+# Per-user refresh of the module copy in the Firefox snap (SPEC Design 4). The snap cannot read /usr/lib/custodio, so
+# `custodio register` keeps a copy in ~/snap/firefox/common; this runs only the refresh part, as the user, at every login
+# (default.target.wants/) and each time custodio-refresh.path sees the installed module change. It changes nothing when
+# the user has no copy. The command's output goes to this unit's journal through stderr; the command also sends its own
+# entry to /run/systemd/journal/socket of the user's system.
+# Enabled for every user by the symlink in /usr/lib/systemd/user/default.target.wants/, which the package ships.
+# NoNewPrivileges= needs no namespace; the sandboxing directives that do (ProtectSystem=, PrivateNetwork=) are left out because
+# a user manager that may not create user namespaces (Ubuntu's default) would not start the unit at all.
+[Unit]
+Description=Refresh the Custodio module copy in the Firefox snap
+# The root user manager has no snap to refresh, and the command refuses to run as root.
+ConditionUser=!root
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/custodio register --refresh-only
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

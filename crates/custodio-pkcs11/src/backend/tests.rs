@@ -1,8 +1,3 @@
-use custodio_client::{
-    ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_CERTIFICATE_MISMATCH,
-    ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED,
-    ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12,
-};
 use zbus::names::OwnedErrorName;
 
 use super::*;
@@ -15,45 +10,17 @@ fn method_error(name: &str) -> Result<zbus::Error, Box<dyn std::error::Error>> {
     Ok(zbus::Error::MethodError(name, Some("text".into()), message))
 }
 
-/// The service failures and the `BackendError` each ends as, for `ListKeys` and for `Sign` alike
-/// (both go through `map_error`): the ten names of the client crate, names this version does not
-/// know, the generic bus names.
-fn error_table() -> Vec<(&'static str, BackendError)> {
-    use BackendError::{Denied, Invalid, Unavailable};
-    vec![
-        (ERROR_POLKIT_DENIED, Denied),
-        (ERROR_AUTHORIZATION_UNAVAILABLE, Denied),
-        (ERROR_INVALID_ARGS, Invalid),
-        (ERROR_NO_SUCH_KEY, Unavailable),
-        (ERROR_AUDIT_UNAVAILABLE, Unavailable),
-        (ERROR_INTERNAL, Unavailable),
-        (ERROR_KEY_ID_TAKEN, Unavailable),
-        (ERROR_WRONG_PASSWORD_OR_BAD_P12, Unavailable),
-        (ERROR_UNSUPPORTED_KEY_TYPE, Unavailable),
-        (ERROR_CERTIFICATE_MISMATCH, Unavailable),
-        // Names this version does not know.
-        ("com.rfirma.Custodio1.Error.FromTheFuture", Unavailable),
-        ("org.freedesktop.DBus.Error.Failed", Unavailable),
-        ("org.freedesktop.DBus.Error.ServiceUnknown", Unavailable),
-        // The bus itself, or an older service, with the generic names.
-        ("org.freedesktop.DBus.Error.AccessDenied", Denied),
-        ("org.freedesktop.DBus.Error.InvalidArgs", Invalid),
-    ]
-}
+use error_table::error_table;
 
 /// Each service failure and the `BackendError` it has always ended as: the module turns `Denied`
 /// into `CKR_FUNCTION_FAILED`, `Invalid` into `CKR_DATA_INVALID` and `Unavailable` into
 /// `CKR_DEVICE_ERROR` (pinned by `composed_failure_ends_the_operation`).
 #[test]
 fn every_service_name_maps_to_the_error_it_always_did() -> TestResult {
-    // All ten documented names are in the table.
-    assert_eq!(
-        error_table()
-            .iter()
-            .filter(|(n, _)| n.starts_with("com.rfirma.Custodio1.Error.") && !n.contains("Future"))
-            .count(),
-        10
-    );
+    // Every name of the client crate is in the table.
+    for name in custodio_client::ERROR_NAMES {
+        assert!(error_table().iter().any(|(n, _)| *n == name), "{name}");
+    }
     for (name, want) in error_table() {
         assert_eq!(map_error(&method_error(name)?), want, "{name}");
     }

@@ -16,14 +16,17 @@
 #                          PATH: exit 1 with a message naming it, no marker.
 #   %pre 2                 BUS; systemd-sysusers -; systemctl is-active --quiet custodio.service. The marker exists afterwards only if
 #                          that said active. (A first installation never writes the marker.)
-#   %post 1                systemctl daemon-reload; systemctl reload dbus.service; journalctl --update-catalog.
-#   %post 2                the same three; then, only with the marker: systemctl restart custodio.service (once). Failing tools: exit 0.
-#   %preun 0               systemctl stop custodio.service
+#   %post 1                systemctl daemon-reload; systemctl enable custodio-firefox.socket; systemctl reload dbus.service;
+#                          journalctl --update-catalog; systemctl start custodio-firefox.socket.
+#   %post 2                the same five, except that with the marker the last is systemctl stop custodio.service; systemctl start
+#                          custodio-firefox.socket; systemctl restart custodio.service (once). Failing tools: exit 0.
+#   %preun 0               systemctl stop custodio-firefox.socket; systemctl disable custodio-firefox.socket; systemctl stop custodio.service
 #   %preun 1               nothing (the old package's %preun during an upgrade)
-#   %postun 0              systemctl daemon-reload; systemctl reload dbus.service; systemctl is-active --quiet custodio.service and, only
+#   %postun 0              systemctl daemon-reload; systemctl reload dbus.service; systemctl is-active --quiet custodio-firefox.socket and,
+#                          when active, systemctl stop of it; systemctl is-active --quiet custodio.service and, only
 #                          when it says active, systemctl stop custodio.service; then the notice on STDERR (stdout stays empty).
 #   %postun 1              nothing (no output either)
-# No %posttrans, %pretrans or trigger. No scriptlet enables, starts or presets the unit. None changes, reads, lists or prints anything
+# No %posttrans, %pretrans or trigger. No scriptlet enables, starts or presets the service (only the Firefox snap socket). None changes, reads, lists or prints anything
 # under the state directory; the account is never removed (no userdel, groupdel). Where the deb does the same, the calls are the deb's
 # with deb-systemd-invoke read as systemctl (the parity cases below compare them and the notice text).
 # Offline (rpm-ostree, chroot, image build): no bus socket, systemctl failing, /run and /var read-only (the "run" and "var" switches of
@@ -44,7 +47,11 @@ fail=0
 mutant_mode=0
 mutant_hit=0
 bad() {
-    if [ "$mutant_mode" = 1 ]; then mutant_hit=1; else echo "test-rpm-lifecycle: $*" >&2; fail=1; fi
+    case $mutant_mode in
+    1) mutant_hit=1 ;;
+    2) exit 97 ;;
+    *) echo "test-rpm-lifecycle: $*" >&2; fail=1 ;;
+    esac
 }
 
 SKELETON=$BF_DIR/skeleton
@@ -54,7 +61,11 @@ bf_in_root "$SKELETON" true || { echo "test-rpm-lifecycle: cannot make a user na
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
-RELOAD=$'systemctl daemon-reload\nsystemctl reload dbus.service'
+SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+RELOAD=$'systemctl daemon-reload\n'"systemctl enable $SOCK"$'\nsystemctl reload dbus.service'
+START_SOCK="systemctl start $SOCK"
+RELOAD_ERASE=$'systemctl daemon-reload\nsystemctl reload dbus.service'
+ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 CATALOG='journalctl --update-catalog'
 MARKER=run/custodio-restart-after-upgrade
 SRC=$ROOT/packaging/rpm
@@ -99,7 +110,8 @@ no_account_removal() { # LABEL
     grep -qE '^custodio:' "$root/etc/passwd" || [ ! -e "$root/stub/had-account" ] || bad "$1: the account is gone"
 }
 no_enable() { # LABEL: never enable, start, preset or mask
-    if grep -E '(^| )(enable|start|preset|mask)( |$)' <<< "$calls" > /dev/null; then bad "$1: enable, start or preset was called: $calls"; fi
+    # Only the Firefox snap socket is enabled and started (F173); the service never is.
+    if grep -v "$SOCK" <<< "$calls" | grep -E '(^| )(enable|start|preset|mask)( |$)' > /dev/null; then bad "$1: enable, start or preset was called: $calls"; fi
 }
 active() { [ -e "$root/stub/active" ]; }
 want_notice() { # LABEL: the notice is on stderr and names what SPEC asks for; stdout is empty
@@ -130,7 +142,7 @@ cases() {
         [ ! -e "$root/$MARKER" ] || bad "%pre 1 $L: a marker on a first installation"
         run post 1
         want_ok "%post 1 $L"
-        want_calls "%post 1 $L" "$RELOAD"$'\n'"$CATALOG"
+        want_calls "%post 1 $L" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
         no_enable "%post 1 $L"
         active && bad "%post 1 $L: the service was started"
         state_intact "install ($populated state)"
@@ -159,7 +171,7 @@ cases() {
     want_calls "%pre 1 (active)" "$BUS"$'\n''systemd-sysusers -'
     [ ! -e "$root/$MARKER" ] || bad "%pre 1 (active): a marker on a first installation"
     run post 1
-    want_calls "%post 1 (active)" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 1 (active)" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
 
     # ---- a refusing bus: nothing is changed, not even the account ----
     new_root none
@@ -187,7 +199,7 @@ cases() {
     grep -q '^custodio:x:996:996:' "$root/etc/passwd" || bad "%pre 2: the uid of custodio changed"
     run post 2
     want_ok "%post 2"
-    want_calls "%post 2 (running)" "$RELOAD"$'\n'"$CATALOG"$'\n''systemctl restart custodio.service'
+    want_calls "%post 2 (running)" "$RELOAD"$'\n'"$CATALOG"$'\n''systemctl stop custodio.service'$'\n'"$START_SOCK"$'\n''systemctl restart custodio.service'
     [ ! -e "$root/$MARKER" ] || bad "%post 2: the marker is still there"
     active || bad "%post 2: the service is not running afterwards"
     no_enable "%post 2"
@@ -204,7 +216,7 @@ cases() {
     state_intact "upgrade (running)"
     # A second %post 2 (the marker is gone): no second restart.
     run post 2
-    want_calls "%post 2 again" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 2 again" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
 
     # ---- upgrade, service not running ----
     new_root
@@ -213,7 +225,7 @@ cases() {
     [ ! -e "$root/$MARKER" ] || bad "%pre 2: a marker although the service is stopped"
     run post 2
     want_ok "%post 2 (stopped)"
-    want_calls "%post 2 (stopped)" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 2 (stopped)" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     active && bad "%post 2: a stopped service was started"
     state_intact "upgrade (stopped)"
 
@@ -222,7 +234,7 @@ cases() {
     : > "$root/stub/active"
     run post 2
     want_ok "%post 2 without marker"
-    want_calls "%post 2 without marker" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 2 without marker" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     state_intact "%post 2 without marker"
 
     # ---- first installation with a stale marker (a failed earlier upgrade): no restart on $1 = 1 ----
@@ -230,7 +242,7 @@ cases() {
     : > "$root/stub/active"
     : > "$root/$MARKER"
     run post 1
-    want_calls "%post 1 with a stale marker" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 1 with a stale marker" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     # ... and a %pre 1 clears it
     run pre 1
     [ ! -e "$root/$MARKER" ] || bad "%pre 1 left a stale marker"
@@ -272,12 +284,12 @@ cases() {
     : > "$root/stub/active"
     run preun 0
     want_ok "%preun 0"
-    want_calls "%preun 0" 'systemctl stop custodio.service'
+    want_calls "%preun 0" "systemctl stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''systemctl stop custodio.service'
     active && bad "%preun 0: the service still runs"
     state_intact "%preun 0"
     run postun 0
     want_ok "%postun 0"
-    want_calls "%postun 0" "$RELOAD"$'\n'"$ACTIVE"
+    want_calls "%postun 0" "$RELOAD_ERASE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
     want_notice "%postun 0"
     state_intact "erase"
     no_account_removal "erase"
@@ -291,7 +303,7 @@ cases() {
     run preun 0
     : > "$root/stub/active"
     run postun 0
-    want_calls "%postun 0 (reactivated)" "$RELOAD"$'\n'"$ACTIVE"$'\n''systemctl stop custodio.service'
+    want_calls "%postun 0 (reactivated)" "$RELOAD_ERASE"$'\n'"$ACTIVE_SOCK"$'\n'"systemctl stop $SOCK"$'\n'"$ACTIVE"$'\n''systemctl stop custodio.service'
     active && bad "%postun 0: the service runs after the stop"
     state_intact "erase (reactivated)"
 
@@ -322,7 +334,7 @@ cases() {
         grep -q '^custodio:' "$root/etc/passwd" || bad "offline %pre $n: the account was not created"
         run_offline post "$n"
         want_ok "offline %post $n"
-        want_calls "offline %post $n" "$RELOAD"$'\n'"$CATALOG"
+        want_calls "offline %post $n" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
         run_offline preun 0
         want_ok "offline %preun 0"
         run_offline postun 0
@@ -340,7 +352,7 @@ cases() {
     grep -q '^custodio:' "$root/etc/passwd" || bad "%pre 2 with a read-only /run: the account was not created"
     run_offline post 2
     want_ok "%post 2 with a read-only /run"
-    want_calls "%post 2 with a read-only /run" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "%post 2 with a read-only /run" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     # Failing account creation is still fatal offline.
     new_root none
     bus_down

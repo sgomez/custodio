@@ -104,6 +104,7 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
+                || custodiod::storage::StateStorage::Unknown,
             )
             .await?;
             let client = Builder::address(address.as_str()).build().await?;
@@ -120,6 +121,13 @@ mod wiring {
             Ok::<_, Box<dyn Error>>(())
         })?;
         let mut buf = vec![0u8; 65536];
+        // The first datagram is the start-up entry for the state directory; the signature's follows.
+        let n = socket.recv(&mut buf)?;
+        let first = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
+        assert!(
+            first.contains("CUSTODIO_STATE_STORAGE=unknown\n"),
+            "{first}"
+        );
         let n = socket.recv(&mut buf)?;
         let text = String::from_utf8(buf.get(..n).ok_or("short")?.to_vec())?;
         let uid = rustix::process::getuid().as_raw();
@@ -165,6 +173,7 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
+                || custodiod::storage::StateStorage::Unknown,
             )
             .await?;
             assert!(service.unique_name().is_some());

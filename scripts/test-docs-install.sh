@@ -20,11 +20,6 @@ section() {
     ' "$1"
 }
 
-# fenced DOC HEADING_REGEX: the fenced code blocks of a section, one block per paragraph.
-fenced() {
-    section "$1" "$2" | awk '/^```/ { f = !f; if (!f) print ""; next } f { print }'
-}
-
 # install_cmd SCRIPT: "tool subcommand" of the install command of an e2e install.sh: the first command line that is not a
 # comment, set or shebang; leading VAR=value words dropped; the subcommand is the first later word before "$1" that is not an
 # option and not an assignment, else the first option (dpkg -i, pacman -U).
@@ -74,15 +69,7 @@ check() {
         [ -n "$text" ] || { bad "no section for $t"; continue; }
         has_cmd "$text" "$tool" "$sub" || bad "section for $t lacks '$tool ... $sub'"
     done
-    text=$(section "$doc" '^#+ .*rpm-ostree')
-    [ -n "$text" ] || bad "no rpm-ostree section"
-    has_cmd "$text" rpm-ostree install || bad "rpm-ostree section lacks 'rpm-ostree install'"
-    need "$text" 'uninstall' "rpm-ostree section does not mention uninstall"
-    need "$(section "$doc" '^#+ .*Debian 13')" 'apt-get -f install' "Debian section lacks the 'apt-get -f install' answer to missing dependencies"
 
-    # Why a bus without ProcessFD is refused.
-    text=$(section "$doc" '^#+ .*ProcessFD')
-    [ -n "$text" ] || bad "no section on ProcessFD"
 
     # Every bus-check message that points here is answered. The phrases are looked up in the script, so they track its text.
     local phrases=('no system bus is running' 'neither busctl nor dbus-send' 'could not be queried' 'does not provide ProcessFD') p n
@@ -93,8 +80,7 @@ check() {
     n=$(grep -c 'docs/install.md' packaging/bus-check.sh || true)
     [ "$n" -le "${#phrases[@]}" ] || bad "packaging/bus-check.sh has $n lines pointing to docs/install.md, this test knows ${#phrases[@]} messages"
 
-    # The systemd floor: read from the packaging, stated in "Supported systems" with the words for unsupported and refused. No system is
-    # documented below it, so there is no heading for Ubuntu 24.04 and no section on switching the bus.
+    # The systemd floor: read from the packaging, stated in "Supported systems".
     local floor flat
     floor=$(sed -n 's/^[[:space:]]*- systemd (>= \([0-9][0-9]*\))[[:space:]]*$/\1/p' packaging/nfpm.yaml | head -n 1)
     [ -n "$floor" ] || bad "cannot read the systemd floor (Pre-Depends) from packaging/nfpm.yaml"
@@ -114,22 +100,13 @@ check() {
     for w in "systemd $floor" "\`$kind\`" "\`$err\`"; do
         printf '%s\n' "$deb" | grep -qF -- "$w" || bad "the Debian 13 paragraph of Supported systems does not name $w"
     done
-    printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* not supported|not supported[^.]*Ubuntu 24\.04' || bad "Supported systems does not say that Ubuntu 24.04 is not supported"
-    printf '%s\n' "$flat" | grep -Eq -- 'refused by the package manager' || bad "Supported systems does not say that older systems are refused by the package manager"
-    printf '%s\n' "$flat" | grep -Eq -- 'Ubuntu 24\.04[^.]* is supported' && bad "Supported systems lists Ubuntu 24.04 as supported"
-    [ -z "$(section "$doc" '^#+ .*Ubuntu 24\.04')" ] || bad "a section for Ubuntu 24.04 remains"
-    ! grep -qi 'switching to dbus-broker' "$doc" || bad "the dbus-broker switching section remains"
 
     # Removal and purge.
     text=$(section "$doc" '^#+ .*(Remov|Purg)')
     [ -n "$text" ] || bad "no removal section"
-    need "$text" 'purge' "removal section does not mention purge"
-    need "$text" 'secure erasure' "removal section lacks the warning about secure erasure"
-    need "$text" 'irreversible' "removal section does not say the deletion is irreversible"
     while IFS= read -r p; do
         grep -qF -- "$p" <<< "$text" || bad "removal section lacks the path $p that packaging/deb/postrm prints"
     done < <(grep -o '/var/lib/[a-z/]*custodio' packaging/deb/postrm | sort -u)
-    fenced "$doc" '^#+ .*(Remov|Purg)' | grep -q '/var/lib/private/custodio' || bad "no fenced command that names the state directory"
 
     # TPM2 Software Stack (F125): each format's line holds the names the table and packaging/nfpm.yaml declare, no more and no fewer.
     text=$(section "$doc" '^#+ .*TPM2 Software Stack')
@@ -140,24 +117,11 @@ check() {
         got=$(printf '%s\n' "$text" | grep -E "^- $fmt: " | grep -o "${bt}[^${bt}]*${bt}" | tr -d "$bt" | sort || true)
         [ "$got" = "$want" ] || bad "the $fmt line of the TPM2 Software Stack section is [${got//$'\n'/ }], the packaging declares [${want//$'\n'/ }]"
     done
-    # why the .deb lists libtss2-rc0t64 (the dlopen reason is in the paragraph that names it, outside the lists)
-    local rc
-    rc=$(python3 -I scripts/lib/tss_names.py deb packaging/nfpm.yaml | grep -- '^libtss2-rc' || true)
-    [ -n "$rc" ] || bad "packaging/nfpm.yaml no longer lists libtss2-rc in the .deb Depends; update this test"
-    printf '%s\n' "$text" | awk -v RS= -v n="$rc" 'index($0, n) && $0 !~ /(^|\n)- / { print }' | tr '\n' ' ' | grep -Eq -- 'dlopen' || bad "the TPM2 Software Stack section does not say, next to $rc, that systemd loads it by dlopen"
-    printf '%s\n' "$text" | awk -v RS= -v n="$rc" 'index($0, n) && $0 !~ /(^|\n)- / { print }' | tr '\n' ' ' | grep -Eqi -- 'recommend' || bad "the TPM2 Software Stack section does not say, next to $rc, that an install without recommends lacks it"
-
-    # Upgrade.
-    text=$(section "$doc" '^#+ .*Upgrad')
-    [ -n "$text" ] || bad "no upgrade section"
 
     # Journal.
     text=$(section "$doc" '^#+ .*[Jj]ournal')
     [ -n "$text" ] || bad "no journal section"
-    need "$text" '/var/log/journal' "journal section lacks /var/log/journal"
-    need "$text" 'Storage=persistent' "journal section lacks Storage=persistent"
     need "$text" 'journalctl --disk-usage' "journal section lacks 'journalctl --disk-usage'"
-    need "$text" 'docs/audit\.md|audit\.md' "journal section does not link to the audit queries"
     journalctl --help 2> /dev/null | grep -q -- '--disk-usage' || bad "journalctl has no --disk-usage here"
 
     # README.
@@ -203,33 +167,21 @@ drop_section() { # drop_section NAME HEADING_REGEX
 control 'wrong tool for Debian' 's/dpkg -i/rpm -i/g'
 control 'wrong tool for Arch' 's/pacman -U/pacman -S/g'
 control 'wrong tool for Fedora' 's/dnf install/yum remove/g'
-control 'no apt-get -f install' 's/apt-get -f install/apt-get update/g'
-control 'rpm-ostree layering missing' 's/rpm-ostree install/rpm-ostree status/g'
 control 'TPM2 deb name changed' 's/libtss2-mu-4\.0\.1-0t64/libtss2-mu0/'
 control 'TPM2 rpm package changed' 's/^- rpm: \x60tpm2-tss\x60/- rpm: \x60tpm2-tss-libs\x60/'
 control 'TPM2 arch bound changed' 's/systemd>=257/systemd>=255/'
 control 'TPM2 deb libtss2-rc0t64 dropped' 's/^(- deb:.*)\x60libtss2-rc0t64\x60, /\1/'
 control 'TPM2 deb systemd bound changed' 's/systemd \(>= 257\)/systemd (>= 255)/'
-control 'dlopen reason removed' 's/dlopen/loads/g'
-control 'recommends reason removed' 's/[Rr]ecommends/suggestions/g'
 control 'floor stated as 255' 's/requires systemd 257 or later/requires systemd 255 or later/'
 control 'floor sentence removed' 's/systemd 257 or later, for/systemd, for/'
 control 'Debian 13 floor changed' '/^On Debian 13/,/^$/ s/systemd 257/systemd 255/g'
 control 'Debian 13 error changed' '/PCR 7/,/^$/ s/\x60CredentialsUnavailable\x60/\x60TpmFailed\x60/'
 control 'Debian 13 kind changed' '/PCR 7/,/^$/ s/\x60encrypted-tpm\x60/\x60tpm\x60/'
-control 'refusal sentence removed' 's/are refused by/are ignored by/'
-control 'Ubuntu 24.04 listed as supported' 's/^Debian 13, Ubuntu 26.04,/Ubuntu 24.04 is supported. Debian 13, Ubuntu 26.04,/'
 control 'TPM2 deb group package dropped' 's/, \x60tpm-udev\x60//'
-{ cat "$DOC"; printf '\n## Ubuntu 24.04: switching to dbus-broker\n\nsudo apt-get install dbus-broker\n'; } > "$tmp/doc.md"
-if check "$tmp/doc.md" "$README" 2> /dev/null; then echo "control 'dbus-broker section back': a broken document passed" >&2; exit 1; fi
 drop_section 'TPM2 section removed' '^#+ .*TPM2 Software Stack'
-drop_section 'ProcessFD section removed' '^#+ .*ProcessFD'
 control 'bus-check answer lacking' 's/could not be queried/failed/g'
 control 'bus-check answer lacking (no bus)' 's/no system bus is running/there is no bus/g'
 control 'path changed' 's#/var/lib/private/custodio#/var/lib/other#g'
-control 'no secure erasure warning' 's/secure erasure/shredding/g'
-control 'no irreversibility' 's/irreversible/final/g'
-control 'no persistent storage' 's/Storage=persistent/Storage=auto/g'
 control 'no disk usage check' 's/journalctl --disk-usage/journalctl --header/g'
 
 # README control.

@@ -144,7 +144,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
-          tool: just@1.59.0
+          tool: just@1.59.0,cargo-nextest@0.9.148
       - run: just test
 
   # Unit and integration tests under llvm-cov, then the CRAP gate.
@@ -255,6 +255,8 @@ jobs:
         run: just package-parity
       - name: just glibc-ceiling
         run: just glibc-ceiling
+      - name: just snap-base-fit
+        run: just snap-base-fit
       # ubuntu's apt cannot install Debian 13's lintian or Fedora's rpmlint: all three linters run in their distribution's container.
       - name: just package-lint
         run: just package-lint

@@ -222,13 +222,18 @@ Session time limit: ${SESSION_TIMEOUT:-45m}
 The evaluator's notes on the contract:
 $(tail -n +2 "$STATE/$id.contract-eval" 2>/dev/null)${resumed:+
 
-The operator stopped the previous builder session ($LOG_DIR/$resumed) before it committed. Its
+The previous builder session ($LOG_DIR/$resumed) was stopped or cut before it committed. Its
 uncommitted work is in the working tree: check it with git status and git diff, keep what holds,
 and continue from it.}"
   resumed= && rm -f "$STATE/interrupted"
   [ -e BLOCKED.md ] && continue
-  # A builder cut by the timeout keeps its uncommitted work for the next builder, as after a stop.
-  if [ "$last_rc" = 124 ] && tracked_changes; then resumed="$stamp-build.log"; continue; fi
+  # A builder cut by the timeout keeps its uncommitted work for the next builder, as after a stop; so does
+  # one that ended its turn while background subagents still edited (claude then kills them).
+  if tracked_changes && { [ "$last_rc" = 124 ] \
+    || grep -q 'Background tasks still running .*stopping them' "$LOG_DIR/$stamp-build.log"; }; then
+    [ "$last_rc" = 124 ] || log "$id: builder ended with background tasks running; keeping its work"
+    resumed="$stamp-build.log"; continue
+  fi
   stash_leftovers "$stamp"
   if [ "$(git rev-parse HEAD)" = "$head_before" ]; then
     # Every step ticked and this HEAD never evaluated: nothing for a builder to do, go to the gate.

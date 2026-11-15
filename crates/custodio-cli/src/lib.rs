@@ -13,17 +13,25 @@ use zeroize::Zeroizing;
 pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
+pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
+pub mod browser_files;
 pub mod bus;
 pub mod delete;
 pub mod failure;
 pub mod list;
+pub mod register_cli;
+pub mod register_discover;
+pub mod register_native;
+pub mod register_snap;
+pub mod storage;
 pub mod tty;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
        custodio list\n\
        custodio delete <key id>\n\
+       custodio register [--module <path>] [--remove | --refresh-only]\n\
 The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
 arguments or the environment.";
 
@@ -33,6 +41,7 @@ pub enum Command {
     Import(ImportArgs),
     List,
     Delete(String),
+    Register(register_native::RegisterArgs),
 }
 
 /// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
@@ -48,6 +57,12 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
         } else {
             Err(ArgError::Usage)
         };
+    }
+    if it.peek().map(String::as_str) == Some("register") {
+        it.next();
+        return register_native::parse_register_args(it)
+            .map(Command::Register)
+            .ok_or(ArgError::Usage);
     }
     if it.peek().map(String::as_str) == Some("delete") {
         it.next();
@@ -251,6 +266,38 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
     Ok(())
 }
 
+/// `custodio import`: [`run_import`], then the storage warning on `err` when the import succeeded.
+///
+/// # Errors
+/// See [`ImportFailure`]; the warning never adds one.
+pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write, E: Write>(
+    args: &ImportArgs,
+    prompt: &mut P,
+    importer: &I,
+    storage: &S,
+    out: &mut W,
+    err: &mut E,
+) -> Result<(), ImportFailure> {
+    run_import(args, prompt, importer, out)?;
+    storage::warn(storage, err);
+    Ok(())
+}
+
+/// `custodio list`: [`run_list`], then the storage warning on `err` when the list was shown without error.
+///
+/// # Errors
+/// See [`ListFailure`]; the warning never adds one.
+pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
+    lister: &L,
+    storage: &S,
+    out: &mut W,
+    err: &mut E,
+) -> Result<(), ListFailure> {
+    run_list(lister, out)?;
+    storage::warn(storage, err);
+    Ok(())
+}
+
 /// Everything that can end a run of the tool without success.
 #[derive(Debug)]
 pub enum CliError {
@@ -261,6 +308,7 @@ pub enum CliError {
     Import(ImportFailure),
     List(ListFailure),
     Delete(DeleteFailure),
+    Register(register_native::RegisterError),
 }
 
 impl fmt::Display for CliError {
@@ -271,6 +319,7 @@ impl fmt::Display for CliError {
             Self::Import(e) => write!(f, "custodio: {e}"),
             Self::List(e) => write!(f, "custodio: {e}"),
             Self::Delete(e) => write!(f, "custodio: {e}"),
+            Self::Register(e) => write!(f, "{e}"),
         }
     }
 }
@@ -282,9 +331,15 @@ impl std::error::Error for CliError {}
 pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
-        Err(CliError::Args(_)) => 2,
+        Err(CliError::Args(_) | CliError::Register(register_native::RegisterError::Refused(_))) => {
+            2
+        }
         Err(
-            CliError::SystemBus(_) | CliError::Import(_) | CliError::List(_) | CliError::Delete(_),
+            CliError::SystemBus(_)
+            | CliError::Import(_)
+            | CliError::List(_)
+            | CliError::Delete(_)
+            | CliError::Register(_),
         ) => 1,
     }
 }

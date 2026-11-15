@@ -84,7 +84,11 @@ grep -qx 'ExecStart=/usr/lib/custodio/custodiod' <<< "$oldpath_unit" || { echo "
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
-RELOAD=$'systemctl daemon-reload\ndeb-systemd-invoke reload dbus.service'
+SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+RELOAD=$'systemctl daemon-reload\n'"systemctl enable $SOCK"$'\ndeb-systemd-invoke reload dbus.service'
+START_SOCK="deb-systemd-invoke start $SOCK"
+RELOAD_REMOVE=$'systemctl daemon-reload\ndeb-systemd-invoke reload dbus.service'
+ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 CATALOG='journalctl --update-catalog'
 SYSUSERS='systemd-sysusers -'
 
@@ -122,7 +126,7 @@ state_intact() {
     [ "$(lc_snapshot_state "$root")" = "$before" ] || bad "$1: the state directory changed:"$'\n'"$(diff <(echo "$before") <(lc_snapshot_state "$root") || true)"
     [ ! -e "$root/stub/violation" ] || bad "$1: a file tool was called on the state directory"
 }
-no_start() { if grep -qE '^(systemctl|deb-systemd-invoke|deb-systemd-helper) (enable|start|preset)' "$root/recorded-calls" 2> /dev/null; then bad "$1: enable or start: $(calls)"; fi; }
+no_start() { if grep -v "$SOCK" "$root/recorded-calls" 2> /dev/null | grep -qE '^(systemctl|deb-systemd-invoke|deb-systemd-helper) (enable|start|preset)'; then bad "$1: enable or start: $(calls)"; fi; }
 
 scenarios() {
     local state
@@ -132,7 +136,7 @@ scenarios() {
         dp -i "$new_deb"
         [ "$rc" -eq 0 ] || bad "install ($state): dpkg exited $rc: $out"
         [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "install ($state): the files are missing"
-        want_calls "install ($state)" "$BUS"$'\n'"$SYSUSERS"$'\n'"$RELOAD"$'\n'"$CATALOG"
+        want_calls "install ($state)" "$BUS"$'\n'"$SYSUSERS"$'\n'"$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
         [ "$(cat "$root/stub/policy-at-sysusers" 2> /dev/null)" = absent ] || bad "install ($state): the bus policy was unpacked before the account was created: $(cat "$root/stub/policy-at-sysusers" 2> /dev/null)"
         grep -q '^custodio:' "$root/etc/passwd" || bad "install ($state): no account after unpack"
         no_start "install ($state)"
@@ -156,7 +160,7 @@ scenarios() {
         [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "upgrade ($state): the new files are missing"
         [ ! -e "$root/usr/libexec/custodiod" ] || bad "upgrade ($state): the old file is still there"
         expect="$BUS"$'\n'"$SYSUSERS"$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"
-        [ "$state" = stopped ] || expect+=$'\n''deb-systemd-invoke restart custodio.service'
+        if [ "$state" = stopped ]; then expect+=$'\n'"$START_SOCK"; else expect+=$'\n''deb-systemd-invoke stop custodio.service'$'\n'"$START_SOCK"$'\n''systemctl restart custodio.service'; fi
         want_calls "upgrade ($state)" "$expect"
         [ "$(grep '^custodio:' "$root/etc/passwd")" = "$uid_line" ] || bad "upgrade ($state): the account changed"
         [ -e "$root/stub/active" ] || [ "$state" = stopped ] || bad "upgrade (running): the service is not running afterwards"
@@ -181,7 +185,7 @@ scenarios() {
         [ -x "$root/usr/lib/custodio/libcustodio_pkcs11.so" ] || [ -e "$root/usr/lib/custodio/libcustodio_pkcs11.so" ] || bad "old-path upgrade ($state): the module is gone"
         grep -qx 'ExecStart=/usr/libexec/custodio/custodiod' "$root/usr/lib/systemd/system/custodio.service" || bad "old-path upgrade ($state): the unit does not start the new path"
         expect="$BUS"$'\n'"$SYSUSERS"$'\n'"$ACTIVE"$'\n'"$RELOAD"$'\n'"$CATALOG"
-        [ "$state" = stopped ] || expect+=$'\n''deb-systemd-invoke restart custodio.service'
+        if [ "$state" = stopped ]; then expect+=$'\n'"$START_SOCK"; else expect+=$'\n''deb-systemd-invoke stop custodio.service'$'\n'"$START_SOCK"$'\n''systemctl restart custodio.service'; fi
         want_calls "old-path upgrade ($state)" "$expect"
         [ "$(grep -c 'restart custodio.service' "$root/recorded-calls" || true)" -eq "$([ "$state" = running ] && echo 1 || echo 0)" ] || bad "old-path upgrade ($state): not exactly the expected restarts"
         no_start "old-path upgrade ($state)"
@@ -202,8 +206,8 @@ scenarios() {
         grep -qF '/var/lib/custodio' <<< "$out" || bad "$state: the notice is not in the output: $out"
         grep -qF 'destroys the keys for good' <<< "$out" || bad "$state: the warning is not in the output: $out"
         [ ! -e "$root/stub/active" ] || bad "$state: the service still runs"
-        expect='deb-systemd-invoke stop custodio.service'$'\n'"$RELOAD"$'\n'"$ACTIVE"$'\n''deb-systemd-invoke stop custodio.service'
-        [ "$state" = remove ] || expect+=$'\n'"$RELOAD"$'\n'"$ACTIVE"
+        expect="deb-systemd-invoke stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''deb-systemd-invoke stop custodio.service'$'\n'"$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"deb-systemd-invoke stop $SOCK"$'\n'"$ACTIVE"$'\n''deb-systemd-invoke stop custodio.service'
+        [ "$state" = remove ] || expect+=$'\n'"$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
         want_calls "$state" "$expect"
         state_intact "$state"
         if grep -qE '^(userdel|groupdel|deluser|delgroup|usermod)' "$root/recorded-calls"; then bad "$state: the account was changed"; fi
@@ -216,7 +220,7 @@ scenarios() {
     lc_reset "$root"
     dp -P custodio
     [ "$rc" -eq 0 ] || bad "purge after remove: dpkg exited $rc: $out"
-    want_calls "purge after remove" "$RELOAD"$'\n'"$ACTIVE"
+    want_calls "purge after remove" "$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
     grep -qF 'destroys the keys for good' <<< "$out" || bad "purge after remove: no warning: $out"
     grep -q '^custodio:' "$root/etc/passwd" || bad "purge after remove: the account is gone"
     state_intact "purge after remove"
@@ -238,7 +242,8 @@ DP_STRICT=1 dp -i "$new_deb"
 [ "$rc" -eq 0 ] || bad "systemd 257: dpkg refused the package: $out"
 [ -x "$root/usr/libexec/custodio/custodiod" ] || bad "systemd 257: the files are missing"
 
-# ---- the checks see a bad package: account creation moved from preinst to postinst ----
+# ---- the checks see a bad package: account creation moved from preinst to postinst (what only the real dpkg shows: the order
+# against the unpack; the other mutants are in scripts/lib/deb-lifecycle-mutants.sh) ----
 mutate_fixture() { # NAME FILE SED
     local before_dir=$FX_DIR/packaging/deb
     cp -r "$ROOT/packaging/deb/." "$before_dir/"
@@ -259,9 +264,5 @@ mutant_run() { # NAME FILE SED
 }
 mutant_run account-in-postinst preinst 's|^        custodio_create_account .*|        :|'
 mutant_run account-in-postinst-late postinst 's|^    systemctl daemon-reload.*|&\n    systemd-sysusers - < /dev/null|'
-mutant_run enable-on-install postinst 's|^    journalctl --update-catalog .*|&\n    deb-systemd-invoke enable custodio.service|'
-# shellcheck disable=SC2016 # a sed expression, not shell
-mutant_run restart-always postinst 's|if \[ -n "\$2" \] \&\& \[ -e /run/custodio-restart-after-upgrade \]; then|if true; then|'
-mutant_run delete-on-purge postrm 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/private/custodio\n&|'
 
 exit "$fail"

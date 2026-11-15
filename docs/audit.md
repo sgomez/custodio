@@ -26,10 +26,20 @@ The text of `MESSAGE` is for people; parse the fields instead.
 | `delete` | `13d1a981ea8f64fc1a6f390bee7fd66c` |
 | `replace_certificate` | `336e0b53720a735afb179ebc7f779ed6` |
 | `purge` | `8e1f5a6c0b3d4972a4c6d58f31b7e902` |
+| state directory storage (start-up) | `5b0d7a2e91c34f68b3e4a7d1c09f2e86` |
 
 A journal catalog (`/usr/lib/systemd/catalog/custodio.catalog`, shipped by the package) explains each in
 `journalctl -x`. Entries written before `CUSTODIO_OPERATION` existed are signing entries without it; the
 signing `MESSAGE_ID` never changed.
+
+## State directory storage
+
+At start, after the purge and before the service takes its bus name, `custodiod` writes one entry with
+`MESSAGE_ID=5b0d7a2e91c34f68b3e4a7d1c09f2e86` and the field `CUSTODIO_STATE_STORAGE`: `encrypted`, `not-encrypted` or
+`unknown` (see `StateStorage` in `docs/api.md`). `PRIORITY` is `6` for `encrypted` and `4` otherwise;
+`SYSLOG_IDENTIFIER` is `custodiod`. It has no caller, key or operation field. If the entry cannot be submitted the
+service logs that on standard error and still starts; the bus method still answers. Query it with
+`journalctl _SYSTEMD_UNIT=custodio.service MESSAGE_ID=5b0d7a2e91c34f68b3e4a7d1c09f2e86`.
 
 ## Fields
 
@@ -48,6 +58,8 @@ signing `MESSAGE_ID` never changed.
 | `CUSTODIO_MECHANISM` | Signature mechanism, one of the values below | signing entries only; omitted when it was not known |
 | `CUSTODIO_APP_ID_STATE` | Which flatpak app-id case the entry records: `read`, `none` or `undetermined`; see "Flatpak app-id" | always |
 | `CUSTODIO_APP_ID` | The flatpak app-id of the caller, validated | omitted unless `CUSTODIO_APP_ID_STATE` is `read` |
+| `CUSTODIO_TRANSPORT` | How the request reached the service: `bus` (the system bus) or `socket` (a snap socket); see "Transport" | every request entry (sign, import, delete, replace_certificate); omitted from `purge` entries, which are not requests |
+| `CUSTODIO_PEER_LABEL` | The security label of the peer of a socket request, e.g. `snap.firefox.firefox (enforce)`; only a label that passed the exact check of the socket, so it holds no control character | `socket` entries only; omitted from `bus` entries |
 | `CUSTODIO_STORAGE_KIND` | How the key is protected in the store: `tpm`, `encrypted-tpm` or `encrypted-host`; see "Storage kind" | import entries that stored a key, and sign entries when the key's record was read (also when the request was denied or failed); omitted otherwise, never guessed |
 | `CUSTODIO_CAUSE` | Why the request failed, one of the causes under "Causes" | import entries with the outcome `storage_failure`, and sign entries with the outcome `signing_failed` whose key is lost or temporarily unusable; omitted otherwise |
 | `CUSTODIO_KEY_TYPE` | Type of the imported key: `rsa_2048` or `ecdsa_p256` | import entries only; omitted when the file did not get far enough to have one (an unreadable file, a wrong password, a refusal before decoding) |
@@ -79,6 +91,34 @@ entry with a caller, adds at most 1 s to it, and a failing lookup is `undetermin
 - **The pid of a flatpak caller is the proxy's.** A sandboxed application reaches the bus through
   `xdg-dbus-proxy`, so for a flatpak caller `CUSTODIO_PID` (and the process the app-id is looked up for) is the
   pid of the proxy, not of the application. `CUSTODIO_UID` is the user's.
+
+## Transport
+
+`CUSTODIO_TRANSPORT` is `bus` for a call on the system bus and `socket` for a call on a snap socket (`Sign`
+only, for now). Entries written before the field existed are bus entries without it. On a socket entry:
+
+- `CUSTODIO_UID` and `CUSTODIO_PID` are what the kernel reports for the connection's peer
+  (`SO_PEERCRED`), never something the peer sent. The pid is the one the connecting process had in the
+  service's pid namespace, and a pid can be reused once the process has exited: search by it only together
+  with the time of the entry.
+- `CUSTODIO_PEER_LABEL` is the peer's security label (`SO_PEERSEC`).
+- `CUSTODIO_APP_ID_STATE` is `undetermined`: the flatpak lookup applies to bus callers only.
+
+A socket entry:
+
+```text
+MESSAGE=signature made: uid 1000 pid 4242 key my-key
+CUSTODIO_UID=1000
+CUSTODIO_PID=4242
+CUSTODIO_OPERATION=sign
+CUSTODIO_OUTCOME=signed
+CUSTODIO_APP_ID_STATE=undetermined
+CUSTODIO_TRANSPORT=socket
+CUSTODIO_PEER_LABEL=snap.firefox.firefox (enforce)
+```
+
+Both fields were added under the compatibility rule above: no documented name changed, and the `MESSAGE` text is
+the same on both transports.
 
 ## Outcomes
 

@@ -72,6 +72,8 @@ tf_point() {
     old=$(systemctl show -p MainPID --value custodio)
     printf '[Service]\nEnvironment=CUSTODIOD_TEST_SWTPM_TCTI=swtpm:path=%s\nBindReadOnlyPaths=%s\n' "$1" "$TPM_DIR" > "$TPM_DROPIN"
     systemctl daemon-reload
+    # Zero the start rate counter: the restarts of a run are more than systemd's 5 in 10 s.
+    systemctl reset-failed custodio 2> /dev/null || true
     systemctl restart custodio
     tf_wait_ready "$old"
 }

@@ -14,7 +14,11 @@
       <allow_inactive>auth_self</allow_inactive>
       <allow_active>auth_self</allow_active>
     </defaults>
-    <!-- polkit refuses CheckAuthorization on another user's subject from a non-root caller unless it owns the action. -->
+    <!-- Why the owner annotation: polkit refuses CheckAuthorization for a subject whose uid is not the caller's,
+         unless the caller is root or owns the action (org.freedesktop.policykit.owner, matched against the
+         caller's user). Every signature asks about somebody else's process: the bus caller's (system-bus-name)
+         or the snap socket peer's (unix-process, pidfd and uid), never the service's own, which runs as the
+         user custodio. Without this line polkit refuses those questions and no signature can be authorized. -->
     <annotate key="org.freedesktop.policykit.owner">unix-user:custodio</annotate>
   </action>
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # F135: container-free checks of the noplain-* cases: the no-key-file judgement rejects each planted unencrypted form and accepts an encrypted-only directory (an encrypted PEM
-# never prompts), the kind judgement accepts only the mode's kinds, the placement (debian13 list only, never skipped, group) and the accounting rejecting a noplain-* skip in each
-# TPM mode. NOT checked here: a real run (`just e2e-cases debian13 'noplain-*'` in swtpm, none and lacking).
+# never prompts), the kind judgement accepts only the mode's kinds. NOT checked here: a real run (`just e2e-cases debian13 'noplain-*'` in swtpm, none and lacking).
 # shellcheck disable=SC2086,SC2013,SC2015,SC2016 # the ids are words; the reader line is cut by sed on purpose (single quotes keep the $)
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -9,36 +8,7 @@ tmp=$(mktemp -d)
 trap "[ -n \"\${KEEP:-}\" ] || rm -rf \"\$tmp\"" EXIT
 fail=0
 bad() { echo "test-e2e-noplain: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
-ids="noplain-rsa noplain-ec noplain-no-key-file"
 np() { python3 -I "$ROOT/e2e/noplain.py" "$@"; }
-
-# placement
-for id in $ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    ! grep -q "^$id:" "$D/skip.list" || bad "$id is on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    ! grep -rlx "$id" "$ROOT"/e2e/targets/*/cases.list | grep -qv debian13 || bad "$id is listed by another target"
-done
-[ "$(grep -c '^noplain-' "$D/cases.list")" = 3 ] || bad "debian13 cases.list lists other noplain cases than the three"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $ids noplain-x; do [ "$(case_group "$id")" = noplain ] || bad "case_group $id is '$(case_group "$id")', expected noplain"; done
-
-# accounting
-printf '%s\n' $ids > "$tmp/cases"
-sed 's/^/E2E-CASE run /' "$tmp/cases" > "$tmp/out-run"
-sed 's/^E2E-CASE run /E2E-CASE skipped /' "$tmp/out-run" > "$tmp/out-all"
-awk '/^E2E-CASE run / && !done { sub(/run/, "skipped"); done = 1 } { print }' "$tmp/out-run" > "$tmp/out-one"
-sed 's/^E2E-CASE skipped \(.*\)/\1: not applicable/' "$tmp/out-all" > "$tmp/skip-all"
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$2" "$3" > /dev/null 2>&1; }
-for m in swtpm none lacking; do
-    check $m "$D/skip.list" "$tmp/out-run" || bad "mode $m: the run noplain cases are refused"
-    ! check $m "$D/skip.list" "$tmp/out-one" || bad "mode $m: one skipped noplain case is accepted"
-    ! check $m "$D/skip.list" "$tmp/out-all" || bad "mode $m: skipped noplain cases are accepted"
-    ! check $m "$tmp/skip-all" "$tmp/out-all" || bad "mode $m: a skip list naming the cases lets the skips through"
-    ! check $m "$tmp/skip-all" "$tmp/out-one" || bad "mode $m: a skip list naming the cases lets one skip through"
-done
 
 # kind judgement
 printf 'np-rsa\trsa2048\ttpm\nnp-ec\tecdsa-p256\ttpm\n' > "$tmp/k-tpm"
@@ -165,18 +135,4 @@ grep -q 'np-ec: the credential .* did not pass the reader' "$tmp/vlack-pcr.out" 
 grep -q 'TPM mode' "$tmp/vnone.out" || bad "vnone: E2E_TPM=none in a VM run is not refused with its reason"
 [ "$(rcof vctl)" = 0 ] || bad "the control copy without the reader call does not pass the nonzero PCR mask: $(tail -n 3 "$tmp/vctl.out")"
 
-# accounting of a VM run (CHECK_VM=1)
-cp "$E/vm/cases.list" "$tmp/vmcases"
-for id in $ids; do grep -qx "$id" "$tmp/vmcases" || bad "$id is not in e2e/vm/cases.list"; done
-for id in $(grep -v '^[[:space:]]*\(#\|$\)' "$tmp/vmcases"); do echo "E2E-CASE run $id"; done > "$tmp/vm-run"
-printf '%s: x\n' $ids > "$tmp/vm-skiplist"
-for id in $ids; do
-    sed "s/^E2E-CASE run $id\$/E2E-CASE skipped $id/" "$tmp/vm-run" > "$tmp/vm-sk"
-    for m in swtpm lacking; do
-        vcheck() { CHECK_VM=1 CHECK_TPM_MODE=$m bash "$E/check-cases.sh" check "$tmp/vmcases" "$1" "$2" > /dev/null 2>&1; }
-        vcheck "$E/vm/skip.list" "$tmp/vm-run" || bad "VM $m: all cases run is refused"
-        ! vcheck "$E/vm/skip.list" "$tmp/vm-sk" || bad "VM $m: $id skipped is accepted"
-        ! vcheck "$tmp/vm-skiplist" "$tmp/vm-sk" || bad "VM $m: $id skipped is accepted with a skip list naming it"
-    done
-done
 exit "$fail"

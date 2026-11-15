@@ -6,11 +6,14 @@
 //! `tss-esapi` and by `tpm2-tools`), and [`Swtpm::tool`] sets it on the child it runs.
 //!
 //! `swtpm` cannot be signalled in the dev container (`kill` fails with EPERM, even SIGKILL), so it
-//! is stopped over its control socket with `swtpm_ioctl -s`, as `scripts/with-swtpm.sh` does; the
-//! signal is the fallback, and the wait is bounded. Dropping an instance stops it and removes its
-//! state, also while a panic unwinds. A test binary killed without unwinding (`timeout`, nextest's
-//! fail-fast) runs no `Drop`: a guardian shell between it and `swtpm` gets the parent-death signal,
-//! which the confined `swtpm` would refuse, and stops it the same way.
+//! is stopped over its control socket with `swtpm_ioctl -s`, as `scripts/with-swtpm.sh` does, with
+//! a bounded wait. Dropping an instance stops it and removes its state, also while a panic unwinds.
+//! A test binary killed without unwinding (`timeout`, nextest's fail-fast) runs no `Drop`: a
+//! guardian shell between it and `swtpm` gets the parent-death signal, which the confined `swtpm`
+//! would refuse, and stops it the same way. The guardian is the only thing that can still stop an
+//! orphaned `swtpm`, so nothing may kill it: it runs in its own process group, out of reach of
+//! nextest's SIGKILL to the test's group, and the fixture never signals it. A `swtpm` that does
+//! not stop keeps its guardian and its state directory (the control socket is in it).
 //!
 //! Starting fails with an error that names the missing tool when `swtpm` or `tpm2-tools` are not
 //! installed; tests unwrap it, so they fail instead of skipping.
@@ -19,6 +22,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io;
 use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -137,6 +141,8 @@ impl Swtpm {
             .stdin(Stdio::null())
             .stdout(log.try_clone()?)
             .stderr(log)
+            // Out of the test's process group, which nextest kills with SIGKILL.
+            .process_group(0)
             .spawn()?;
         let pid_file = self.dir.join("swtpm.pid");
         let deadline = Instant::now() + START_WAIT;
@@ -173,42 +179,39 @@ impl Swtpm {
         Ok(())
     }
 
-    /// Stops the process: over the control socket first, by signal as fallback, with a bounded wait.
-    fn stop(&mut self) {
+    /// Stops the process over the control socket, retrying within a bounded wait. Returns whether it stopped;
+    /// if not, the guardian is left alive to stop it when this process ends.
+    fn stop(&mut self) -> bool {
         let Some(mut child) = self.child.take() else {
-            return;
+            return true;
         };
-        if self.ctrl_socket().exists() {
-            // Best effort: the signal below is the fallback.
-            let _ = Command::new("timeout")
-                .args(["10", "swtpm_ioctl", "--unix"])
-                .arg(self.ctrl_socket())
-                .arg("-s")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
-        }
-        let start = Instant::now();
-        let mut signalled = false;
+        let deadline = Instant::now() + STOP_WAIT;
         loop {
-            match child.try_wait() {
-                Ok(Some(_)) | Err(_) => return,
-                Ok(None) => {}
+            if self.ctrl_socket().exists() {
+                let _ = Command::new("timeout")
+                    .args(["10", "swtpm_ioctl", "--unix"])
+                    .arg(self.ctrl_socket())
+                    .arg("-s")
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
             }
-            let waited = start.elapsed();
-            if !signalled && waited > STOP_GRACE {
-                let _ = child.kill();
-                signalled = true;
+            let retry = Instant::now() + STOP_GRACE;
+            while Instant::now() < retry {
+                match child.try_wait() {
+                    Ok(Some(_)) | Err(_) => return true,
+                    Ok(None) => sleep(POLL),
+                }
             }
-            if waited > STOP_WAIT {
+            if Instant::now() > deadline {
                 eprintln!(
-                    "swtpm fixture: warning: swtpm (pid {}) did not stop",
-                    self.pid
+                    "swtpm fixture: warning: swtpm (pid {}) did not stop; its state stays in {}",
+                    self.pid,
+                    self.dir.display()
                 );
-                return;
+                return false;
             }
-            sleep(POLL);
         }
     }
 
@@ -292,7 +295,9 @@ impl Swtpm {
     /// # Errors
     /// `swtpm` does not come up again.
     pub fn restart(&mut self) -> io::Result<()> {
-        self.stop();
+        if !self.stop() {
+            return Err(io::Error::other("swtpm did not stop"));
+        }
         self.spawn()
     }
 
@@ -308,7 +313,9 @@ impl Swtpm {
 
 impl Drop for Swtpm {
     fn drop(&mut self) {
-        self.stop();
-        let _ = fs::remove_dir_all(&self.dir);
+        // A live swtpm can only be stopped through the control socket in the directory.
+        if self.stop() {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
     }
 }

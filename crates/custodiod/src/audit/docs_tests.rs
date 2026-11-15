@@ -149,12 +149,13 @@ fn catalog_bodies(catalog: &str, id: &str) -> Vec<String> {
 }
 
 /// Field names of the entries with this operation (all outcomes, everything known).
-fn field_names(op: Operation) -> Result<BTreeSet<&'static str>, InvalidKeyId> {
+fn field_names(op: Operation) -> Result<BTreeSet<&'static str>, Box<dyn Error>> {
     let mut all = BTreeSet::new();
     if op == Operation::Sign {
         for o in outcomes() {
             all.extend(names(&full(o)?));
         }
+        all.extend(names(&socket_entry()?));
         let failed = full(Outcome::SigningFailed)?;
         all.extend(names(&failed.with_storage_kind(StorageKind::Tpm)));
         all.extend(names(
@@ -178,6 +179,13 @@ fn full(o: Outcome) -> Result<Entry, InvalidKeyId> {
         Some(AuditMechanism::Ecdsa),
     )
     .with_app_id(app()))
+}
+
+/// An entry of a call on a snap socket.
+fn socket_entry() -> Result<Entry, Box<dyn Error>> {
+    let label = PeerLabel::new(b"snap.firefox.firefox (enforce)")
+        .map_err(|e| format!("the accepted label was refused: {e}"))?;
+    Ok(full(Outcome::Signed)?.with_socket_peer(label))
 }
 
 fn names(e: &Entry) -> BTreeSet<&'static str> {
@@ -349,7 +357,9 @@ fn catalog_format() -> TestResult {
     let lines: Vec<_> = catalog.lines().filter(|l| !l.starts_with('#')).collect();
     assert_eq!(lines.first(), Some(&format!("-- {MESSAGE_ID} en").as_str()));
     let entries: Vec<_> = catalog.split("\n-- ").skip(1).collect();
-    let ids: Vec<_> = Operation::all().iter().map(|o| o.message_id()).collect();
+    let mut ids: Vec<_> = Operation::all().iter().map(|o| o.message_id()).collect();
+    // The start-up entry for the state directory's storage is not an operation.
+    ids.push(STATE_STORAGE_MESSAGE_ID);
     assert_eq!(
         entries.len(),
         2 * ids.len(),

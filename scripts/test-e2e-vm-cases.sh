@@ -40,7 +40,7 @@ grep -v '^pcr-extended-signs$' "$LIST" > "$tmp/l1"; differs "$LIST" "$tmp/l1" li
 bash "$CHK" lint "$VSKIP" || bad "skip.list does not lint"
 
 # ---- scripts
-SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh tpmkind-cases.sh"
+SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh vm/snap.sh tpmkind-cases.sh"
 stage() { # stage DIR: copies the case scripts
     local s; mkdir -p "$1/vm"; for s in $SCRIPTS; do cp "$ROOT/e2e/$s" "$1/$s"; done
 }
@@ -116,6 +116,22 @@ for mode in "" swtpm none lacking; do
     a=$(CHECK_TPM_MODE=$mode bash "$CHK" check "$LIST" "$VSKIP" "$tmp/o1" 2>&1 || true); b=$(CHECK_VM="" CHECK_TPM_MODE=$mode bash "$CHK" check "$LIST" "$VSKIP" "$tmp/o1" 2>&1 || true)
     [ "$a" = "$b" ] || bad "an empty CHECK_VM changes the output (mode '$mode')"
 done
+
+# ---- snap (F179): the group runs in full; skipped there is refused even when the skip list names it; in lacking the group is skipped and accepted
+SNAP_IDS=$(ids "$LIST" | grep '^snap-')
+[ "$(wc -l <<< "$SNAP_IDS")" = 12 ] || bad "the list has not the twelve snap-* cases"
+out_for "$tmp/sn1" -snap-sign-rsa; expect_fail snap-missing "case 'snap-sign-rsa' was not reported" swtpm "$tmp/sn1"
+out_for "$tmp/sn2" "run snap-sign-ec"; expect_fail snap-twice "case 'snap-sign-ec' reported twice" swtpm "$tmp/sn2"
+out_for "$tmp/sn3" "run snap-bogus"; expect_fail snap-unknown "unknown case 'snap-bogus'" swtpm "$tmp/sn3"
+for id in $SNAP_IDS; do
+    out_for "$tmp/sn4" "-$id" "skipped $id"
+    expect_fail "snap-skipped-$id" "case '$id' must run in a full VM run and was skipped" swtpm "$tmp/sn4"
+done
+{ for id in $(ids "$LIST"); do case $id in snap-*) echo "E2E-CASE skipped $id" ;; *) echo "E2E-CASE run $id" ;; esac; done; } > "$tmp/sn5"
+acct lacking "$tmp/sn5" > /dev/null || bad "the snap group skipped in a lacking run was refused"
+cp "$CHK" "$tmp/chk-snap.sh"; sed -i "s/case \$id in snap-\*) \[ \"\${CHECK_TPM_MODE:-}\" != swtpm \]/case \$id in snap-*) true/" "$tmp/chk-snap.sh"; differs "$CHK" "$tmp/chk-snap.sh" control-snap || true
+out_for "$tmp/sn6" -snap-record "skipped snap-record"
+CHK_UNDER=$tmp/chk-snap.sh acct swtpm "$tmp/sn6" > /dev/null 2>&1 || bad "control: the check without the snap rule still refuses a snap case skipped in a full VM run (the rule is not what refuses it)"
 
 # ---- tpmbound
 TB="fallback-tpmbound-import fallback-tpmbound-cli-list upgrade-kinds-tpmbound"

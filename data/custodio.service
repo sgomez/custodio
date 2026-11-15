@@ -26,7 +26,9 @@ PrivateDevices=yes
 DeviceAllow=/dev/tpmrm0 rw
 BindPaths=-/dev/tpmrm0
 SupplementaryGroups=tss
-PrivateUsers=yes
+# F170: `identity` maps uids 0-65535 to themselves, so the uid of a snap socket peer survives (`yes` shows every peer as 65534).
+# Exposure stays 0.7; `no` would be 0.8.
+PrivateUsers=identity
 ProtectSystem=strict
 ProtectHome=yes
 ProtectProc=invisible

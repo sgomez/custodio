@@ -1,0 +1,12 @@
+# Runs custodio-refresh.service when the installed module is written or replaced (a package upgrade), so a copy of it in the
+# Firefox snap is renewed without waiting for the next login. The path is INSTALLED_MODULE of crates/custodio-cli/src/register_native.rs.
+# Enabled for every user by the symlink in /usr/lib/systemd/user/paths.target.wants/, which the package ships.
+[Unit]
+Description=Watch the installed Custodio module for a change
+
+[Path]
+PathChanged=/usr/lib/custodio/libcustodio_pkcs11.so
+Unit=custodio-refresh.service
+
+[Install]
+WantedBy=paths.target

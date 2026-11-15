@@ -14,10 +14,10 @@ workspace = true
 const-oid = { version = "0.10.2", features = ["db"] }
 cryptoki = "0.12.1"
 cryptoki-sys = "0.5.0"
-custodio-cli = { path = "../custodio-cli", version = "0.1.0" }
-custodio-client = { path = "../custodio-client", version = "0.1.0" }
-custodio-pkcs11 = { path = "../custodio-pkcs11", version = "0.1.0" }
-custodiod = { path = "../custodiod", version = "0.1.0" }
+custodio-cli = { path = "../custodio-cli", version = "0.8.0" }
+custodio-client = { path = "../custodio-client", version = "0.8.0" }
+custodio-pkcs11 = { path = "../custodio-pkcs11", version = "0.8.0", features = ["test-socket-dir"] }
+custodiod = { path = "../custodiod", version = "0.8.0", features = ["test-seam"] }
 der = { version = "0.8.3", features = ["alloc", "oid"] }
 libc = "0.2.191"
 libloading = "0.8.9"

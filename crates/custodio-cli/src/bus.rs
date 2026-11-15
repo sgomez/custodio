@@ -8,8 +8,10 @@ use crate::Importer;
 use crate::delete::KeyDeleter;
 use crate::failure::ServiceFailure;
 use crate::list::{KeyEntry, KeyLister};
+use crate::storage::{StateStorage, StorageReader};
 
 /// Talks to the service on the given connection (the system bus in `main`).
+#[derive(Clone)]
 pub struct DbusImporter {
     connection: Connection,
 }
@@ -65,6 +67,21 @@ impl KeyLister for DbusImporter {
             .deserialize::<Vec<(String, String, String, Vec<u8>)>>()
             .map_err(|_| ServiceFailure::Transport)?;
         Ok(keys.into_iter().map(key_entry).collect())
+    }
+}
+
+impl StorageReader for DbusImporter {
+    fn state_storage(&self) -> Option<StateStorage> {
+        let reply = block_on(self.connection.call_method(
+            Some(BUS_NAME),
+            OBJECT_PATH,
+            Some(BUS_NAME),
+            "StateStorage",
+            &(),
+        ))
+        .ok()?;
+        let wire = reply.body().deserialize::<String>().ok()?;
+        Some(StateStorage::from_wire(&wire))
     }
 }
 

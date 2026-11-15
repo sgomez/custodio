@@ -109,6 +109,20 @@ method for certificates.
 - out: `a(sssay)`
 - bounds: none.
 
+### Method `StateStorage`
+
+Whether the state directory of the service is on an encrypted device: `encrypted` (every path from its filesystem to the
+physical devices goes through dm-crypt), `not-encrypted` (a chain read completely that ends at physical devices with no
+dm-crypt in it) or `unknown` (anything else: a chain the service cannot read, LVM or RAID it does not classify, a
+filesystem's own encryption, a network, overlay or in-memory filesystem). `unknown` is never reported as `encrypted`. The
+service finds it once, when it starts, with the access its unit has and no external tool (`docs/findings/F180.md`), and
+journals it (`CUSTODIO_STATE_STORAGE`, see `docs/audit.md`); the call returns that value. Read-only: it asks no polkit,
+writes no journal entry and changes nothing. Bus only; the snap socket does not serve it. A client that gets
+`UnknownMethod` is talking to a service that predates it and shows nothing.
+
+- out: `s`
+- bounds: none.
+
 ### Method `ImportP12`
 
 Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind that was chosen. A different user may use the same `id`;
@@ -219,6 +233,41 @@ that finds the key asks polkit; nothing is cached.
 A TPM-protected key signs inside the TPM; an encrypted key is decrypted for this one signature and dropped. If the
 key can no longer be used the call fails `KeyLost`; if the TPM or the credential service is not usable right now it
 fails `TemporarilyUnavailable`. Either way the key is left as it is.
+
+## Socket transport
+
+Confined browsers (snaps) cannot reach the system bus, so `custodiod` also serves a Unix socket per snap, passed by
+systemd (`/run/snap.firefox/custodio.sock` for Firefox). The peer connects with a peer-to-peer D-Bus connection (no bus,
+no `Hello`), authenticates with `ANONYMOUS` and calls the same object path and interface (`com.rfirma.Custodio1`) as
+on the bus. The key owner is always the uid the kernel reports for the connection, never a value in the handshake or an
+argument. `Sign` asks polkit about the peer's process on every call.
+
+Which transport a client uses is decided by one variable. The PKCS#11 module, when `SNAP_INSTANCE_NAME` is set (even
+empty), connects to `/run/snap.$SNAP_INSTANCE_NAME/custodio.sock` and never touches the bus; unset, it uses the bus. An
+invalid instance name (snapd's grammar: `<snap>` or `<snap>_<key>`), a missing socket, a refused connection or a
+directory that is not owned by root or is writable by group or others gives no slots, with no fallback to the bus. A
+connection is opened for each call and closed after it.
+
+Only two methods are served there; every other method, interface or path fails with the standard
+`org.freedesktop.DBus.Error.UnknownMethod`, `UnknownInterface` or `UnknownObject`, asks no polkit, writes no journal
+entry and changes nothing. Arguments, results and errors of the two are those of the bus methods above.
+
+- socket method `ListKeys`
+- socket method `Sign`
+
+Bounds (a peer that hits one has its connection closed, and no other connection is touched):
+
+- socket connections: `32` at once per socket. A browser needs one or two; the bound keeps the threads and descriptors
+  of a flood small. One peer can use every slot: the bound is not per user, so a peer that fills it keeps others out
+  until it leaves, while connections already open and the bus keep working.
+- socket message size: `4096` bytes, header included. It is the largest message that can carry a legal `Sign` (an id of
+  at most 59 bytes and at most 1024 bytes of data), which is what the bus accepts for that method.
+- socket handshake time: `10` seconds from accept to `BEGIN`.
+- socket idle time: `300` seconds from the end of the previous message (or of the handshake), measured from the start
+  of a message, so sending one byte at a time does not extend it. It is long because a `Sign` waits for the user to
+  answer the polkit dialog while the peer is silent.
+- socket refusal log: at most `10` lines per `60` seconds in the service log (journald), each without label bytes; the
+  next line reports how many were suppressed. Journal entries of signatures are not affected.
 
 ## Errors
 
@@ -388,6 +437,12 @@ What `docs/audit.md` fixes for the journal, see [its compatibility rule](audit.m
 are only added to, never changed, and a client parses fields, not `MESSAGE`. For this interface the same holds as far
 as this document promises it: the method, argument, error and action names listed here keep their names and meaning,
 and new ones may appear, so handle an error name you do not know as a failure of the call.
+
+A copy of the PKCS#11 module outlives updates (it is code in the user's home that no update replaces), so a future
+incompatible change of a method, a signature or an error name must give an old copy no slots and a journal entry, never
+a wrong signature. The module's side is already so: a reply whose signature it does not expect is a failure of the call
+(no slots, `CKR_DEVICE_ERROR` on sign), never a guessed value. `crates/custodio-it/tests/module_compat.rs` pins the
+calls this release's module makes.
 
 ## Examples
 

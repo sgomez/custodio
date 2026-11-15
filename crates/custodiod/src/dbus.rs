@@ -17,10 +17,11 @@ use crate::audit::{AuditMechanism, AuditSink, Caller, Entry, KeyId, Outcome};
 use crate::credentials::CallerCredentials;
 use crate::creds::Credentials;
 use crate::error::ServiceError;
-use crate::import::{KeyKind, MAX_P12_LEN, P12Decoder, RealDecoder, certificate_kind};
+use crate::import::{MAX_P12_LEN, P12Decoder, RealDecoder};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash};
+use crate::storage::StateStorage;
 use crate::store::{KeyStore, Kind as StorageKind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::open::NoTpm;
@@ -46,6 +47,10 @@ const CERT_SUFFIX: &str = "-cert";
 const MAX_ID_LEN: usize = 64 - CERT_SUFFIX.len();
 /// Largest data to sign: a `DigestInfo` or digest is far smaller.
 const MAX_SIGN_DATA_LEN: usize = 1024;
+/// Largest message that can carry a legal `Sign`: the header (path, interface, member, signature, about 150 bytes),
+/// an id of `MAX_ID_LEN`, three words and `MAX_SIGN_DATA_LEN` bytes of data come to under 1.5 KiB; the bound leaves
+/// room for the sender and destination fields a client may add. The snap socket's message bound is this value.
+pub const MAX_SIGN_MESSAGE_LEN: usize = 4096;
 /// Largest password accepted for a `.p12`.
 const MAX_PASSWORD_LEN: usize = 1024;
 
@@ -182,20 +187,44 @@ pub fn parse_import_request(
     })
 }
 
-/// One element of the `ListKeys` reply: id, key type, storage kind, DER certificate.
-pub type ListedKey = (String, String, String, Vec<u8>);
-
-fn kind_name(kind: KeyKind) -> &'static str {
-    match kind {
-        KeyKind::Rsa2048 => "rsa2048",
-        KeyKind::EcdsaP256 => "ecdsa-p256",
-    }
-}
-
 /// The key id and mechanism for the audit entry of a checked request.
-fn audit_parts(id: &str, mechanism: &Mechanism) -> Result<(KeyId, AuditMechanism), ServiceError> {
+pub(crate) fn audit_parts(
+    id: &str,
+    mechanism: &Mechanism,
+) -> Result<(KeyId, AuditMechanism), ServiceError> {
     let key_id = KeyId::new(id).map_err(|_| ServiceError::AuditUnavailable)?;
     Ok((key_id, AuditMechanism::from(mechanism)))
+}
+
+/// The entry of one `Sign` call, bus or socket: the outcome, the caller if known and the storage kind of the record
+/// read, with the app-id case and the details of a failure.
+pub(crate) fn sign_entry(
+    (outcome, caller, kind): (Outcome, Option<Caller>, Option<StorageKind>),
+    key_id: KeyId,
+    mechanism: AuditMechanism,
+    app_id: AppIdOutcome,
+    result: &Result<Vec<u8>, ServiceError>,
+) -> Entry {
+    let entry = match caller {
+        Some(caller) => Entry::new(outcome, caller, key_id, Some(mechanism)),
+        None => Entry::without_caller(key_id, Some(mechanism)),
+    }
+    .with_app_id(app_id);
+    sign_kind::sign_details(entry, kind, result)
+}
+
+/// Records `entry` and only then gives the reply: if it cannot be recorded nothing is returned but
+/// `AuditUnavailable`.
+pub(crate) async fn record_sign(
+    sink: &Arc<dyn AuditSink>,
+    entry: Entry,
+    result: Result<Vec<u8>, ServiceError>,
+) -> Result<Vec<u8>, ServiceError> {
+    let sink = Arc::clone(sink);
+    match run_on_thread(move || sink.record(&entry)).await {
+        Some(Ok(())) => result,
+        _ => Err(ServiceError::AuditUnavailable),
+    }
 }
 
 /// What a `Sign` call records: the outcome, the caller if known, the reply, and the storage kind of the record that
@@ -223,6 +252,7 @@ pub struct Custodio<A, C> {
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
+    storage: StateStorage,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -243,7 +273,15 @@ impl<A, C> Custodio<A, C> {
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
+            storage: StateStorage::Unknown,
         }
+    }
+
+    /// The result `StateStorage` returns.
+    #[must_use]
+    pub const fn with_state_storage(mut self, storage: StateStorage) -> Self {
+        self.storage = storage;
+        self
     }
 
     /// Sets the credential service that protects stored keys. Without one, an import or a signature
@@ -315,17 +353,14 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         else {
             return Err(ServiceError::NoSuchKey);
         };
-        let entry = match caller {
-            Some(caller) => Entry::new(outcome, caller, key_id, Some(audit_mechanism)),
-            None => Entry::without_caller(key_id, Some(audit_mechanism)),
-        }
-        .with_app_id(app_id);
-        let entry = sign_kind::sign_details(entry, kind, &result);
-        let sink = Arc::clone(&self.sink);
-        match run_on_thread(move || sink.record(&entry)).await {
-            Some(Ok(())) => result,
-            _ => Err(ServiceError::AuditUnavailable),
-        }
+        let entry = sign_entry(
+            (outcome, caller, kind),
+            key_id,
+            audit_mechanism,
+            app_id,
+            &result,
+        );
+        record_sign(&self.sink, entry, result).await
     }
 
     /// The caller of a call, when the bus names one: the sender, its credentials and the pinned pidfd.
@@ -365,28 +400,9 @@ impl<A: Authorizer + Sync, C: CallerCredentials + Sync> Custodio<A, C> {
         sender: Option<&str>,
     ) -> Result<Vec<ListedKey>, ServiceError> {
         let owner = self.owner(sender).await?;
-        let ids = self.store.list(owner).map_err(|e| ServiceError::from(&e))?;
-        let mut out = Vec::new();
-        // A key a delete has made unusable is not listed, whatever is still on disk.
-        let listed = ids.iter().filter(|i| !self.deletes.is_unusable(owner, i));
-        for id in listed {
-            let record = match self.store.get(owner, id) {
-                Ok(record) => record,
-                // A key of the earlier format is not usable and not listed (the purge is F121).
-                Err(StoreError::Legacy) => continue,
-                Err(_) => return Err(ServiceError::Internal),
-            };
-            // The certificate was checked against the key when it was stored or replaced, so its
-            // key type is the key's, and listing never decrypts or touches the TPM.
-            let key_type = certificate_kind(record.certificate()).ok_or(ServiceError::Internal)?;
-            out.push((
-                id.clone(),
-                kind_name(key_type).to_owned(),
-                record.kind().wire().to_owned(),
-                record.certificate().to_vec(),
-            ));
-        }
-        Ok(out)
+        list_owned(&self.store, owner, &|id| {
+            self.deletes.is_unusable(owner, id)
+        })
     }
 
     /// Credentials, the caller's key, polkit and signing, with the outcome to record and the app-id
@@ -471,6 +487,11 @@ where
             .await
     }
 
+    /// The result found at start; asks no polkit.
+    fn state_storage(&self) -> &'static str {
+        self.storage.name()
+    }
+
     /// Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind.
     // The `interface` macro cannot deserialize a borrowed `[u8]`, so the bytes are owned.
     #[allow(clippy::needless_pass_by_value)]
@@ -544,7 +565,11 @@ mod delete;
 mod delete_state;
 mod import;
 pub use import::ImportReply;
+mod list;
+pub use list::{ListedKey, list_for_peer};
+use list::{kind_name, list_owned};
 mod replace;
 mod sign_kind;
+pub(crate) use sign_kind::sign_with_record;
 #[cfg(test)]
 mod tests;

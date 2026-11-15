@@ -6,7 +6,7 @@ Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (Lib
 `ubuntu2404` (the M2 acceptance 12 to 15; the `ubuntu2404` part, section 14, no longer applies: the system is not supported); start at section 10. Sections 16 to 19 are the M3 steps (the M3
 acceptance 14 to 16: the client API by hand, a flatpak, Firefox and LibreOffice with a second account); start at
 section 16. Sections 20 to 23 are the M4 steps (the M4 acceptance 13 to 15: a hardware TPM, a VM without a TPM and a copy of
-the state directory); start at section 20. Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
+the state directory); start at section 20. Section 25 is the M6 step (acceptance 19: the Firefox snap on an Ubuntu 26.04 desktop). Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
 `custodio import` flags) say so; everything else is marked **unverified**: adjust it to your NSS,
 LibreOffice and rFirma version and write down what you changed.
 
@@ -967,3 +967,146 @@ question is which PCR mask systemd 257 puts in a user-scoped credential: `0x80` 
 | 2 | `varlinkctl call` Encrypt, scope `user` | a non-empty `pcr.cred` | |
 | 3 | `credread.py pcr.cred` | `host+tpm2-scoped mask 0x...` | |
 | 4 | the table | PCR 7 confirmed or refuted; anything else repeats | |
+
+## 25. M6 acceptance 19: Firefox snap, TLS client authentication on Ubuntu 26.04
+
+On an Ubuntu 26.04 **desktop** VM with the Firefox snap from the store (not a `.deb` Firefox, not a server image), a person
+checks that Firefox completes TLS client authentication through Custodio with an RSA 2048 key and a P-256 key. Nothing
+here is run by the build loop. A run is **invalid** if the journal label of a signature is not `snap.firefox.firefox
+(enforce)` (the signature then did not come through the snap's socket), if the package was installed from a repository other
+than the `.deb` under test, or if Firefox was not the snap (`snap list firefox` fails). An invalid run is repeated, not recorded
+as a pass or a fail. The commands marked `sh` run in a plain Linux shell; a test (`scripts/test-docs-manual-m6.sh`) runs them
+on the development container, with the substitutions it names in its header. The commands marked `sh vm` need the VM
+(snap, the package, a desktop session) and are never run by a test.
+
+1. Record the snap revision, with the Firefox snap installed from the store (`sudo snap install firefox` if it is not):
+
+   ```sh vm
+   snap list firefox
+   ```
+
+   Write the line it prints (name, version, **revision**, channel) in the result form. The route depends on the snapd
+   confinement rules of that revision (`docs/threat-model.md`), so a run without a revision proves nothing.
+
+2. Install the package under test (`sudo apt-get install ./custodio_<version>_amd64.deb`; the version is the build's) and, as
+   the desktop user (not `root`, not `sudo`) with Firefox closed, register it:
+
+   ```sh vm
+   custodio register
+   ```
+
+   Expected: a line `registered` for the snap profile and a line `copy placed` for the module copy, as in the README. A line
+   that says the profile is held by a running browser means Firefox was not closed: close it and run again.
+
+3. Make the test material in an empty directory: a test CA, a server certificate for `localhost`, and an RSA 2048 and a
+   P-256 client certificate, each with a `.p12` (the same commands as section 1, with a server certificate added):
+
+   ```sh
+   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out ca.key
+   openssl req -new -x509 -key ca.key -subj "/CN=Custodio test CA" -days 2 \
+     -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" -out ca.crt
+   printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature,nonRepudiation\n' > leaf.ext
+   printf 'basicConstraints=CA:FALSE\nsubjectAltName=DNS:localhost,IP:127.0.0.1\n' > server.ext
+   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out server.key
+   openssl req -new -key server.key -subj "/CN=localhost" -out server.csr
+   openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile server.ext -out server.crt
+   for kind in rsa2048 p256; do
+     case $kind in
+       rsa2048) genopt=(-algorithm RSA -pkeyopt rsa_keygen_bits:2048) ;;
+       p256)    genopt=(-algorithm EC -pkeyopt ec_paramgen_curve:P-256) ;;
+     esac
+     openssl genpkey "${genopt[@]}" -out $kind.key
+     openssl req -new -key $kind.key -subj "/CN=Custodio test $kind" -out $kind.csr
+     openssl x509 -req -in $kind.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 2 -extfile leaf.ext -out $kind.crt
+     openssl pkcs12 -export -inkey $kind.key -in $kind.crt -name $kind -passout pass:test-password -out $kind.p12
+   done
+   ```
+
+   Read the type of each client key; the P-256 key must be on `prime256v1` and the RSA key 2048 bits:
+
+   ```sh
+   openssl pkey -in rsa2048.key -noout -text | head -n 1
+   openssl pkey -in p256.key -noout -text | grep 'ASN1 OID'
+   ```
+
+   Expected:
+
+   ```text
+   Private-Key: (2048 bit, 2 primes)
+   ASN1 OID: prime256v1
+   ```
+
+   Import both `.p12` files into Custodio (the password is `test-password`, and a polkit dialog asks for each import), then
+   delete nothing yet: the keys stay until step 8.
+
+   ```sh vm
+   custodio import rsa2048.p12
+   custodio import p256.p12
+   ```
+
+4. Start the test server, which requires a client certificate (`-Verify 1`; `-verify_return_error` makes it end the handshake on a certificate that its CA did not sign, which `-Verify` alone does not), in a second terminal in the same directory, and
+   leave it running:
+
+   ```sh
+   openssl s_server -accept 4433 -cert server.crt -key server.key -CAfile ca.crt -Verify 1 -verify_return_error -www
+   ```
+
+   Before Firefox, check the server with `openssl s_client`, which holds the keys as files (it does not use Custodio): it
+   must accept a client certificate and refuse a client without one. The server prints `verify return:1` for the client's
+   certificate, or `peer did not return a certificate`:
+
+   ```sh
+   printf 'GET / HTTP/1.0\r\n\r\n' | openssl s_client -connect localhost:4433 -CAfile ca.crt -cert rsa2048.crt -key rsa2048.key
+   printf 'GET / HTTP/1.0\r\n\r\n' | openssl s_client -connect localhost:4433 -CAfile ca.crt -cert p256.crt -key p256.key
+   printf 'GET / HTTP/1.0\r\n\r\n' | openssl s_client -connect localhost:4433 -CAfile ca.crt
+   ```
+
+   Expected: the first two are accepted (the server names `CN=Custodio test rsa2048` and `CN=Custodio test p256`), the third is
+   refused. A server that accepts the third has lost `-Verify 1`: stop the run.
+
+5. In Firefox, trust the test CA (Settings > Privacy & Security > Certificates > View Certificates > Authorities > Import
+   `ca.crt`, trust it to identify websites; **unverified** menu path), then open `https://localhost:4433/`. Firefox asks
+   which certificate to present: choose `Custodio test rsa2048`. **A polkit dialog appears for each signature**: approve it.
+   Expected: the page loads (the server's status page, which lists the cipher and the client certificate). Close the tab, and
+   repeat with `Custodio test p256` (open a private window, or restart Firefox, if it remembers the choice). The TLS handshake
+   can sign more than once, so several dialogs for one page are normal; write down how many each key showed.
+
+6. Refuse the dialog. Open `https://localhost:4433/` in a new private window, choose either certificate, and refuse (Cancel
+   or Deny) the polkit dialog. Expected: the handshake fails and Firefox shows an error page, not the status page. Write down
+   the error text (**unverified**: the code may vary with the Firefox revision).
+
+7. Read the journal for the signatures: each one must show the Firefox label and Firefox's pid. The query selects the
+   signing entries of the service that came through the socket of the Firefox snap, and prints the label, the pid, the
+   outcome and the mechanism:
+
+   ```sh
+   journalctl _SYSTEMD_UNIT=custodio.service _UID=$(id -u custodio) CUSTODIO_OPERATION=sign \
+     "CUSTODIO_PEER_LABEL=snap.firefox.firefox (enforce)" -o json --output-fields=CUSTODIO_PEER_LABEL,CUSTODIO_PID,CUSTODIO_OUTCOME,CUSTODIO_MECHANISM
+   ```
+
+   Expected: one entry for each signature of steps 5 and 6, `CUSTODIO_PEER_LABEL` equal to `snap.firefox.firefox (enforce)`,
+   `CUSTODIO_OUTCOME` `signed` for the approved ones and `denied` for the refused one, `CUSTODIO_MECHANISM` an RSA mechanism for the first
+   key and `ECDSA` for the second (`docs/audit.md` lists the values), and `CUSTODIO_PID` the pid of Firefox. Find the pid while
+   Firefox is running with `ps -C firefox -o pid,args` and compare (**unverified** which of the processes signs; the entries
+   all name one pid, and it is one of the Firefox processes). A signature that is missing from the journal, or has another
+   label, fails the run.
+
+8. Record the result form. Stop the server with Ctrl+C. Delete the test keys when done:
+
+   ```sh vm
+   custodio list
+   ```
+
+   Delete the two test keys with `custodio delete <id>` (each asks for the password of the polkit dialog) and remove the test
+   directory.
+
+| # | Step | Expected | Result (pass/fail, notes) |
+|---|---|---|---|
+| 1 | `snap list firefox` | the Firefox snap, its revision written down | |
+| 2 | `custodio register` | the snap profile registered, the copy placed | |
+| 3 | `openssl pkey -text` on both client keys | RSA 2048 and `prime256v1` | |
+| 4 | `s_client` against the server | both certificates accepted, none refused | |
+| 5 | Firefox with the RSA 2048 key | the page loads, a polkit dialog for each signature | |
+| 6 | Firefox with the P-256 key | the page loads, a polkit dialog for each signature | |
+| 7 | the dialog refused | the handshake fails | |
+| 8 | the journal query | every signature with the Firefox label and Firefox's pid | |

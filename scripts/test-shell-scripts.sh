@@ -43,7 +43,7 @@ copy2=$tmp/copy2
 cp -a "$copy" "$copy2"
 printf '%s\n' '#!/bin/sh' "echo \$x" > "$copy2/bad-script"
 git -C "$copy2" add bad-script
-lint() { (cd "$1" && bash -c "$list" | xargs -r shellcheck > /dev/null 2>&1); }
+lint() { (cd "$1" && bash -c "$list" | xargs -r -P "$(nproc)" -n 16 shellcheck -x > /dev/null 2>&1); }
 lint "$copy" & clean=$!
 lint "$copy2" & dirty=$!
 wait "$clean" || bad "shellcheck failed on the clean copy"

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use super::*;
 use crate::audit::{FailingSink, MemorySink};
 use crate::credentials::CredentialsError;
-use crate::import::import_p12;
+use crate::import::{KeyKind, import_p12};
 use crate::store::{Record, StoreError};
 
 pub(super) struct Counting {

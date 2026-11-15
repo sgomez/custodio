@@ -19,7 +19,11 @@ struct Input {
 // The data and parameters of a signature request are framed or refused, never a panic. An accepted RSA block is `K`
 // bytes with the top bit clear, an accepted ECDSA digest is `DIGEST` bytes.
 fuzz_target!(|input: Input| {
-    let kind = if input.p256 { Kind::P256 } else { Kind::Rsa2048 };
+    let kind = if input.p256 {
+        Kind::P256
+    } else {
+        Kind::Rsa2048
+    };
     let hash = match input.hash % 3 {
         0 => PssHash::Sha256,
         1 => PssHash::Sha384,

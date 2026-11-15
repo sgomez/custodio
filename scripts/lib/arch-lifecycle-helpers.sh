@@ -43,7 +43,7 @@ no_account_removal() {
     if grep -qE '^(userdel|groupdel|deluser|delgroup|usermod) ' <<< "$calls"; then bad "$1: the account was changed: $calls"; fi
     grep -qE '^custodio:' "$root/etc/passwd" || [ ! -e "$root/stub/had-account" ] || bad "$1: the account is gone"
 }
-no_enable() { if grep -E '(^| )(enable|start|restart|preset|mask|daemon-reload|reload)( |$)|--update-catalog' <<< "$calls" > /dev/null; then bad "$1: enable, start, restart, preset or a hook's call was made: $calls"; fi; }
+no_enable() { if grep -v 'custodio-firefox.socket' <<< "$calls" | grep -E '(^| )(enable|start|restart|preset|mask|daemon-reload|reload)( |$)|--update-catalog' > /dev/null; then bad "$1: enable, start, restart, preset or a hook's call was made: $calls"; fi; }
 active() { [ -e "$root/stub/active" ]; }
 restarts() { if [ -e "$root/stub/restarts" ]; then wc -l < "$root/stub/restarts"; else echo 0; fi; }
 # root_snapshot: every file of the root outside the recorders, with mode, size and content hash (a script that writes anywhere shows).

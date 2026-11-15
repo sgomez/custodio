@@ -21,10 +21,10 @@ lc_stubs() {
 #!/bin/sh
 echo "systemctl $*" >> /recorded-calls
 [ ! -e /stub/fail ] || exit 1
-case "$1" in
-is-active) [ -e /stub/active ] || exit 3 ;;
-stop) rm -f /stub/active ;;
-start | restart) : > /stub/active ;;
+case "$1:$2" in
+is-active:*) [ -e /stub/active ] || exit 3 ;;
+stop:custodio.service) rm -f /stub/active ;;
+start:custodio.service | restart:custodio.service) : > /stub/active ;;
 esac
 exit 0
 STUB

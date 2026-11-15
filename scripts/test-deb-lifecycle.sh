@@ -9,13 +9,17 @@
 #                                    The marker /run/custodio-restart-after-upgrade exists afterwards only if that said active.
 #                                    A failing systemd-sysusers, or none on PATH, makes it exit 1 with a message and no marker.
 #   preinst abort-upgrade            nothing
-#   postinst configure [OLD]         systemctl daemon-reload; deb-systemd-invoke reload dbus.service; journalctl --update-catalog;
-#                                    then, only with OLD and the marker: deb-systemd-invoke restart custodio.service (once).
-#                                    Never enable, start, preset. Failing tools: still exit 0.
+#   postinst configure [OLD]         systemctl daemon-reload; systemctl enable custodio-firefox.socket; deb-systemd-invoke reload
+#                                    dbus.service; journalctl --update-catalog; then, only with OLD and the marker: deb-systemd-invoke
+#                                    stop custodio.service, deb-systemd-invoke start custodio-firefox.socket, systemctl restart
+#                                    custodio.service (once); otherwise deb-systemd-invoke start custodio-firefox.socket.
+#                                    The service itself is never enabled, started or preset. Failing tools: still exit 0.
 #   postinst abort-upgrade|abort-remove|abort-deconfigure    nothing (the marker is removed)
-#   prerm remove                     deb-systemd-invoke stop custodio.service
+#   prerm remove                     deb-systemd-invoke stop custodio-firefox.socket; systemctl disable custodio-firefox.socket;
+#                                    deb-systemd-invoke stop custodio.service
 #   prerm upgrade | failed-upgrade | deconfigure             nothing (upgrade: postinst restarts the service once)
 #   postrm remove | purge            systemctl daemon-reload; deb-systemd-invoke reload dbus.service; systemctl is-active --quiet
+#                                    custodio-firefox.socket (and, when active, deb-systemd-invoke stop of it); systemctl is-active --quiet
 #                                    custodio.service and, only when it says active (it came back between prerm and the removal of
 #                                    the files), deb-systemd-invoke stop custodio.service; then the notice on STDERR (stdout stays
 #                                    empty: debconf frontends use stdout of maintainer scripts). Purge is the same as remove.
@@ -38,7 +42,11 @@ fail=0
 mutant_mode=0
 mutant_hit=0
 bad() {
-    if [ "$mutant_mode" = 1 ]; then mutant_hit=1; else echo "test-deb-lifecycle: $*" >&2; fail=1; fi
+    case $mutant_mode in
+    1) mutant_hit=1 ;;
+    2) exit 97 ;;
+    *) echo "test-deb-lifecycle: $*" >&2; fail=1 ;;
+    esac
 }
 
 SKELETON=$BF_DIR/skeleton
@@ -48,7 +56,11 @@ bf_in_root "$SKELETON" true || { echo "test-deb-lifecycle: cannot make a user na
 
 BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetConnectionCredentials s org.freedesktop.DBus'
 ACTIVE='systemctl is-active --quiet custodio.service'
-RELOAD=$'systemctl daemon-reload\ndeb-systemd-invoke reload dbus.service'
+ACTIVE_SOCK="systemctl is-active --quiet custodio-firefox.socket"
+SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+RELOAD=$'systemctl daemon-reload\n'"systemctl enable $SOCK"$'\ndeb-systemd-invoke reload dbus.service'
+START_SOCK="deb-systemd-invoke start $SOCK"
+RELOAD_REMOVE=$'systemctl daemon-reload\ndeb-systemd-invoke reload dbus.service'
 CATALOG='journalctl --update-catalog'
 MARKER=run/custodio-restart-after-upgrade
 OLD=0.1.0-1 # the version of the last cargo-deb package: lower than the nfpm one and with the M1 postinst only
@@ -88,7 +100,8 @@ no_account_removal() { # LABEL
     grep -qE '^custodio:' "$root/etc/passwd" || [ ! -e "$root/stub/had-account" ] || bad "$1: the account is gone"
 }
 no_enable() { # LABEL: never enable, start, preset or use the helper
-    if grep -E '(^| )(enable|start|preset|mask)( |$)|^deb-systemd-helper' <<< "$calls" > /dev/null; then bad "$1: enable, start or preset was called: $calls"; fi
+    # Only the Firefox snap socket is enabled and started (F173); the service never is.
+    if grep -v "$SOCK" <<< "$calls" | grep -E '(^| )(enable|start|preset|mask)( |$)|^deb-systemd-helper' > /dev/null; then bad "$1: enable, start or preset was called: $calls"; fi
 }
 active() { [ -e "$root/stub/active" ]; }
 
@@ -105,7 +118,7 @@ cases() {
         [ ! -e "$root/$MARKER" ] || bad "preinst $L: a marker on a first installation"
         run postinst configure
         want_ok "postinst $L"
-        want_calls "postinst $L" "$RELOAD"$'\n'"$CATALOG"
+        want_calls "postinst $L" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
         no_enable "postinst $L"
         active && bad "postinst $L: the service was started"
         state_intact "install ($populated state)"
@@ -137,7 +150,7 @@ cases() {
     want_calls "prerm upgrade" ""
     run postinst configure "$OLD"
     want_ok "postinst upgrade"
-    want_calls "postinst upgrade (running)" "$RELOAD"$'\n'"$CATALOG"$'\n''deb-systemd-invoke restart custodio.service'
+    want_calls "postinst upgrade (running)" "$RELOAD"$'\n'"$CATALOG"$'\n''deb-systemd-invoke stop custodio.service'$'\n'"$START_SOCK"$'\n''systemctl restart custodio.service'
     [ ! -e "$root/$MARKER" ] || bad "postinst upgrade: the marker is still there"
     active || bad "postinst upgrade: the service is not running afterwards"
     no_enable "postinst upgrade"
@@ -145,7 +158,7 @@ cases() {
     state_intact "upgrade (running)"
     # A second configure (the marker is gone): no second restart.
     run postinst configure 0.2.0-1
-    want_calls "postinst configure again" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "postinst configure again" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
 
     # ---- upgrade, service not running ----
     new_root
@@ -154,7 +167,7 @@ cases() {
     [ ! -e "$root/$MARKER" ] || bad "preinst upgrade: a marker although the service is stopped"
     run postinst configure "$OLD"
     want_ok "postinst upgrade (stopped)"
-    want_calls "postinst upgrade (stopped)" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "postinst upgrade (stopped)" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     active && bad "postinst upgrade: a stopped service was started"
     state_intact "upgrade (stopped)"
 
@@ -163,7 +176,7 @@ cases() {
     : > "$root/stub/active"
     run postinst configure "$OLD"
     want_ok "postinst without marker"
-    want_calls "postinst without marker" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "postinst without marker" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
     state_intact "postinst without marker"
 
     # ---- first installation with a stale marker (a failed earlier upgrade): no restart without an old version ----
@@ -171,7 +184,7 @@ cases() {
     : > "$root/stub/active"
     : > "$root/$MARKER"
     run postinst configure
-    want_calls "postinst install with a stale marker" "$RELOAD"$'\n'"$CATALOG"
+    want_calls "postinst install with a stale marker" "$RELOAD"$'\n'"$CATALOG"$'\n'"$START_SOCK"
 
     # ---- failing preinst ----
     new_root none
@@ -211,17 +224,17 @@ cases() {
         : > "$root/stub/active"
         run prerm remove
         want_ok "prerm remove ($action)"
-        want_calls "prerm remove ($action)" 'deb-systemd-invoke stop custodio.service'
+        want_calls "prerm remove ($action)" "deb-systemd-invoke stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''deb-systemd-invoke stop custodio.service'
         active && bad "prerm remove ($action): the service still runs"
         state_intact "prerm remove ($action)"
         run postrm remove
         want_ok "postrm remove ($action)"
-        want_calls "postrm remove ($action)" "$RELOAD"$'\n'"$ACTIVE"
+        want_calls "postrm remove ($action)" "$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
         [ -z "$out" ] || bad "postrm remove ($action): output on stdout: $out"
         if [ "$action" = purge ]; then
             run postrm purge
             want_ok "postrm purge"
-            want_calls "postrm purge" "$RELOAD"$'\n'"$ACTIVE"
+            want_calls "postrm purge" "$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"$ACTIVE"
         fi
         grep -qF '/var/lib/custodio' <<< "$err" || bad "postrm $action: the notice does not name the state directory: $err"
         grep -qF 'destroys the keys for good' <<< "$err" || bad "postrm $action: the notice lacks the warning: $err"
@@ -241,7 +254,7 @@ cases() {
     run prerm remove
     active || bad "the stub does not model a reactivation"
     run postrm remove
-    want_calls "postrm remove (reactivated)" "$RELOAD"$'\n'"$ACTIVE"$'\n''deb-systemd-invoke stop custodio.service'
+    want_calls "postrm remove (reactivated)" "$RELOAD_REMOVE"$'\n'"$ACTIVE_SOCK"$'\n'"deb-systemd-invoke stop $SOCK"$'\n'"$ACTIVE"$'\n''deb-systemd-invoke stop custodio.service'
     active && bad "postrm remove: the service runs after the stop"
     state_intact "remove (reactivated)"
 
@@ -256,7 +269,7 @@ cases() {
         run $spec
         want_ok "$spec"
         expect=""
-        [ "$spec" != "prerm remove in-favour other:1" ] || expect='deb-systemd-invoke stop custodio.service'
+        [ "$spec" != "prerm remove in-favour other:1" ] || expect="deb-systemd-invoke stop $SOCK"$'\n'"systemctl disable $SOCK"$'\n''deb-systemd-invoke stop custodio.service'
         want_calls "$spec" "$expect"
         active || [ -n "$expect" ] || bad "$spec: the service was stopped"
         no_enable "$spec"
@@ -295,42 +308,32 @@ control "chmod" 'chmod 777 /var/lib/custodio'
 control "cat" 'cat /var/lib/custodio/key-1.p12'
 control "creating the directory" 'mkdir -p /var/lib/custodio2/../custodio/x'
 
-# ---- mutants of the scripts: each must be caught by the cases above ----
-mutant() { # NAME SCRIPT SED-EXPRESSION
-    local dir=$BF_DIR/mutant-$1
-    rm -rf "$dir"
-    cp -r "$ROOT/packaging/deb" "$dir"
-    sed -i "$3" "$dir/$2"
-    cmp -s "$dir/$2" "$ROOT/packaging/deb/$2" && { bad "mutant $1 changes nothing"; return; }
-    SRC=$dir
-    mutant_mode=1
-    mutant_hit=0
-    cases
-    mutant_mode=0
-    SRC=$ROOT/packaging/deb
-    [ "$mutant_hit" = 1 ] || bad "mutant '$1' survived"
+# shellcheck source=scripts/lib/deb-lifecycle-mutants.sh
+. "$ROOT/scripts/lib/deb-lifecycle-mutants.sh"
+
+# The final restart of the service after an upgrade is plain systemctl (deb-systemd-invoke refuses a static unit that is not running),
+# so postinst asks policy-rc.d itself (F173). The real postinst runs on an upgrade of a running service with stubbed commands; a stub
+# policy-rc.d answering 101 must leave the service unrestarted, 0 and 104 must restart it, and a copy without the question must fail.
+run_upgrade() { # SCRIPT RC(policy-rc.d exit, or none): prints the commands the script ran
+    local d="$BF_DIR/run" cmd
+    rm -rf "$d"; mkdir -p "$d/bin"
+    for cmd in systemctl deb-systemd-invoke journalctl; do
+        printf '#!/bin/sh\necho "%s $*" >> "%s/calls"\n' "$cmd" "$d" > "$d/bin/$cmd"; chmod +x "$d/bin/$cmd"
+    done
+    : > "$d/calls"; : > "$d/marker"
+    if [ "$2" != none ]; then printf '#!/bin/sh\necho "policy-rc.d $*" >> "%s/calls"\nexit %s\n' "$d" "$2" > "$d/policy"; chmod +x "$d/policy"; fi
+    sed -e "s#/usr/sbin/policy-rc.d#$d/policy#g" -e "s#/run/custodio-restart-after-upgrade#$d/marker#g" "$1" > "$d/script"
+    PATH="$d/bin:$PATH" sh "$d/script" configure 1.0 > /dev/null 2>&1 || true
+    cat "$d/calls"
 }
-mutant enable-in-postinst postinst 's|^    journalctl --update-catalog .*|&\n    systemctl enable custodio.service|'
-# shellcheck disable=SC2016 # sed expressions
-mutant restart-always postinst 's|if \[ -n "\$2" \] && \[ -e /run/custodio-restart-after-upgrade \]; then|if [ -n "$2" ]; then|'
-# shellcheck disable=SC2016
-mutant restart-on-install postinst 's|if \[ -n "\$2" \] && \[ -e /run/custodio-restart-after-upgrade \]; then|if [ -e /run/custodio-restart-after-upgrade ]; then|'
-mutant restart-before-reload postinst 's|^    systemctl daemon-reload .*|    deb-systemd-invoke restart custodio.service\n&|'
-mutant start-in-postinst postinst 's|^    journalctl --update-catalog .*|&\n    deb-systemd-invoke start custodio.service|'
-mutant sysusers-ignored-failure preinst 's|custodio_create_account \|\| exit 1|custodio_create_account \|\| true|'
-mutant sysusers-pipe-true preinst 's|^        return 1$|        return 0|'
-# shellcheck disable=SC2016
-mutant marker-always preinst 's|\[ "\$1" = upgrade \] && ||'
-mutant stop-on-upgrade prerm 's|^remove)|remove \| upgrade)|'
-mutant no-stop-on-remove prerm 's|^    deb-systemd-invoke stop custodio.service.*|    :|'
-mutant delete-state postrm 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/custodio/\n&|'
-mutant delete-state-private postrm 's|^    systemctl daemon-reload .*|    rm -rf /var/lib/private/custodio\n&|'
-mutant remove-account postrm 's|^    systemctl daemon-reload .*|    userdel custodio\n&|'
-mutant no-notice postrm 's|destroys the keys for good|is risky|'
-mutant no-final-stop postrm 's|^        deb-systemd-invoke stop custodio.service.*|        :|'
-mutant no-bus-reload postinst 's|^    deb-systemd-invoke reload dbus.service.*|    :|'
-mutant no-catalog postinst 's|^    journalctl --update-catalog.*|    :|'
-mutant purge-differs postrm 's|^remove \| purge)|remove)|'
-mutant stdout-notice postrm 's|^    } >&2|    }|'
+restarts() { run_upgrade "$1" "$2" | grep -c '^systemctl restart custodio.service' || true; }
+for rc in 0 104; do
+    [ "$(restarts "$SRC/postinst" $rc)" = 1 ] || bad "postinst does not restart the service when policy-rc.d exits $rc"
+done
+[ "$(restarts "$SRC/postinst" none)" = 1 ] || bad "postinst does not restart the service without a policy-rc.d"
+[ "$(restarts "$SRC/postinst" 101)" = 0 ] || bad "postinst restarts the service although policy-rc.d exits 101"
+run_upgrade "$SRC/postinst" 101 | grep -q '^policy-rc.d custodio.service restart$' || bad "postinst does not ask policy-rc.d about the restart"
+sed 's#^\( *\)/usr/sbin/policy-rc.d custodio.service restart .*$#\1true#' "$SRC/postinst" > "$BF_DIR/nopolicy"
+[ "$(restarts "$BF_DIR/nopolicy" 101)" = 1 ] || bad "control: the copy without the policy-rc.d question did not restart on 101 (the test cannot see the fault)"
 
 exit "$fail"

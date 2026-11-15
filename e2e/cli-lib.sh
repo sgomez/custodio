@@ -15,9 +15,9 @@ cli_list_block_problems() {
     local file=$1 id=$2 block
     block=$(awk -v id="id: $id" '$0 == id { on = 1; print; next } /^id: / { on = 0 } on { print }' "$file")
     [ -n "$block" ] || { echo "$file: no block for $id"; return; }
-    printf '%s\n' "$block" | grep -qxF "  type: $3" || echo "$id: the block has no line '  type: $3': $(printf '%s' "$block" | tr '\n' '|')"
-    printf '%s\n' "$block" | grep -qxF "  subject: $4" || echo "$id: the block has no line '  subject: $4'"
-    printf '%s\n' "$block" | grep -qxF "  valid until: $5" || echo "$id: the block has no line '  valid until: $5'"
+    grep -qxF "  type: $3" <<< "$block" || echo "$id: the block has no line '  type: $3': $(printf '%s' "$block" | tr '\n' '|')"
+    grep -qxF "  subject: $4" <<< "$block" || echo "$id: the block has no line '  subject: $4'"
+    grep -qxF "  valid until: $5" <<< "$block" || echo "$id: the block has no line '  valid until: $5'"
 }
 # cli_list_only_problems LISTFILE ID...: the ids listed are exactly these (no other key, e.g. another account's)
 cli_list_only_problems() {

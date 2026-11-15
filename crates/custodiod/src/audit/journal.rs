@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::wire::encode;
 use super::{AuditError, AuditSink, Entry, OperationEntry};
+use crate::storage::StateStorage;
 
 /// Where journald listens for the Native Journal Protocol.
 pub const DEFAULT_JOURNAL_SOCKET: &str = "/run/systemd/journal/socket";
@@ -52,6 +53,10 @@ impl AuditSink for JournalSink {
 
     fn record_operation(&self, entry: &OperationEntry) -> Result<(), AuditError> {
         send_fields(&self.path, self.max, &entry.fields())
+    }
+
+    fn record_state_storage(&self, storage: StateStorage) -> Result<(), AuditError> {
+        send_fields(&self.path, self.max, &super::storage::fields(storage))
     }
 }
 

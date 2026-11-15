@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "crap"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "custodio-cli"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "ctrlc",
  "custodio-client",
@@ -372,11 +372,11 @@ dependencies = [
 
 [[package]]
 name = "custodio-client"
-version = "0.1.0"
+version = "0.8.0"
 
 [[package]]
 name = "custodio-it"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "const-oid",
  "cryptoki",
@@ -400,8 +400,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "custodio-peer"
+version = "0.8.0"
+dependencies = [
+ "libc",
+ "nix",
+ "rustix",
+]
+
+[[package]]
 name = "custodio-pkcs11"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "const-oid",
  "cryptoki",
@@ -424,11 +433,13 @@ dependencies = [
 
 [[package]]
 name = "custodiod"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "aes",
  "custodio-client",
  "custodio-it",
+ "custodio-peer",
+ "custodiod",
  "hmac",
  "p12-keystore",
  "p256",
@@ -436,6 +447,7 @@ dependencies = [
  "rand",
  "rsa",
  "rustix",
+ "sd-listen-fds",
  "sec1",
  "secrecy",
  "sha2",
@@ -837,6 +849,7 @@ dependencies = [
  "cfg-if",
  "cfg_aliases",
  "libc",
+ "memoffset",
 ]
 
 [[package]]
@@ -1260,6 +1273,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sd-listen-fds"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bb51d45a99c1bafff550fd40ce1d2152917dc9908fb3090c283e3f058d39b3f"
+
+[[package]]
 name = "sec1"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1591,6 +1610,7 @@ version = "1.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514"
 dependencies = [
+ "getrandom 0.4.3",
  "js-sys",
  "serde_core",
  "wasm-bindgen",

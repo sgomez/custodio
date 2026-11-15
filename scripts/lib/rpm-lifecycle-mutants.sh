@@ -33,13 +33,21 @@ mutant() { # NAME SCRIPT SED-EXPRESSION
     cp -r "$ROOT/packaging/rpm" "$dir"
     sed -i "$3" "$dir/$2"
     cmp -s "$dir/$2" "$ROOT/packaging/rpm/$2" && { bad "mutant $1 changes nothing"; return; }
+    # In a subshell that stops at the first failed check: the rest of the cases say nothing more about this mutant.
+    local rc=0
+    set +e
     SRC=$dir
-    mutant_mode=1
-    mutant_hit=0
-    cases
-    mutant_mode=0
+    (set -e; mutant_mode=2; cases)
+    rc=$?
     SRC=$ROOT/packaging/rpm
-    [ "$mutant_hit" = 1 ] || bad "mutant '$1' survived"
+    set -e
+    chmod -R u+w "$BF_DIR"/root.* 2> /dev/null || true
+    rm -rf "$BF_DIR"/root.*
+    case $rc in
+    97) ;;
+    0) bad "mutant '$1' survived" ;;
+    *) bad "mutant '$1': the cases stopped with status $rc" ;;
+    esac
 }
 mutant enable-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl enable custodio.service|'
 mutant preset-in-post post 's|^journalctl --update-catalog .*|&\nsystemctl preset custodio.service|'
@@ -52,6 +60,11 @@ mutant restart-on-install post 's|-ge 2 \] && \[ -e /run|-ge 1 ] \&\& [ -e /run|
 mutant restart-no-count post 's|if \[ "\${1:-0}" -ge 2 \] && |if |'
 # shellcheck disable=SC2016
 mutant restart-eq-1 post 's|-ge 2 \] && \[ -e /run|-eq 1 ] \&\& [ -e /run|'
+mutant no-socket-enable post 's|^systemctl enable custodio-firefox.socket.*|:|'
+mutant no-socket-start post 's|^    systemctl start custodio-firefox.socket.*|    :|'
+mutant no-socket-stop preun 's|^    systemctl stop custodio-firefox.socket.*|    :|'
+mutant no-socket-disable preun 's|^    systemctl disable custodio-firefox.socket.*|    :|'
+mutant no-socket-final-stop postun 's|^        systemctl stop custodio-firefox.socket.*|        :|'
 mutant restart-before-reload post 's|^systemctl daemon-reload .*|systemctl restart custodio.service\n&|'
 mutant restart-before-bus-reload post 's|^systemctl reload dbus.service .*|systemctl restart custodio.service\n&|'
 mutant restart-before-catalog post 's|^journalctl --update-catalog .*|systemctl restart custodio.service\n&|'

@@ -32,7 +32,7 @@ lint:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
     taplo fmt --check
-    {{shell_scripts}} | xargs -r shellcheck
+    {{shell_scripts}} | xargs -r -P "$(nproc)" -n 16 shellcheck -x
     actionlint
     zizmor --offline .github/workflows
     cargo deny check
@@ -57,6 +57,7 @@ lint-fuzz:
     set -euo pipefail
     (cd crates/custodio-pkcs11/fuzz && cargo clippy --all-targets -- -D warnings)
     (cd crates/custodiod/fuzz && cargo clippy --all-targets -- -D warnings)
+    (cd crates/custodio-cli/fuzz && cargo clippy --all-targets -- -D warnings)
     # Only the guard's compile_error may fail this check; a bare `!` would accept any other error too.
     if out=$(cargo check -p custodio-pkcs11 --features fuzzing --release --locked 2>&1); then
         echo "lint-fuzz: the fuzzing feature built in release" >&2
@@ -68,10 +69,11 @@ lint-fuzz:
 api-contract:
     cargo test -p custodiod --test api_contract --locked
 
-# Unit tests.
+# Unit and integration tests. nextest runs the test binaries in parallel and skips doctests, which run last.
 test:
-    cargo test --workspace --locked
-    cargo test -p custodio-pkcs11 --features fuzzing --lib --locked
+    cargo nextest run --workspace --locked
+    cargo nextest run -p custodio-pkcs11 --features fuzzing --lib --locked
+    cargo test --workspace --doc --locked
 
 # The gate of every feature: lints and every Rust test (unit and integration). The package, install and e2e
 # script tests run in `just check`, at the checkpoints and the release. A pass stamps the tree in
@@ -89,9 +91,10 @@ quick:
     cargo clippy --workspace --all-targets --locked -- -D warnings
     cargo clippy -p custodio-pkcs11 --features fuzzing --all-targets --locked -- -D warnings
     taplo fmt --check
-    {{shell_scripts}} | xargs -r shellcheck
+    {{shell_scripts}} | xargs -r -P "$(nproc)" -n 16 shellcheck -x
     just deps-check
     scripts/check-files.sh
+    scripts/check-test-label.sh
     just test
     if [ "$(scripts/tree-hash.sh)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/quick-ok; fi
 
@@ -116,7 +119,7 @@ script-tests:
     scripts/run-script-tests.sh package-gate-test shell-scripts-test test-scripts
 
 # The systemd unit, sysusers file and D-Bus policy gates; no Rust build.
-system-gates: security-score unit-hardening unit-verify bus-policy
+system-gates: security-score security-ceiling snap-sockets socket-dir-override unit-hardening unit-verify bus-policy
 
 # What the VM target needs on this machine: KVM the user can open, QEMU, OVMF, swtpm, the seed tool, gpgv and the Ubuntu keyring.
 # It fails naming each missing one and never offers software emulation (docs/findings/F150.md).
@@ -135,6 +138,7 @@ package-gate-test:
     scripts/test-check-packages-deps.sh
     scripts/test-check-parity.sh
     scripts/test-glibc-ceiling.sh
+    scripts/test-snap-base-fit.sh
     scripts/test-package-lint.sh
     scripts/test-package-lint-lists.sh
 
@@ -146,6 +150,9 @@ package-gate-test:
 # packages, with dash and bash), and the real dpkg, rpm and pacman refusing, installing or warning. The pacman cases run in the Arch
 # image of the namcap lint and need a container engine; CUSTODIO_SKIP_ARCH_INSTALL=1 skips them with a message.
 test-scripts:
+    scripts/check-register-deps.sh
+    scripts/test-check-register-deps.sh
+    scripts/test-user-refresh-units.sh
     scripts/check-bus-check-sync.sh
     scripts/check-sysusers-sync.sh
     scripts/test-bus-check-sync.sh
@@ -161,12 +168,14 @@ test-scripts:
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
     scripts/test-docs-install.sh
-    scripts/test-docs-manual.sh
-    scripts/test-docs-manual-m3.sh
-    scripts/test-docs-manual-m4.sh
+    scripts/test-docs-readme.sh
+    scripts/test-docs-install-register.sh
+    scripts/test-docs-release-notes.sh
+    scripts/test-docs-threat-model.sh
+    scripts/test-tpm-record-check.sh
     scripts/test-docs-manual-m5.sh
+    scripts/test-docs-manual-m6.sh
     scripts/test-install-real.sh
-    scripts/test-deb-scripts-static.sh
     scripts/test-deb-lifecycle.sh
     scripts/test-deb-lifecycle-real.sh
     scripts/test-rpm-scripts-static.sh
@@ -176,27 +185,19 @@ test-scripts:
     scripts/test-arch-lifecycle.sh
     scripts/test-arch-lifecycle-real.sh
     scripts/test-e2e-skips.sh
-    scripts/test-ci-e2e-vm.sh
     scripts/test-e2e-vm-cases.sh
     scripts/test-vm-gap-map.sh
     scripts/test-e2e-vm-host.sh
     scripts/test-e2e-vm-kinds.sh
     scripts/test-e2e-vm-silent.sh
+    scripts/test-e2e-vm-snap.sh
     scripts/test-e2e-select.sh
-    scripts/test-e2e-owner.sh
-    scripts/test-e2e-ops.sh
-    scripts/test-e2e-rd.sh
-    scripts/test-e2e-jo.sh
-    scripts/test-e2e-journal.sh
-    scripts/test-e2e-appid.sh
-    scripts/test-e2e-cli.sh
+    scripts/test-e2e-selftests.sh
     scripts/test-e2e-select-host.sh
     scripts/test-e2e-catalog.sh
     scripts/test-e2e-host.sh
     scripts/test-e2e-host-oldpath.sh
-    scripts/test-ci-e2e.sh
     scripts/test-e2e-tpm-host.sh
-    scripts/test-e2e-tpm-kind.sh
     scripts/test-e2e-sign.sh
     scripts/test-e2e-noplain.sh
     scripts/test-e2e-tpmdup.sh
@@ -212,12 +213,16 @@ test-scripts:
     scripts/test-e2e-m3-run.sh
     scripts/test-e2e-jobs-host.sh
     scripts/test-check-budgets.sh
+    scripts/test-set-version.sh
     scripts/test-e2e-targets.sh
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-oldpath.sh
     scripts/test-e2e-import.sh
     scripts/test-relabel.sh
+    scripts/test-check-snap-sockets.sh
+    scripts/test-check-test-socket-dir.sh
+    scripts/test-check-test-label.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
@@ -239,7 +244,20 @@ security-score threshold="10":
         exit 1
     fi
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=yes, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
+# The exposure of the service is not above M5's 0.7 (tenths: 7). F170 measured `PrivateUsers=identity` at 0.7 and `no` at 0.8, so
+# the uid route cannot be paid for by loosening something else. The threshold of `security-score` stays 10.
+security-ceiling unit="data/custodio.service" ceiling="7":
+    systemd-analyze security --offline=yes --no-pager --threshold={{ceiling}} {{unit}} | tail -n 1
+
+# The tmpfiles entry and the socket unit are exactly the Firefox ones (the only snap), and nothing makes a RuntimeDirectory=.
+snap-sockets:
+    scripts/check-snap-sockets.sh
+
+# The test-only override of the snap socket's base directory cannot reach a shipped build (static; a release build is not run).
+socket-dir-override:
+    scripts/check-test-socket-dir.sh
+
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override) and the security-score threshold stays 10, so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh
@@ -298,6 +316,9 @@ bus-policy:
 # crypto tests take tens of minutes under Miri. See docs/decisions.md.
 miri:
     cargo +{{nightly_toolchain}} miri test -p custodio-pkcs11 --lib --locked ffi::
+    # custodio-peer's one `getsockopt`: Miri cannot read options of a socketpair, so only the test that runs it on a descriptor
+    # that is no socket (the error path, with the buffer passed to the call) runs here; the others run under `just asan`.
+    MIRIFLAGS=-Zmiri-disable-isolation cargo +{{nightly_toolchain}} miri test -p custodio-peer --lib --locked reads_nothing
 
 # The tests of the PKCS#11 module under AddressSanitizer (needs nightly).
 asan:
@@ -305,6 +326,8 @@ asan:
     set -euo pipefail
     host=$(rustc +{{nightly_toolchain}} -vV | sed -n 's/^host: //p')
     RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-pkcs11 --lib --locked \
+        --target "$host" --target-dir target/asan
+    RUSTFLAGS="-Zsanitizer=address" cargo +{{nightly_toolchain}} test -p custodio-peer --lib --locked \
         --target "$host" --target-dir target/asan
 
 # Mutation testing of the authorization path (polkit, D-Bus service), the audit path and the key store in custodiod, and of the
@@ -322,11 +345,13 @@ mutants *args:
     # MUTANTS_ITERATE=1 skips mutants a previous run caught or found unviable; valid while src/ is unchanged.
     [ "${MUTANTS_ITERATE:-}" = 1 ] && extra+=(--iterate)
     status=0
-    cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/import.rs --file crates/custodiod/src/import/choice.rs --file crates/custodiod/src/import/protect.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/dbus/sign_kind.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/store/error.rs --file crates/custodiod/src/store/files.rs --file crates/custodiod/src/store/kind.rs --file crates/custodiod/src/store/legacy.rs --file crates/custodiod/src/store/record.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/audit/cause.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/creds.rs --file crates/custodiod/src/creds/systemd.rs --file crates/custodiod/src/creds/header.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/startup.rs --file crates/custodiod/src/error.rs --file crates/custodiod/src/tpm.rs --file crates/custodiod/src/tpm/blob.rs --file crates/custodiod/src/tpm/classify.rs --file crates/custodiod/src/tpm/esys.rs --file crates/custodiod/src/tpm/esys/primary.rs --file crates/custodiod/src/tpm/import.rs --file crates/custodiod/src/tpm/sign.rs --file crates/custodiod/src/tpm/sign/block.rs --file crates/custodiod/src/tpm/sign/check.rs --file crates/custodiod/src/tpm/esys/signing.rs --file crates/custodiod/src/tpm/key.rs --file crates/custodiod/src/tpm/list.rs --file crates/custodiod/src/tpm/open.rs --file crates/custodiod/src/tpm/wrap.rs --no-shuffle --colors never --output target/mutants "${extra[@]}" "$@" || status=1
-    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodiod --file crates/custodiod/src/app_id.rs --file crates/custodiod/src/app_id_source.rs --file crates/custodiod/src/app_id_source/bounded.rs --file crates/custodiod/src/app_id_source/guarded.rs --file crates/custodiod/src/app_id_source/limiter.rs --file crates/custodiod/src/app_id_source/scan.rs --file crates/custodiod/src/polkit.rs --file crates/custodiod/src/dbus.rs --file crates/custodiod/src/dbus/list.rs --file crates/custodiod/src/dbus/import.rs --file crates/custodiod/src/import.rs --file crates/custodiod/src/import/choice.rs --file crates/custodiod/src/import/protect.rs --file crates/custodiod/src/dbus/delete.rs --file crates/custodiod/src/dbus/delete_state.rs --file crates/custodiod/src/dbus/replace.rs --file crates/custodiod/src/dbus/sign_kind.rs --file crates/custodiod/src/store.rs --file crates/custodiod/src/store/error.rs --file crates/custodiod/src/store/files.rs --file crates/custodiod/src/store/kind.rs --file crates/custodiod/src/store/legacy.rs --file crates/custodiod/src/store/record.rs --file crates/custodiod/src/audit.rs --file crates/custodiod/src/audit/wire.rs --file crates/custodiod/src/audit/journal.rs --file crates/custodiod/src/audit/memory.rs --file crates/custodiod/src/audit/operation.rs --file crates/custodiod/src/audit/cause.rs --file crates/custodiod/src/credentials.rs --file crates/custodiod/src/creds.rs --file crates/custodiod/src/creds/systemd.rs --file crates/custodiod/src/creds/header.rs --file crates/custodiod/src/offload.rs --file crates/custodiod/src/startup.rs --file crates/custodiod/src/storage.rs --file crates/custodiod/src/audit/storage.rs --file crates/custodiod/src/snap_socket.rs --file crates/custodiod/src/snap_socket/peer.rs --file crates/custodiod/src/snap_socket/keys.rs --file crates/custodiod/src/snap_socket/sign.rs --file crates/custodiod/src/snap_socket/limits.rs --file crates/custodiod/src/audit/transport.rs --file crates/custodiod/src/peer_label.rs --file crates/custodiod/src/error.rs --file crates/custodiod/src/tpm.rs --file crates/custodiod/src/tpm/blob.rs --file crates/custodiod/src/tpm/classify.rs --file crates/custodiod/src/tpm/esys.rs --file crates/custodiod/src/tpm/esys/primary.rs --file crates/custodiod/src/tpm/import.rs --file crates/custodiod/src/tpm/sign.rs --file crates/custodiod/src/tpm/sign/block.rs --file crates/custodiod/src/tpm/sign/check.rs --file crates/custodiod/src/tpm/esys/signing.rs --file crates/custodiod/src/tpm/key.rs --file crates/custodiod/src/tpm/list.rs --file crates/custodiod/src/tpm/open.rs --file crates/custodiod/src/tpm/wrap.rs --no-shuffle --colors never --output target/mutants "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --file crates/custodio-pkcs11/src/backend/socket.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-peer --file crates/custodio-peer/src/lib.rs --no-shuffle --colors never --output target/mutants-peer "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
-    for out in target/mutants target/mutants-pkcs11 target/mutants-client; do
+    for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client target/mutants-cli; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
             echo "$out: a mutant ran out of disk space; free space and run again" >&2; status=1
         fi
@@ -367,7 +392,7 @@ signoff +gates:
     workflows=()
     for gate in "$@"; do
         case $gate in
-            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling package-lint \
+            ci) in_box lint system-gates package-gate-test shell-scripts-test test package package-parity glibc-ceiling snap-base-fit package-lint \
                     coverage-gate memory-safety
                 workflows+=(ci.yml) ;;
             mutants) mkdir -p target
@@ -436,7 +461,7 @@ package version="":
 
 # The gates on the packages: `just package` (which checks their contents), then the same files, modes and owners in all three
 # (packaging/parity-exceptions.txt lists accepted differences), no glibc symbol version above the ceiling, and the linters on the packages. Later package gates join here.
-package-gates: package package-parity glibc-ceiling package-lint
+package-gates: package package-parity glibc-ceiling snap-base-fit package-lint
 
 # Fails on any lintian finding on the .deb, rpmlint finding on the .rpm or namcap finding on the Arch package in target/packages that is not in
 # the list of packaging/lint/<linter>.txt with a reason, and on a list entry that matches nothing. A linter runs on the host when it has the
@@ -452,6 +477,12 @@ package-parity:
 # Fails when an ELF file in a package in target/packages needs a glibc symbol version above the ceiling of packaging/glibc-ceiling.txt.
 glibc-ceiling:
     scripts/check-glibc-ceiling.sh
+
+# Fails when the module the .deb in target/packages ships (the same file in all three packages) needs a glibc symbol version above the glibc
+# of the Firefox snap's base, or a library the base is not recorded to provide (packaging/snap-bases.txt, F171). Given an ELF path instead of
+# a directory it checks that file: `just snap-base-fit target/release/libcustodio_pkcs11.so`.
+snap-base-fit target="target/packages":
+    scripts/check-snap-base.sh {{target}}
 
 # End-to-end tests of one target (a directory of e2e/targets/) or all of them (default): boots a privileged systemd container (podman or docker)
 # with the distribution's real polkit and default bus daemon, installs the package with the target's own tool, and signs with pkcs11-tool and NSS
@@ -517,7 +548,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000

@@ -14,10 +14,16 @@ expect_used = "deny"
 panic = "deny"
 indexing_slicing = "deny"
 
+[features]
+# Lets a test name the directory the snap socket check inspects (CUSTODIOD_TEST_SNAP_DIR), because a test cannot make
+# a root-owned directory. Only the dev-dependency below turns it on; it does not build in release.
+test-seam = []
+
 [dependencies]
 aes = { version = "0.9.3", features = ["zeroize"] }
 hmac = { version = "0.13.0", features = ["zeroize"] }
-custodio-client = { path = "../custodio-client", version = "0.1.0" }
+custodio-client = { path = "../custodio-client", version = "0.8.0" }
+custodio-peer = { path = "../custodio-peer", version = "0.8.0" }
 p12-keystore = "0.4.1"
 p256 = { version = "0.14.0", default-features = false, features = [
   "arithmetic",
@@ -33,7 +39,8 @@ rsa = { version = "=0.10.0-rc.19", default-features = false, features = [
   "sha2",
   "hazmat",
 ] }
-rustix = { version = "1.1.6", features = ["fs", "process"] }
+rustix = { version = "1.1.6", features = ["event", "fs", "process"] }
+sd-listen-fds = "0.2.0"
 sec1 = { version = "0.8.1", default-features = false, features = ["der"] }
 secrecy = "0.10.3"
 sha2 = { version = "0.11.1", features = ["zeroize"] }
@@ -43,10 +50,12 @@ zbus = { version = "6", default-features = false, features = [
   "proxy",
   "default-rt",
   "service",
+  "p2p",
 ] }
 tss-esapi = { version = "=8.0.0-alpha.4", default-features = false }
 zeroize = "1.9.1"
 
 [dev-dependencies]
-custodio-it = { path = "../custodio-it", version = "0.1.0" }
+custodio-it = { path = "../custodio-it", version = "0.8.0" }
 tempfile = "3.27.0"
+custodiod = { path = ".", features = ["test-seam"] }

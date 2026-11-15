@@ -105,11 +105,11 @@ dependencies = [
 
 [[package]]
 name = "custodio-client"
-version = "0.1.0"
+version = "0.8.0"
 
 [[package]]
 name = "custodio-pkcs11"
-version = "0.1.0"
+version = "0.8.0"
 dependencies = [
  "cryptoki-sys",
  "custodio-client",
@@ -543,6 +543,7 @@ version = "1.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514"
 dependencies = [
+ "getrandom",
  "js-sys",
  "serde_core",
  "wasm-bindgen",

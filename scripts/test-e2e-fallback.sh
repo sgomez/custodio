@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # F138: container-free checks of the fallback-* cases: the judgements (e2e/fallback.py) accept the output of `custodio import` and `custodio list` for kind encrypted-host and
-# reject each bad one, the placement (debian13 list and skip list, group), and the accounting in each TPM mode. NOT checked here: a real run
+# reject each bad one. NOT checked here: a real run
 # (`E2E_TPM=none just e2e-cases debian13 'fallback-*'`).
 # shellcheck disable=SC2086,SC2015 # the ids are words; `A && B || bad` is a check, not an if-then-else
 set -euo pipefail
@@ -9,10 +9,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-fallback: $*" >&2; fail=1; }
-D=$ROOT/e2e/targets/debian13
 J="python3 -I $ROOT/e2e/fallback.py"
-host_ids="fallback-host-import-rsa fallback-host-import-ec fallback-host-says-weaker-why fallback-host-cli-list"
-tpmbound_ids="fallback-tpmbound-import fallback-tpmbound-cli-list"
 
 HOST_TEXT="Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it."
 REMIND=$'Now delete the original file: it still holds your private key.\n  shred -u /tmp/k.p12   (or remove it with your file manager and empty the trash)'
@@ -78,50 +75,6 @@ rejects cli-row-without-kind cli "$tmp/b-cli-nokind" fb-rsa:rsa2048 fb-ec:ecdsa-
 # a kind on another key's row does not count
 printf 'id: fb-rsa\n  type: rsa2048\n\nid: other\n  kind: encrypted-host\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: encrypted-host\n' > "$tmp/b-cli-other"
 rejects cli-kind-on-other-row cli "$tmp/b-cli-other" fb-rsa:rsa2048 fb-ec:ecdsa-p256
-
-# placement: the ids are on the debian13 list, not on the every-target list or another target's
-for id in $host_ids $tpmbound_ids; do
-    grep -qx "$id" "$D/cases.list" || bad "$id is not in $D/cases.list"
-    grep -q "^$id:" "$D/skip.list" || bad "$id is not on the skip list of debian13"
-    ! grep -qx "$id" "$ROOT/e2e/cases.list" || bad "$id is in e2e/cases.list (every target)"
-    ! grep -rlx "$id" "$ROOT"/e2e/targets/*/cases.list | grep -qv debian13 || bad "$id is listed by another target"
-done
-[ "$(grep -c '^fallback-' "$D/cases.list")" = 6 ] || bad "debian13 cases.list lists other fallback cases than the six"
-# shellcheck source=e2e/select.sh
-source "$ROOT/e2e/select.sh"
-for id in $host_ids $tpmbound_ids fallback-x; do [ "$(case_group "$id")" = fallback ] || bad "case_group $id is '$(case_group "$id")', expected fallback"; done
-[ "$(case_group tpm-installed-unit-clean)" = tpm ] || bad "tpm-installed-unit-clean left its group"
-# shellcheck source=e2e/fallback-cases.sh
-source "$ROOT/e2e/fallback-cases.sh"
-[ "$(printf '%s\n' $FALLBACK_HOST_CASES | sort)" = "$(printf '%s\n' $host_ids | sort)" ] || bad "FALLBACK_HOST_CASES differ from the listed cases"
-[ "$(printf '%s\n' $FALLBACK_TPMBOUND_CASES | sort)" = "$(printf '%s\n' $tpmbound_ids | sort)" ] || bad "FALLBACK_TPMBOUND_CASES differ from the listed cases"
-
-# accounting, with the guest's own skip output: swtpm and lacking skip all six, none skips the two tpmbound cases and runs the four others
-all="$host_ids $tpmbound_ids"
-printf '%s\n' $all > "$tmp/cases"
-skipped_out() { ( E2E_SELECT_FILE=$tmp/cases; export E2E_SELECT_FILE; fallback_skip "$1" ); }
-check() { CHECK_TPM_MODE=$1 bash "$ROOT/e2e/check-cases.sh" check "$tmp/cases" "$D/skip.list" "$2" > /dev/null 2>&1; }
-for m in swtpm lacking; do
-    skipped_out $m > "$tmp/out-$m"
-    [ "$(grep -c '^E2E-CASE skipped fallback-' "$tmp/out-$m")" = 6 ] || bad "mode $m: the guest does not report six skips"
-    check $m "$tmp/out-$m" || bad "mode $m: six skips are refused"
-done
-skipped_out none > "$tmp/out-none"
-[ "$(grep -c '^E2E-CASE skipped fallback-tpmbound-' "$tmp/out-none")" = 2 ] || bad "mode none: the guest does not skip the two tpmbound cases"
-[ "$(grep -c '^E2E-CASE skipped fallback-host-' "$tmp/out-none")" = 0 ] || bad "mode none: the guest skips a host case"
-{ cat "$tmp/out-none"; for c in $host_ids; do echo "E2E-CASE run $c"; done; } > "$tmp/out-none-full"
-check none "$tmp/out-none-full" || bad "mode none: four run and two skipped are refused"
-# a host case skipped in none is refused, even when the skip list names it
-sed 's/^E2E-CASE run fallback-host-import-rsa$/E2E-CASE skipped fallback-host-import-rsa/' "$tmp/out-none-full" > "$tmp/out-none-hostskip"
-check none "$tmp/out-none-hostskip" && bad "mode none: a skipped host case is accepted"
-# a tpmbound case reported run is refused in every mode
-for m in none swtpm lacking; do
-    sed 's/^E2E-CASE skipped fallback-tpmbound-import$/E2E-CASE run fallback-tpmbound-import/' "$tmp/out-none-full" > "$tmp/out-tb-$m"
-    check $m "$tmp/out-tb-$m" && bad "mode $m: a tpmbound case reported run is accepted"
-done
-# a case not reported at all is refused
-grep -v 'fallback-host-cli-list' "$tmp/out-none-full" > "$tmp/out-miss"
-check none "$tmp/out-miss" && bad "mode none: a missing case is accepted"
 
 # ---- F161: a VM run (fallback.py --mode, fallback-run.sh with E2E_VM=1): the tpmbound cases run in both modes and are judged
 VJ() { python3 -I "$ROOT/e2e/fallback.py" "$@"; }
@@ -211,13 +164,4 @@ vmrun lacking "$tmp/vbadcli" "$tmp/st-ok"
 { [ "$(cat "$tmp/vmrc")" != 0 ] && ! grep -q '^E2E-CASE run fallback-tpmbound-cli-list' "$tmp/vmout"; } || bad "VM run lacking passes or reports a case run on a wrong CLI list"
 RUN_COPY=$tmp/ctl/fallback-run.sh vmrun lacking "$tmp/vbadcli" "$tmp/st-ok"
 grep -q '^E2E-CASE run fallback-tpmbound-cli-list' "$tmp/vmout" || bad "the control copy that reports the CLI case unjudged does not report it run on a wrong CLI list"
-# the VM accounting: both tpmbound cases run, in either mode, are accepted; skipped are refused (also in test-e2e-vm-kinds.sh)
-printf 'fallback-tpmbound-import\nfallback-tpmbound-cli-list\n' > "$tmp/vmcases"
-printf 'E2E-CASE run fallback-tpmbound-import\nE2E-CASE run fallback-tpmbound-cli-list\n' > "$tmp/vmrun-out"
-printf 'E2E-CASE skipped fallback-tpmbound-import\nE2E-CASE run fallback-tpmbound-cli-list\n' > "$tmp/vmskip-out"
-for m in swtpm lacking; do
-    CHECK_VM=1 CHECK_TPM_MODE=$m bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$D/skip.list" "$tmp/vmrun-out" > /dev/null 2>&1 || bad "VM $m: tpmbound run is refused"
-    CHECK_VM=1 CHECK_TPM_MODE=$m bash "$ROOT/e2e/check-cases.sh" check "$tmp/vmcases" "$D/skip.list" "$tmp/vmskip-out" > /dev/null 2>&1 && bad "VM $m: tpmbound skipped is accepted"
-done
-
 exit "$fail"

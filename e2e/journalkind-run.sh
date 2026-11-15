@@ -112,6 +112,7 @@ place "$alice_uid" jk-old-a2 no
 place "$bob_uid" jk-old-b1 yes
 place "$bob_uid" jk-old-b2 no
 old=$(systemctl show -p MainPID --value custodio)
+systemctl reset-failed custodio 2> /dev/null || true # the start rate counter (tpmfail-lib.sh)
 systemctl restart custodio
 tf_wait_ready "$old"
 lap purge

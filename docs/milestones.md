@@ -92,33 +92,48 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
   `ubuntu2404` end-to-end target and the Ubuntu 24.04 install steps go. This supersedes M2's
   support for Ubuntu 24.04 with `dbus-broker`.
 
-## M6 — Public release
+## M6 — Browsers and public release
 
-- Written threat model and security policy (`SECURITY.md`, how to report a vulnerability). The
-  threat model says that without full-disk encryption whoever takes the machine can use the keys,
-  though not copy them.
+Ubuntu's Firefox snap and Firefox builds without p11-kit use Custodio; route and rejected
+alternatives in `docs/reports/firefox-snap.md`.
+
+- The service also listens on `/run/snap.firefox/custodio.sock`: list and sign only, a peer only
+  with the Firefox snap's exact AppArmor label, polkit on a `unix-process` subject from the peer's
+  pidfd. Directory root `0755` from `tmpfiles.d`.
+- Inside a snap the module talks to that socket instead of the bus.
+- A `custodio` command registers the module in the user's NSS profiles: native Firefox and its
+  derivatives, and the Firefox snap through a copy of the module in `~/snap/firefox/common/`, kept
+  fresh by a per-user trigger.
+- End-to-end on the Ubuntu 26.04 VM: a client under the Firefox snap's confinement signs through the
+  socket. The socket rests on a snapd rule that no document promises; this test watches it.
+- Written threat model; `SECURITY.md` exists. The threat model says that without full-disk
+  encryption whoever takes the machine can use the keys, though not copy them.
 - Warn when the state directory is not on an encrypted device (dm-crypt in its `lsblk` chain).
-- External review of the authorization path and the FFI layer.
-- Repository made public, user README (what Custodio protects against and what it does not),
-  release notes.
-- Packages published in repositories next to rFirma's channel on `rfirma.com`.
+- User README (what Custodio protects against and what it does not, the three storage kinds, the
+  limits of the snap route, Firefox Flatpak, key loss) and release notes.
+
+By a person, after the features:
+
+- External review of the authorization path, the FFI layer and the snap socket.
+- Repository made public; packages published in repositories next to rFirma's channel on
+  `rfirma.com`.
 - rFirma integration, built in rFirma's repository against the M3 API: it detects Custodio, imports
   a `.p12` into it and offers to delete the original, and its flatpak ships the module with
   `--system-talk-name=com.rfirma.Custodio1`. Without Custodio, rFirma works as today.
+- Ask on the snapcraft forum whether host services may rely on `/run/snap.<snap>/`.
 
 ## Unassigned
 
-- **Firefox snap:** the confined Firefox cannot load the module. Needs its own investigation
-  (snap interfaces, a module inside the snap's reach) or a documented limitation.
+- **Chromium and Thunderbird snaps:** the same snapd rules should let them use a socket of their own
+  in `/run/snap.<snap>/` (inferred, `docs/reports/firefox-snap.md`); M6 ships only Firefox.
+- **Native Firefox skipped on Debian and Ubuntu with `crypto-policies`:** `custodio register` reads
+  `library=p11-kit-proxy.so` in `nss.config` as "NSS loads the proxy", but there NSS never reads the
+  file: nothing is registered and the command exits 0. Known in v0.8.0; the register tests fail on
+  such a host for the same reason. Evidence and the proposed fix in issue #32.
 - **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
   on atomic systems such as Bazzite every browser is a Flatpak. Needs its own investigation (the
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
   `flatpak override`) or a documented limitation.
-- **Firefox without p11-kit:** Mozilla's builds bundle their own NSS, and Arch's and Debian's NSS
-  load no p11-kit proxy (`docs/findings/F56.md`), so Firefox ignores `.module` files there. M2
-  documents registration by hand (`docs/install.md`, "Firefox"). An enterprise policy is one file and
-  would override the administrator's. Candidate: a `custodio` command that registers the module in
-  the user's NSS profiles, for Firefox and its derivatives (each with its own profile root).
 - **Several dialogs per page in TLS client authentication:** correct by design, but tiring on real
   sites. A short grace window would conflict with "never cache an authorization".
 - **Document details in the dialog:** what polkit can show safely, and whether it is worth it when
@@ -129,7 +144,7 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
 - **Composed RSA-PSS:** `CKM_SHA256_RSA_PKCS_PSS` and peers (`CKM_RSA_PKCS_PSS` is in M4), once a
   target client needs them.
 - **Refuse the encrypted kinds:** an administrator setting, deferred by M4's SPEC; an organisation
-  may prefer no key over a weaker one. Worth deciding before the public release.
+  may prefer no key over a weaker one. Not in the first release (`docs/decisions.md`).
 - **Key loss:** what happens to the keys when the disk dies (no export by design). Listing, deleting
   and replacing are in M3.
 - **Keys born in the TPM:** `C_GenerateKeyPair` and a CSR, so the key never exists outside the TPM

@@ -8,7 +8,11 @@ here only if all three hold:
 3. Someone could undo it by mistake without this note.
 
 Not here: what a feature builds or how its files are laid out (code and commit), fixes (commit),
-research (`docs/findings/`), open work (issues). When a decision changes, edit its entry instead of
+research (`docs/findings/`), open work (issues).
+
+Decisions about one area live in their own file, with the same rules and limit:
+`docs/decisions/packaging.md` for the package scripts and file layout. Read it before touching
+`packaging/` or the package checks. When a decision changes, edit its entry instead of
 adding one that contradicts it. The file stays under 5000 tokens (`just quick`): drop entries that
 no longer apply rather than let it grow.
 
@@ -159,77 +163,10 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: the RSA/ECDSA tests took over 14 minutes under Miri; ASan still runs all of them.
 - Rejected: every test under Miri; no Miri. Widen the filter if a module gains `unsafe`.
 
-## 2026-10-30 — Package version scheme and the place of the service binary
-- Decision: the version comes from the workspace: `X.Y.Z-pre` is `X.Y.Z~pre-1` (.deb), release `1`
-  with `~pre` (.rpm), `X.Y.Z_pre` pkgrel 1 (Arch). The binary is at `/usr/libexec/custodio/custodiod`
-  in the .deb and .rpm and `/usr/lib/custodio/custodiod` in Arch (`packaging/parity-exceptions.txt`);
-  one `data/custodio.service`, with `ExecStart` derived per format by `scripts/derive-units.sh`.
-  The D-Bus activation file keeps `Exec=/bin/false`.
-- Why: from `/usr/lib/custodio` (`lib_t`) Fedora runs the service in `init_t` and its key files get
-  `init_var_lib_t` (F54, F55); from `/usr/libexec` (`bin_t`) it is `unconfined_service_t`. Arch has
-  no `/usr/libexec`. A real `Exec=` would start the service outside the unit's hardening.
-- Rejected: `/usr/lib/custodio` everywhere; `/usr/libexec` on Arch; two unit files; an `Exec=` in
-  the activation file; an SELinux policy module (out of scope).
-
-## 2026-10-30 — The install-time ProcessFD check refuses when it has no tool to ask with
-- Decision: `packaging/bus-check.sh` asks with `busctl`, else `dbus-send`. A bus socket with
-  neither tool is refused with a message to install one; only an absent socket (or nothing
-  listening) is "no bus" and installs with a notice.
-- Why: installing silently would hide a bus without ProcessFD; the rpm and Arch scripts have no
-  pre-dependency, so the deb's `Pre-Depends: systemd` is not relied on.
-- Rejected: a missing tool as "no bus"; a tool of our own (nothing can be added for a script that
-  runs before the package); pre-depending on dbus.
-
-## 2026-10-30 — The deb pre-depends on systemd and creates the account in preinst
-- Decision: `systemd` is in the deb's `Pre-Depends`, not `Depends`. `preinst` creates the account
-  with `systemd-sysusers -` from the embedded sysusers text (`scripts/check-sysusers-sync.sh`), on
-  `install` and `upgrade`; if that fails, nothing is unpacked.
-- Why: dpkg unpacks the bus policy before `postinst` and `dbus-daemon` may load it at once; in one
-  transaction `Depends` may not be unpacked when `preinst` runs. Debian policy 7.2 allows this case:
-  do not drop it as lint hygiene.
-- Rejected: a `useradd` fallback (a second account definition); the account in `postinst`; skipping
-  it without the tool. Move `systemd` back to `Depends` only if `preinst` stops needing it.
-
-## 2026-10-30 — Deb scripts: restart marker in /run, notice on stderr, purge as remove
-- Decision: `preinst upgrade` creates `/run/custodio-restart-after-upgrade` if the service is
-  active; `postinst configure OLD` restarts once only if it exists, and removes it. The removal
-  notice goes to stderr on `remove` and `purge`. `postrm remove|purge` stops the service again if
-  it is active after the reloads.
-- Why: the marker is the only state from `preinst` to `postinst` and must not be under the state
-  directory; maintainer stdout can carry debconf's protocol; the second stop covers a D-Bus
-  activation between `prerm` and the removal of the files.
-- Rejected: `try-restart` in `postinst` (restarts a service started after `preinst`); the marker
-  under `/var/lib`; one notice per transaction (another marker).
-
-## 2026-10-30 — Rpm scriptlets: account in %pre from stdin, restart by marker, no systemd macros
-- Decision: `%pre` runs the F42 check, `systemd-sysusers -` with the embedded line, and on upgrade
-  notes `is-active` in the `/run` marker; the new `%post` reloads, updates the catalog and restarts
-  once if the marker exists. No `user()` provide, `%posttrans`, `Requires(pre)` (nfpm cannot write
-  it) or `%systemd_*`/`%sysusers_*` macro (nfpm leaves them unexpanded). `%preun 0` stops; `%postun 0`
-  reloads, stops again if active, and prints the notice on stderr.
-- Why: the old package's `%preun`/`%postun` run after the new `%post`, so only the new package can
-  decide; `%systemd_postun_with_restart` is a try-restart that does nothing in a chroot; a `user()`
-  provide would create the account before the F42 check. `rpm-ostree uninstall` runs no scriptlet:
-  a deviation (`docs/milestones/M2/SPEC_DEVIATIONS.md`, F44).
-- Rejected: `%posttrans` (its `$1` cannot tell install from upgrade); `systemd-update-helper`
-  (absent in a chroot, enables on install); a `useradd` fallback.
-
-## 2026-10-30 — Arch: hooks do the reloads and the catalog, the account is made in pre_*, a hook restarts
-- Decision: the scripts call no `daemon-reload`, bus reload or `journalctl --update-catalog` (the
-  system hooks do). `pre_install`/`pre_upgrade` create the account after the F42 check. The restart
-  on upgrade is the PostTransaction hook `zz-custodio-restart.hook` (`try-restart`); `pre_remove`
-  stops the service.
-- Why: a script runs before all PostTransaction hooks, so a reload there is a second call and a
-  restart would precede the daemon reload (`docs/findings/F58.md`).
-- Rejected: `enqueue-marked` with `Markers=needs-restart` (runs before `dbus-reload`); reloads in
-  `post_*`; a marker file; a `useradd` fallback.
-
-## 2026-11-01 — Firefox without the p11-kit proxy: registration by hand in M2
-- Decision: where the system NSS does not load `p11-kit-proxy.so` (Arch, Debian), `docs/install.md`
-  documents `modutil` per profile; the packages register nothing in Firefox. Approver's call (F56).
-- Why: only Fedora's NSS reads a system policy file that loads the proxy (`docs/findings/F56.md`).
-- Rejected: an enterprise policy (one file, would override the administrator's); a `custodio`
-  command that edits profiles (left in `docs/milestones.md`, "Firefox without p11-kit").
+## 2026-11-12 — Firefox without the p11-kit proxy: a command that runs `modutil`
+- Decision: M6's `custodio` command runs `modutil` per profile; manual stays the fallback.
+- Why: only Fedora's and RHEL's NSS load the proxy (`docs/findings/F56.md`).
+- Rejected: an enterprise policy; writing `pkcs11.txt` ourselves.
 
 ## 2026-11-01 — A refused sign for a key the caller does not have leaves no journal entry
 - Decision: `Sign` for an id the caller does not own (missing, or another uid's) fails as
@@ -290,3 +227,25 @@ Format: a title and three short bullets, a couple of lines each:
   milestone PRs; whoever changes the launcher runs `just e2e-vm full|lacking`.
 - Why: flaky; they tested tooling, not custodio.
 - Rejected: hardening the fakes.
+
+## 2026-11-12 — No setting to refuse the encrypted kinds in v1
+- Decision: import still falls back to the encrypted kinds (approver).
+- Why: for one's own certificate, a working import beats a refusal; `custodio list` shows the kind.
+- Rejected: the setting M4 deferred (still in `docs/milestones.md`).
+
+## 2026-11-12 — First public release: v0.8.0, no name
+- Decision: M6 ships as `v0.8.0`, unnamed (approver).
+- Why: the external review follows M6; 1.0 waits for its fixes.
+- Rejected: `v1.0.0` now; a codename.
+
+## 2026-11-13 — Snap socket handshake: ANONYMOUS only, the uid comes from SO_PEERCRED (F175)
+- Decision: the peer-to-peer server on a snap socket accepts `ANONYMOUS` only and sets no `.user_id()`; `AUTH EXTERNAL` is rejected unread. Whose keys are listed is the uid of `SO_PEERCRED` and nothing else. `SO_PEERCRED` is read with `rustix` and `SO_PEERPIDFD` with `nix` (both safe); the one `getsockopt(SO_PEERSEC)` is the only `unsafe` outside the PKCS#11 FFI layer, audited, alone in `crates/custodio-peer` (a person approved it for F175; `custodiod` keeps `forbid(unsafe_code)`). Details: `docs/findings/F170.md`.
+- Why: `EXTERNAL` compares a uid the peer writes, and under `PrivateUsers=identity` an unmapped uid shows as 65534; `rustix` and `nix` have no `SO_PEERSEC` wrapper.
+- Rejected: `EXTERNAL` with `.user_id()` set per connection; `unsafe` inside `custodiod`; the `/proc/<pid>/attr/current` label (racy, not the connect-time label).
+
+## 2026-11-14 — `register_native` builds the module and the test server itself (F182)
+- Decision: `crates/custodio-cli/tests/register_native.rs` runs `cargo build --locked` (once, same target dir) for
+  `custodio-pkcs11` and for the `custodio-it` example `docs_api_server`, and fails if either is missing. No dev-dependency.
+- Why: `scripts/deps_check.py` forbids any path from a client crate to `custodiod`, dev edges included; `cargo test -p
+  custodio-cli` builds neither the `cdylib` nor an example.
+- Rejected: `custodio-cli -[dev]-> custodio-it` or `custodiod` (fails `just deps-check`); skipping when a binary is absent.

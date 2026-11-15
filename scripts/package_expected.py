@@ -14,15 +14,25 @@ FILES = {
     "/usr/lib/systemd/system/custodio.service": 0o644,
     "/usr/lib/sysusers.d/custodio.conf": 0o644,
     "/usr/lib/tmpfiles.d/custodio.conf": 0o644,
+    "/usr/lib/tmpfiles.d/custodio-snap.conf": 0o644,
+    "/usr/lib/systemd/system/custodio-firefox.socket": 0o644,
     "/usr/share/dbus-1/system.d/com.rfirma.Custodio1.conf": 0o644,
     "/usr/share/dbus-1/system-services/com.rfirma.Custodio1.service": 0o644,
     "/usr/share/polkit-1/actions/com.rfirma.custodio.policy": 0o644,
     "/usr/share/p11-kit/modules/custodio.module": 0o644,
     "/usr/lib/systemd/catalog/custodio.catalog": 0o644,
+    "/usr/lib/systemd/user/custodio-refresh.service": 0o644,
+    "/usr/lib/systemd/user/custodio-refresh.path": 0o644,
     "/usr/share/licenses/custodio/LICENSE": 0o644,
     "/usr/share/doc/custodio/copyright": 0o644,
     "/usr/share/man/man1/custodio.1.gz": 0o644,
     "/usr/share/doc/custodio/changelog.Debian.gz": 0o644,
+}
+
+# Symlinks every package installs (F184): path -> target. They enable the per-user refresh units for every user from the installed files alone.
+SYMLINKS = {
+    "/usr/lib/systemd/user/default.target.wants/custodio-refresh.service": "../custodio-refresh.service",
+    "/usr/lib/systemd/user/paths.target.wants/custodio-refresh.path": "../custodio-refresh.path",
 }
 
 # Files only the Arch package installs (nfpm `packager: archlinux`): the alpm hook that refuses an upgrade or reinstall while the (F58: and the restart hook)
@@ -40,6 +50,9 @@ RPM_ONLY_DIRS = {
     "/usr/libexec/custodio": 0o755,
     "/usr/share/doc/custodio": 0o755,
     "/usr/share/licenses/custodio": 0o755,
+    # F184: no package owns these two (found by the removal case on alma10 and fedora44, F187)
+    "/usr/lib/systemd/user/default.target.wants": 0o755,
+    "/usr/lib/systemd/user/paths.target.wants": 0o755,
 }
 
 UNIT = "/usr/lib/systemd/system/custodio.service"
@@ -77,19 +90,23 @@ TSS_LIBS = {
 }
 SYSTEMD = {"deb": "systemd (>= 257)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
 
+# The package that ships `modutil` (F172, verified there): `custodio register` runs it to add the module to the NSS databases of Firefox
+# and Thunderbird (F183). The deb names libnss3-tools, the rpm nss-tools, Arch's nss. scripts/check-register-deps.sh compares this with nfpm.yaml.
+MODUTIL = {"deb": "libnss3-tools", "rpm": "nss-tools", "arch": "nss"}
+
 # Dependencies every package must declare, exactly as the format writes them (whitespace normalised). libc and libgcc are
 # listed because the Rust binaries always link them; nfpm does not compute shared-library dependencies.
 DEPS = {
-    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit", *TSS_LIBS["deb"]],
-    "rpm": ["glibc", "libgcc", "polkit >= 124", SYSTEMD["rpm"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["rpm"]],
-    "arch": ["glibc", "gcc-libs", "polkit>=124", SYSTEMD["arch"], "dbus", "p11-kit", "util-linux", *TSS_LIBS["arch"]],
+    "deb": ["libc6", "libgcc-s1", "polkitd (>= 124)", "dbus-system-bus", "p11-kit", MODUTIL["deb"], *TSS_LIBS["deb"]],
+    "rpm": ["glibc", "libgcc", "polkit >= 124", SYSTEMD["rpm"], "dbus", "p11-kit", "util-linux", MODUTIL["rpm"], *TSS_LIBS["rpm"]],
+    "arch": ["glibc", "gcc-libs", "polkit>=124", SYSTEMD["arch"], "dbus", "p11-kit", "util-linux", MODUTIL["arch"], *TSS_LIBS["arch"]],
 }
 # The CLI runs `setpriv --pdeathsig=KILL -- pkttyagent ...` (F89). setpriv comes from util-linux and pkttyagent from the polkit package
 # the lists above already carry (polkitd on Debian, polkit on Fedora/Alma/Arch), so only rpm and arch add util-linux. The deb leaves it
 # out on purpose: util-linux is Essential on Debian and Ubuntu, and an unversioned dependency on an Essential package is a lintian
 # finding (see FORBIDDEN_DEPS). Probes (F90): `dnf provides /usr/bin/setpriv` is util-linux on alma10 and fedora44, `pacman -F` util-linux.
 # The deb's Pre-Depends field, entry by entry, exactly as dpkg-deb -f writes it. systemd is here and not in Depends because the preinst runs
-# systemd-sysusers and dpkg guarantees Depends only for the postinst (docs/decisions.md, F43). Only the deb has the field.
+# systemd-sysusers and dpkg guarantees Depends only for the postinst (docs/decisions/packaging.md, F43). Only the deb has the field.
 PRE_DEPS = {"deb": [SYSTEMD["deb"]]}
 # Names that must not appear as a dependency: the unversioned polkit of the old package, the M1 bare dbus, the wrong polkit.
 FORBIDDEN_DEPS = {"deb": {"polkit", "dbus", "util-linux"}, "rpm": {"polkitd"}, "arch": {"polkitd"}}
