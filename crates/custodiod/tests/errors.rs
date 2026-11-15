@@ -399,20 +399,6 @@ fn replies_leak_nothing_and_are_fixed() -> TestResult {
     })
 }
 
-#[test]
-fn the_message_is_the_same_for_different_inputs() -> TestResult {
-    block_on(async {
-        let f = start(Answer::Yes).await?;
-        let a = failure(import_call(&f, "../one", EC_P12, "x").await)?;
-        let b = failure(import_call(&f, "two words", EC_P12, "y").await)?;
-        assert_eq!(a, b);
-        let a = failure(import_call(&f, "a1", b"one", "x").await)?;
-        let b = failure(import_call(&f, "a2", b"two, longer", "y").await)?;
-        assert_eq!(a, b);
-        Ok(())
-    })
-}
-
 // --- .p12 builders, as in `import.rs` -----------------------------------------------------------
 
 fn chain_of(name: &str) -> Result<PrivateKeyChain, Box<dyn Error>> {

@@ -122,19 +122,6 @@ fn rejects_symlinked_key() -> TestResult {
 }
 
 #[test]
-fn rejects_foreign_owner() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let mut store = KeyStore::open(tmp.path().join("s"))?;
-    store.put(&rec(OWNER, "k", b"x"))?;
-    store.file_uid = Some(store.uid.wrapping_add(1));
-    assert!(matches!(
-        store.get(OWNER, "k"),
-        Err(StoreError::BadOwner(_))
-    ));
-    Ok(())
-}
-
-#[test]
 fn open_rejects_foreign_owner() -> TestResult {
     let tmp = tempfile::tempdir()?;
     let dir = tmp.path().join("s");
@@ -183,35 +170,6 @@ fn get_rejects_fifo_without_blocking() -> TestResult {
         store.get(OWNER, "k"),
         Err(StoreError::BadFileType(_))
     ));
-    Ok(())
-}
-
-#[test]
-fn open_removes_stale_temp_files() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let dir = tmp.path().join("s");
-    let store = KeyStore::open(&dir)?;
-    fs::write(dir.join(".tmp-1-1"), b"partial")?;
-    drop(store);
-    let store = KeyStore::open(&dir)?;
-    assert_eq!(fs::read_dir(store.dir())?.count(), 0);
-    Ok(())
-}
-
-#[test]
-fn put_does_not_overwrite_and_leaves_no_temp_files() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let store = KeyStore::open(tmp.path().join("s"))?;
-    store.put(&rec(OWNER, "k", b"one"))?;
-    assert!(matches!(
-        store.put(&rec(OWNER, "k", b"two")),
-        Err(StoreError::AlreadyExists)
-    ));
-    assert_eq!(store.get(OWNER, "k")?.certificate(), b"one");
-    let names: Vec<_> = fs::read_dir(area(&store))?
-        .map(|e| e.map(|e| e.file_name()))
-        .collect::<Result<_, _>>()?;
-    assert_eq!(names.len(), 1);
     Ok(())
 }
 

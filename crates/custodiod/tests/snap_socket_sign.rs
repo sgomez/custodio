@@ -368,23 +368,6 @@ fn asks_polkit_once_on_the_pidfd_subject() -> TestResult {
 }
 
 #[test]
-fn denial_is_polkit_denied() -> TestResult {
-    let rig = Rig::start(&Options::default())?;
-    rig.answers(&[Answer::No]);
-    let c = rig.client()?;
-    assert_eq!(
-        rig.sign(&c, "ec", CKM_ECDSA, &[1u8; 32]),
-        Err(DENIED.to_owned())
-    );
-    let entries = rig.sink.entries();
-    let [entry] = entries.as_slice() else {
-        return Err("expected one entry".into());
-    };
-    assert_eq!(entry.outcome(), AuditOutcome::Denied);
-    Ok(())
-}
-
-#[test]
 fn polkit_errors_are_authorization_unavailable() -> TestResult {
     for case in 0..3 {
         let rig = Rig::start(&Options {

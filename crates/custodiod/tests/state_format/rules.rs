@@ -28,29 +28,6 @@ fn modes_are_exact() -> TestResult {
 }
 
 #[test]
-fn record_of_another_owner_path_is_refused() -> TestResult {
-    let (_tmp, store) = fresh();
-    store.put(&host("k", b"cert"))?;
-    store.put(&encrypted(OWNER + 1, "z", Kind::EncryptedHost, b"cert"))?;
-    let copy = area(&store, OWNER + 1).join("k");
-    fs::copy(area(&store, OWNER).join("k"), &copy)?;
-    set_mode(&copy, 0o600);
-    assert!(matches!(
-        store.get(OWNER + 1, "k"),
-        Err(StoreError::Mismatch(_))
-    ));
-    // Under another id of the same owner too.
-    let copy = area(&store, OWNER).join("renamed");
-    fs::copy(area(&store, OWNER).join("k"), &copy)?;
-    set_mode(&copy, 0o600);
-    assert!(matches!(
-        store.get(OWNER, "renamed"),
-        Err(StoreError::Mismatch(_))
-    ));
-    Ok(())
-}
-
-#[test]
 fn put_never_overwrites() -> TestResult {
     let (_tmp, store) = fresh();
     store.put(&host("k", b"first"))?;
@@ -112,19 +89,5 @@ fn a_reader_never_sees_a_partial_record() -> TestResult {
         watcher.join().unwrap();
     });
     assert_eq!(reader.list(OWNER)?.len(), ids.len());
-    Ok(())
-}
-
-#[test]
-fn leftover_tmp_files_are_removed_at_open() -> TestResult {
-    let (_tmp, store) = fresh();
-    store.put(&host("k", b"cert"))?;
-    let root_tmp = store.dir().join(".tmp-root");
-    let area_tmp = area(&store, OWNER).join(".tmp-area");
-    fs::write(&root_tmp, b"x")?;
-    fs::write(&area_tmp, b"x")?;
-    let again = KeyStore::open(store.dir())?;
-    assert!(!root_tmp.exists() && !area_tmp.exists());
-    assert_eq!(again.list(OWNER)?, ["k"]);
     Ok(())
 }

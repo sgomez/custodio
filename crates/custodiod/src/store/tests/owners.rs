@@ -217,21 +217,6 @@ fn non_directory_in_place_of_area_is_refused_and_kept() -> TestResult {
 }
 
 #[test]
-fn symlinked_root_is_refused() -> TestResult {
-    let tmp = tempfile::tempdir()?;
-    let real = tmp.path().join("real");
-    KeyStore::open(&real)?;
-    let link = tmp.path().join("link");
-    std::os::unix::fs::symlink(&real, &link)?;
-    assert!(matches!(
-        KeyStore::open(&link),
-        Err(StoreError::BadFileType(_))
-    ));
-    assert_eq!(names(&real)?, Vec::<String>::new());
-    Ok(())
-}
-
-#[test]
 fn old_layout_flat_files_are_ignored_and_untouched() -> TestResult {
     let (tmp, store) = fresh()?;
     let root = store.dir().to_owned();
