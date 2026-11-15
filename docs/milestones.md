@@ -126,6 +126,10 @@ By a person, after the features:
 
 - **Chromium and Thunderbird snaps:** the same snapd rules should let them use a socket of their own
   in `/run/snap.<snap>/` (inferred, `docs/reports/firefox-snap.md`); M6 ships only Firefox.
+- **Native Firefox skipped on Debian and Ubuntu with `crypto-policies`:** `custodio register` reads
+  `library=p11-kit-proxy.so` in `nss.config` as "NSS loads the proxy", but there NSS never reads the
+  file: nothing is registered and the command exits 0. Known in v0.8.0; the register tests fail on
+  such a host for the same reason. Evidence and the proposed fix in issue #32.
 - **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
   on atomic systems such as Bazzite every browser is a Flatpak. Needs its own investigation (the
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
