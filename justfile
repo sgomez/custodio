@@ -77,12 +77,14 @@ test:
 
 # The gate of every feature: lints and every Rust test (unit and integration). The package, install and e2e
 # script tests run in `just check`, at the checkpoints and the release. A pass stamps the tree in
-# target/quick-ok, and that tree is skipped; QUICK_FORCE=1 runs it.
+# target/quick-ok, and that tree is skipped; QUICK_FORCE=1 runs it. The stamp leaves out contracts/ and
+# features.json, which only check-files.sh reads here: it runs on a stamped tree too.
 quick:
     #!/usr/bin/env bash
     set -euo pipefail
-    tree=$(scripts/tree-hash.sh)
+    tree=$(scripts/tree-hash.sh contracts features.json)
     if [ -z "${QUICK_FORCE:-}" ] && [ "$(cat target/quick-ok 2> /dev/null)" = "$tree" ]; then
+        scripts/check-files.sh
         echo "quick: this tree already passed (target/quick-ok)"
         exit 0
     fi
@@ -96,7 +98,7 @@ quick:
     scripts/check-files.sh
     scripts/check-test-label.sh
     just test
-    if [ "$(scripts/tree-hash.sh)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/quick-ok; fi
+    if [ "$(scripts/tree-hash.sh contracts features.json)" = "$tree" ]; then mkdir -p target && echo "$tree" > target/quick-ok; fi
 
 # Every fast check: fmt, clippy, unit tests, service hardening score, package gate tests (incl. parity and glibc ceiling), the install-time
 # ProcessFD check (test-scripts), taplo, shellcheck, actionlint, zizmor, cargo-deny, cargo-machete,
@@ -360,6 +362,8 @@ mutants *args:
 
 # `just mutants` on the lines changed since feature <id> started (the base commit the loop keeps in .harness/state),
 # working tree included. A feature's `verify` gate; CI sweeps every mutant weekly. Extra arguments go to `just mutants`.
+# A pass stamps the tree, the base and the arguments in target/mutants-diff-ok, and the same run is skipped (the
+# builder's hand-off run, then the verify); MUTANTS_FORCE=1 runs it.
 [positional-arguments]
 mutants-diff id *args:
     #!/usr/bin/env bash
@@ -367,7 +371,14 @@ mutants-diff id *args:
     id=$1; shift
     base_file=".harness/state/$id.base"
     [ -f "$base_file" ] || { echo "no $base_file: the loop has not started $id" >&2; exit 1; }
+    stamp() { echo "$(scripts/tree-hash.sh contracts features.json) $(cat "$base_file") ${MUTANTS_ITERATE:-} $*"; }
+    run=$(stamp "$@")
+    if [ -z "${MUTANTS_FORCE:-}" ] && [ "$(cat target/mutants-diff-ok 2> /dev/null)" = "$run" ]; then
+        echo "mutants-diff: this tree already passed (target/mutants-diff-ok)"
+        exit 0
+    fi
     mkdir -p target
+    rm -f target/mutants-diff-ok
     git diff "$(cat "$base_file")" > "target/mutants-$id.diff"
     # New files too, without `git add -N`: intent-to-add entries break the loop's `git stash`.
     git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do
@@ -375,6 +386,7 @@ mutants-diff id *args:
     done
     # 3 jobs: a full F115-sized diff (about 200 mutants) takes 18 min serially.
     just mutants --in-diff "target/mutants-$id.diff" --jobs 3 "$@"
+    if [ "$(stamp "$@")" = "$run" ]; then echo "$run" > target/mutants-diff-ok; fi
 
 # Gates: `ci` (ci.yml's jobs but commitlint, in the dev container), `mutants` (the mutants diff against main). Instead
 # of `git push`: nothing is pushed or signed unless every gate passes on HEAD. E.g. `just signoff ci mutants`.
