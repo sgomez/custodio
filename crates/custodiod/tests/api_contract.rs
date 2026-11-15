@@ -21,21 +21,9 @@
 //! - action `com.rfirma.custodio.name`
 //! ```
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-// The rig is shared with `storage_choice`; this target starts one service per storage kind with it.
-#[allow(dead_code)]
-#[path = "storage_choice/rig.rs"]
-mod rig;
-// Shared with `tpm_import`: this target does not use every helper of it.
-#[allow(dead_code)]
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::bus;
+use crate::common;
+use crate::rig;
 
 use std::collections::BTreeSet;
 use std::error::Error;

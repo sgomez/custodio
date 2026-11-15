@@ -13,8 +13,8 @@ use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::rig::{
+use super::bus::Answer;
+use super::rig::{
     Counting, Rig, SUBJECTS, SpyCreds, Svc, TestResult, lacks_import, lacks_mechanism,
 };
 
@@ -49,7 +49,7 @@ async fn expect_kind(svc: &Svc, kind: Kind, binding: Option<Binding>) -> TestRes
 }
 
 fn common_uid() -> u32 {
-    crate::common::uid()
+    super::common::uid()
 }
 
 #[test]

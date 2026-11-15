@@ -184,7 +184,7 @@ fn child_output(env: &[(&str, &str)]) -> Res<String> {
     let out = Command::new(std::env::current_exe()?)
         .args([
             "--exact",
-            "production_child",
+            "tpm_access::production_child",
             "--nocapture",
             "--test-threads=1",
         ])

@@ -16,12 +16,12 @@ use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::common::SENTINEL_PASSWORD;
-use crate::rig::{
+use super::bus::Answer;
+use super::common::SENTINEL_PASSWORD;
+use super::rig::{
     Counting, Res, Rig, SUBJECTS, SpyCreds, Subject, Svc, TestResult, lacks_mechanism,
 };
-use crate::script::{encodings, named, run_script};
+use super::script::{encodings, named, run_script};
 
 #[derive(Clone, Copy)]
 pub struct Cell {

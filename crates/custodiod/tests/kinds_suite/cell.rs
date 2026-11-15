@@ -14,12 +14,12 @@ use custodiod::creds::memory::MemoryCreds;
 use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 
-use crate::bus::Answer;
-use crate::common::SENTINEL_PASSWORD;
-use crate::kit::{der_to_pem, p12_certificate};
-use crate::oracle::Row;
-use crate::rig::{Counting, Res, Rig, SUBJECTS, SpyCreds, Subject, Svc, lacks_mechanism};
-use crate::support::{Kind as KeyType, TestKey};
+use super::bus::Answer;
+use super::common::SENTINEL_PASSWORD;
+use super::kit::{der_to_pem, p12_certificate};
+use super::oracle::Row;
+use super::rig::{Counting, Res, Rig, SUBJECTS, SpyCreds, Subject, Svc, lacks_mechanism};
+use super::support::{Kind as KeyType, TestKey};
 
 /// One storage kind with one key type.
 #[derive(Clone, Copy)]
@@ -40,9 +40,9 @@ impl Cell {
     /// Every mechanism of the key type.
     pub fn rows(self) -> Vec<Row> {
         if self.rsa() {
-            crate::oracle::rsa_rows()
+            super::oracle::rsa_rows()
         } else {
-            crate::oracle::p256_rows()
+            super::oracle::p256_rows()
         }
     }
 }
@@ -113,7 +113,7 @@ impl Running {
 
     /// `Sign` with the wire form of a row.
     pub async fn sign(&self, id: &str, row: &Row) -> Result<Vec<u8>, String> {
-        let (mechanism, hash, salt) = crate::signs::wire(row.mechanism);
+        let (mechanism, hash, salt) = super::signs::wire(row.mechanism);
         let reply = self
             .svc
             .call_method("Sign", &(id, mechanism, hash, salt, row.data.clone()))

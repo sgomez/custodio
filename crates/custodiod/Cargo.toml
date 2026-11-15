@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 description = "Custodio signing service"
+autotests = false
 
 # Cannot extend `workspace.lints`, so the workspace baseline (pedantic) is repeated here.
 [lints.clippy]
@@ -59,3 +60,11 @@ zeroize = "1.9.1"
 custodio-it = { path = "../custodio-it", version = "0.8.0" }
 tempfile = "3.27.0"
 custodiod = { path = ".", features = ["test-seam"] }
+
+[[test]]
+name = "it"
+path = "tests/it.rs"
+
+[[test]]
+name = "fd_leak"
+path = "tests/fd_leak.rs"

@@ -19,8 +19,8 @@ use secrecy::SecretString;
 use zbus::connection::Builder;
 use zbus::{Connection, block_on};
 
-use crate::bus::{Answer, Bus, FakePolkit, call, error_name};
-use crate::common::{EC_P12, PASSWORD, uid};
+use super::bus::{Answer, Bus, FakePolkit, call, error_name};
+use super::common::{EC_P12, PASSWORD, uid};
 
 pub type Res<T> = Result<T, Box<dyn std::error::Error>>;
 pub type TestResult = Res<()>;

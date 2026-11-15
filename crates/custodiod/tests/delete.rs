@@ -1,16 +1,9 @@
 //! `DeleteKey` over a private bus: the id bound, the caller's own keys only, polkit once under the
 //! delete action, and what is left on disk afterwards. Callers have uids through a name table.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/deadline.rs"]
-mod deadline;
+use crate::bus;
+use crate::common;
+use crate::deadline;
 
 use custodiod::store::Record;
 use std::collections::HashMap;

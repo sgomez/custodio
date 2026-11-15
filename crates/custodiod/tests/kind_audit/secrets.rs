@@ -12,8 +12,8 @@ use std::os::unix::net::UnixDatagram;
 
 use custodiod::audit::{AuditSink, Entry, JournalSink, OperationEntry};
 
-use crate::common::SENTINEL_PASSWORD;
-use crate::scan::leaks;
+use super::common::SENTINEL_PASSWORD;
+use super::scan::leaks;
 
 /// The datagram the production sink sends for `fields`.
 fn send(record: impl FnOnce(&JournalSink)) -> Vec<u8> {
@@ -118,7 +118,7 @@ pub fn assert_sign_clean(e: &Entry, secrets: &Secrets, context: &str) {
 /// The scan finds what is there: a datagram that carries the password in any form is reported.
 pub fn scan_finds_planted(secrets: &Secrets) {
     for (what, value) in &secrets.0 {
-        for (form, bytes) in crate::scan::forms(value) {
+        for (form, bytes) in super::scan::forms(value) {
             let mut text = b"MESSAGE=x\nCUSTODIO_CAUSE=".to_vec();
             text.extend_from_slice(&bytes);
             assert!(

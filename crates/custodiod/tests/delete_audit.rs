@@ -2,23 +2,14 @@
 //! before the entry is submitted, removes the files only after that, and restores the key if the
 //! entry cannot be submitted. Private bus, fake polkit, a sink that can fail, count and block.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 #[path = "delete_audit/concurrent.rs"]
 mod concurrent;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/deadline.rs"]
-mod deadline;
+use crate::deadline;
 #[path = "delete_audit/order.rs"]
 mod order;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/scan.rs"]
-mod scan;
+use crate::scan;
 
 use std::error::Error;
 use std::fs;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # F136: container-free checks of the tpm-dup-* cases: the judgements on good and bad evidence, and the reading of records (a synthetic one here; the agreement with the real `Record` encoder is the test `checks_every_stored_key` of
-# `cargo test -p custodiod --test tpm_duplicate`). NOT checked here: a real run (`just e2e-cases debian13 'tpm-dup-*'` in swtpm, lacking and none).
+# `cargo test -p custodiod --test it tpm_duplicate::`). NOT checked here: a real run (`just e2e-cases debian13 'tpm-dup-*'` in swtpm, lacking and none).
 # shellcheck disable=SC2086 # the ids are words
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

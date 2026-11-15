@@ -11,10 +11,10 @@ use custodiod::audit::Outcome;
 use custodiod::tpm::open::TestTcti;
 use zbus::block_on;
 
-use crate::case::{Case, Fail};
-use crate::common::uid;
-use crate::kit::{ERR_INTERNAL, Family, ID, Setup, Storage};
-use crate::rig::{SUBJECTS, TestResult};
+use super::case::{Case, Fail};
+use super::common::uid;
+use super::kit::{ERR_INTERNAL, Family, ID, Setup, Storage};
+use super::rig::{SUBJECTS, TestResult};
 
 /// The signature fails closed with the failure's documented name, leaves one `signing_failed` entry, and the record is
 /// byte-for-byte what it was. The kind's own access point is the only one asked.

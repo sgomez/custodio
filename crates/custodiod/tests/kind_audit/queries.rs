@@ -11,9 +11,9 @@
 use custodiod::audit::{Entry, OperationEntry};
 use zbus::block_on;
 
-use crate::case::{Case, Fail};
-use crate::kit::{Family, STORAGES, Setup};
-use crate::rig::{SUBJECTS, TestResult};
+use super::case::{Case, Fail};
+use super::kit::{Family, STORAGES, Setup};
+use super::rig::{SUBJECTS, TestResult};
 
 /// An entry as the journal would hold it, with what the typed entry says about it, read independently of `fields()`.
 struct Seen {
@@ -88,7 +88,7 @@ fn all_entries() -> Vec<Seen> {
     let mut seen = Vec::new();
     let rsa = SUBJECTS[0];
     seen.extend(
-        crate::import::entries_for_queries(rsa)
+        super::import::entries_for_queries(rsa)
             .iter()
             .map(Seen::import),
     );

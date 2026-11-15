@@ -9,14 +9,8 @@
     clippy::panic
 )]
 
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-// The shared helpers are used in full by other tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -30,8 +24,8 @@ use custodiod::startup::{PurgeError, StartError};
 use custodiod::store::{KeyStore, StoreError};
 use zbus::block_on;
 
-use crate::bus::{call, error_name, sign};
-use crate::common::{CKM_ECDSA, EC_P12, PASSWORD, digest, uid};
+use self::bus::{call, error_name, sign};
+use self::common::{CKM_ECDSA, EC_P12, PASSWORD, digest, uid};
 
 #[path = "purge/rig.rs"]
 mod rig;

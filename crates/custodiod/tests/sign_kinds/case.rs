@@ -11,8 +11,8 @@ use custodio_it::tpm_filter::cc;
 use custodiod::creds::CredsError;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 
-use crate::kit::{ERR_KEY_LOST, ERR_UNAVAILABLE, Setup, Storage};
-use crate::rig::{Subject, fault};
+use super::kit::{ERR_KEY_LOST, ERR_UNAVAILABLE, Setup, Storage};
+use super::rig::{Subject, fault};
 
 /// A way the key stops working.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

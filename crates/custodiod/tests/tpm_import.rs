@@ -12,8 +12,7 @@
 mod flush;
 #[path = "tpm_import/mismatch.rs"]
 mod mismatch;
-#[path = "tpm_import/support.rs"]
-mod support;
+use crate::support;
 #[path = "tpm_import/wire.rs"]
 mod wire;
 

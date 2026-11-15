@@ -17,14 +17,14 @@ use custodiod::creds::memory::MemoryCreds;
 use custodiod::tpm::open::{NoTpm, Production, TestTcti};
 use zbus::block_on;
 
-use crate::bus::Answer;
-use crate::common::{PASSWORD, SENTINEL_PASSWORD, uid};
-use crate::kit::{STORAGES, Storage};
-use crate::rig::{
+use super::bus::Answer;
+use super::common::{PASSWORD, SENTINEL_PASSWORD, uid};
+use super::kit::{STORAGES, Storage};
+use super::rig::{
     Counting, ERR_CREDS, ERR_TPM, Rig, SUBJECTS, SpyCreds, Subject, Svc, TestResult, fault,
     lacks_import, pkcs8_of,
 };
-use crate::secrets::{Secrets, assert_operation_clean};
+use super::secrets::{Secrets, assert_operation_clean};
 
 /// The fields every import entry has had since F113, in order.
 const OLD_FIELDS: [&str; 11] = [
@@ -82,7 +82,7 @@ fn import_names_kind() -> TestResult {
         for subject in SUBJECTS {
             let who = format!("{storage:?} {}", subject.reply);
             block_on(async {
-                let kind = crate::rig::KindSvc::start(storage.kind()).await?;
+                let kind = super::rig::KindSvc::start(storage.kind()).await?;
                 let svc = &kind.svc;
                 let (key_type, reply_kind) = import_reply(svc, "k", subject).await?;
                 assert_eq!(key_type, subject.reply, "{who}");
@@ -466,7 +466,7 @@ pub fn entries_for_queries(subject: Subject) -> Vec<OperationEntry> {
     }
     for storage in STORAGES {
         block_on(async {
-            let kind = crate::rig::KindSvc::start(storage.kind()).await.unwrap();
+            let kind = super::rig::KindSvc::start(storage.kind()).await.unwrap();
             import_reply(&kind.svc, "k", subject).await.unwrap();
             out.extend(kind.svc.entries());
         });

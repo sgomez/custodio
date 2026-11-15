@@ -3,8 +3,7 @@
 //! access point. The daemon cannot reach a `swtpm`, so TPM-bound and PCR-bound headers are built here
 //! from the layout of `docs/findings/F153.md`, and the null key is made by the root command as a test tool.
 
-#[path = "creds/env.rs"]
-mod env;
+use crate::env;
 
 use std::io::Write;
 use std::process::{Command, Stdio};

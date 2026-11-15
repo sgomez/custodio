@@ -2,16 +2,8 @@
 //! of the caller (read, none, undetermined) and the case never changes an outcome. Private bus, fake
 //! polkit, the fake app-id source.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/deadline.rs"]
-mod deadline;
+use crate::bus;
+use crate::common;
 #[path = "app_id_audit/outcome.rs"]
 mod outcome;
 #[path = "app_id_audit/refusals.rs"]

@@ -26,12 +26,7 @@ use secrecy::SecretString;
 use zbus::connection::{AuthMechanism, Builder};
 use zbus::{Connection, block_on};
 
-#[path = "snap_socket_sign/polkit.rs"]
-#[allow(
-    dead_code,
-    reason = "shared with snap_socket_sign, which uses the rest"
-)]
-mod polkit;
+use crate::snap_polkit as polkit;
 use polkit::{Answer, Bus, FakePolkit};
 
 type TestResult = Result<(), Box<dyn Error>>;

@@ -17,12 +17,12 @@ use custodiod::creds::{Binding, CredsError, header};
 use custodiod::store::Kind;
 use custodiod::tpm::open::TestTcti;
 
-use crate::bus::Answer;
-use crate::common::{SENTINEL_PASSWORD, uid};
-use crate::env::Daemon;
-use crate::kit::{Family, der_to_pem, p12_certificate};
-use crate::rig::{Counting, Res, SUBJECTS, SpyCreds, Subject, Svc, TestResult, lacks_import};
-use crate::support::Rig;
+use super::bus::Answer;
+use super::common::{SENTINEL_PASSWORD, uid};
+use super::env::Daemon;
+use super::kit::{Family, der_to_pem, p12_certificate};
+use super::rig::{Counting, Res, SUBJECTS, SpyCreds, Subject, Svc, TestResult, lacks_import};
+use super::support::Rig;
 
 /// The PCRs the story extends: 0, 2, 4 and 7, and one of the 16-23 range.
 pub const PCRS: [u32; 5] = [0, 2, 4, 7, 16];

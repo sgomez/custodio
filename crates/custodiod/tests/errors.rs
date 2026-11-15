@@ -1,13 +1,8 @@
 //! Every failure of the service answers with its own `com.rfirma.Custodio1.Error.*` name and a fixed
 //! message that repeats nothing the caller sent. A private `dbus-daemon`, a fake polkit.
 
-// The shared helpers are used in full by the audit tests; this file uses part of them.
-#[allow(dead_code, unused_imports)]
-#[path = "audit/bus.rs"]
-mod bus;
-#[allow(dead_code, unused_imports)]
-#[path = "audit/common.rs"]
-mod common;
+use crate::bus;
+use crate::common;
 
 use std::error::Error;
 use std::sync::Arc;
