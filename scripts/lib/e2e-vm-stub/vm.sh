@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A stub of e2e/vm/vm.sh for scripts/test-e2e-vm-host.sh: logs every call to $STUB_LOG and answers from canned outputs. No QEMU, no apt, no network.
+# A stub of e2e/vm/vm.sh for scripts/lib/e2e-pcr-vm-section.sh: logs every call to $STUB_LOG and answers from canned outputs. No QEMU, no apt, no network.
 # Knobs (environment): STUB_FAIL_START, STUB_FAIL_INSTALL, STUB_HAS2 (the has-tpm2 output, default yes), STUB_HAS2_RC, STUB_CASES (a file with the E2E-CASE lines the guest prints),
 # STUB_GUEST_RC, STUB_HOLD (a directory: the guest run waits there until the file `release` appears, after touching `in-guest`), STUB_VMDIR (where the running marker lives).
 set -u

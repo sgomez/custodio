@@ -1,5 +1,5 @@
 #!/usr/bin/python3 -I
-"""The judgements of the upgrade-m3-* cases (F142, acceptance 9 of SPEC.md), as functions of files, so that scripts/test-e2e-m3.sh can show each one fails on bad evidence
+"""The judgements of the upgrade-m3-* cases (F142, acceptance 9 of SPEC.md), as functions of files, so that scripts/test-e2e-m3-judge.sh can show each one fails on bad evidence
 without a container. Each subcommand prints one problem per line and nothing when the evidence is right (exit 0 either way; exit 2 on a bad call).
 The keys are the four the M3 build is given: alice holds rsa1 and ec1, bob holds rsa1 (the same id under another owner) and bobonly.
 A state snapshot is "RELATIVE-PATH<TAB>SHA256" per regular file under the state directory (the path is UID/FILE). A listing directory holds, for each user, USER.api
