@@ -82,7 +82,7 @@ fn is_weaker(kind: &Kind) -> bool {
     matches!(kind, Kind::EncryptedHost | Kind::EncryptedTpm)
 }
 
-/// The end of validity as the table shows it.
+/// Whether the certificate parsed.
 fn is_readable(fields: &CertFields) -> bool {
     fields.fingerprint != UNREADABLE
 }

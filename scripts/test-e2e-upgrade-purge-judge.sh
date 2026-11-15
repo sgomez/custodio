@@ -56,13 +56,17 @@ mk_reimp() { # DIR
     for k in alice-rsa1 alice-ec1 bob-rsa1 bob-bobonly; do echo 0 > "$1/import/$k.rc"; done
     echo 2 > "$1/import/alice.requests"; echo 2 > "$1/import/bob.requests"
     printf 'ec1\tecdsa-p256\ttpm\nrsa1\trsa2048\ttpm\n' > "$1/alice.api"
-    printf 'id: ec1\n  type: x\nid: rsa1\n  type: y\n' > "$1/alice.cli"
+    printf 'ec1  x  tpm  CN=a  2030-01-01\nrsa1  y  tpm  CN=a  2030-01-01\n' > "$1/alice.cli"
     printf 'bobonly\trsa2048\ttpm\nrsa1\trsa2048\ttpm\n' > "$1/bob.api"
-    printf 'id: bobonly\nid: rsa1\n' > "$1/bob.cli"
+    printf 'bobonly  rsa2048  tpm  CN=a  2030-01-01\nrsa1  rsa2048  tpm  CN=a  2030-01-01\n' > "$1/bob.cli"
 }
 mk_reimp "$T/re"
 ok "reimport" reimport 1000 4711 "$T/re"
 cp -r "$T/re" "$T/re-fail"
 echo 1 > "$T/re-fail/import/bob-rsa1.rc"
+# a hostile subject is one escaped line: it cannot add the row of rsa1
+cp -r "$T/re" "$T/re-forged"
+printf 'bobonly  rsa2048  tpm  CN=y\\x0arsa1  rsa2048  tpm  z  2030-01-01\n' > "$T/re-forged/bob.cli"
+refuses "a forged row" "bob lists" reimport 1000 4711 "$T/re-forged"
 refuses "a failed import" "import of bob's rsa1 did not succeed" reimport 1000 4711 "$T/re-fail"
 exit "$fail"

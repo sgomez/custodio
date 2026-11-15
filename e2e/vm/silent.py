@@ -4,7 +4,7 @@ nothing when the evidence is right (exit 0 either way; exit 2 on a bad call). Th
 tpmfail.py (failed, nothing, journal, noweaker, kind); this file adds:
   silent.py hiding OUT RC           systemd-analyze has-tpm2 no longer says "yes" with exit 0 while the library is hidden (else the hiding did not work, and the case proves nothing)
   silent.py restored OUT RC         the same command says "yes", exit 0, once the library is back
-  silent.py absent API CLI ID       no key ID of any kind: not a row of the API's list (ID<TAB>TYPE<TAB>KIND), not an "id: ID" block of `custodio list`
+  silent.py absent API CLI ID       no key ID of any kind: not a row of the API's list (ID<TAB>TYPE<TAB>KIND), not a row of `custodio list` (the id is the first column)
   silent.py reader OUT RC           the reader of the stored credential (e2e/vm/cred-lib.sh) exited 0
 """
 import re
@@ -48,7 +48,7 @@ def absent_problems(api, cli, key_id):
         if row and row[0] == key_id:
             kind = row[2] if len(row) > 2 else "?"
             problems.append(f"{api}: the key {key_id} is listed (kind {kind})")
-    if re.search(rf"^\s*id:\s*{re.escape(key_id)}\s*$", read(cli), re.M):
+    if any(re.split(r"  +", ln)[0] == key_id for ln in read(cli).split("\n") if ln):
         problems.append(f"{cli}: `custodio list` shows the key {key_id}")
     if not read(api).strip() and not read(cli).strip():
         problems.append("both lists are empty: they were not taken")

@@ -28,7 +28,7 @@ mkgood() { # DIR
     printf 'd /var/lib/custodio 700 4096\nf /var/lib/custodio/other.rec 600 120\nabc123  /var/lib/custodio/other.rec\n' > "$h/state-before"
     cp "$h/state-before" "$h/state-after"
     printf 'other\trsa2048\tencrypted-tpm\n' > "$h/list.out"
-    printf 'id: other\n  type: rsa2048\n  kind: encrypted-tpm\n' > "$h/cli-list.out"
+    printf 'other  rsa2048  encrypted-tpm  CN=o  2030-01-01\n' > "$h/cli-list.out"
     jline binding_mismatch > "$h/journal.json"
     echo yes > "$r/has2.out"; echo 0 > "$r/has2.rc"
     printf "Imported key '%s' (rsa2048).\n%s\n" "$ID" "$ETPM_TEXT" > "$r/import.out"
@@ -66,7 +66,7 @@ ctl stored vm-silent-journal-cause 'sed -i "s/storage_failure/stored/" hidden/jo
 ctl kind-in-entry vm-silent-journal-cause 'sed -i "s/}\$/,\"CUSTODIO_STORAGE_KIND\":\"encrypted-tpm\"}/" hidden/journal.json'
 for k in tpm encrypted-host encrypted-tpm; do
     ctl "left-api-$k" vm-silent-no-key "printf '$ID\trsa2048\t$k\n' >> hidden/list.out"
-    ctl "left-cli-$k" vm-silent-no-key "printf 'id: $ID\n  type: rsa2048\n  kind: $k\n' >> hidden/cli-list.out"
+    ctl "left-cli-$k" vm-silent-no-key "printf '$ID  rsa2048  $k  CN=o  2030-01-01\n' >> hidden/cli-list.out"
 done
 ctl weaker-in-text vm-silent-no-key 'echo "Storage: encrypted-host." >> hidden/import.out'
 ctl lists-empty vm-silent-no-key ': > hidden/list.out; : > hidden/cli-list.out'

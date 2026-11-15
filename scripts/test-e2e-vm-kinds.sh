@@ -24,7 +24,7 @@ mkset() {
     imp tk-rsa rsa2048 "$t" > "$d/import-rsa.out"
     imp tk-ec ecdsa-p256 "$t" > "$d/import-ec.out"
     printf 'tk-rsa\trsa2048\t%s\ntk-ec\tecdsa-p256\t%s\n' "$k" "$k" > "$d/api.out"
-    printf 'id: tk-rsa\n  type: rsa2048\n  kind: %s\n\nid: tk-ec\n  type: ecdsa-p256\n  kind: %s\n' "$k" "$k" > "$d/cli.out"
+    printf 'tk-rsa  rsa2048  %s  CN=a  2030-01-01\ntk-ec  ecdsa-p256  %s  CN=b  2030-01-01\n' "$k" "$k" > "$d/cli.out"
     : > "$d/api-after.out"
     {
         for i in tk-rsa tk-ec; do
@@ -68,7 +68,7 @@ control_kinds() {
         sed -i "s/^$id\(.*\)\t[a-z-]*\$/$id\1\t$wrong/" "$sub-api/api.out"
         [ -n "$(J --mode "$m" api "$sub-api/api.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)" ] || bad "$m: API kind of $id $wrong accepted"
         cp -r "$good" "$sub-cli"
-        awk -v id="$id" -v k="$wrong" '$0=="id: " id {f=1} f && /^  kind:/ {print "  kind: " k; f=0; next} {print}' "$good/cli.out" > "$sub-cli/cli.out"
+        awk -v id="$id" -v k="$wrong" -F'  ' -v OFS='  ' '$1==id {$3=k} {print}' "$good/cli.out" > "$sub-cli/cli.out"
         [ -n "$(J --mode "$m" cli "$sub-cli/cli.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256)" ] || bad "$m: CLI kind of $id $wrong accepted"
         cp -r "$good" "$sub-j"
         sed -i "/\"$id\"/ s/\"CUSTODIO_STORAGE_KIND\":\"[a-z-]*\"/\"CUSTODIO_STORAGE_KIND\":\"$wrong\"/" "$sub-j/journal.json"

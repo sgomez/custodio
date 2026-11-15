@@ -101,3 +101,9 @@ with an empty context.
 - Step 7 done: `just quick` green; `cert_text` (9), `list_view` (4), `help` (8) tests, `fuzz-build`, `lint-fuzz` pass; `fuzz-smoke` passed with `cert_fields` in the list (earlier commit);
   `just mutants-diff F194`: 49 mutants, 46 caught, 3 unviable, 0 missed (2 min; after adding tests for the escape ranges, the CN types and `ListFailure` display).
   Not run here (checkpoint): `just test-scripts`, e2e. Next session: none for F194 unless the evaluator finds something.
+
+### 2026-11-15 — F194 — attempt 2
+- Done (evaluator findings): the script tests of the Python judges are in the row format (`test-e2e-fallback`, `-tpmclear`, `-upgradekinds`, `-upgrade-purge-judge`,
+  `-vm-kinds`, `-vm-silent`), each with a forged-row case where the judge reads rows (fallback, tpmclear, upgradekinds, purge-judge); `e2e/vm/silent.py absent`
+  read the old `id:` block and now reads the first column; the README none example has the import hint and `test-docs-readme.sh`'s "output altered" control
+  edits the table row; the `is_readable` doc comment is fixed. `just test-scripts` and `just quick` green.

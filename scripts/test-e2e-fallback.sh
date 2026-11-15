@@ -16,7 +16,7 @@ REMIND=$'Now delete the original file: it still holds your private key.\n  shred
 imp() { printf "Imported key '%s' (%s).\n%s\n%s\n" "$1" "$2" "$3" "$REMIND"; }
 imp fb-rsa rsa2048 "$HOST_TEXT" > "$tmp/good-import"
 printf 'fb-rsa\trsa2048\tencrypted-host\nfb-ec\tecdsa-p256\tencrypted-host\n' > "$tmp/good-api"
-printf 'id: fb-rsa\n  type: rsa2048\n  kind: encrypted-host\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: encrypted-host\n' > "$tmp/good-cli"
+printf 'fb-rsa  rsa2048  encrypted-host  CN=a  2030-01-01\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' > "$tmp/good-cli"
 
 accepts() { local out; out=$($J "$@") || { bad "judgement failed: $*"; return; }; [ -z "$out" ] || bad "good evidence rejected ($*): $out"; }
 rejects() { # NAME ARGS...: the judgement prints a problem
@@ -59,7 +59,7 @@ rejects why-one-bad-of-two why "$tmp/good-import" "$tmp/b-noweaker"
 for k in tpm encrypted-tpm unknown ''; do
     printf 'fb-rsa\trsa2048\t%s\nfb-ec\tecdsa-p256\tencrypted-host\n' "$k" > "$tmp/b-api"
     rejects "api-kind-$k" api "$tmp/b-api" fb-rsa:rsa2048 fb-ec:ecdsa-p256
-    printf 'id: fb-rsa\n  type: rsa2048\n  kind: %s\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: encrypted-host\n' "$k" > "$tmp/b-cli"
+    printf 'fb-rsa  rsa2048  %s  CN=a  2030-01-01\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' "$k" > "$tmp/b-cli"
     rejects "cli-kind-$k" cli "$tmp/b-cli" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 done
 printf 'fb-rsa\trsa2048\tencrypted-host\n' > "$tmp/b-api-missing"
@@ -68,13 +68,16 @@ printf 'fb-rsa\trsa2048\tencrypted-host\nfb-rsa\trsa2048\tencrypted-host\nfb-ec\
 rejects api-two-rows api "$tmp/b-api-two" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 printf 'fb-rsa\tecdsa-p256\tencrypted-host\nfb-ec\tecdsa-p256\tencrypted-host\n' > "$tmp/b-api-type"
 rejects api-wrong-type api "$tmp/b-api-type" fb-rsa:rsa2048 fb-ec:ecdsa-p256
-printf 'id: fb-rsa\n  type: rsa2048\n  kind: encrypted-host\n' > "$tmp/b-cli-missing"
+printf 'fb-rsa  rsa2048  encrypted-host  CN=a  2030-01-01\n' > "$tmp/b-cli-missing"
 rejects cli-missing-row cli "$tmp/b-cli-missing" fb-rsa:rsa2048 fb-ec:ecdsa-p256
-printf 'id: fb-rsa\n  type: rsa2048\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: encrypted-host\n' > "$tmp/b-cli-nokind"
+printf 'fb-rsa  rsa2048\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' > "$tmp/b-cli-nokind"
 rejects cli-row-without-kind cli "$tmp/b-cli-nokind" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 # a kind on another key's row does not count
-printf 'id: fb-rsa\n  type: rsa2048\n\nid: other\n  kind: encrypted-host\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: encrypted-host\n' > "$tmp/b-cli-other"
+printf 'fb-rsa  rsa2048\nother  rsa2048  encrypted-host  CN=o  2030-01-01\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' > "$tmp/b-cli-other"
 rejects cli-kind-on-other-row cli "$tmp/b-cli-other" fb-rsa:rsa2048 fb-ec:ecdsa-p256
+# a hostile subject is one escaped line: it cannot add a row for fb-ec
+printf 'fb-rsa  rsa2048  encrypted-host  CN=y\\x0afb-ec  ecdsa-p256  encrypted-host  z  2030-01-01\n' > "$tmp/b-cli-forged"
+rejects cli-forged-row cli "$tmp/b-cli-forged" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 
 # ---- F161: a VM run (fallback.py --mode, fallback-run.sh with E2E_VM=1): the tpmbound cases run in both modes and are judged
 VJ() { python3 -I "$ROOT/e2e/fallback.py" "$@"; }
@@ -85,7 +88,7 @@ vmset() { # DIR KIND TEXT [RSA-KIND]: the files of the step; the RSA key has RSA
     imp fb-rsa rsa2048 "$t" > "$d/import-rsa.out"
     imp fb-ec ecdsa-p256 "$t" > "$d/import-ec.out"
     printf 'fb-rsa\trsa2048\t%s\nfb-ec\tecdsa-p256\t%s\n' "$rk" "$k" > "$d/api.out"
-    printf 'id: fb-rsa\n  type: rsa2048\n  kind: %s\n\nid: fb-ec\n  type: ecdsa-p256\n  kind: %s\n' "$rk" "$k" > "$d/cli.out"
+    printf 'fb-rsa  rsa2048  %s  CN=a  2030-01-01\nfb-ec  ecdsa-p256  %s  CN=b  2030-01-01\n' "$rk" "$k" > "$d/cli.out"
     : > "$d/api-after.out"
 }
 vmjudge() { # MODE DIR: all four judgements; prints the problems

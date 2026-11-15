@@ -41,7 +41,7 @@ mklist() { # DIR KIND: the four files with the kind KIND everywhere
         eval "specs=\$KEYS_$u"
         for spec in $specs; do
             printf '%s\t%s\t%s\n' "${spec%%:*}" "${spec##*:}" "$k" >> "$d/$u.api"
-            printf 'id: %s\n  type: %s\n  kind: %s\n  created: x\n' "${spec%%:*}" "${spec##*:}" "$k" >> "$d/$u.cli"
+            printf '%s  %s  %s  CN=x  2030-01-01\n' "${spec%%:*}" "${spec##*:}" "$k" >> "$d/$u.cli"
         done
     done
 }
@@ -68,7 +68,7 @@ for m in swtpm none lacking; do
         for u in alice bob; do
             for ext in api cli; do
                 variant $m b one
-                if [ $ext = api ]; then sed -i "1s/\t$k\$/\t$other/" "$tmp/$m/one/$u.api"; else sed -i "0,/kind: $k/s//kind: $other/" "$tmp/$m/one/$u.cli"; fi
+                if [ $ext = api ]; then sed -i "1s/\t$k\$/\t$other/" "$tmp/$m/one/$u.api"; else sed -i "1s/  $k  /  $other  /" "$tmp/$m/one/$u.cli"; fi
                 rejects "mode $m: one $u $ext row $other (listing)" listing $m "$tmp/$m/one"
                 rejects "mode $m: one $u $ext row $other after the upgrade (kept)" kept $m "$tmp/$m/b" "$tmp/$m/one"
             done
@@ -80,10 +80,10 @@ for m in swtpm none lacking; do
         for ext in api cli; do
             f=$u.$ext
             variant $m b x
-            if [ $ext = api ]; then sed -i 1d "$tmp/$m/x/$f"; else sed -i 1,4d "$tmp/$m/x/$f"; fi
+            if [ $ext = api ]; then sed -i 1d "$tmp/$m/x/$f"; else sed -i 1d "$tmp/$m/x/$f"; fi
             rejects "mode $m: a $u $ext row missing after the upgrade" kept $m "$tmp/$m/b" "$tmp/$m/x"
             variant $m b x
-            if [ $ext = api ]; then printf 'extra\trsa2048\t%s\n' "$k" >> "$tmp/$m/x/$f"; else printf 'id: extra\n  type: rsa2048\n  kind: %s\n' "$k" >> "$tmp/$m/x/$f"; fi
+            if [ $ext = api ]; then printf 'extra\trsa2048\t%s\n' "$k" >> "$tmp/$m/x/$f"; else printf 'extra  rsa2048  %s  CN=x  2030-01-01\n' "$k" >> "$tmp/$m/x/$f"; fi
             rejects "mode $m: a $u $ext row added" kept $m "$tmp/$m/b" "$tmp/$m/x"
             variant $m b x
             cp "$tmp/$m/b/$o.$ext" "$tmp/$m/x/$f"
@@ -94,16 +94,20 @@ for m in swtpm none lacking; do
             rm -f "$tmp/$m/x/$f"
             rejects "mode $m: $u's $ext list missing" kept $m "$tmp/$m/b" "$tmp/$m/x"
             variant $m b x
-            if [ $ext = api ]; then sed -i 's/rsa2048/rsa3072/' "$tmp/$m/x/$f"; else sed -i 's/type: rsa2048/type: rsa3072/' "$tmp/$m/x/$f"; fi
+            if [ $ext = api ]; then sed -i 's/rsa2048/rsa3072/' "$tmp/$m/x/$f"; else sed -i 's/  rsa2048  /  rsa3072  /' "$tmp/$m/x/$f"; fi
             rejects "mode $m: a $u $ext type changed" kept $m "$tmp/$m/b" "$tmp/$m/x"
             variant $m b x
-            if [ $ext = api ]; then head -n 1 "$tmp/$m/b/$f" >> "$tmp/$m/x/$f"; else head -n 4 "$tmp/$m/b/$f" >> "$tmp/$m/x/$f"; fi
+            if [ $ext = api ]; then head -n 1 "$tmp/$m/b/$f" >> "$tmp/$m/x/$f"; else head -n 1 "$tmp/$m/b/$f" >> "$tmp/$m/x/$f"; fi
             rejects "mode $m: a $u $ext row twice" listing $m "$tmp/$m/x"
         done
     done
     variant $m b x
-    sed -i '/kind:/d' "$tmp/$m/x/alice.cli"
-    rejects "mode $m: no kind line in the CLI" listing $m "$tmp/$m/x"
+    sed -i 's/^\([^ ]*  [^ ]*\)  .*/\1/' "$tmp/$m/x/alice.cli"
+    rejects "mode $m: no kind column in the CLI" listing $m "$tmp/$m/x"
+    # a hostile subject is one escaped line: it cannot add the row of rsa1
+    variant $m b x
+    printf 'ec1  ecdsa-p256  %s  CN=y\\x0arsa1  rsa2048  %s  z  2030-01-01\n' "$k" "$k" > "$tmp/$m/x/alice.cli"
+    rejects "mode $m: a forged row in the CLI" listing $m "$tmp/$m/x"
 done
 if uk kind nowhere > /dev/null 2>&1; then bad "an unknown mode is accepted"; fi
 

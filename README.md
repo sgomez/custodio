@@ -68,6 +68,7 @@ $ custodio delete ana
 Deleted key 'ana'.
 $ custodio list
 You have no keys in the custodio service.
+Import one with: custodio import <file.p12>
 ```
 
 ### Storage kinds
