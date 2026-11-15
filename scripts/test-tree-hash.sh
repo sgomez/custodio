@@ -15,7 +15,7 @@ printf 'ignored/\n' > "$tmp/.gitignore"
 echo a > "$tmp/a"
 git -C "$tmp" add -A
 git -C "$tmp" -c user.name=t -c user.email=t@t commit -qm init
-h() { "$tmp/scripts/tree-hash.sh"; }
+h() { "$tmp/scripts/tree-hash.sh" "$@"; }
 
 base=$(h)
 [ "$base" = "$(git -C "$tmp" rev-parse 'HEAD^{tree}')" ] || bad "a clean tree is not HEAD's tree"
@@ -33,5 +33,11 @@ echo entry > "$tmp/PROGRESS.md"
 [ "$(h)" = "$base" ] || bad "a new PROGRESS.md changes the hash"
 mkdir -p "$tmp/sub" && echo entry > "$tmp/sub/PROGRESS.md"
 [ "$(h)" != "$base" ] || bad "a PROGRESS.md outside the root does not change the hash"
+rm -r "$tmp/sub"
+mkdir -p "$tmp/contracts" && echo tick > "$tmp/contracts/F1.md"
+[ "$(h)" != "$base" ] || bad "a file in contracts/ does not change the hash"
+[ "$(h contracts features.json)" = "$base" ] || bad "a path given as an argument changes the hash"
+echo c > "$tmp/a"
+[ "$(h contracts features.json)" != "$base" ] || bad "an edit outside the paths given does not change the hash"
 
 exit "$fail"
