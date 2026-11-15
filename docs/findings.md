@@ -103,3 +103,4 @@ Rules:
 - [F189](findings/F189.md) — storage classifier flip (`252:0`): not reproduced; the kernel exposes the whole LVM chain before any mount, so `unknown` is kept with an exposed reason (route 2), F180 rules stand.
 - [F190](findings/F190.md) — journald storage without root: last valid `Storage=` of the main file + drop-ins (/etc, /run, /usr/local/lib, /usr/lib), `auto` needs `stat /var/log/journal`, 259+ defaults to persistent, `/run/log/journal` proves nothing.
 - [F191](findings/F191.md) — completion locations and key ids: bash/fish dirs shared by all formats, zsh differs (.deb `vendor-completions`, .rpm/Arch `site-functions`, parity exception); `custodio __key-ids` with a 2 s timeout inside `custodio`, no polkit.
+- [F195](findings/F195.md) — import failures: a MAC-bearing unusable file with a wrong password gives the same `MAC tag mismatch` as a good one; (b) cannot be told there.
