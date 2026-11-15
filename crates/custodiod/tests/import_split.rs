@@ -3,6 +3,13 @@
 //! journal, `wrong_password`, `unreadable_file` and `wrong_password` (docs/findings/F195.md has the cells). A refused
 //! request never reaches the decoder.
 
+// The two shared support files serve the whole `it` binary; this one uses a part of them.
+#![allow(
+    dead_code,
+    unused_imports,
+    reason = "bus.rs and common.rs are shared with the `it` binary, which uses all of them"
+)]
+
 #[path = "audit/bus.rs"]
 mod bus;
 #[path = "audit/common.rs"]
@@ -116,16 +123,13 @@ fn every_file_and_password_gets_the_error_and_outcome_of_its_cell() -> TestResul
                 let r = Rig::start(Answer::Yes).await?;
                 let got = r.import(&data, password).await;
                 let what = format!("{name} with {password}");
-                match cell {
-                    Some((error, outcome)) => {
-                        assert_eq!(got, Err(error.to_owned()), "{what}");
-                        assert_eq!(r.outcomes(), [outcome], "{what}");
-                        assert_eq!(r.stored().await?, 0, "{what}");
-                    }
-                    None => {
-                        assert_eq!(got, Ok(()), "{what}");
-                        assert_eq!(r.outcomes(), ["stored"], "{what}");
-                    }
+                if let Some((error, outcome)) = cell {
+                    assert_eq!(got, Err(error.to_owned()), "{what}");
+                    assert_eq!(r.outcomes(), [outcome], "{what}");
+                    assert_eq!(r.stored().await?, 0, "{what}");
+                } else {
+                    assert_eq!(got, Ok(()), "{what}");
+                    assert_eq!(r.outcomes(), ["stored"], "{what}");
                 }
                 assert_eq!(r.decoded.load(Ordering::SeqCst), 1, "{what}");
             }

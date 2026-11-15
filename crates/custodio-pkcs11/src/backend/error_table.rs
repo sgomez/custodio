@@ -22,6 +22,8 @@ pub fn error_table() -> Vec<(&'static str, BackendError)> {
         (ERROR_INTERNAL, Unavailable),
         (ERROR_KEY_ID_TAKEN, Unavailable),
         (ERROR_WRONG_PASSWORD_OR_BAD_P12, Unavailable),
+        (custodio_client::ERROR_WRONG_PASSWORD, Unavailable),
+        (custodio_client::ERROR_UNREADABLE_P12, Unavailable),
         (ERROR_UNSUPPORTED_KEY_TYPE, Unavailable),
         (ERROR_CERTIFICATE_MISMATCH, Unavailable),
         (ERROR_TPM_FAILED, Unavailable),

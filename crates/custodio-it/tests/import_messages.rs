@@ -40,10 +40,10 @@ struct Seen {
     status: u8,
 }
 
-fn seen(result: Result<(), CliError>, stdout: &[u8]) -> Seen {
+fn seen(result: &Result<(), CliError>, stdout: &[u8]) -> Seen {
     let mut stderr = Vec::new();
-    let status = finish(&result, &mut stderr, false);
-    assert_eq!(status, exit_status(&result));
+    let status = finish(result, &mut stderr, false);
+    assert_eq!(status, exit_status(result));
     Seen {
         stdout: String::from_utf8_lossy(stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
@@ -68,13 +68,13 @@ fn import(
     let mut out = Vec::new();
     let result =
         run_import(&args, &mut Typed(password), &rig.client, &mut out).map_err(CliError::Import);
-    Ok(seen(result, &out))
+    Ok(seen(&result, &out))
 }
 
 fn delete(rig: &Rig, id: &str, answer: Option<&'static str>) -> Seen {
     let mut out = Vec::new();
     let result = run_delete(id, &mut Says(answer), &rig.client, &mut out).map_err(CliError::Delete);
-    seen(result, &out)
+    seen(&result, &out)
 }
 
 /// Checks a failed import: standard output empty, exactly two lines on standard error, the next step in the second.
