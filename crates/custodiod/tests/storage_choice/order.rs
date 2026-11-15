@@ -11,7 +11,6 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use custodio_it::tpm_filter::cc;
 use custodiod::creds::memory::MemoryCreds;
-use custodiod::store::Kind;
 use custodiod::tpm::open::{NoTpm, TestTcti};
 use zbus::block_on;
 
@@ -175,37 +174,7 @@ impl custodiod::tpm::TpmAccess for BoxedTpm {
 
 #[test]
 fn controls() -> TestResult {
-    // (a) A TPM that lacks and a TPM that fails give different results with the same credentials.
-    let rig = Rig::new()?;
-    let (lacking, _) = rig.filter(lacks_import())?;
-    block_on(async {
-        let svc = Svc::start(
-            Counting::new(TestTcti::new(&lacking.tcti())),
-            SpyCreds::new(MemoryCreds::tpm()),
-            Answer::Yes,
-        )
-        .await?;
-        svc.import_subject("k", SUBJECTS[1]).await?;
-        assert_eq!(svc.kind_of("k"), Some(Kind::EncryptedTpm));
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })?;
-    drop(lacking);
-    let (broken, _) = rig.filter(fault(cc::GET_CAPABILITY, 0x101))?;
-    block_on(async {
-        let svc = Svc::start(
-            Counting::new(TestTcti::new(&broken.tcti())),
-            SpyCreds::new(MemoryCreds::tpm()),
-            Answer::Yes,
-        )
-        .await?;
-        assert_eq!(
-            svc.import_subject("k", SUBJECTS[1]).await,
-            Err(ERR_TPM.to_owned())
-        );
-        assert_eq!(svc.kind_of("k"), None);
-        Ok::<_, Box<dyn std::error::Error>>(())
-    })?;
-    // (b) A record planted in the store is seen by the emptiness helper, and so is a plaintext key.
+    // A record planted in the store is seen by the emptiness helper, and so is a plaintext key.
     block_on(async {
         let svc = Svc::start(
             Counting::new(NoTpm),

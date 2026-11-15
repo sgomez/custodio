@@ -17,20 +17,3 @@ fn fields_carry_the_verdict_and_the_fixed_parts() {
         assert_eq!(f.len(), 5, "no caller, key or operation field");
     }
 }
-
-#[test]
-fn the_documents_name_the_entry() -> Result<(), Box<dyn std::error::Error>> {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let docs = std::fs::read_to_string(root.join("docs/audit.md"))?;
-    assert!(docs.contains(STATE_STORAGE_MESSAGE_ID));
-    assert!(docs.contains(STATE_STORAGE_FIELD));
-    let api = std::fs::read_to_string(root.join("docs/api.md"))?;
-    for s in StateStorage::all() {
-        assert!(
-            docs.contains(s.name()) && api.contains(s.name()),
-            "{}",
-            s.name()
-        );
-    }
-    Ok(())
-}

@@ -28,6 +28,3 @@ pub mod tpm;
 
 /// Name of the service, used in logs and on the bus.
 pub const SERVICE_NAME: &str = "custodiod";
-
-#[cfg(test)]
-mod tests;

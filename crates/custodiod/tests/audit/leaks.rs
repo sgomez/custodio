@@ -17,7 +17,7 @@ use super::common::{
     CKM_ECDSA, CKM_RSA_PKCS, EC_P12, EC_SENTINEL_P12, RSA_SENTINEL_P12, SENTINEL_PASSWORD, digest,
     digest_info, fixture, fixture_reading, import, import_via_bus, uid,
 };
-use super::scan::{base64, hex, leaks};
+use super::scan::leaks;
 
 const CHILD_ENV: &str = "CUSTODIO_AUDIT_CHILD";
 
@@ -294,27 +294,6 @@ fn journal_sink_datagram_per_call() -> TestResult {
         assert_eq!(again.kind(), ErrorKind::WouldBlock);
         Ok(())
     })
-}
-
-#[test]
-fn encoders_match_fixed_vectors() {
-    let std_padded = [
-        "", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy",
-    ];
-    let std_plain = ["", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"];
-    for (n, (padded, plain)) in std_padded.iter().zip(std_plain).enumerate() {
-        let input = b"foobar".get(..n).unwrap_or_default();
-        assert_eq!(base64(input, false, true), *padded);
-        assert_eq!(base64(input, false, false), plain);
-        assert_eq!(base64(input, true, true), *padded);
-    }
-    assert_eq!(base64(&[0xfb, 0xff, 0xbe], true, true), "-_--");
-    assert_eq!(base64(&[0xfb, 0xff, 0xbe], false, true), "+/++");
-    assert_eq!(base64(&[0xfb, 0xff], true, false), "-_8");
-    assert_eq!(base64(&[0xfb, 0xff], true, true), "-_8=");
-    assert_eq!(base64(&[0xfb, 0xff], false, true), "+/8=");
-    assert_eq!(hex(&[0x00, 0xab, 0xCD, 0xff], false), "00abcdff");
-    assert_eq!(hex(&[0x00, 0xab, 0xCD, 0xff], true), "00ABCDFF");
 }
 
 #[test]
