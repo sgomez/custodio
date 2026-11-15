@@ -196,6 +196,24 @@ pub(super) fn outer(file: &[u8]) -> Option<Vec<u8>> {
     whole(file)
 }
 
+/// Whether the outer `PFX` of `file` (DER or BER) has `macData`, its third member. `false` when `file` is not
+/// a PFX at all.
+pub(super) fn has_mac(file: &[u8]) -> bool {
+    let Some(file) = whole(file) else {
+        return false;
+    };
+    let Some(top) = members(&file) else {
+        return false;
+    };
+    let [(SEQUENCE, pfx)] = top.as_slice() else {
+        return false;
+    };
+    let Some(pfx) = members(pfx) else {
+        return false;
+    };
+    matches!(pfx.as_slice(), [_, _, (SEQUENCE, _), ..])
+}
+
 /// From the result of [`outer`]: the `AuthenticatedSafe` as DER too, and no MAC, which no longer holds.
 /// The caller has checked the MAC on [`outer`] before. `None` when the structure is not that of a PKCS#12.
 pub(super) fn inner(outer: &[u8]) -> Option<Vec<u8>> {

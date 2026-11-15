@@ -99,71 +99,96 @@ const A: (&str, &str) = (ERROR_WRONG_PASSWORD, "wrong_password");
 const B: (&str, &str) = (ERROR_UNREADABLE_P12, "unreadable_file");
 const C: (&str, &str) = (ERROR_WRONG_PASSWORD_OR_BAD_P12, "wrong_password");
 
-/// File, and the error and journal outcome with the right and with a wrong password (`None` = it imports).
 type Cell = Option<(&'static str, &'static str)>;
-const CELLS: [(&str, Cell, Cell); 10] = [
-    ("p256.p12", None, Some(A)),
-    ("rsa2048-nss.p12", None, Some(A)),
-    ("good-nomac.p12", None, Some(C)),
-    ("nokey.p12", Some(B), Some(A)),
-    ("nokey-nomac.p12", Some(B), Some(B)),
-    ("nocert.p12", Some(B), Some(A)),
-    ("nocert-nomac.p12", Some(B), Some(C)),
-    ("twokeys.p12", Some(B), Some(A)),
-    ("twokeys-nomac.p12", Some(B), Some(C)),
-    ("notp12.bin", Some(B), Some(B)),
-];
 
-#[test]
-fn every_file_and_password_gets_the_error_and_outcome_of_its_cell() -> TestResult {
+/// One import of `name` with `password` (`None` expected = it imports).
+fn import_case(name: &str, password: &str, cell: Cell) -> TestResult {
     block_on(async {
-        for (name, right, wrong) in CELLS {
-            let data = fixture(name)?;
-            for (password, cell) in [(RIGHT, right), (WRONG, wrong)] {
-                let r = Rig::start(Answer::Yes).await?;
-                let got = r.import(&data, password).await;
-                let what = format!("{name} with {password}");
-                if let Some((error, outcome)) = cell {
-                    assert_eq!(got, Err(error.to_owned()), "{what}");
-                    assert_eq!(r.outcomes(), [outcome], "{what}");
-                    assert_eq!(r.stored().await?, 0, "{what}");
-                } else {
-                    assert_eq!(got, Ok(()), "{what}");
-                    assert_eq!(r.outcomes(), ["stored"], "{what}");
-                }
-                assert_eq!(r.decoded.load(Ordering::SeqCst), 1, "{what}");
-            }
+        let data = fixture(name)?;
+        let r = Rig::start(Answer::Yes).await?;
+        let got = r.import(&data, password).await;
+        let what = format!("{name} with {password}");
+        if let Some((error, outcome)) = cell {
+            assert_eq!(got, Err(error.to_owned()), "{what}");
+            assert_eq!(r.outcomes(), [outcome], "{what}");
+            assert_eq!(r.stored().await?, 0, "{what}");
+        } else {
+            assert_eq!(got, Ok(()), "{what}");
+            assert_eq!(r.outcomes(), ["stored"], "{what}");
         }
+        assert_eq!(r.decoded.load(Ordering::SeqCst), 1, "{what}");
         Ok(())
     })
 }
 
-#[test]
-fn a_refused_request_never_opens_the_file() -> TestResult {
+/// A refused request for `name`: the decoder is never called.
+fn refused_case(
+    answer: Answer,
+    error: &str,
+    outcome: &str,
+    name: &str,
+    password: &str,
+) -> TestResult {
     block_on(async {
-        for (answer, error, outcome) in [
-            (Answer::No, ERROR_POLKIT_DENIED, "denied"),
-            (
-                Answer::Fail,
-                ERROR_AUTHORIZATION_UNAVAILABLE,
-                "authorization_unavailable",
-            ),
-        ] {
-            // One file of each kind: (a) wrong password with a MAC, (b) not PKCS#12, (c) no MAC, wrong password.
-            for (name, password) in [
-                ("p256.p12", WRONG),
-                ("notp12.bin", RIGHT),
-                ("good-nomac.p12", WRONG),
-            ] {
-                let r = Rig::start(answer).await?;
-                let got = r.import(&fixture(name)?, password).await;
-                assert_eq!(got, Err(error.to_owned()), "{name}");
-                assert_eq!(r.decoded.load(Ordering::SeqCst), 0, "{name}");
-                assert_eq!(r.f.asked().len(), 1, "{name}");
-                assert_eq!(r.outcomes(), [outcome], "{name}");
-                assert_eq!(r.stored().await?, 0, "{name}");
-            }
-        }
+        let r = Rig::start(answer).await?;
+        let got = r.import(&fixture(name)?, password).await;
+        assert_eq!(got, Err(error.to_owned()), "{name}");
+        assert_eq!(r.decoded.load(Ordering::SeqCst), 0, "{name}");
+        assert_eq!(r.f.asked().len(), 1, "{name}");
+        assert_eq!(r.outcomes(), [outcome], "{name}");
+        assert_eq!(r.stored().await?, 0, "{name}");
         Ok(())
     })
+}
+
+/// Each file of docs/findings/F195.md: one test per password, so that libtest runs them in parallel.
+macro_rules! cells {
+    ($($test:ident: $file:literal, $right:expr, $wrong:expr;)*) => {$(
+        mod $test {
+            use super::*;
+            #[test]
+            fn right_password() -> TestResult { import_case($file, RIGHT, $right) }
+            #[test]
+            fn wrong_password() -> TestResult { import_case($file, WRONG, $wrong) }
+        }
+    )*};
+}
+
+cells! {
+    p256: "p256.p12", None, Some(A);
+    rsa2048_nss: "rsa2048-nss.p12", None, Some(A);
+    good_nomac: "good-nomac.p12", None, Some(C);
+    nokey: "nokey.p12", Some(B), Some(A);
+    nokey_nomac: "nokey-nomac.p12", Some(B), Some(B);
+    nocert: "nocert.p12", Some(B), Some(A);
+    nocert_nomac: "nocert-nomac.p12", Some(B), Some(C);
+    twokeys: "twokeys.p12", Some(B), Some(A);
+    twokeys_nomac: "twokeys-nomac.p12", Some(B), Some(C);
+    notp12: "notp12.bin", Some(B), Some(B);
+}
+
+/// One file of each kind: (a) wrong password with a MAC, (b) not PKCS#12, (c) no MAC, wrong password.
+macro_rules! refused {
+    ($($test:ident: $answer:expr, $error:expr, $outcome:literal;)*) => {$(
+        mod $test {
+            use super::*;
+            #[test]
+            fn wrong_password_with_mac() -> TestResult {
+                refused_case($answer, $error, $outcome, "p256.p12", WRONG)
+            }
+            #[test]
+            fn not_pkcs12() -> TestResult {
+                refused_case($answer, $error, $outcome, "notp12.bin", RIGHT)
+            }
+            #[test]
+            fn no_mac_wrong_password() -> TestResult {
+                refused_case($answer, $error, $outcome, "good-nomac.p12", WRONG)
+            }
+        }
+    )*};
+}
+
+refused! {
+    denied: Answer::No, ERROR_POLKIT_DENIED, "denied";
+    unavailable: Answer::Fail, ERROR_AUTHORIZATION_UNAVAILABLE, "authorization_unavailable";
 }

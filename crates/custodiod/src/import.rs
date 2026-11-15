@@ -154,18 +154,19 @@ pub fn parse_p12(data: &[u8], password: &SecretString) -> Result<ParsedP12, Impo
         Err(P12Error::DerError(not_der)) => from_ber(data, password, not_der),
         other => other,
     }
-    .map_err(|e| classify_p12_error(&e))?;
+    .map_err(|e| classify_p12_error(&e, ber::has_mac(data)))?;
     check_archive(&archive)
 }
 
 /// What the library's error says about the file, from the error alone (no clock): `MacError` means the file has
 /// `macData` and it does not verify (the library checks the MAC before it reads a bag); `Pkcs5Error` is a failed
-/// decryption of a file without one, which a wrong password and a corrupt file both give; everything else is a
-/// structure the library cannot read, whatever the password. See `docs/findings/F195.md`.
-fn classify_p12_error(e: &P12Error) -> ImportError {
+/// decryption of a file without one, which a wrong password and a corrupt file both give. With `macData` present
+/// the password is proven right when the MAC verifies, so a decryption failure after it is a corrupt file, (b).
+/// Everything else is a structure the library cannot read, whatever the password. See `docs/findings/F195.md`.
+fn classify_p12_error(e: &P12Error, has_mac: bool) -> ImportError {
     match e {
         P12Error::MacError(_) => ImportError::WrongPassword,
-        P12Error::Pkcs5Error(_) => ImportError::WrongPasswordOrBad,
+        P12Error::Pkcs5Error(_) if !has_mac => ImportError::WrongPasswordOrBad,
         other => ImportError::Unreadable(other.to_string()),
     }
 }

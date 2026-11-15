@@ -128,3 +128,10 @@ with an empty context.
 - Step 6 done: `just quick` green (1251 tests), `just api-contract`, `scripts/test-docs-api.sh`, `import_split` (2 tests, 5 s), `import_messages` (5, 0.13 s),
   `import_errors`, all `custodio-it` tests, `just fuzz-build && just fuzz-smoke` (p12_parse ran), `just mutants-diff F195`: 18 mutants, 12 caught, 6 unviable, 0 missed (2 min).
   Not run here (checkpoint): `just e2e`, `just test-scripts` (e2e consumers `jo-user.sh`, `appid-enter.py`, `ops-lib.sh`, `jo.py`, README examples).
+
+### 2026-11-15 — F195 — attempt 3
+- Done (findings 1-3): `import_split.rs` is one `#[test]` per file and password and per refusal (26 tests, 4.3 s on this machine, in parallel);
+  `ber::has_mac` reads `macData` from the outer PFX (DER and BER) and `classify_p12_error(e, has_mac)` gives a `Pkcs5Error` with a MAC
+  to `Unreadable` (b); unit tests for both; finding records the rule and the 1-in-256 padding chance. `just quick` green;
+  `mutants-diff F195`: 21 mutants, 15 caught, 6 unviable, 0 missed.
+- Note 4 (CLI test in-process) accepted by the evaluator.

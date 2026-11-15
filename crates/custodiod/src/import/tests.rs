@@ -127,3 +127,35 @@ fn a_failed_parse_is_told_by_the_librarys_result() -> Result<(), Box<dyn std::er
     }
     Ok(())
 }
+
+/// A failed decryption after a verified MAC is a corrupt file, not a wrong password (docs/findings/F195.md).
+#[test]
+fn a_decryption_failure_is_the_combined_error_only_without_a_mac() {
+    let e = P12Error::Pkcs5Error("bad padding".into());
+    assert!(matches!(
+        classify_p12_error(&e, false),
+        ImportError::WrongPasswordOrBad
+    ));
+    assert!(matches!(
+        classify_p12_error(&e, true),
+        ImportError::Unreadable(_)
+    ));
+}
+
+#[test]
+fn a_mac_is_seen_in_the_outer_structure_of_der_and_ber_files() -> Result<(), std::io::Error> {
+    for (name, mac) in [
+        ("p256.p12", true),
+        ("rsa2048-nss.p12", true),
+        ("good-nomac.p12", false),
+        ("twokeys-nomac.p12", false),
+        ("notp12.bin", false),
+    ] {
+        let data = std::fs::read(format!(
+            "{}/tests/fixtures/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))?;
+        assert_eq!(ber::has_mac(&data), mac, "{name}");
+    }
+    Ok(())
+}
