@@ -407,11 +407,12 @@ signoff +gates:
         gh run rerun "$run"
     done
 
-# Coverage report of every test (unit and integration; needs `dbus-daemon` and cargo-llvm-cov): a summary on
+# Coverage report of every test (unit and integration; needs `dbus-daemon`, cargo-llvm-cov and cargo-nextest): a summary on
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
+# Under nextest, so that a hung test is killed by the `slow-timeout` of .config/nextest.toml.
 coverage:
-    cargo llvm-cov --workspace --locked --no-report
-    cargo llvm-cov --package custodio-pkcs11 --features fuzzing --lib --locked --no-report # the fuzz harness tests need the feature
+    cargo llvm-cov nextest --workspace --locked --no-report
+    cargo llvm-cov nextest --package custodio-pkcs11 --features fuzzing --lib --locked --no-report # the fuzz harness tests need the feature
     cargo llvm-cov report --summary-only
     cargo llvm-cov report --html --output-dir target/coverage
     cargo llvm-cov report --json --output-path target/coverage/coverage.json
