@@ -19,6 +19,6 @@ with an empty context.
 - Done: `docs/findings/F189.md` + index line. Cause not reproduced (**inferred**): kernel (`dm.c` `dm_setup_md_queue`) exposes
   `slaves` before `dm/uuid` but all before any mount, and systemd 257 adds `RequiresMountsFor=` for `StateDirectory`; the same
   LVM code is in 0.8.0 and HEAD. Fixture runs (scratch example, deleted) give `NotEncrypted` for a complete chain, `Unknown` for each gap.
-  No dm device can be created here. F180 rules stand. `just quick` green, `verify` passes, no product code changed.
+  No dm device can be created here (checked as root via `sudo -n`, which works: no `/dev/mapper`, no `dmsetup`, no `/dev/loop-control`, `CapEff` lacks `CAP_MKNOD`). F180 rules stand. `just quick` green, `verify` passes, no product code changed.
 - Decisions: route 2 (keep `unknown`, expose an enumerated reason, no unit setting).
 - Next session: F196 builds route 2 under the `docs/api.md` compatibility rule.
