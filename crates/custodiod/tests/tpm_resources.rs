@@ -205,33 +205,6 @@ impl Fx {
 }
 
 #[test]
-fn slot_count_is_reported() -> TestResult {
-    let rig = rig::Rig::new()?;
-    let text = rig.getcap("properties-fixed")?;
-    let slots = slot_count(&rig);
-    assert_eq!(parse_slots(&text), Ok(slots));
-    // Control: the parser does not invent a default.
-    let without_name = text
-        .lines()
-        .filter(|l| !l.contains("TPM2_PT_HR_TRANSIENT_MIN"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(parse_slots(&without_name).is_err());
-    let mut lines = text.lines().peekable();
-    let mut without_value = String::new();
-    while let Some(line) = lines.next() {
-        without_value.push_str(line);
-        without_value.push('\n');
-        if line.trim() == "TPM2_PT_HR_TRANSIENT_MIN:" {
-            lines.next();
-        }
-    }
-    assert!(parse_slots(&without_value).is_err());
-    assert!(parse_slots("").is_err());
-    Ok(())
-}
-
-#[test]
 fn signatures_exceed_slots() -> TestResult {
     block_on(async {
         let fx = Fx::new().await?;

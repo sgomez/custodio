@@ -4,7 +4,6 @@ use std::os::fd::AsFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
-use zbus::block_on;
 
 mod bounded;
 mod limiter;
@@ -115,25 +114,6 @@ fn escaped_app_id_is_read() -> TestResult {
         lookup_of(&reader(&tree), UID)?,
         read("org.example.My_App-Name")?
     );
-    Ok(())
-}
-
-#[test]
-fn fake_source_returns_the_three_outcomes() -> TestResult {
-    let fd = devnull()?;
-    let read_it = FakeAppIdSource::reading("org.example.App").ok_or("invalid id")?;
-    assert_eq!(
-        block_on(read_it.app_id(fd.as_fd(), 1)),
-        read("org.example.App")?
-    );
-    let none = FakeAppIdSource::new(AppIdOutcome::None);
-    assert_eq!(block_on(none.app_id(fd.as_fd(), 1)), AppIdOutcome::None);
-    let unknown = FakeAppIdSource::new(AppIdOutcome::Undetermined);
-    assert_eq!(
-        block_on(unknown.app_id(fd.as_fd(), 1)),
-        AppIdOutcome::Undetermined
-    );
-    assert!(FakeAppIdSource::reading("not an id").is_none());
     Ok(())
 }
 

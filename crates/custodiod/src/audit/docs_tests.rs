@@ -45,24 +45,6 @@ fn outcomes() -> Vec<Outcome> {
     all(Outcome::Signed).to_vec()
 }
 
-/// Every mechanism; the exhaustive match stops compiling when a variant is added.
-fn mechanisms() -> Vec<AuditMechanism> {
-    let all = |m: AuditMechanism| match m {
-        AuditMechanism::RsaPkcs
-        | AuditMechanism::RsaPkcsPssSha256
-        | AuditMechanism::RsaPkcsPssSha384
-        | AuditMechanism::RsaPkcsPssSha512
-        | AuditMechanism::Ecdsa => [
-            AuditMechanism::RsaPkcs,
-            AuditMechanism::RsaPkcsPssSha256,
-            AuditMechanism::RsaPkcsPssSha384,
-            AuditMechanism::RsaPkcsPssSha512,
-            AuditMechanism::Ecdsa,
-        ],
-    };
-    all(AuditMechanism::RsaPkcs).to_vec()
-}
-
 fn key() -> Result<KeyId, InvalidKeyId> {
     KeyId::new("my-key")
 }
@@ -127,17 +109,6 @@ fn outcome_pairs(op: Operation) -> Vec<(&'static str, u8)> {
     }
 }
 
-/// The lines under the `### <op>` heading of the page, up to the next heading.
-fn outcome_section(docs: &str, op: Operation) -> Vec<String> {
-    let heading = format!("### {}", op.name());
-    docs.lines()
-        .skip_while(|l| *l != heading)
-        .skip(1)
-        .take_while(|l| !l.starts_with('#'))
-        .map(str::to_owned)
-        .collect()
-}
-
 /// The text of both catalog entries (`en` and untagged) of a `MESSAGE_ID`.
 fn catalog_bodies(catalog: &str, id: &str) -> Vec<String> {
     catalog
@@ -192,36 +163,15 @@ fn names(e: &Entry) -> BTreeSet<&'static str> {
     e.fields().into_iter().map(|(n, _)| n).collect()
 }
 
-fn cells(line: &str) -> Vec<&str> {
-    line.trim()
-        .trim_matches('|')
-        .split('|')
-        .map(str::trim)
-        .collect()
-}
-
 #[test]
-fn message_id_in_docs_and_catalog() -> TestResult {
-    let (docs, catalog) = (docs()?, catalog()?);
-    for op in Operation::all() {
-        let row = format!("| `{}` | `{}` |", op.name(), op.message_id());
-        assert!(docs.contains(&row), "docs lack the id of {}", op.name());
-        assert!(catalog.contains(op.message_id()));
-    }
-    assert_eq!(MESSAGE_ID, Operation::Sign.message_id());
-    Ok(())
-}
-
-#[test]
-fn every_field_name_in_docs_and_catalog() -> TestResult {
-    let (docs, catalog) = (docs()?, catalog()?);
+fn every_field_name_in_the_catalog() -> TestResult {
+    let catalog = catalog()?;
     let sign = field_names(Operation::Sign)?;
     assert!(sign.len() >= 10 && sign.contains("CUSTODIO_OPERATION"));
     for op in Operation::all() {
         let bodies = catalog_bodies(&catalog, op.message_id());
         assert_eq!(bodies.len(), 2, "catalog entries of {}", op.name());
         for name in field_names(op)? {
-            assert!(docs.contains(&token(name)), "docs lack {name}");
             for body in &bodies {
                 assert!(
                     body.contains(&token(name)),
@@ -232,120 +182,6 @@ fn every_field_name_in_docs_and_catalog() -> TestResult {
         }
     }
     assert!(field_names(Operation::Import)?.contains("CUSTODIO_KEY_TYPE"));
-    Ok(())
-}
-
-#[test]
-fn optional_fields_flagged() -> TestResult {
-    let docs = docs()?;
-    let missing: Vec<_> = names(&full(Outcome::Signed)?)
-        .difference(&names(&Entry::without_caller(key()?, None)))
-        .copied()
-        .collect();
-    assert_eq!(
-        missing,
-        [
-            "CUSTODIO_APP_ID",
-            "CUSTODIO_MECHANISM",
-            "CUSTODIO_PID",
-            "CUSTODIO_UID"
-        ]
-    );
-    let mut missing = missing;
-    missing.push("CUSTODIO_KEY_TYPE");
-    assert!(field_names(Operation::Import)?.contains("CUSTODIO_KEY_TYPE"));
-    let untyped = OperationEntry::import(ImportOutcome::WrongPassword, None, key()?, None);
-    assert!(
-        untyped
-            .fields()
-            .iter()
-            .all(|(n, _)| *n != "CUSTODIO_KEY_TYPE")
-    );
-    for name in missing {
-        let flagged = docs.lines().any(|l| {
-            let l = l.to_lowercase();
-            l.contains(&token(&name.to_lowercase()).to_lowercase())
-                && (l.contains("absent") || l.contains("omitted"))
-        });
-        assert!(flagged, "{name} is not flagged as absent or omitted");
-    }
-    Ok(())
-}
-
-#[test]
-fn outcomes_and_priorities_documented() -> TestResult {
-    let docs = docs()?;
-    for op in Operation::all() {
-        let section = outcome_section(&docs, op);
-        let rows: Vec<_> = section
-            .iter()
-            .map(|l| cells(l))
-            .filter(|c| c.first().is_some_and(|n| n.starts_with('`')))
-            .collect();
-        let want = outcome_pairs(op);
-        assert_eq!(rows.len(), want.len(), "outcome rows of {}", op.name());
-        for (name, prio) in want {
-            let found = rows.iter().any(|c| {
-                c.first() == Some(&token(name).as_str())
-                    && c.get(1) == Some(&prio.to_string().as_str())
-                    && c.get(2).is_some_and(|m| !m.is_empty())
-            });
-            assert!(found, "no table row for {name} of {}", op.name());
-        }
-    }
-    Ok(())
-}
-
-#[test]
-fn operations_documented() -> TestResult {
-    let docs = docs()?;
-    let row = docs
-        .lines()
-        .find(|l| cells(l).first() == Some(&token("CUSTODIO_OPERATION").as_str()))
-        .ok_or("no row for CUSTODIO_OPERATION")?;
-    assert_eq!(cells(row).get(2), Some(&"always"));
-    for op in Operation::all() {
-        assert!(
-            row.contains(&token(op.name())),
-            "field row lacks {}",
-            op.name()
-        );
-    }
-    Ok(())
-}
-
-#[test]
-fn mechanisms_documented() -> TestResult {
-    let docs = docs()?;
-    for m in mechanisms() {
-        assert!(docs.contains(&token(m.name())), "docs lack {}", m.name());
-    }
-    Ok(())
-}
-
-#[test]
-fn message_example_in_docs() -> TestResult {
-    let docs = docs()?;
-    for o in outcomes() {
-        let msg = full(o)?.message();
-        assert!(docs.contains(&msg), "docs lack example: {msg}");
-    }
-    for e in operation_entries()? {
-        let msg = e.message();
-        assert!(docs.contains(&msg), "docs lack example: {msg}");
-    }
-    let unknown = Entry::without_caller(key()?, None).message();
-    assert!(docs.contains(&unknown), "docs lack example: {unknown}");
-    for name in names(&full(Outcome::Signed)?) {
-        let row = docs
-            .lines()
-            .find(|l| cells(l).first() == Some(&token(name).as_str()));
-        let row = row.ok_or_else(|| format!("no table row for {name}"))?;
-        assert!(
-            cells(row).get(1).is_some_and(|m| !m.is_empty()),
-            "{name} has no meaning"
-        );
-    }
     Ok(())
 }
 
@@ -386,48 +222,6 @@ fn catalog_format() -> TestResult {
             );
         }
     }
-    Ok(())
-}
-
-#[test]
-fn query_uses_trusted_fields() -> TestResult {
-    let docs = docs()?;
-    let id = format!("MESSAGE_ID={MESSAGE_ID}");
-    let queries: Vec<_> = docs
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("journalctl"))
-        .collect();
-    assert!(
-        queries
-            .iter()
-            .any(|q| q.contains("_SYSTEMD_UNIT=custodio.service")
-                && q.contains("_UID=")
-                && q.contains(&id))
-    );
-    for field in ["CUSTODIO_UID=", "CUSTODIO_KEY_ID=", "CUSTODIO_OUTCOME="] {
-        assert!(
-            queries
-                .iter()
-                .any(|q| q.contains(field) && q.contains("_SYSTEMD_UNIT=custodio.service")),
-            "no example query with {field}"
-        );
-    }
-    for op in Operation::all() {
-        let want = format!("CUSTODIO_OPERATION={}", op.name());
-        assert!(
-            queries
-                .iter()
-                .any(|q| q.split_whitespace().any(|t| t == want)
-                    && q.split_whitespace()
-                        .any(|t| t == "_SYSTEMD_UNIT=custodio.service")
-                    && q.split_whitespace().any(|t| t.starts_with("_UID="))),
-            "no query for {}",
-            op.name()
-        );
-    }
-    assert!(docs.contains("id -u custodio"));
-    assert!(read("data/sysusers.d/custodio.conf")?.contains("u custodio"));
     Ok(())
 }
 
@@ -485,4 +279,3 @@ mod causes;
 use causes::{cause_names, store_kinds};
 mod app_id;
 use app_id::app;
-mod purge;

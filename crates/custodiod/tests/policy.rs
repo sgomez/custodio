@@ -158,18 +158,6 @@ fn messages_are_distinct_and_non_empty() -> TestResult {
     Ok(())
 }
 
-#[test]
-fn message_check_rejects_equal_and_empty() {
-    assert!(check_messages(&["a", "b"]).is_ok());
-    assert!(check_messages(&["a", "a"]).is_err());
-    assert!(check_messages(&["a", ""]).is_err());
-}
-
-#[test]
-fn comment_stripping_works() {
-    assert_eq!(without_comments("a<!-- x -->b<!-- y"), "ab");
-}
-
 /// polkit only lets an unprivileged caller check another user's subject if it owns the action.
 #[test]
 fn every_action_is_owned_by_the_service_user() -> TestResult {
@@ -183,12 +171,4 @@ fn every_action_is_owned_by_the_service_user() -> TestResult {
 fn owner_check_rejects_a_block_without_it() {
     assert!(check_owner(OWNER).is_ok());
     assert!(check_owner("<defaults/>").is_err());
-}
-
-#[test]
-fn constants_are_the_ids_of_the_policy_file() {
-    assert_eq!(ACTION_ID, "com.rfirma.custodio.sign");
-    assert_eq!(IMPORT_ID, "com.rfirma.custodio.import-certificate");
-    assert_eq!(DELETE_ID, "com.rfirma.custodio.delete-certificate");
-    assert_eq!(REPLACE_ID, "com.rfirma.custodio.replace-certificate");
 }

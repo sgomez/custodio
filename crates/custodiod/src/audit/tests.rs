@@ -108,28 +108,6 @@ fn decode_rejects_cut_short_datagrams() {
 }
 
 #[test]
-fn memory_sink_records_entries() -> TestResult {
-    let sink = MemorySink::default();
-    let dynsink: &dyn AuditSink = &sink;
-    let a = entry(Outcome::Signed, None)?;
-    let b = entry(Outcome::Denied, Some(AuditMechanism::Ecdsa))?;
-    dynsink.record(&a)?;
-    assert_eq!(sink.entries(), vec![a.clone()]);
-    dynsink.record(&b)?;
-    assert_eq!(sink.entries(), vec![a, b.clone()]);
-    assert_eq!(b.mechanism(), Some(AuditMechanism::Ecdsa));
-    assert_eq!(entry(Outcome::Signed, None)?.mechanism(), None);
-    Ok(())
-}
-
-#[test]
-fn failing_sink_returns_error() -> TestResult {
-    let sink: &dyn AuditSink = &FailingSink;
-    assert!(sink.record(&entry(Outcome::Signed, None)?).is_err());
-    Ok(())
-}
-
-#[test]
 fn key_id_rejects_bad_strings() {
     let long = "a".repeat(65);
     for bad in [

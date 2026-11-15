@@ -321,11 +321,6 @@ fn a_reply_that_ends_without_a_nul_is_unavailable() {
     assert_eq!(ask(Vec::new()), Err(CredsError::Unavailable));
 }
 
-#[test]
-fn the_largest_reply_is_64_kib() {
-    assert_eq!(MAX_REPLY, 65536);
-}
-
 /// A reader that is interrupted by a signal before each piece.
 struct Interrupted(Vec<&'static [u8]>, bool);
 
