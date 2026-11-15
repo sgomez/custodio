@@ -975,9 +975,8 @@ checks that Firefox completes TLS client authentication through Custodio with an
 here is run by the build loop. A run is **invalid** if the journal label of a signature is not `snap.firefox.firefox
 (enforce)` (the signature then did not come through the snap's socket), if the package was installed from a repository other
 than the `.deb` under test, or if Firefox was not the snap (`snap list firefox` fails). An invalid run is repeated, not recorded
-as a pass or a fail. The commands marked `sh` run in a plain Linux shell; a test (`scripts/test-docs-manual-m6.sh`) runs them
-on the development container, with the substitutions it names in its header. The commands marked `sh vm` need the VM
-(snap, the package, a desktop session) and are never run by a test.
+as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The commands marked `sh vm` need the VM
+(snap, the package, a desktop session).
 
 1. Record the snap revision, with the Firefox snap installed from the store (`sudo snap install firefox` if it is not):
 

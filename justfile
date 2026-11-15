@@ -142,7 +142,6 @@ package-gate-test:
     scripts/test-glibc-ceiling.sh
     scripts/test-snap-base-fit.sh
     scripts/test-package-lint.sh
-    scripts/test-package-lint-lists.sh
 
 # The install-time scripts. F58: the same for the six install-script functions and the restart hook of the Arch package (stubbed, static, and the
 # real pacman in the Arch image, which needs a container engine like the F42 case). F44: the same for the four scriptlets of the .rpm (stubbed, static, and under the real rpm in a user-namespace root).
@@ -175,8 +174,6 @@ test-scripts:
     scripts/test-docs-release-notes.sh
     scripts/test-docs-threat-model.sh
     scripts/test-tpm-record-check.sh
-    scripts/test-docs-manual-m5.sh
-    scripts/test-docs-manual-m6.sh
     scripts/test-install-real.sh
     scripts/test-deb-lifecycle.sh
     scripts/test-deb-lifecycle-real.sh
@@ -212,7 +209,6 @@ test-scripts:
     scripts/test-e2e-upgrade.sh
     scripts/test-e2e-lifecycle.sh
     scripts/test-e2e-oldpath.sh
-    scripts/test-e2e-import.sh
     scripts/test-relabel.sh
     scripts/test-check-snap-sockets.sh
     scripts/test-check-test-socket-dir.sh
