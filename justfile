@@ -411,6 +411,7 @@ signoff +gates:
 # stdout, an HTML report in target/coverage/html and the JSON export `just crap` reads. Not a target.
 # Under nextest, so that a hung test is killed by the `slow-timeout` of .config/nextest.toml.
 coverage:
+    cargo llvm-cov clean --workspace # a test binary left by an earlier build would count as code that never ran
     cargo llvm-cov nextest --workspace --locked --no-report
     cargo llvm-cov nextest --package custodio-pkcs11 --features fuzzing --lib --locked --no-report # the fuzz harness tests need the feature
     cargo llvm-cov report --summary-only

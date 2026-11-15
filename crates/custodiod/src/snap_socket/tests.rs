@@ -171,6 +171,44 @@ fn a_refusal_is_journaled_with_the_socket_and_the_reason() -> TestResult {
 }
 
 #[test]
+fn of_the_passed_sockets_only_the_refused_ones_come_back() -> TestResult {
+    let tmp = tempfile::tempdir()?;
+    let refused = tmp.path().join("refused");
+    let passed = vec![
+        ("good", UnixListener::bind(tmp.path().join("served"))?),
+        ("bad", UnixListener::bind(&refused)?),
+    ];
+    let mut journal = Vec::new();
+    let kept = serve_passed(
+        passed,
+        |snap| {
+            PathBuf::from(if snap == "good" {
+                "/usr"
+            } else {
+                "/nonexistent/x"
+            })
+        },
+        &mut journal,
+        &Service::new(
+            Arc::new(KeyStore::open(tmp.path().join("keys"))?),
+            Arc::new(|_| {}),
+        ),
+    );
+    let [listener] = kept.as_slice() else {
+        return Err(format!("{} listeners kept", kept.len()).into());
+    };
+    assert_eq!(
+        listener.local_addr()?.as_pathname(),
+        Some(refused.as_path())
+    );
+    assert_eq!(
+        String::from_utf8(journal)?,
+        "custodiod: socket snap-bad is not served: the directory does not exist (/nonexistent/x)\n"
+    );
+    Ok(())
+}
+
+#[test]
 fn the_refusal_texts_are_distinct() {
     let all = [
         Refusal::Missing,
