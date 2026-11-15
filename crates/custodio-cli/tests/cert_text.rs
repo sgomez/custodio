@@ -154,3 +154,110 @@ fn invalid_text_or_time_inside_a_valid_structure_gives_placeholders_not_a_panic(
     assert!(harmless(&f.not_before) && harmless(&f.not_after), "{f:?}");
     assert!(!f.not_before.contains("9927"), "{f:?}");
 }
+
+#[test]
+fn escape_covers_each_range_to_its_edges_and_not_beyond() {
+    let escaped = [
+        '\u{0}',
+        '\u{1f}',
+        '\u{7f}',
+        '\u{80}',
+        '\u{9f}',
+        '\u{ad}',
+        '\u{61c}',
+        '\u{180e}',
+        '\u{200b}',
+        '\u{200f}',
+        '\u{2028}',
+        '\u{202e}',
+        '\u{2060}',
+        '\u{206f}',
+        '\u{feff}',
+        '\u{fff9}',
+        '\u{fffb}',
+        '\u{fffe}',
+        '\u{ffff}',
+        '\u{e000}',
+        '\u{f8ff}',
+        '\u{e0000}',
+        '\u{e007f}',
+        '\u{f0000}',
+        '\u{10ffff}',
+    ];
+    for c in escaped {
+        let out = escape(&c.to_string());
+        assert!(
+            out.starts_with("\\x") || out.starts_with("\\u{"),
+            "{c:?} -> {out}"
+        );
+        assert!(out.is_ascii(), "{c:?} -> {out}");
+    }
+    let kept = [
+        ' ',
+        '~',
+        '\u{a0}',
+        '\u{ac}',
+        '\u{ae}',
+        '\u{61b}',
+        '\u{61d}',
+        '\u{180d}',
+        '\u{200a}',
+        '\u{2010}',
+        '\u{2027}',
+        '\u{202f}',
+        '\u{205f}',
+        '\u{2070}',
+        '\u{fefe}',
+        '\u{ff00}',
+        '\u{fff8}',
+        '\u{fffc}',
+        '\u{fffd}',
+        '\u{f900}',
+        '\u{effff}',
+        '\u{e0080}',
+        '日',
+        'é',
+    ];
+    for c in kept {
+        assert_eq!(escape(&c.to_string()), c.to_string(), "{c:?}");
+    }
+    // The widths of the two escape forms.
+    assert_eq!(escape("\u{1}"), "\\x01");
+    assert_eq!(escape("\u{ff}\u{9f}"), "\u{ff}\\x9f");
+    assert_eq!(escape("\u{100}\u{2028}"), "\u{100}\\u{2028}");
+}
+
+#[test]
+fn the_common_name_is_read_from_any_text_type_and_falls_back_to_the_whole_subject() {
+    let cn = b"\x18custodio test p256-other";
+    let with_tag = |tag: u8| {
+        let mut needle = vec![0x0c];
+        needle.extend_from_slice(cn);
+        let mut with = vec![tag];
+        with.extend_from_slice(cn);
+        patched(P256, &needle, &with)
+    };
+    for tag in [0x0c, 0x13, 0x14, 0x16] {
+        let f = fields(&with_tag(tag));
+        assert_eq!(f.subject_short, "custodio test p256-other", "tag {tag:#x}");
+    }
+    // An OCTET STRING is no text: the whole subject is shown instead.
+    let f = fields(&with_tag(0x04));
+    assert_eq!(f.subject_short, f.subject);
+    assert!(f.subject.starts_with("2.5.4.3=#04"), "{}", f.subject);
+    // A name without a common name (an organization, OID 2.5.4.10).
+    let org = patched(P256, &[0x55, 0x04, 0x03], &[0x55, 0x04, 0x0a]);
+    let f = fields(&org);
+    assert_eq!(f.subject, "O=custodio test p256-other");
+    assert_eq!(f.subject_short, f.subject);
+}
+
+#[test]
+fn the_fuzz_entry_point_says_whether_the_bytes_were_a_certificate() {
+    assert!(custodio_cli::cert_text::fuzz_cert_fields(P256));
+    assert!(custodio_cli::cert_text::fuzz_cert_fields(HOSTILE));
+    assert!(!custodio_cli::cert_text::fuzz_cert_fields(b""));
+    assert!(!custodio_cli::cert_text::fuzz_cert_fields(&[
+        0xc3, 0x28, 0x1b, 0x0a
+    ]));
+}
