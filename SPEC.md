@@ -152,7 +152,8 @@ file, `/etc/pam.d/polkit-1`.
   changes nothing and succeeds. If fingerprint is already active globally (`pam_fprintd` in
   `common-auth` on the Debian family; `authselect` feature `with-fingerprint` on the Fedora family;
   `pam_fprintd` in `system-auth` or `sudo` on Arch), it says so, says that the override would be
-  redundant (and might ask for the finger twice after a mismatch, untested), and writes nothing.
+  redundant (and might ask for the finger twice after a mismatch, untested), writes nothing and
+  exits non-zero, with the next step (turn the global switch off, then run `enable` again).
 - **`disable`** removes `/etc/pam.d/polkit-1` only if it is Custodio's. If there is no file, it says
   so and succeeds. If the file is someone else's, it refuses, changes nothing, and says who might own
   it and how to look. After `disable`, polkit reads the vendor file again, exactly as before `enable`.
@@ -407,7 +408,8 @@ Automated, on the host (unit, integration, fuzz and package checks):
    for each of: not root; a foreign `/etc/pam.d/polkit-1` (an Omarchy-style file, an administrator's
    file, Custodio's file with one byte changed, a symlink); no vendor file; no `pam_fprintd.so`; no
    `fprintd`.
-3. `enable` with fingerprint already active globally (each family's form) says so and writes nothing.
+3. `enable` with fingerprint already active globally (each family's form) says so, writes nothing and
+   exits non-zero with the next step.
 4. `disable` removes Custodio's file and nothing else; with no file it succeeds and changes nothing;
    with a foreign file it refuses and the file is byte-identical afterwards.
 5. No package format ships a file under `/etc/pam.d/` or `/usr/lib/pam.d/`, no package script refers
