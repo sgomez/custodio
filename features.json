@@ -15,7 +15,7 @@
       "description": "docs/findings/F190.md, headed '## F190' and indexed, settles how `custodio doctor` tells, as an ordinary user and without starting or asking anything, whether journald keeps entries across a reboot (SPEC Design 2 check 5, open question 3): journald.conf, its drop-ins in /etc, /run and /usr/lib journald.conf.d in their precedence order, Storage=auto with and without /var/log/journal, persistent, volatile and none, and a volatile override under /run/log/journal; on systemd 257 and later and on the default install of each supported target. It names the documented fix for each non-persistent case and which states doctor must report as 'could not check'. Its 'Decision: ' line is what F203 implements.",
       "depends_on": [],
       "verify": "f=docs/findings/F190.md && grep -q '^## F190' \"$f\" && for w in 'Storage=' 'auto' 'persistent' 'volatile' '/var/log/journal' '/run/log/journal' 'journald.conf.d' '257' 'debian13' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F190.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F191",
