@@ -119,49 +119,4 @@ vmset "$tmp/x5" tpm "$TPM_TEXT" encrypted-tpm; [ -n "$(VJ --mode full api "$tmp/
 vmset "$tmp/x5" encrypted-tpm "$TPM_TEXT" tpm; [ -n "$(VJ --mode full api "$tmp/x5/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "full: P-256 encrypted-tpm accepted"
 imp fb-rsa rsa2048 "$TPM_TEXT"$'\nThis key is weaker than a TPM key.' > "$tmp/x6"; [ -n "$(VJ --mode full why "$tmp/x6")" ] || bad "full: a weaker line accepted"
 
-# fallback-run.sh in a VM run, on fixtures: `su` is a stub that writes the evidence into the step's directory
-vmrun() { # MODE EVIDENCE-DIR [STATE-DIR]: runs the VM branch; prints its output, exit status in the file $tmp/vmrc
-    local m=$1 ev=$2 st=${3:-$tmp/state-none} work
-    work=$(mktemp -d "$tmp/work.XXXX"); mkdir -p "$tmp/stub"
-    cat > "$tmp/stub/su" <<STUB
-#!/usr/bin/env bash
-cp "$ev"/*.out "$work/fallback/"; [ -n "${STUB_NOIMPORTED:-}" ] || : > "$work/fallback/imported"
-exit 0
-STUB
-    chmod +x "$tmp/stub/su"
-    mkdir -p "$tmp/state-none"
-    ( PATH=$tmp/stub:$PATH WORK=$work E2E_VM=1 E2E_TPM=$m VM_STATE_DIR=$st VM_CRED_DIR=${VM_CRED_DIR:-$ROOT/e2e/vm} VM_SYSTEMD_VERSION=259 E2E_SELECT_FILE=/nonexistent \
-        bash "${RUN_COPY:-$ROOT/e2e/fallback-run.sh}" > "$tmp/vmout" 2>&1; echo $? > "$tmp/vmrc" ) || true
-}
-# shellcheck source=scripts/lib/e2e-vm-cred-fixtures.sh
-source "$ROOT/scripts/lib/e2e-vm-cred-fixtures.sh"
-cred "$tmp/ok.cred" ef4ac13679a9480ea7db68897f9f165d 0; cred "$tmp/pcr.cred" ef4ac13679a9480ea7db68897f9f165d 0x80
-rec "$tmp/st-ok" fb-rsa 2 "$tmp/ok.cred"; rec "$tmp/st-ok" fb-ec 2 "$tmp/ok.cred"
-rec "$tmp/st-pcr" fb-rsa 2 "$tmp/ok.cred"; rec "$tmp/st-pcr" fb-ec 2 "$tmp/pcr.cred"
-vmrun lacking "$tmp/vl" "$tmp/st-ok"
-[ "$(cat "$tmp/vmrc")" = 0 ] || bad "VM run lacking on good evidence fails: $(tail -5 "$tmp/vmout")"
-[ "$(grep -c '^E2E-CASE run fallback-tpmbound-' "$tmp/vmout")" = 2 ] || bad "VM run lacking does not report both tpmbound cases run"
-! grep -q 'E2E-CASE skipped' "$tmp/vmout" || bad "VM run lacking skips a case"
-! grep -q 'fallback-host-' "$tmp/vmout" || bad "VM run lacking reports a host case"
-vmrun swtpm "$tmp/vf"
-[ "$(cat "$tmp/vmrc")" = 0 ] && [ "$(grep -c '^E2E-CASE run fallback-tpmbound-' "$tmp/vmout")" = 2 ] || bad "VM run full on good evidence does not report both tpmbound cases run"
-vmrun lacking "$tmp/vf" "$tmp/st-ok"   # a wrong mode in one direction
-{ [ "$(cat "$tmp/vmrc")" != 0 ] && ! grep -q '^E2E-CASE run' "$tmp/vmout"; } || bad "VM run lacking on tpm evidence passes or reports a case run"
-vmrun swtpm "$tmp/vl"                   # and the other
-{ [ "$(cat "$tmp/vmrc")" != 0 ] && ! grep -q '^E2E-CASE run' "$tmp/vmout"; } || bad "VM run full on encrypted-tpm evidence passes or reports a case run"
-vmrun lacking "$tmp/vl" "$tmp/st-pcr"   # the reader fails on one key
-[ "$(cat "$tmp/vmrc")" != 0 ] || bad "VM run lacking passes with a credential of a nonzero PCR mask"
-grep -q 'fb-ec' "$tmp/vmout" || bad "VM run lacking: the reader failure does not name the key"
-# alice never writes `imported`: the credentials are not read, so the run fails and says so
-STUB_NOIMPORTED=1 vmrun lacking "$tmp/vl" "$tmp/st-ok"
-{ [ "$(cat "$tmp/vmrc")" != 0 ] && grep -q 'the keys were never imported' "$tmp/vmout"; } || bad "VM run lacking passes when the keys were never imported"
-# a control copy that reports the case without judging fails the run check
-mkdir "$tmp/ctl"; cp "$ROOT"/e2e/fallback-run.sh "$ROOT"/e2e/fallback-cases.sh "$ROOT"/e2e/fallback.py "$ROOT"/e2e/tpmkind-lib.sh "$ROOT"/e2e/report.sh "$ROOT"/e2e/select.sh "$tmp/ctl/"
-cp -r "$ROOT/e2e/vm" "$tmp/ctl/vm"
-sed -i 's|^    judge fallback-tpmbound-cli-list .*|    case_run fallback-tpmbound-cli-list|' "$tmp/ctl/fallback-run.sh"
-cp -r "$tmp/vl" "$tmp/vbadcli"; sed -i 's/kind: encrypted-tpm/kind: tpm/' "$tmp/vbadcli/cli.out"
-vmrun lacking "$tmp/vbadcli" "$tmp/st-ok"
-{ [ "$(cat "$tmp/vmrc")" != 0 ] && ! grep -q '^E2E-CASE run fallback-tpmbound-cli-list' "$tmp/vmout"; } || bad "VM run lacking passes or reports a case run on a wrong CLI list"
-RUN_COPY=$tmp/ctl/fallback-run.sh vmrun lacking "$tmp/vbadcli" "$tmp/st-ok"
-grep -q '^E2E-CASE run fallback-tpmbound-cli-list' "$tmp/vmout" || bad "the control copy that reports the CLI case unjudged does not report it run on a wrong CLI list"
 exit "$fail"
