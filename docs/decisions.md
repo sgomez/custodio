@@ -164,9 +164,11 @@ Format: a title and three short bullets, a couple of lines each:
 - Rejected: every test under Miri; no Miri. Widen the filter if a module gains `unsafe`.
 
 ## 2026-11-12 — Firefox without the p11-kit proxy: a command that runs `modutil`
-- Decision: M6's `custodio` command runs `modutil` per profile; manual stays the fallback.
-- Why: only Fedora's and RHEL's NSS load the proxy (`docs/findings/F56.md`).
-- Rejected: an enterprise policy; writing `pkcs11.txt` ourselves.
+- Decision: M6's `custodio` command runs `modutil` per profile; manual stays the fallback. It
+  skips native profiles only if `modutil -list` of a new scratch database shows `p11-kit-proxy`.
+- Why: only Fedora's and RHEL's NSS load the proxy (`docs/findings/F56.md`, `F172.md`).
+- Rejected: an enterprise policy; writing `pkcs11.txt` ourselves; trusting `nss.config` (Ubuntu
+  ships it with `crypto-policies` but NSS never reads it, issue #32); grepping `libnss3.so`.
 
 ## 2026-11-01 — A refused sign for a key the caller does not have leaves no journal entry
 - Decision: `Sign` for an id the caller does not own (missing, or another uid's) fails as
