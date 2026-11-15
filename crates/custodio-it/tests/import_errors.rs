@@ -373,7 +373,7 @@ fn a_wrong_password_is_wrong_password() -> TestResult {
     let run = import(&rig.importer, file.clone(), "k", "wrong-one");
     assert_failed(
         &run,
-        &ServiceFailure::WrongPasswordOrBadP12,
+        &ServiceFailure::WrongPassword,
         &file,
         "wrong-one",
         P256_P12,

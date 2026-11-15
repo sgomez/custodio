@@ -57,7 +57,13 @@ fn confirming_asks_before_the_service_and_deletes_after_the_answer() -> TestResu
     run.send(b"yes\n")?;
     let done = run.finish()?;
     assert_eq!(done.status.code(), Some(0), "{}", done.stderr);
-    assert_eq!(done.stdout, "Deleted key 'old-key'.\n");
+    assert_eq!(
+        done.stdout,
+        format!(
+            "Deleted key 'old-key'.\n{}\n",
+            custodio_cli::delete::RESTART_NOTE
+        )
+    );
     assert_eq!(done.stderr, "");
     assert_eq!(rig.polkit_asked(), [DELETE_ACTION_ID.to_owned()]);
     // One call, `DeleteKey(s)` to the documented name, path and interface.

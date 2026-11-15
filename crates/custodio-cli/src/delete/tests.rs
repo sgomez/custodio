@@ -71,7 +71,7 @@ fn a_yes_makes_one_call_with_the_id_and_prints_the_line() {
     let (result, out) = run(Some("yes\n"), &rec);
     assert!(result.is_ok());
     assert_eq!(*rec.calls.borrow(), ["my-key"]);
-    assert_eq!(out, "Deleted key 'my-key'.\n");
+    assert_eq!(out, format!("Deleted key 'my-key'.\n{RESTART_NOTE}\n"));
 }
 
 #[test]

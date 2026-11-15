@@ -10,6 +10,8 @@ fn names_are_the_documented_literals() {
         (ERROR_POLKIT_DENIED, "PolkitDenied"),
         (ERROR_AUTHORIZATION_UNAVAILABLE, "AuthorizationUnavailable"),
         (ERROR_WRONG_PASSWORD_OR_BAD_P12, "WrongPasswordOrBadP12"),
+        (ERROR_WRONG_PASSWORD, "WrongPassword"),
+        (ERROR_UNREADABLE_P12, "UnreadableP12"),
         (ERROR_UNSUPPORTED_KEY_TYPE, "UnsupportedKeyType"),
         (ERROR_CERTIFICATE_MISMATCH, "CertificateMismatch"),
         (ERROR_AUDIT_UNAVAILABLE, "AuditUnavailable"),

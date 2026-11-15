@@ -28,6 +28,8 @@ fn every_failure() -> Vec<CliError> {
         "com.rfirma.Custodio1.Error.PolkitDenied",
         "com.rfirma.Custodio1.Error.AuthorizationUnavailable",
         "com.rfirma.Custodio1.Error.WrongPasswordOrBadP12",
+        "com.rfirma.Custodio1.Error.WrongPassword",
+        "com.rfirma.Custodio1.Error.UnreadableP12",
         "com.rfirma.Custodio1.Error.UnsupportedKeyType",
         "com.rfirma.Custodio1.Error.CertificateMismatch",
         "com.rfirma.Custodio1.Error.AuditUnavailable",

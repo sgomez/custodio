@@ -141,6 +141,7 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         "Now delete the original file: it still holds your private key.\n  shred -u {}   (or remove it with your file manager and empty the trash)",
         args.file.display()
     );
+    let _ = writeln!(out, "{}", delete::RESTART_NOTE);
     Ok(())
 }
 

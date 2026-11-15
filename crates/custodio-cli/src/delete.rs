@@ -19,6 +19,9 @@ pub fn deleted_line(id: &str) -> String {
     format!("Deleted key '{}'.", escape(id))
 }
 
+/// Said after a key was imported or deleted: a running program keeps the keys it listed when it loaded the module.
+pub const RESTART_NOTE: &str = "Firefox and any other running program that loaded the Custodio module see this change only after they restart.";
+
 /// The question: names the key and says that it cannot come back.
 #[must_use]
 pub fn question(id: &str) -> String {
@@ -96,7 +99,8 @@ pub fn run_delete<C: Confirmation, D: KeyDeleter, W: Write>(
         return Err(DeleteFailure::Declined);
     }
     deleter.delete_key(id).map_err(DeleteFailure::Service)?;
-    writeln!(out, "{}", deleted_line(id)).map_err(DeleteFailure::Output)
+    writeln!(out, "{}", deleted_line(id)).map_err(DeleteFailure::Output)?;
+    writeln!(out, "{RESTART_NOTE}").map_err(DeleteFailure::Output)
 }
 
 #[cfg(test)]

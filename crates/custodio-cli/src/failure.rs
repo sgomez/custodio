@@ -10,7 +10,8 @@ use custodio_client::{
     ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_CERTIFICATE_MISMATCH,
     ERROR_CREDENTIALS_UNAVAILABLE, ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN,
     ERROR_KEY_LOST, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_TEMPORARILY_UNAVAILABLE,
-    ERROR_TPM_FAILED, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_TPM_FAILED, ERROR_UNREADABLE_P12, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD,
+    ERROR_WRONG_PASSWORD_OR_BAD_P12,
 };
 
 /// Prefix of the names the bus daemon itself uses (`ServiceUnknown`, `AccessDenied`, ...).
@@ -23,6 +24,11 @@ pub enum ServiceFailure {
     KeyIdTaken,
     PolkitDenied,
     AuthorizationUnavailable,
+    /// The file has a MAC and it does not verify with the password.
+    WrongPassword,
+    /// The file is not readable PKCS#12, or holds no usable key and certificate, whatever the password.
+    UnreadableP12,
+    /// The file has no MAC and does not decrypt: a wrong password or a bad file.
     WrongPasswordOrBadP12,
     UnsupportedKeyType,
     CertificateMismatch,
@@ -54,6 +60,8 @@ impl ServiceFailure {
             ERROR_KEY_ID_TAKEN => Self::KeyIdTaken,
             ERROR_POLKIT_DENIED => Self::PolkitDenied,
             ERROR_AUTHORIZATION_UNAVAILABLE => Self::AuthorizationUnavailable,
+            ERROR_WRONG_PASSWORD => Self::WrongPassword,
+            ERROR_UNREADABLE_P12 => Self::UnreadableP12,
             ERROR_WRONG_PASSWORD_OR_BAD_P12 => Self::WrongPasswordOrBadP12,
             ERROR_UNSUPPORTED_KEY_TYPE => Self::UnsupportedKeyType,
             ERROR_CERTIFICATE_MISMATCH => Self::CertificateMismatch,
@@ -78,8 +86,12 @@ impl ServiceFailure {
                 "the service rejected the request: the key id, the file or the password is not acceptable"
             }
             Self::KeyIdTaken => "a key with this id already exists; choose another with --id",
+            Self::WrongPassword => "wrong password for the .p12 file",
+            Self::UnreadableP12 => {
+                "the .p12 file cannot be used: it is not readable, or it does not hold exactly one private key and its certificate"
+            }
             Self::WrongPasswordOrBadP12 => {
-                "wrong password, or the file is not a usable .p12 (it must hold one private key and its certificate)"
+                "wrong password, or the .p12 file is damaged (it has no integrity check, so the two cannot be told apart)"
             }
             Self::UnsupportedKeyType => {
                 "unsupported key type; only RSA 2048 and ECDSA P-256 are accepted"
@@ -131,8 +143,14 @@ impl ServiceFailure {
             Self::AuthorizationUnavailable => {
                 "Check that polkit runs (systemctl status polkit) and that a polkit agent is running, then try again."
             }
+            Self::WrongPassword => {
+                "Run the command again and retype the password of the .p12 file."
+            }
+            Self::UnreadableP12 => {
+                "Export the file again (README.md, 'Export a certificate from Firefox'), then run the command again."
+            }
             Self::WrongPasswordOrBadP12 => {
-                "Run the command again and type the password of the .p12 file; see 'ImportP12' in docs/api.md."
+                "Retype the password; if it fails again, export the file again (README.md, 'Export a certificate from Firefox')."
             }
             Self::UnsupportedKeyType => {
                 "Export the key as RSA 2048 or ECDSA P-256; see 'ImportP12' in docs/api.md."

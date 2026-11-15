@@ -133,6 +133,8 @@ fn services() -> Vec<ServiceFailure> {
             | ServiceFailure::KeyIdTaken
             | ServiceFailure::PolkitDenied
             | ServiceFailure::AuthorizationUnavailable
+            | ServiceFailure::WrongPassword
+            | ServiceFailure::UnreadableP12
             | ServiceFailure::WrongPasswordOrBadP12
             | ServiceFailure::UnsupportedKeyType
             | ServiceFailure::CertificateMismatch
@@ -173,6 +175,39 @@ fn check(text: &str) {
 fn every_error_is_two_lines_with_a_next_step_and_no_raw_untrusted_text() {
     for e in samples() {
         check(&render(&e));
+    }
+}
+
+/// The three import failures about the file, each with its own two lines.
+#[test]
+fn the_three_password_and_file_failures_say_different_next_steps() {
+    let text = |f| render(&CliError::Import(ImportFailure::Service(f)));
+    let a = text(ServiceFailure::WrongPassword);
+    let b = text(ServiceFailure::UnreadableP12);
+    let c = text(ServiceFailure::WrongPasswordOrBadP12);
+    assert!(
+        a.lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("retype the password")),
+        "{a}"
+    );
+    assert!(!a.contains("export"), "{a}");
+    assert!(
+        b.lines()
+            .nth(1)
+            .is_some_and(|l| l.contains("Export the file again")),
+        "{b}"
+    );
+    assert!(b.contains("README.md"), "{b}");
+    assert!(!b.contains("password"), "{b}");
+    let next = c.lines().nth(1).unwrap_or_default();
+    assert!(
+        next.contains("Retype the password") && next.contains("export the file again"),
+        "{c}"
+    );
+    assert!(a != b && b != c && a != c);
+    for t in [&a, &b, &c] {
+        assert_eq!(t.lines().count(), 2, "{t}");
     }
 }
 

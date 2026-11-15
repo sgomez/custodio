@@ -1,6 +1,6 @@
 use super::*;
 
-const NAMES: [(&str, &str); 10] = [
+const NAMES: [(&str, &str); 12] = [
     (
         ERROR_INVALID_ARGS,
         "the service rejected the request: the key id, the file or the password is not acceptable",
@@ -9,9 +9,14 @@ const NAMES: [(&str, &str); 10] = [
         ERROR_KEY_ID_TAKEN,
         "a key with this id already exists; choose another with --id",
     ),
+    (ERROR_WRONG_PASSWORD, "wrong password for the .p12 file"),
+    (
+        ERROR_UNREADABLE_P12,
+        "the .p12 file cannot be used: it is not readable, or it does not hold exactly one private key and its certificate",
+    ),
     (
         ERROR_WRONG_PASSWORD_OR_BAD_P12,
-        "wrong password, or the file is not a usable .p12 (it must hold one private key and its certificate)",
+        "wrong password, or the .p12 file is damaged (it has no integrity check, so the two cannot be told apart)",
     ),
     (
         ERROR_UNSUPPORTED_KEY_TYPE,
@@ -112,6 +117,8 @@ fn no_two_failures_share_a_message() {
         ServiceFailure::KeyIdTaken,
         ServiceFailure::PolkitDenied,
         ServiceFailure::AuthorizationUnavailable,
+        ServiceFailure::WrongPassword,
+        ServiceFailure::UnreadableP12,
         ServiceFailure::WrongPasswordOrBadP12,
         ServiceFailure::UnsupportedKeyType,
         ServiceFailure::CertificateMismatch,

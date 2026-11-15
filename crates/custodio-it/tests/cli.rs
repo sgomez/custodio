@@ -311,9 +311,7 @@ fn imports_through_the_service_and_reports_wrong_password() -> TestResult {
     assert!(
         matches!(
             err,
-            Some(ImportFailure::Service(
-                ServiceFailure::WrongPasswordOrBadP12
-            ))
+            Some(ImportFailure::Service(ServiceFailure::WrongPassword))
         ),
         "{err:?}"
     );
