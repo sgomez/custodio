@@ -11,8 +11,7 @@ use custodiod::audit::{AuditSink, JournalSink};
 use custodiod::creds::Credentials;
 use custodiod::creds::systemd::SystemdCreds;
 use custodiod::polkit::PolkitAuthorizer;
-use custodiod::snap_socket::Signing;
-use custodiod::snap_socket::{self, Outcome};
+use custodiod::snap_socket::{self, Signing};
 use custodiod::startup::start;
 use custodiod::storage::classify_state_dir;
 use custodiod::store::KeyStore;
@@ -50,19 +49,15 @@ fn run() -> Result<(), Box<dyn Error>> {
             key_creds: Some(key_credentials),
             tpm,
         };
-        // Refused listeners stay open in `unserved`: their connections wait, unserved, until the process ends.
         let log: snap_socket::Log = Arc::new(|line| eprintln!("{line}"));
         let snap_service = snap_socket::Service::new(Arc::clone(&store), log).with_signing(signing);
-        let mut unserved = Vec::new();
-        for (snap, listener) in snap_socket::take_from_environment() {
-            let name = snap_socket::descriptor_name(snap);
-            let dir = snap_socket::dir_to_check(snap);
-            if let Outcome::Refused(listener, _) =
-                snap_socket::serve(&name, listener, &dir, &mut std::io::stderr(), &snap_service)
-            {
-                unserved.push(listener);
-            }
-        }
+        // The refused listeners stay open until the process ends.
+        let _unserved = snap_socket::serve_passed(
+            snap_socket::take_from_environment(),
+            snap_socket::dir_to_check,
+            &mut std::io::stderr(),
+            &snap_service,
+        );
         std::future::pending::<()>().await;
         Ok(())
     })

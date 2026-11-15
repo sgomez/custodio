@@ -323,6 +323,26 @@ pub fn serve(
     }
 }
 
+/// Serves each passed socket whose directory, given by `dir_of` for its snap, passes the check. The refused
+/// listeners come back: the caller keeps them open, so their connections wait, unserved, until the process ends.
+pub fn serve_passed(
+    passed: Vec<(&'static str, UnixListener)>,
+    dir_of: impl Fn(&str) -> PathBuf,
+    journal: &mut dyn Write,
+    service: &Service,
+) -> Vec<UnixListener> {
+    let mut unserved = Vec::new();
+    for (snap, listener) in passed {
+        let name = descriptor_name(snap);
+        if let Outcome::Refused(listener, _) =
+            serve(&name, listener, &dir_of(snap), journal, service)
+        {
+            unserved.push(listener);
+        }
+    }
+    unserved
+}
+
 fn accept_loop(listener: &UnixListener, service: &Service) {
     loop {
         match listener.accept() {
