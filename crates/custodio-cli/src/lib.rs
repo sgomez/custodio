@@ -4,7 +4,7 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use custodio_client::{Kind, MAX_P12_LEN};
 use secrecy::{ExposeSecret, SecretString};
@@ -12,7 +12,9 @@ use zeroize::Zeroizing;
 
 pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
+pub use help::{COMMANDS, CommandSpec, OptionSpec};
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
+pub use parse::{ArgError, Command, ImportArgs, USAGE, fuzz_cli_args, parse_args, parse_command};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
@@ -20,7 +22,9 @@ pub mod browser_files;
 pub mod bus;
 pub mod delete;
 pub mod failure;
+pub mod help;
 pub mod list;
+pub mod parse;
 pub mod register_cli;
 pub mod register_discover;
 mod register_modutil;
@@ -28,124 +32,6 @@ pub mod register_native;
 pub mod register_snap;
 pub mod storage;
 pub mod tty;
-
-pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
-       custodio list\n\
-       custodio delete <key id>\n\
-       custodio register [--module <path>] [--remove | --refresh-only]\n\
-The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
-arguments or the environment.";
-
-/// What the command line asks for.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Command {
-    Import(ImportArgs),
-    List,
-    Delete(String),
-    Register(register_native::RegisterArgs),
-}
-
-/// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
-///
-/// # Errors
-/// [`ArgError::Usage`] for anything unexpected, and the errors of [`parse_args`] for `import`.
-pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command, ArgError> {
-    let mut it = args.into_iter().peekable();
-    if it.peek().map(String::as_str) == Some("list") {
-        it.next();
-        return if it.next().is_none() {
-            Ok(Command::List)
-        } else {
-            Err(ArgError::Usage)
-        };
-    }
-    if it.peek().map(String::as_str) == Some("register") {
-        it.next();
-        return register_native::parse_register_args(it)
-            .map(Command::Register)
-            .ok_or(ArgError::Usage);
-    }
-    if it.peek().map(String::as_str) == Some("delete") {
-        it.next();
-        // `--` ends the options, so an id that starts with `-` can still be deleted. It is the
-        // only option accepted, and it is not a bypass of the confirmation.
-        if it.peek().map(String::as_str) == Some("--") {
-            it.next();
-        } else if it.peek().is_some_and(|id| id.starts_with('-')) {
-            return Err(ArgError::Usage);
-        }
-        return match (it.next(), it.next()) {
-            (Some(id), None) => Ok(Command::Delete(id)),
-            _ => Err(ArgError::Usage),
-        };
-    }
-    parse_args(it).map(Command::Import)
-}
-
-/// Parsed command line.
-#[derive(Debug, PartialEq, Eq)]
-pub struct ImportArgs {
-    pub file: PathBuf,
-    pub id: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ArgError {
-    Usage,
-    BadId,
-}
-
-impl fmt::Display for ArgError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Usage => f.write_str(USAGE),
-            Self::BadId => f.write_str("cannot derive a key id from the file name; use --id"),
-        }
-    }
-}
-
-impl std::error::Error for ArgError {}
-
-/// Parse the arguments after the program name. Any option other than `--id` (for example
-/// `--password`) is a usage error: secrets must not travel through argv.
-///
-/// # Errors
-/// [`ArgError::Usage`] for anything unexpected, [`ArgError::BadId`] if no id can be derived.
-pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<ImportArgs, ArgError> {
-    let mut it = args.into_iter();
-    if it.next().as_deref() != Some("import") {
-        return Err(ArgError::Usage);
-    }
-    let mut file = None;
-    let mut id = None;
-    while let Some(arg) = it.next() {
-        if arg == "--id" {
-            if id.replace(it.next().ok_or(ArgError::Usage)?).is_some() {
-                return Err(ArgError::Usage);
-            }
-        } else if arg.starts_with('-') || file.replace(PathBuf::from(arg)).is_some() {
-            return Err(ArgError::Usage);
-        }
-    }
-    let file = file.ok_or(ArgError::Usage)?;
-    let id = match id {
-        Some(id) => id,
-        None => default_id(&file).ok_or(ArgError::BadId)?,
-    };
-    Ok(ImportArgs { file, id })
-}
-
-/// File stem, if it is already a valid id (letters, digits, `_`, `-`). Nothing is rewritten.
-fn default_id(file: &Path) -> Option<String> {
-    let stem = file.file_stem()?.to_str()?;
-    let valid = !stem.is_empty()
-        && stem.len() <= 59
-        && !stem.ends_with("-cert")
-        && stem
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
-    valid.then(|| stem.to_owned())
-}
 
 /// Where the password comes from. The real one is the controlling terminal.
 pub trait PasswordPrompt {

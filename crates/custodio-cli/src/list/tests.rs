@@ -162,9 +162,10 @@ fn list_takes_no_argument() {
         &["list", "extra"][..],
         &["list", "--id", "x"],
         &["list", "-x"],
-        &["List"],
-        &[],
     ] {
+        assert_eq!(args(bad), Err(ArgError::CommandUsage("list")), "{bad:?}");
+    }
+    for bad in [&["List"][..], &[]] {
         assert_eq!(args(bad), Err(ArgError::Usage), "{bad:?}");
     }
 }
@@ -178,7 +179,7 @@ fn import_still_parses_through_the_dispatcher() {
             id: "k".into()
         }))
     );
-    assert_eq!(args(&["import"]), Err(ArgError::Usage));
+    assert_eq!(args(&["import"]), Err(ArgError::CommandUsage("import")));
 }
 
 #[test]

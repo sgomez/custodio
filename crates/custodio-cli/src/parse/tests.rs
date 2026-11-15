@@ -1,0 +1,82 @@
+use super::*;
+
+fn args(list: &[&str]) -> Result<Command, ArgError> {
+    parse_command(list.iter().map(|s| (*s).to_owned()))
+}
+
+#[test]
+fn help_flags_ask_for_the_help_of_the_whole_tool_or_of_a_command() {
+    assert_eq!(args(&["--help"]), Ok(Command::Help(None)));
+    assert_eq!(args(&["-h"]), Ok(Command::Help(None)));
+    for spec in help::COMMANDS {
+        for flag in ["--help", "-h"] {
+            assert_eq!(
+                args(&[spec.name, flag]),
+                Ok(Command::Help(Some(spec.name))),
+                "{} {flag}",
+                spec.name
+            );
+        }
+    }
+}
+
+#[test]
+fn help_flag_with_anything_else_is_a_usage_error() {
+    assert_eq!(args(&["--help", "list"]), Err(ArgError::Usage));
+    assert_eq!(args(&["-h", "-h"]), Err(ArgError::Usage));
+    assert_eq!(args(&["nosuch", "--help"]), Err(ArgError::Usage));
+    assert_eq!(
+        args(&["list", "--help", "x"]),
+        Err(ArgError::CommandUsage("list"))
+    );
+    assert_eq!(
+        args(&["delete", "--help", "x"]),
+        Err(ArgError::CommandUsage("delete"))
+    );
+}
+
+#[test]
+fn a_bad_line_of_a_known_command_names_the_command() {
+    for bad in [
+        &["list", "x"][..],
+        &["delete"],
+        &["delete", "-x"],
+        &["register", "--nope"],
+        &["import"],
+        &["import", "--id"],
+    ] {
+        let err = args(bad).unwrap_err();
+        assert!(matches!(err, ArgError::CommandUsage(_)), "{bad:?}");
+        let text = err.to_string();
+        assert!(
+            text.contains(&format!("custodio {} --help", bad[0])),
+            "{text}"
+        );
+    }
+    assert_eq!(args(&[]), Err(ArgError::Usage));
+    assert_eq!(args(&["nosuch"]), Err(ArgError::Usage));
+    assert!(ArgError::Usage.to_string().contains("custodio --help"));
+}
+
+#[test]
+fn the_commands_parse_as_before() {
+    assert_eq!(args(&["list"]), Ok(Command::List));
+    assert_eq!(
+        args(&["delete", "--", "-k"]),
+        Ok(Command::Delete("-k".into()))
+    );
+    assert_eq!(args(&["delete", "k"]), Ok(Command::Delete("k".into())));
+    assert!(matches!(
+        args(&["register", "--remove"]),
+        Ok(Command::Register(_))
+    ));
+    assert!(matches!(args(&["import", "a.p12"]), Ok(Command::Import(i)) if i.id == "a"));
+    assert_eq!(args(&["import", "my cert.p12"]), Err(ArgError::BadId));
+}
+
+#[test]
+fn the_fuzz_entry_point_survives_odd_input() {
+    fuzz_cli_args(vec![]);
+    fuzz_cli_args(vec!["--help".into(), String::new()]);
+    fuzz_cli_args(vec!["import".into(), "\u{0}".into()]);
+}

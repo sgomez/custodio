@@ -332,7 +332,7 @@ mutants *args:
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --file crates/custodio-pkcs11/src/backend/socket.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-peer --file crates/custodio-peer/src/lib.rs --no-shuffle --colors never --output target/mutants-peer "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
-    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
     for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client target/mutants-cli; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
@@ -543,7 +543,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules cli_args":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000

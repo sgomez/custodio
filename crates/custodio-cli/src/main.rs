@@ -1,7 +1,7 @@
 //! Custodio import tool.
 #![forbid(unsafe_code)]
 
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -52,6 +52,11 @@ fn run() -> Result<(), CliError> {
     if let Command::Register(args) = &command {
         return run_register(args);
     }
+    if let Command::Help(topic) = &command {
+        // A closed standard output is not a failure of the tool.
+        let _ = io::stdout().write_all(custodio_cli::help::text(*topic).as_bytes());
+        return Ok(());
+    }
     let bus = DbusImporter::system().map_err(|e| CliError::SystemBus(e.to_string()))?;
     // Only `import` and `delete` make the service ask polkit, so only they may need an agent. The
     // agent is started on the main thread (its parent-death signal follows that thread).
@@ -71,7 +76,7 @@ fn run() -> Result<(), CliError> {
         .map_err(CliError::Import),
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
             .map_err(CliError::Delete),
-        Command::Register(_) => unreachable!("handled before the bus is opened"),
+        Command::Register(_) | Command::Help(_) => unreachable!("handled before the bus is opened"),
         Command::List => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
             .map_err(CliError::List),
     }

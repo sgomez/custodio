@@ -18,7 +18,6 @@ use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
 
 use custodio_cli::ServiceFailure;
-use custodio_cli::USAGE;
 use custodio_cli::delete::question;
 use custodio_client::{BUS_NAME, OBJECT_PATH};
 use custodiod::polkit::DELETE_ACTION_ID;
@@ -229,7 +228,10 @@ fn options_are_usage_errors_before_any_question() -> TestResult {
             .clone();
         assert_eq!(done.status.code(), Some(2), "{args:?}");
         assert_eq!(done.stdout, "");
-        assert_eq!(done.stderr.trim_end(), USAGE);
+        assert_eq!(
+            done.stderr.trim_end(),
+            custodio_cli::ArgError::CommandUsage("delete").to_string()
+        );
         assert!(shown.is_empty(), "{shown:?}");
     }
     assert_eq!(rig.service_calls(), []);
