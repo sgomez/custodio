@@ -76,7 +76,27 @@ fn the_commands_parse_as_before() {
 
 #[test]
 fn the_fuzz_entry_point_survives_odd_input() {
-    fuzz_cli_args(vec![]);
-    fuzz_cli_args(vec!["--help".into(), String::new()]);
-    fuzz_cli_args(vec!["import".into(), "\u{0}".into()]);
+    assert!(!fuzz_cli_args(vec![]));
+    assert!(fuzz_cli_args(vec!["--help".into()]));
+    assert!(!fuzz_cli_args(vec!["--help".into(), String::new()]));
+    assert!(fuzz_cli_args(vec!["import".into(), "a.p12".into()]));
+    assert!(!fuzz_cli_args(vec!["import".into(), "\u{0}".into()]));
+}
+
+#[test]
+fn parse_args_wants_import_and_derives_ids_from_plain_stems() {
+    let list = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    assert_eq!(parse_args(list(&["list"])), Err(ArgError::Usage));
+    for (file, id) in [
+        ("my_key.p12", "my_key"),
+        ("my-key.p12", "my-key"),
+        ("K9.p12", "K9"),
+    ] {
+        let parsed = parse_args(list(&["import", file]));
+        assert_eq!(parsed.map(|a| a.id), Ok(id.to_owned()), "{file}");
+    }
+    assert_eq!(
+        parse_args(list(&["import", "a b.p12"])),
+        Err(ArgError::BadId)
+    );
 }

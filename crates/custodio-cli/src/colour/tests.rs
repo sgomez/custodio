@@ -36,6 +36,19 @@ fn headings_are_bold_and_the_text_is_the_same_without_the_escapes() {
     assert!(coloured.contains("\x1b[1mCommands:\x1b[0m\n"));
     assert!(!coloured.contains("\x1b[1m  "));
     assert_eq!(strip(&coloured), help);
+    for line in coloured.lines() {
+        let heading = line.starts_with(BOLD);
+        assert_eq!(
+            heading,
+            strip(line).ends_with(':') && !line.starts_with(' '),
+            "{line:?}"
+        );
+    }
+    assert!(
+        coloured
+            .lines()
+            .any(|l| !l.starts_with(BOLD) && !l.ends_with(':'))
+    );
     for c in crate::COMMANDS {
         let text = crate::help::text(Some(c.name));
         assert_eq!(strip(&headings(&text, true)), text);

@@ -161,11 +161,15 @@ fn default_id(file: &Path) -> Option<String> {
 }
 
 /// Entry point for the fuzz target: any argument list through the parser and the help lookup.
-pub fn fuzz_cli_args(args: Vec<String>) {
-    if let Ok(Command::Help(topic)) = parse_command(args.clone()) {
-        let _ = help::text(topic);
+/// Returns whether the command line was accepted, so a caller can tell that the work was done.
+#[must_use]
+pub fn fuzz_cli_args(args: Vec<String>) -> bool {
+    let parsed = parse_command(args.clone());
+    if let Ok(Command::Help(topic)) = &parsed {
+        let _ = help::text(*topic);
     }
     let _ = parse_args(args);
+    parsed.is_ok()
 }
 
 #[cfg(test)]

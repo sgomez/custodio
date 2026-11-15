@@ -75,5 +75,5 @@ with an empty context.
   `NO_COLOR` unset/empty/"1"/"0"/"x"); error unit tests over every variant (wildcard-free matches) and every name of docs/api.md with a
   fixture control; `error.rs` is in the `mutants` list. Tests that asserted one-line stderr (`register_native/skips.rs`,
   `custodio-it` delete/list) now expect the two lines. `just quick` green.
-- Not done: step 12 (`just mutants-diff F193`, then the rest of the verify: help test, fuzz-build, lint-fuzz, fuzz-smoke).
-- Next session should: run `timeout 1700 just mutants-diff F193` once; kill survivors narrowed with `--re`.
+- Step 12 done: `mutants-diff F193` 101 tested, 0 missed (one run, 2 min); help, output_rules, fuzz-build, lint-fuzz, fuzz-smoke pass; `just quick` green.
+- Next session: none for F193.

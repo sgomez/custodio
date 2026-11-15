@@ -245,3 +245,28 @@ fn the_service_absent_and_bus_errors_pass_the_checks() {
         ))));
     }
 }
+
+#[test]
+fn import_errors_say_what_failed_and_what_to_do() {
+    let read = render(&CliError::Import(ImportFailure::Read(io::Error::other(
+        "boom",
+    ))));
+    assert!(
+        read.starts_with("custodio: cannot read the file: boom\n"),
+        "{read}"
+    );
+    assert!(read.contains("Check the path"), "{read}");
+    let big = render(&CliError::Import(ImportFailure::TooLarge));
+    assert!(
+        big.starts_with("custodio: the file is larger than "),
+        "{big}"
+    );
+    let pw = render(&CliError::Import(ImportFailure::Password(
+        io::Error::other("no tty"),
+    )));
+    assert!(
+        pw.starts_with("custodio: cannot read the password: no tty\n"),
+        "{pw}"
+    );
+    assert!(pw.contains("from a terminal"), "{pw}");
+}

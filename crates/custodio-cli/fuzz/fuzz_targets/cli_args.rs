@@ -9,5 +9,5 @@ fuzz_target!(|data: &[u8]| {
         .split(|b| *b == 0)
         .map(|part| String::from_utf8_lossy(part).into_owned())
         .collect();
-    custodio_cli::fuzz_cli_args(args);
+    let _ = custodio_cli::fuzz_cli_args(args);
 });
