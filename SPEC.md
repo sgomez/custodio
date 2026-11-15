@@ -143,10 +143,11 @@ file, `/etc/pam.d/polkit-1`.
   - `/usr/lib/pam.d/polkit-1` does not exist or is not a regular file (including on Debian 13 or
     RHEL/Alma 10 if their polkit puts it elsewhere);
   - `pam_fprintd.so` or `fprintd` is not installed (the message names the package for the system:
-    `libpam-fprintd` and `fprintd`, `fprintd-pam` and `fprintd`, `fprintd`);
-  - there is no reader, or the person who invoked it has no enrolled finger (see "Who the person is"
-    below). The report says a missing piece is not dangerous, only useless; refusing keeps a person
-    from believing the finger is on when it cannot be used.
+    `libpam-fprintd` and `fprintd`, `fprintd-pam` and `fprintd`, `fprintd`).
+- **No reader is a warning, not a refusal.** When `fprintd` reports no device, `enable` writes the file
+  and says that polkit will keep asking for the password until there is a reader and an enrolled
+  finger, and names `custodio doctor`. The report shows that state is harmless (straight to the
+  password). `enable` does not check whose fingers are enrolled: that is `doctor`'s, run as the person.
 - **`enable` on a system that already has it.** If `/etc/pam.d/polkit-1` is already Custodio's, it
   changes nothing and succeeds. If fingerprint is already active globally (`pam_fprintd` in
   `common-auth` on the Debian family; `authselect` feature `with-fingerprint` on the Fedora family;
@@ -159,16 +160,11 @@ file, `/etc/pam.d/polkit-1`.
   accepts the finger, a wrong finger or no touch within 10 seconds falls back to the password, `sudo`
   and the login are unchanged, and how to undo it. It also prints the lock-screen note (Threat model,
   "Not guaranteed") when it applies, without changing that setting.
-- **Who the person is.** Under `sudo` the person is the invoking user; when that cannot be determined
-  (a root shell), the per-user checks cannot run and `enable` refuses, naming the next step. How the
-  invoking user is determined (`SUDO_UID`, `PKEXEC_UID`, the login session) is for a finding; the
-  value must come from a source the invoking user cannot forge into another user's identity, or it is
-  used only for the advisory checks and never for a decision that widens access.
 - **The package does not touch PAM.** No package script creates, edits, renames or removes
   `/etc/pam.d/polkit-1`, on install, upgrade, removal or purge. The install notice says the fingerprint
   is off and names `sudo custodio fingerprint enable` and `custodio doctor`. Removing the package
-  leaves an existing override in place, still working (it names only system files); the documents say
-  to run `disable` first.
+  leaves an existing override in place, still working (it names only system files), and prints no
+  warning about it; the documents say to run `disable` first.
 - **Supported systems.** The same command and file on every supported system. Where the files differ
   from the proven layout, the refusals above apply.
 
@@ -206,8 +202,10 @@ checks:
    when one is known, see Design 4). If the service cannot be reached, that is reported with its fix,
    and this check is "could not check".
 
-- **Exit status.** 0 only when every check is satisfied; non-zero otherwise ("could not check"
-  included). The steps of the acceptance end with `custodio doctor` reporting nothing to fix.
+- **Exit status.** The fingerprint is optional: checks 1 to 3 are printed with their fix but do not
+  count, except a broken include of an override, which does. The exit status is 0 only when that and
+  checks 4 to 6 are satisfied; non-zero otherwise ("could not check" included). The steps of the
+  acceptance end with `custodio doctor` reporting nothing to fix.
 - **Never a prompt.** No check opens a polkit dialog, a password prompt or a browser, and none needs
   root. A check that would need one reports "could not check" instead.
 - **Every system.** Each check works or says "could not check" on every supported system; none assumes
@@ -266,10 +264,11 @@ systemd's hand-written bash and zsh completions, which call the program for dyna
   password, which is a wrong password; (b) a file that cannot be read as PKCS#12 or holds no usable
   key and certificate (no private key, several, a key without a certificate) whatever the password,
   which is an unreadable file; and (c) a file with no MAC that does not decrypt, where the library
-  cannot tell (a) from (b), which keeps a combined message. The idea asks for one new D-Bus error and
-  one new audit outcome, added under the compatibility rules of `docs/api.md` and `docs/audit.md`
-  (names and meanings are only added to, never changed) and checked by `just api-contract`. How the
-  three cases map onto the existing names and the new ones is an open question below. The CLI says,
+  cannot tell (a) from (b), which keeps a combined message. Two new D-Bus errors, one for (a) and
+  one for (b); `WrongPasswordOrBadP12` stays for (c) only. In the journal, (a) and (c) keep
+  `wrong_password` and (b) gets one new outcome. All are added under the compatibility rules of
+  `docs/api.md` and `docs/audit.md` (names and meanings are only added to, never changed) and checked
+  by `just api-contract`. The CLI says,
   for (a), to retype the password; for (b), to export the file again (the README shows how from
   Firefox); for (c), both. The order of the method stays: the file is never opened before polkit
   approves. Whether a case is (a), (b) or (c) is decided from the file and the library's result, never
@@ -313,7 +312,7 @@ written, as M6 required; prose is checked by a person, never by a test that grep
 - **`custodio doctor`:** every check, what each state means and its fix.
 - **Updates** to `docs/install.md`, `docs/api.md`, `docs/audit.md`, `docs/threat-model.md`, the man
   page, `SECURITY.md` (scope: the fingerprint command writes a system PAM file), the changelog and the
-  release notes of this release.
+  release notes of this release, which is 0.9.0.
 - **Manual acceptance steps** for Acceptance 22 in `docs/manual-acceptance.md`, with a form to return.
 
 ## Language and harnesses
@@ -400,14 +399,14 @@ blocking:
 
 Automated, on the host (unit, integration, fuzz and package checks):
 
-1. `enable`, given a system with the vendor file, the module, `fprintd`, a reader and an enrolled
-   finger and no `/etc/pam.d/polkit-1`, produces a file whose `auth`, `account`, `password` and
-   `session` lines are exactly those of Design 1, mode `0644`, owner root; a second `enable` leaves it
-   byte-identical and succeeds.
+1. `enable`, given a system with the vendor file, the module and `fprintd` and no
+   `/etc/pam.d/polkit-1`, produces a file whose `auth`, `account`, `password` and `session` lines are
+   exactly those of Design 1, mode `0644`, owner root; a second `enable` leaves it byte-identical and
+   succeeds. With no reader it writes the same file, succeeds and prints the warning.
 2. `enable` refuses, exits non-zero, prints a two-line error with the next step and changes nothing,
    for each of: not root; a foreign `/etc/pam.d/polkit-1` (an Omarchy-style file, an administrator's
    file, Custodio's file with one byte changed, a symlink); no vendor file; no `pam_fprintd.so`; no
-   `fprintd`; no reader; no enrolled finger; an invoking user that cannot be determined.
+   `fprintd`.
 3. `enable` with fingerprint already active globally (each family's form) says so and writes nothing.
 4. `disable` removes Custodio's file and nothing else; with no file it succeeds and changes nothing;
    with a foreign file it refuses and the file is byte-identical afterwards.
@@ -416,7 +415,8 @@ Automated, on the host (unit, integration, fuzz and package checks):
    `custodio doctor`.
 6. `doctor` reports each of the six checks in each of its states on fixture systems and homes, names
    the fix for each unsatisfied one, reports a broken include of Custodio's override, says "could not
-   check" (never "missing") when `fprintd` refuses to list fingers, exits 0 only when all are satisfied,
+   check" (never "missing") when `fprintd` refuses to list fingers, exits 0 with checks 1 to 3
+   unsatisfied and the rest satisfied, exits non-zero for a broken include or any of checks 4 to 6,
    refuses to run as root, and writes nothing (the fixture tree is byte-identical afterwards and no
    polkit request is made).
 7. `custodio --help`, `custodio -h` and `custodio <command> --help` for every command print help on
@@ -486,17 +486,6 @@ Manual (a person, following steps in `docs/manual-acceptance.md` and the user do
 
 ## Open questions
 
-- **Import error names.** Three cases ((a) wrong password, (b) unreadable file, (c) no MAC, cannot
-  tell) and today one name, `WrongPasswordOrBadP12`, and one outcome, `wrong_password`. The idea asks for
-  one new error and one new outcome; with one new name, two of the three cases still share one, so the
-  split is complete only for files with a MAC if (c) shares with (a) or (b). Options: (1) one new error
-  and outcome for (b), with (a) and (c) sharing the existing names, so the CLI cannot tell (a) from (c)
-  and must word that message for both; (2) two new errors, one for (a) and one for (b), with
-  `WrongPasswordOrBadP12` kept for (c) only, which separates all three but goes beyond "a new error";
-  in both, an older client that knows only `WrongPasswordOrBadP12` meets an unfamiliar name for a case
-  it used to handle. Settle by the person approving this spec; default if not settled: option (2) for
-  the D-Bus errors, and for the journal `wrong_password` for (a) and (c) with a new outcome for (b),
-  recorded in `docs/decisions.md`.
 - **The cause of `unknown` then `not-encrypted` on `252:0`.** Unknown until the finding (Design 4). If
   the cause is outside the service's view and no unit setting can wait for it without weakening the
   unit, the fallback is the explained `unknown`. If neither is possible, that is a `BLOCKED.md`
@@ -507,27 +496,15 @@ Manual (a person, following steps in `docs/manual-acceptance.md` and the user do
   proves the password path and the file handling there; the finger itself needs a lab VM, which only a
   person may create. Settle by a person running the report's method on both; until then the command
   relies on its refusals.
-- **The invoking user under `sudo`.** Which source identifies the person for the reader and finger
-  checks of `enable` (`SUDO_UID`, `PKEXEC_UID`, the session of the controlling terminal), and what to do
-  under `pkexec` or `run0`. Settle by a finding; the check is advisory, so a wrong user can only refuse
-  wrongly, never widen access.
 - **Persistent journal detection** without root, across systemd 257 and later and each distribution's
   default (`Storage=auto` with or without `/var/log/journal`, drop-ins, volatile overrides), and the
   documented fix for each. Settle by a finding.
 - **Completion locations** per format and distribution (bash-completion's directory; zsh's vendor
   directory differs between Debian and Fedora or Arch; fish's vendor directory), and how completion
   obtains key ids quickly without a polkit agent. Settle by a finding.
-- **Whether fingerprint counts in `doctor`'s exit status** for a person who chooses the password. The
-  idea lists the fingerprint checks among what is missing, so the default counts them; a person may
-  prefer an option or a "not wanted" state. Settle by the person approving this spec.
-- **Whether package removal should warn** when Custodio's override is still in place (reading the file
-  only, never touching it). Default: no warning; the documents give the order. Settle by the person
-  approving this spec.
 - **Double fingerprint prompt** when the global switch and an override are both on (untested). `enable`
   refuses to add the override then; whether `doctor` should flag an existing combination of both (for
   example Omarchy's file plus the global switch) depends on observing it. Settle by a VM run.
 - **The GDM login screen.** Whether setting `enable-fingerprint-authentication` for the `gdm` user or
   in system dconf turns the fingerprint off at the login screen on Ubuntu 26.04 was not tested; the
   documents say so until a person tries it.
-- **Version number of this release.** The idea calls it a stabilisation of 0.8.0 but does not name the
-  version. Settle by the person approving this spec; the release notes and changelog follow it.
