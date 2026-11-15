@@ -130,6 +130,7 @@
 - *(F188)* Record the firefox snap run and fix the release documents
 - *(F188)* Record the session in progress.md
 - Close milestone M6
+- Note the register skip on debian and ubuntu with crypto-policies (#32)
 
 ### 🚜 Refactor
 
