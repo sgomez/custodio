@@ -8,7 +8,7 @@ use crate::help;
 use crate::register_native;
 
 pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
-       custodio list\n\
+       custodio list [[--] <key id>]\n\
        custodio delete <key id>\n\
        custodio register [--module <path>] [--remove | --refresh-only]\n\
 The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
@@ -19,7 +19,8 @@ Run 'custodio --help' for help.";
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Import(ImportArgs),
-    List,
+    /// `list`, or `list <id>`.
+    List(Option<String>),
     Delete(String),
     Register(register_native::RegisterArgs),
     /// `--help` or `-h`: the help of a command, or of the whole tool.
@@ -58,9 +59,23 @@ fn parse_known(name: &str, args: Vec<String>) -> Result<Command, ArgError> {
     let mut it = args.into_iter().peekable();
     it.next();
     match name {
-        "list" => it
-            .next()
-            .map_or(Ok(Command::List), |_| Err(ArgError::Usage)),
+        "list" => {
+            // As for `delete`: `--` ends the options, so an id that starts with `-` can be shown.
+            if it.peek().map(String::as_str) == Some("--") {
+                it.next();
+                return match (it.next(), it.next()) {
+                    (Some(id), None) => Ok(Command::List(Some(id))),
+                    _ => Err(ArgError::Usage),
+                };
+            }
+            if it.peek().is_some_and(|id| id.starts_with('-')) {
+                return Err(ArgError::Usage);
+            }
+            match (it.next(), it.next()) {
+                (id, None) => Ok(Command::List(id)),
+                _ => Err(ArgError::Usage),
+            }
+        }
         "register" => register_native::parse_register_args(it)
             .map(Command::Register)
             .ok_or(ArgError::Usage),

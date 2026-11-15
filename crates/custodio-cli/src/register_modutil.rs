@@ -7,7 +7,7 @@ use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::list::escape;
+use crate::cert_text::escape;
 use crate::register_native::{Options, Outcome};
 
 /// How much of each output stream of `modutil` is kept; the rest is read and dropped.

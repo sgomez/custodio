@@ -53,12 +53,17 @@ The password is never taken from arguments or the environment.",
     },
     CommandSpec {
         name: "list",
-        summary: "show your keys",
-        usage: "",
-        description: "Shows each of your keys, in order of key id. It takes no arguments and asks for no authorization.",
-        args: &[],
+        summary: "show your keys, or one key in full",
+        usage: "[[--] <key id>]",
+        description: "Shows one row for each of your keys, in order of key id: key id, key type, storage kind, subject and end of \
+validity. The subject is the common name of the certificate, or the whole subject if it has none. A note at the foot \
+explains the kinds encrypted-tpm and encrypted-host, which are weaker than tpm.\n\
+With a key id it shows that key in full: the whole subject, the issuer, the serial number, the start and end of \
+validity and the SHA-256 fingerprint. Write -- before a key id that starts with a dash. Text from a certificate is shown with its control characters escaped (\\x1b). \
+It asks for no authorization.",
+        args: &[("<key id>", "show this key in full, not as a row")],
         options: &[],
-        example: "custodio list",
+        example: "custodio list work",
     },
     CommandSpec {
         name: "delete",

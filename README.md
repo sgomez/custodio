@@ -49,13 +49,15 @@ lose the key in Custodio, only the original `.p12` brings it back; Custodio cann
 
 ```console
 $ custodio list
-id: ana
-  type: ecdsa-p256
-  kind: encrypted-host
-  note: This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-  subject: CN=custodio test p256
-  valid until: 2126-10-03T16:05:48Z
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03T16:05:48Z
+
+Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it is a file that root can use while the machine runs. See README.md#storage-kinds.
 ```
+
+Each row is a key: its id, key type, storage kind, the common name of its certificate and the end of its validity. Text
+from a certificate is shown with its control characters escaped, so it cannot change your screen. `custodio list ana`
+shows that one key in full: the whole subject, the issuer, the serial number, the start of the validity and the SHA-256
+fingerprint of the certificate.
 
 `custodio delete <key id>` asks you to type `yes` and then polkit. You only see and sign with your own keys. Over SSH or on
 a console without a graphical polkit agent, `import` and `delete` ask for the password on the terminal. Details in

@@ -104,7 +104,7 @@ fn plain(bytes: &[u8]) -> String {
 }
 
 const HELP: [&[&str]; 2] = [&["--help"], &["list", "--help"]];
-const USAGE_ERROR: &[&str] = &["list", "extra"];
+const USAGE_ERROR: &[&str] = &["list", "extra", "more"];
 
 #[test]
 fn two_pipes_have_no_escape_sequence() -> Res {

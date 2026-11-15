@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::browser_files::LockState;
-use crate::list::escape;
+use crate::cert_text::escape;
 use crate::register_discover::{Profile, SNAP_NAME};
 use crate::register_native::{Line, Options, Outcome, handle};
 

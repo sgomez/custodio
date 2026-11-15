@@ -98,7 +98,7 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
         &["import", "--password", "x", "a.p12"],
         &["import", "--id", "a", "--id", "b", "a.p12"],
         &["import", "my cert.p12"],
-        &["list", "extra"],
+        &["list", "extra", "more"],
         &["list", "--id", "x"],
         &["delete"],
         &["delete", "a", "b"],

@@ -97,7 +97,7 @@ fn the_usage_line_of_each_command_starts_with_it() {
     }
     assert_eq!(
         command("list").map(CommandSpec::usage_line),
-        Some("custodio list".to_owned())
+        Some("custodio list [[--] <key id>]".to_owned())
     );
     assert!(command("delete").is_some_and(|c| c.usage_line() == "custodio delete [--] <key id>"));
 }

@@ -13,13 +13,14 @@ use zeroize::Zeroizing;
 pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use help::{COMMANDS, CommandSpec, OptionSpec};
-pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
+pub use list::{KeyEntry, KeyLister, ListFailure, run_list, run_show};
 pub use parse::{ArgError, Command, ImportArgs, USAGE, fuzz_cli_args, parse_args, parse_command};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
 pub mod browser_files;
 pub mod bus;
+pub mod cert_text;
 pub mod colour;
 pub mod delete;
 pub mod error;
@@ -104,21 +105,9 @@ See \"TPM capabilities\" in docs/api.md for what each key type needs."
             .to_owned(),
         Kind::Unknown(text) => format!(
             "Storage: {}. This CLI does not know this kind, so it cannot say what the key is protected against.",
-            list::escape(text)
+            cert_text::escape(text)
         ),
     }
-}
-
-/// The sentence `custodio list` adds under a key whose kind is weaker than a TPM key: the reason
-/// of [`kind_text`], without its `Storage:` prefix and without the pointer line. A `tpm` key and a
-/// kind this CLI does not know get none.
-pub(crate) fn weaker_note(kind: &Kind) -> Option<String> {
-    if !matches!(kind, Kind::EncryptedHost | Kind::EncryptedTpm) {
-        return None;
-    }
-    let text = kind_text(kind);
-    let first = text.lines().next()?;
-    first.split_once(". ").map(|(_, reason)| reason.to_owned())
 }
 
 /// Read the file, ask for the password, send both to the service, then tell the person to delete
@@ -144,7 +133,7 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         out,
         "Imported key '{}' ({}).",
         args.id,
-        list::escape(&key_type)
+        cert_text::escape(&key_type)
     );
     let _ = writeln!(out, "{}", kind_text(&kind));
     let _ = writeln!(
@@ -183,6 +172,22 @@ pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
     err: &mut E,
 ) -> Result<(), ListFailure> {
     run_list(lister, out)?;
+    storage::warn(storage, err);
+    Ok(())
+}
+
+/// `custodio list <id>`: [`run_show`], then the storage warning like [`list_command`].
+///
+/// # Errors
+/// See [`ListFailure`]; the warning never adds one.
+pub fn show_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
+    lister: &L,
+    storage: &S,
+    id: &str,
+    out: &mut W,
+    err: &mut E,
+) -> Result<(), ListFailure> {
+    run_show(lister, id, out)?;
     storage::warn(storage, err);
     Ok(())
 }

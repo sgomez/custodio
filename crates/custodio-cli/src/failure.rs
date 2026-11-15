@@ -105,7 +105,7 @@ impl ServiceFailure {
             Self::Unknown(name) => {
                 return format!(
                     "the service answered with an unknown error ({})",
-                    crate::list::escape(name)
+                    crate::cert_text::escape(name)
                 );
             }
         };

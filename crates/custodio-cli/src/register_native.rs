@@ -10,7 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::browser_files::{FileError, LockState, read_bounded};
-use crate::list::escape;
+use crate::cert_text::escape;
 pub use crate::register_cli::{
     Refusal, RegisterArgs, RegisterError, default_journal_socket, parse_register_args,
     refresh_only_command, refuse_root_and_sudo, register_command,

@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use custodio_cli::bus::DbusImporter;
-use custodio_cli::list::NO_KEYS;
+use custodio_cli::list::{NO_KEYS, NONE_HINT, WEAKER_NOTE};
 use custodio_cli::{
     CliError, ImportArgs, ListFailure, PasswordPrompt, ServiceFailure, exit_status, finish,
     run_import, run_list,
@@ -300,14 +300,9 @@ struct Listed {
     status: u8,
 }
 
-/// The reason `custodio list` gives under a key that is `encrypted-host` (the text of the import notice).
-const NOTE: &str = "This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.";
-
-/// The rig has no TPM, so every key it imports is `encrypted-host`.
-fn block(id: &str, kind: &str, subject: &str, until: &str) -> String {
-    format!(
-        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  note: {NOTE}\n  subject: {subject}\n  valid until: {until}\n"
-    )
+/// The rig has no TPM, so every key it imports is `encrypted-host`: the rows are followed by the one note.
+fn with_note(rows: &str) -> String {
+    format!("{rows}\n{WEAKER_NOTE}\n")
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -335,16 +330,9 @@ fn several_keys_show_their_own_id_type_subject_and_end_of_validity() -> TestResu
     // Sorted by id; each key keeps its own subject and end of validity.
     assert_eq!(
         listed.stdout,
-        block(
-            "ec",
-            "ecdsa-p256",
-            "CN=custodio test p256-recert",
-            "2126-10-08T20:52:07Z"
-        ) + &block(
-            "rsa",
-            "rsa2048",
-            "CN=custodio test rsa2048",
-            "2126-10-03T16:05:48Z"
+        with_note(
+            "ec   ecdsa-p256  encrypted-host  custodio test p256-recert  2126-10-08T20:52:07Z\n\
+             rsa  rsa2048     encrypted-host  custodio test rsa2048      2126-10-03T16:05:48Z\n"
         )
     );
     assert!(!listed.stdout.contains(NO_KEYS));
@@ -363,7 +351,7 @@ fn no_keys_says_so_with_status_0_and_nothing_on_stderr() -> TestResult {
     let listed = rig.list();
     assert!(listed.result.is_ok());
     assert_eq!(listed.status, 0);
-    assert_eq!(listed.stdout, format!("{NO_KEYS}\n"));
+    assert_eq!(listed.stdout, format!("{NO_KEYS}\n{NONE_HINT}\n"));
     assert_eq!(listed.stderr, "");
     assert_eq!(rig.polkit_calls(), 0);
     Ok(())
@@ -390,7 +378,7 @@ fn a_service_error_shows_the_message_of_its_name_and_no_key_line() -> TestResult
             .stderr
             .contains(&ServiceFailure::AuthorizationUnavailable.message())
     );
-    assert!(!listed.stderr.contains("id: ec"));
+    assert!(!listed.stderr.contains("ec "));
     assert_eq!(rig.polkit_calls(), asked);
     Ok(())
 }
@@ -430,35 +418,25 @@ fn two_uids_see_only_their_own_keys_even_with_the_same_id() -> TestResult {
     let a = rig.list();
     assert_eq!(
         a.stdout,
-        block(
-            "only-a",
-            "rsa2048",
-            "CN=custodio test rsa2048",
-            "2126-10-03T16:05:48Z"
-        ) + &block(
-            "shared",
-            "ecdsa-p256",
-            "CN=custodio test p256",
-            "2126-10-03T16:05:48Z"
+        with_note(
+            "only-a  rsa2048     encrypted-host  custodio test rsa2048  2126-10-03T16:05:48Z\n\
+             shared  ecdsa-p256  encrypted-host  custodio test p256     2126-10-03T16:05:48Z\n"
         )
     );
     rig.as_uid(UID_B);
     let b = rig.list();
     assert_eq!(
         b.stdout,
-        block(
-            "shared",
-            "ecdsa-p256",
-            "CN=custodio test p256-other",
-            "2126-10-03T16:05:48Z"
+        with_note(
+            "shared  ecdsa-p256  encrypted-host  custodio test p256-other  2126-10-03T16:05:48Z\n"
         )
     );
     assert!(!b.stdout.contains("only-a") && !b.stdout.contains("rsa2048"));
-    assert!(!b.stdout.contains("CN=custodio test p256\n"));
+    assert!(!b.stdout.contains("test p256  "));
     assert!(!a.stdout.contains("p256-other"));
     rig.as_uid(UID_C);
     let c = rig.list();
-    assert_eq!(c.stdout, format!("{NO_KEYS}\n"));
+    assert_eq!(c.stdout, format!("{NO_KEYS}\n{NONE_HINT}\n"));
     assert_eq!((a.status, b.status, c.status), (0, 0, 0));
     assert_eq!(
         rig.polkit_calls(),

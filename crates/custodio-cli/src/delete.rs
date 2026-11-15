@@ -6,8 +6,8 @@
 use std::fmt;
 use std::io::{self, Write};
 
+use crate::cert_text::escape;
 use crate::failure::ServiceFailure;
-use crate::list::escape;
 
 /// The answers that confirm, exactly as typed (the line ending removed). Everything else, an
 /// empty line and the end of input included, declines.

@@ -6,8 +6,9 @@
 //! characters escaped, so it cannot move the cursor or start a line of its own. A password and key
 //! bytes are never in an error value, so they cannot reach a message.
 
+use crate::cert_text::escape;
 use crate::delete::DeleteFailure;
-use crate::list::{ListFailure, escape};
+use crate::list::ListFailure;
 use crate::register_cli::{Refusal, RegisterError};
 use crate::register_native::RunError;
 use crate::{ArgError, CliError, ImportFailure, ServiceFailure};
@@ -89,6 +90,10 @@ fn list(error: &ListFailure) -> (String, String) {
             format!(
                 "The keys are intact: run 'custodio list' again, and if it persists, {REPORT}."
             ),
+        ),
+        ListFailure::UnknownId(id) => (
+            format!("custodio: you have no key with the id '{id}'"),
+            "Run 'custodio list' to see the ids of your keys.".to_owned(),
         ),
         ListFailure::Output(e) => (
             format!("custodio: cannot write the list: {e}"),

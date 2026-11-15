@@ -38,7 +38,7 @@ fn help_flag_with_anything_else_is_a_usage_error() {
 #[test]
 fn a_bad_line_of_a_known_command_names_the_command() {
     for bad in [
-        &["list", "x"][..],
+        &["list", "x", "y"][..],
         &["delete"],
         &["delete", "-x"],
         &["register", "--nope"],
@@ -60,7 +60,7 @@ fn a_bad_line_of_a_known_command_names_the_command() {
 
 #[test]
 fn the_commands_parse_as_before() {
-    assert_eq!(args(&["list"]), Ok(Command::List));
+    assert_eq!(args(&["list"]), Ok(Command::List(None)));
     assert_eq!(
         args(&["delete", "--", "-k"]),
         Ok(Command::Delete("-k".into()))

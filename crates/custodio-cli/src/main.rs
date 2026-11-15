@@ -17,6 +17,7 @@ use custodio_cli::register_native::{
 use custodio_cli::tty::Terminal;
 use custodio_cli::{
     CliError, Command, finish, import_command, list_command, parse_command, run_delete,
+    show_command,
 };
 
 /// `register` edits files only: it needs no bus.
@@ -80,8 +81,12 @@ fn run() -> Result<(), CliError> {
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
             .map_err(CliError::Delete),
         Command::Register(_) | Command::Help(_) => unreachable!("handled before the bus is opened"),
-        Command::List => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
+        Command::List(None) => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
             .map_err(CliError::List),
+        Command::List(Some(id)) => {
+            show_command(&bus, &storage, &id, &mut io::stdout(), &mut io::stderr())
+                .map_err(CliError::List)
+        }
     }
 }
 

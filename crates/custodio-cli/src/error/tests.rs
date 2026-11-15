@@ -47,9 +47,16 @@ fn samples() -> Vec<CliError> {
         all.push(CliError::List(ListFailure::Service(f.clone())));
         all.push(CliError::Delete(DeleteFailure::Service(f)));
     }
-    for f in [ListFailure::Unreadable(3), ListFailure::Output(io_err())] {
+    for f in [
+        ListFailure::Unreadable(3),
+        ListFailure::Output(io_err()),
+        ListFailure::UnknownId("a\nSENTINEL-LINE b\u{1b}[31m".into()),
+    ] {
         match &f {
-            ListFailure::Service(_) | ListFailure::Unreadable(_) | ListFailure::Output(_) => {}
+            ListFailure::Service(_)
+            | ListFailure::Unreadable(_)
+            | ListFailure::Output(_)
+            | ListFailure::UnknownId(_) => {}
         }
         all.push(CliError::List(f));
     }
@@ -269,4 +276,15 @@ fn import_errors_say_what_failed_and_what_to_do() {
         "{pw}"
     );
     assert!(pw.contains("from a terminal"), "{pw}");
+}
+
+#[test]
+fn an_unknown_key_id_is_two_lines_naming_list_with_the_id_escaped() {
+    let text = render(&CliError::List(ListFailure::UnknownId(
+        "a\nb\u{1b}[31m".into(),
+    )));
+    assert_eq!(
+        text,
+        "custodio: you have no key with the id 'a\\x0ab\\x1b[31m'\nRun 'custodio list' to see the ids of your keys."
+    );
 }

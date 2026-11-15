@@ -176,7 +176,7 @@ pub fn refresh_only_command<W: io::Write, E: io::Write>(
         let _ = writeln!(
             err,
             "custodio: {}\ncheck that systemd-journald runs: systemctl status systemd-journald",
-            crate::list::escape(&format!(
+            crate::cert_text::escape(&format!(
                 "cannot write to the journal at {}: {e}",
                 journal.display()
             ))

@@ -364,6 +364,7 @@ dependencies = [
  "custodio-client",
  "rustix",
  "secrecy",
+ "sha2",
  "tempfile",
  "x509-cert",
  "zbus",

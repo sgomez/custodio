@@ -7,6 +7,7 @@ custodio \- import, list and delete keys of the custodio signing service
 .I file.p12
 .br
 .B custodio list
+[\fIkey id\fR]
 .br
 .B custodio delete
 .I key id
@@ -23,25 +24,46 @@ The file password is asked on the terminal.
 It is never taken from the arguments or from the environment.
 .PP
 .B list
-shows each of your keys, in order of key id.
-For every key it prints four lines: its
+shows one row for each of your keys, in order of key id, with these columns:
+the
 .I id
 (the key id),
-its
+the
 .I type
 (\fBrsa2048\fR or \fBecdsa\-p256\fR),
+the storage
+.I kind
+(\fBtpm\fR, \fBencrypted\-tpm\fR or \fBencrypted\-host\fR),
 the
 .I subject
 of its certificate, and the end of its validity
-.RI ( "valid until" ,
-the certificate's notAfter, in UTC).
+(the certificate's notAfter, in UTC).
+The subject is shown as the common name of the certificate, or as the whole subject (RFC 4514) if it has no
+readable common name.
+If any key is
+.B encrypted\-tpm
+or
+.BR encrypted\-host ,
+one note at the foot says that these kinds are weaker than
+.B tpm
+and points to the README.
 If a certificate cannot be read, the key is still listed, its subject and end of validity
 are shown as "certificate unreadable", and the exit status is 1.
-Control characters in any of these texts are shown as \fB\\x\fINN\fR escapes.
+Control characters and other characters that could change the screen in any of these texts
+are shown as \fB\\x\fINN\fR or \fB\\u{\fINNNN\fB}\fR escapes.
 Only your own keys are listed.
-If you have none, it prints a sentence saying so and exits with status 0.
+If you have none, it prints a sentence saying so and how to import one, and exits with status 0.
+.PP
 .B list
-takes no arguments and does not ask for authorization: it never calls polkit.
+with a
+.I key id
+shows that key in full instead: the same fields, and also the whole subject, the issuer, the serial number,
+the start of the validity and the SHA\-256 fingerprint of the certificate.
+If you have no key with that id, it says so, names
+.BR "custodio list" ,
+and exits with status 1.
+.B list
+does not ask for authorization: it never calls polkit.
 .PP
 After a successful
 .B import
