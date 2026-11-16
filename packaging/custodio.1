@@ -15,6 +15,9 @@ custodio \- import, list and delete keys of the custodio signing service
 .B custodio register
 [\fB\-\-module\fR \fIpath\fR]
 [\fB\-\-remove\fR | \fB\-\-refresh\-only\fR]
+.br
+.B custodio fingerprint
+.RB ( enable | disable )
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -161,6 +164,28 @@ The outcome (\fBrefreshed\fR, up to date, no copy, no installed module, or the f
 A journal that cannot be reached is reported on standard error and does not change the exit status.
 It cannot be combined with
 .BR \-\-remove .
+.PP
+.B fingerprint enable
+writes
+.IR /etc/pam.d/polkit-1 ,
+so that every polkit dialog, Custodio's among them, first accepts a finger (\fBpam_fprintd.so\fR, one try, 10 seconds)
+and falls back to the password after a wrong finger or without a touch.
+.BR sudo (8)
+and the login are unchanged.
+It must run as root.
+It refuses, names the reason and the next step, and changes nothing when the file exists and is not exactly the one it writes
+(an administrator's, a symlink, a changed copy), when polkit's vendor file or \fBpam_fprintd.so\fR or \fBfprintd\fR is missing
+(it names the packages), or when fingerprint is already on for the whole system, which would make the override redundant.
+Without a reader it writes the file and warns that polkit keeps asking for the password until there is one; run \fBcustodio doctor\fR to see what is missing.
+The file is written whole or not at all, mode 0644, owner root, with the SELinux label the policy gives it.
+Running it again changes nothing.
+On GNOME it adds a note that an enrolled finger may also unlock the lock screen; it changes no setting.
+.PP
+.B fingerprint disable
+removes the file, only if it is exactly the one
+.B enable
+writes; with no file it says so and succeeds, and with any other file it refuses.
+It takes no options.
 .PP
 When standard input is a terminal,
 .B import

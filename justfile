@@ -231,6 +231,10 @@ fixture-seams:
     cargo build --release --locked -p custodio-cli
     scripts/check-fixture-seams.sh target/release/custodio-cli
     scripts/check-fixture-seams.sh
+    # The check sees the real seam: a debug build with the feature must fail it, naming all three variables.
+    cargo build --locked -p custodio-cli --features fixture-root
+    if scripts/check-fixture-seams.sh target/debug/custodio-cli 2> target/fixture-seams.err; then echo "fixture-seams: the check passed a build that has the seam" >&2; exit 1; fi
+    for v in CUSTODIO_FIXTURE_ROOT CUSTODIO_FIXTURE_EUID CUSTODIO_FIXTURE_FAIL; do grep -q "$v" target/fixture-seams.err || { echo "fixture-seams: the check did not see $v in a build with the seam" >&2; exit 1; }; done
 
 # The exposure of the service is not above M5's 0.7 (tenths of the 0-10 score of `systemd-analyze security`: 7; lower is safer). F170 measured
 # `PrivateUsers=identity` at 0.7 and `no` at 0.8, so the uid route cannot be paid for by loosening something else.
@@ -342,7 +346,9 @@ mutants *args:
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --file crates/custodio-pkcs11/src/backend/socket.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-peer --file crates/custodio-peer/src/lib.rs --no-shuffle --colors never --output target/mutants-peer "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
-    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --file crates/custodio-cli/src/colour.rs --file crates/custodio-cli/src/error.rs --file crates/custodio-cli/src/cert_text.rs --file crates/custodio-cli/src/list.rs --file crates/custodio-cli/src/fingerprint_decide.rs --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
+    # custodio-cli: apply_owner (chown root:root) and apply_label (SELinux) of fingerprint_cmd.rs are only a system call each and need real root and
+    # SELinux; F199 proves them on a real /etc. They are excluded by name, and nothing else is (the label step's failure path is tested).
+    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --file crates/custodio-cli/src/colour.rs --file crates/custodio-cli/src/error.rs --file crates/custodio-cli/src/cert_text.rs --file crates/custodio-cli/src/list.rs --file crates/custodio-cli/src/fingerprint_decide.rs --file crates/custodio-cli/src/fingerprint_cmd.rs --exclude-re 'fingerprint_cmd\.rs.*(replace apply_(owner|label)\b| in apply_(owner|label)$)' --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
     for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client target/mutants-cli; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then

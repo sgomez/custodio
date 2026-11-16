@@ -98,6 +98,10 @@ fn samples() -> Vec<CliError> {
         }
         all.push(CliError::Register(e));
     }
+    all.push(CliError::Fingerprint(crate::fingerprint_cmd::Failure::Io {
+        what: "cannot write",
+        error: io_err(),
+    }));
     match all.first() {
         Some(
             CliError::Args(_)
@@ -105,7 +109,8 @@ fn samples() -> Vec<CliError> {
             | CliError::Import(_)
             | CliError::List(_)
             | CliError::Delete(_)
-            | CliError::Register(_),
+            | CliError::Register(_)
+            | CliError::Fingerprint(_),
         )
         | None => {}
     }

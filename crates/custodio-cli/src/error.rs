@@ -58,6 +58,7 @@ fn lines(error: &CliError) -> (String, String) {
         CliError::List(e) => list(e),
         CliError::Delete(e) => delete(e),
         CliError::Register(e) => register(e),
+        CliError::Fingerprint(e) => fingerprint(e),
     }
 }
 
@@ -117,6 +118,20 @@ fn delete(error: &DeleteFailure) -> (String, String) {
         DeleteFailure::Output(e) => (
             format!("custodio: the key was deleted but the output failed: {e}"),
             "Nothing more to do: run 'custodio list' to see the keys that are left.".to_owned(),
+        ),
+    }
+}
+
+fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
+    use crate::fingerprint_cmd::Failure;
+    match error {
+        Failure::Refused(r) => {
+            let (what, next) = r.lines();
+            (what.to_owned(), next.to_owned())
+        }
+        Failure::Io { what, error } => (
+            format!("custodio fingerprint: {what}: {error}"),
+            "Nothing was left behind. Check /etc/pam.d (free space, read-only mount, SELinux) and run the command again.".to_owned(),
         ),
     }
 }

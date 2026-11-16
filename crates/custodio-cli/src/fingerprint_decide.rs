@@ -182,6 +182,12 @@ impl Refusal {
         }
     }
 
+    /// The two lines: what is wrong, and the next step.
+    #[must_use]
+    pub fn lines(&self) -> (&str, &str) {
+        (&self.what, &self.next)
+    }
+
     /// The two lines, without a final newline.
     #[must_use]
     pub fn message(&self) -> String {

@@ -4,6 +4,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use crate::fingerprint_cmd::Action;
 use crate::help;
 use crate::register_native;
 
@@ -11,6 +12,7 @@ pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
        custodio list [[--] <key id>]\n\
        custodio delete <key id>\n\
        custodio register [--module <path>] [--remove | --refresh-only]\n\
+       custodio fingerprint (enable | disable)\n\
 The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
 arguments or the environment.\n\
 Run 'custodio --help' for help.";
@@ -23,6 +25,7 @@ pub enum Command {
     List(Option<String>),
     Delete(String),
     Register(register_native::RegisterArgs),
+    Fingerprint(crate::fingerprint_cmd::Action),
     /// `--help` or `-h`: the help of a command, or of the whole tool.
     Help(Option<&'static str>),
 }
@@ -76,6 +79,11 @@ fn parse_known(name: &str, args: Vec<String>) -> Result<Command, ArgError> {
                 _ => Err(ArgError::Usage),
             }
         }
+        "fingerprint" => match (it.next().as_deref(), it.next()) {
+            (Some("enable"), None) => Ok(Command::Fingerprint(Action::Enable)),
+            (Some("disable"), None) => Ok(Command::Fingerprint(Action::Disable)),
+            _ => Err(ArgError::Usage),
+        },
         "register" => register_native::parse_register_args(it)
             .map(Command::Register)
             .ok_or(ArgError::Usage),

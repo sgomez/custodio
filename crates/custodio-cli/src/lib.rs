@@ -25,6 +25,7 @@ pub mod colour;
 pub mod delete;
 pub mod error;
 pub mod failure;
+pub mod fingerprint_cmd;
 pub mod fingerprint_decide;
 pub mod help;
 pub mod list;
@@ -205,6 +206,7 @@ pub enum CliError {
     List(ListFailure),
     Delete(DeleteFailure),
     Register(register_native::RegisterError),
+    Fingerprint(fingerprint_cmd::Failure),
 }
 
 impl fmt::Display for CliError {
@@ -216,6 +218,7 @@ impl fmt::Display for CliError {
             Self::List(e) => write!(f, "custodio: {e}"),
             Self::Delete(e) => write!(f, "custodio: {e}"),
             Self::Register(e) => write!(f, "{e}"),
+            Self::Fingerprint(e) => write!(f, "{e}"),
         }
     }
 }
@@ -235,7 +238,8 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
             | CliError::Import(_)
             | CliError::List(_)
             | CliError::Delete(_)
-            | CliError::Register(_),
+            | CliError::Register(_)
+            | CliError::Fingerprint(_),
         ) => 1,
     }
 }

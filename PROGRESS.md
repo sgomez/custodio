@@ -176,3 +176,15 @@ with an empty context.
   Still to do in step 3/6: a positive run on a real build with the feature (`cargo build -p custodio-cli --features fixture-root`) as a step of the test script,
   once the feature exists; the check looks for the strings `CUSTODIO_FIXTURE_ROOT`, `_EUID`, `_FAIL`, so the seam code must hold them as literals.
 - Remaining: steps 3, 4, 6. Step 3 is the large one: start with `tests/fingerprint.rs` and the feature `fixture-root = []` in custodio-cli/Cargo.toml.
+
+### 2026-11-16 — F197 — attempt 1 (continued: steps 3, 4)
+- Done: `src/fingerprint_cmd.rs` (observe → `decide_*` → apply), `Command::Fingerprint`, `CliError::Fingerprint`, help entry, man page, error rendering. Seam: cargo feature
+  `fixture-root` (custodio-cli dev-dependency on itself, so test binaries have it; release builds do not), reading `CUSTODIO_FIXTURE_ROOT|EUID|FAIL`. With a fixture root the owner and
+  label calls are skipped (F199 proves them); `FAIL=rename|label` fail after the temp file is written. The label step runs `restorecon -F` after the no-clobber rename
+  (`renameat2 NOREPLACE`) where `/sys/fs/selinux/enforce` is 1, and removes the file on failure.
+- Decisions: fprintd "installed" = the D-Bus service file `usr/share/dbus-1/system-services/net.reactivated.Fprint.service`; the module is searched in `{usr/,}lib{,64}/security` and
+  `{usr/,}lib{,64}/*/security`; the reader probe (`GetDevices`, limit 1.5 s, a thread with `recv_timeout`) runs only when the decision is "write"; unanswered = no reader.
+- Tests: `tests/fingerprint.rs` 16 tests, 1.5 s (private `dbus-daemon` + a fake `net.reactivated.Fprint` that records calls; delay case 2 s vs the 1.5 s limit). `tests/help.rs` passes.
+  `just fixture-seams` now also builds debug with `--features fixture-root` and requires the check to fail naming all three variables (the real-seam positive run).
+- Mutants recipe: `fingerprint_cmd.rs` added; `--exclude-re` matches only `apply_owner` / `apply_label` (comment names F199). `just quick` green.
+- Remaining: step 6 (`mutants-diff F197`, other evidence).

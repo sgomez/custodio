@@ -361,6 +361,7 @@ name = "custodio-cli"
 version = "0.8.0"
 dependencies = [
  "ctrlc",
+ "custodio-cli",
  "custodio-client",
  "rustix",
  "secrecy",

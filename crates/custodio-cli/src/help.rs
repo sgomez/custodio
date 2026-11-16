@@ -104,6 +104,23 @@ It refuses to run as root, needs no authorization and does not use the service."
         ],
         example: "custodio register --module /usr/lib/custodio/libcustodio_pkcs11.so",
     },
+    CommandSpec {
+        name: "fingerprint",
+        summary: "let a finger answer polkit dialogs (enable) or stop that (disable)",
+        usage: "enable | disable",
+        description: "enable writes /etc/pam.d/polkit-1 so that every polkit dialog, Custodio's among them, first accepts a finger \
+and falls back to the password after a wrong finger or 10 s without a touch. sudo and the login are unchanged.\n\
+It refuses, and changes nothing, when it is not run as root, when that file is not Custodio's, when pam_fprintd.so or fprintd is not installed \
+(it names the packages), or when fingerprint is already on for the whole system. With no reader it writes the file and warns. \
+Running it twice changes nothing. On GNOME it says that an enrolled finger may also unlock the lock screen; it changes no setting.\n\
+disable removes the file, only if it is Custodio's.",
+        args: &[
+            ("enable", "write the polkit override"),
+            ("disable", "remove it"),
+        ],
+        options: &[],
+        example: "custodio fingerprint enable",
+    },
 ];
 
 /// The command named `name`.
@@ -135,7 +152,7 @@ pub fn global() -> String {
 Usage:\n  custodio <command> [arguments]\n\nCommands:\n",
     );
     for c in COMMANDS {
-        let _ = writeln!(text, "  {:<10}{}", c.name, c.summary);
+        let _ = writeln!(text, "  {:<13}{}", c.name, c.summary);
     }
     text.push_str(
         "\nOptions:\n  -h, --help  show this help\n\n\
