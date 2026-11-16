@@ -148,3 +148,8 @@ with an empty context.
 - No journal field added (optional); `start_journals_storage_field` is unchanged and `docs/audit.md` is not touched.
 - Evidence: `just quick` green, `just api-contract`, `scripts/test-docs-api.sh`, the three `--test` targets pass; `snap_socket_surface` (in `it`, run by `just quick`) passes;
   `just mutants-diff F196`: 40 mutants, 29 caught, 11 unviable, 0 missed (6 min 13 s; no budget row).
+
+### 2026-11-16 — F196 — attempt 2
+- Done (finding 1): a node named `dm-*` without `dm/` is now `sysfs-incomplete` (F189's kernel gap); the fixture has a populated `slaves/`. Finding 2: api.md wording fixed.
+  Finding 3: dropped `a_reason_goes_with_unknown_and_only_with_it` (the table check already pairs verdict and reason; product coverage unchanged).
+- Evidence: `just quick`, `just api-contract`, `scripts/test-docs-api.sh`, `storage_stability`, `state_storage`, `storage_api` pass; `just mutants-diff F196`: 40 mutants, 29 caught, 11 unviable, 0 missed (6 min).
