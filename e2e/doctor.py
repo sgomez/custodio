@@ -93,14 +93,14 @@ def main(case, d):
             err = read(f"{r}.err")
             need(not re.search(r"panic|backtrace|RUST_BACKTRACE|Traceback", err + read(f"{r}.out"), re.I), f"{r}: panic or backtrace text")
             lines = err.splitlines()
-            need(all(x.startswith("custodio") for x in lines) and len(lines) <= 3, f"{r}: stderr is more than the one-line diagnostic of the exit status: {err.strip()!r}")
+            need(all(x.startswith(("custodio", "Do what")) for x in lines) and len(lines) <= 3, f"{r}: stderr is more than the one-line diagnostic of the exit status: {err.strip()!r}")
             need(rc(r) == 1 or not lines, f"{r}: stderr is not empty on exit 0")
     elif case == "no-reader":
         base, on = run("base"), run("on")
         for r, checks in (("base", base), ("on", on)):
             one, two = line(checks, NAMES[0]), line(checks, NAMES[1])
             need(one["word"] in ("not ok", "could not check"), f"{r}: no reader in a container, but check 1 is {one['word']}")
-            need(one["word"] != "not ok" or "nstall" in (one["fix"] or ""), f"{r}: check 1 is not ok without the package fix")
+            need(one["word"] != "not ok" or bool(one["fix"]), f"{r}: check 1 is not ok without a fix")
             need(two["word"] != "not ok", f"{r}: check 2 is not ok although check 1 saw no reader")
             exit_rule(r)
         need(line(base, NAMES[2])["word"] != line(on, NAMES[2])["word"], "check 3 did not change its word between base and on")

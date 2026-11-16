@@ -21,20 +21,22 @@ DROPIN=$DROPIN_DIR/50-persistent.conf
 TUSER=docuser
 command -v custodio > /dev/null || fail "custodio is not installed"
 obs() { cat > "$OBS/$1"; }
-manifest() { # PATH...: path type mode owner mtime hash, one line each; an absent path says so
-    local p f h
+manifest() { # PATH...: path type mode owner mtime hash, one line each; an absent path says so. NO_DIR_MTIME=1: no mtime for a directory (staging an entry changes its parent's; the listing shows entries)
+    local p f h t
     for p in "$@"; do
         if [ ! -e "$p" ] && [ ! -L "$p" ]; then echo "$p absent"; continue; fi
         find "$p" -print0 | sort -z | while IFS= read -r -d '' f; do
             h=-
             if [ -f "$f" ] && [ ! -L "$f" ]; then h=$(sha256sum < "$f" | cut -c1-64); fi
-            echo "$f $(stat -c '%F %a %U:%G %Y' -- "$f" | tr ' ' '_') $h"
+            t=%Y
+            if [ -n "${NO_DIR_MTIME:-}" ] && [ -d "$f" ]; then t=-; fi
+            echo "$f $(stat -c "%F %a %U:%G $t" -- "$f" | tr ' ' '_') $h"
         done
     done
 }
 INCLUDE=/nonexistent
 # /etc without exactly the staged paths: the override, the file it moved aside, the include and its aside name, the drop-in and its directory
-etc_manifest() { manifest /etc | grep -vE "^($OVERRIDE|$ASIDE|$INCLUDE|$INCLUDE\.doctor-aside|$DROPIN|$DROPIN_DIR) " || true; }
+etc_manifest() { NO_DIR_MTIME=1 manifest /etc | grep -vE "^($OVERRIDE|$ASIDE|$INCLUDE|$INCLUDE\.doctor-aside|$DROPIN|$DROPIN_DIR) " || true; }
 HOME_DIR=''
 journal_staged=''
 made_dir=''
@@ -44,6 +46,7 @@ cleanup() {
     [ -z "$cleaned" ] || return 0
     cleaned=1
     set +e
+    systemctl unmask --runtime custodio.service > /dev/null 2>&1
     systemctl start custodio.service > /dev/null 2>&1
     [ ! -e "$INCLUDE.doctor-aside" ] || mv -f "$INCLUDE.doctor-aside" "$INCLUDE"
     if [ -e "$OVERRIDE" ] && [ -e "$ASIDE" ]; then custodio fingerprint disable > /dev/null 2>&1; [ ! -e "$OVERRIDE" ] || rm -f "$OVERRIDE"; fi
@@ -78,7 +81,7 @@ storage=$(systemd-analyze cat-config systemd/journald.conf 2> /dev/null | sed -n
 storage=${storage:-auto}
 if [ -d /var/log/journal ]; then echo 1; else echo 0; fi | obs journal.dir
 echo "$storage" | obs journal.storage
-manifest "$HOME_DIR" | obs home.before
+NO_DIR_MTIME=1 manifest "$HOME_DIR" | obs home.before
 etc_manifest | obs etc.before
 
 udoc base
@@ -143,13 +146,15 @@ udoc nofox
 rm -f "$HOME_DIR/.mozilla"
 
 # the service stopped
+systemctl mask --runtime custodio.service > /dev/null 2>&1 # the bus would start it again for the call
 systemctl stop custodio.service
 udoc nosvc
+systemctl unmask --runtime custodio.service
 systemctl start custodio.service
 for _ in $(seq 50); do busctl --system call com.rfirma.Custodio1 /com/rfirma/Custodio1 org.freedesktop.DBus.Peer Ping > /dev/null 2>&1 && break; sleep 0.2; done
 
 echo "$runs" | tr ' ' '\n' | grep -v '^$' | obs runs
-manifest "$HOME_DIR" | obs home.after
+NO_DIR_MTIME=1 manifest "$HOME_DIR" | obs home.after
 etc_manifest | obs etc.after
 
 # root is refused
@@ -165,5 +170,10 @@ for c in six-checks no-reader override-active broken-include no-firefox-profile 
 doctor-$c: $out"
     [ -n "$out" ] || case_run "doctor-$c"
 done
-[ -z "$problems" ] || fail "doctor cases:$problems"
+if [ -n "$problems" ]; then # what the judge saw, for the run record
+    cat "$OBS/base.out" "$OBS/nosvc.out" "$OBS/nofox.out" >&2
+    diff "$OBS/etc.before" "$OBS/etc.after" | head -n 10 >&2 || true
+    diff "$OBS/home.before" "$OBS/home.after" | head -n 10 >&2 || true
+    fail "doctor cases:$problems"
+fi
 echo "doctor-run: passed"
