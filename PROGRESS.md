@@ -303,3 +303,7 @@ with an empty context.
 ### 2026-11-16 — F203 — attempt 3
 - Findings fixed: `journald_conf::parse` treats a `\`-ended non-comment line as continued in any section (test `a_backslash_outside_journal_is_could_not_check` now expects `could not check`); the over-long doc comment in `doctor_decide` is wrapped. Notes 2 and 3 not acted on (within the amendment's scope; check 6 waits at most 1.5 s per question).
 - Passed: `doctor_system` (60), `just quick`, `just mutants-diff F203` (101 mutants, 80 caught, 21 unviable, 0 missed, 2 min).
+
+### 2026-11-16 — F203 — attempt 4
+- Finding fixed: `profile_fact` runs register's p11-kit probe for a native profile whose entry is `Missing` or `Stale` (never on a profile directory), so a stale entry on a p11-kit system is `ok`. New test `a_stale_entry_on_a_p11_kit_system_is_ok_because_register_skips_it` (`doctor_firefox`, 15 tests).
+- Passed: `doctor_firefox`, `just quick`, `just mutants-diff F203` (100 mutants, 79 caught, 21 unviable, 0 missed, 2 min).

@@ -187,7 +187,7 @@ fn profile_fact(
     let copy_file = copy_path(&env.home);
     let module = if profile.snap { &copy_file } else { installed };
     let mut entry = entry_of(profile, module);
-    if entry == Entry::Missing && !profile.snap {
+    if matches!(entry, Entry::Missing | Entry::Stale) && !profile.snap {
         // `register` skips native profiles where the system NSS loads the p11-kit proxy; it decides with a scratch database.
         let on = *p11_kit.get_or_insert_with(|| nss_loads_p11_kit(OsStr::new(MODUTIL)) == Ok(true));
         if on {

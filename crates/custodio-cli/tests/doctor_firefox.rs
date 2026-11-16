@@ -307,6 +307,22 @@ fn a_p11_kit_system_is_ok_with_the_reason_and_no_register_fix() {
 }
 
 #[test]
+fn a_stale_entry_on_a_p11_kit_system_is_ok_because_register_skips_it() {
+    let c = Case::new(true);
+    let gone = c.fx.path("usr/lib/old/libcustodio_pkcs11.so");
+    c.root(
+        ".mozilla/firefox",
+        &["a.default"],
+        &Case::entry("Custodio", &gone),
+    );
+    let (_, text, runs) = c.doctor();
+    let s = check4(&text);
+    assert!(s.starts_with("ok") && s.contains("p11-kit"), "{s}");
+    assert!(!s.contains("fix:"), "{s}");
+    assert_eq!(runs.len(), 2, "{runs:?}");
+}
+
+#[test]
 fn no_profile_at_all_is_ok_says_so_and_the_exit_status_is_unaffected() {
     let c = Case::new(false);
     let bus = Bus::new();
