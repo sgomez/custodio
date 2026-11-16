@@ -102,8 +102,8 @@ pub const READER: &str = "fingerprint reader";
 pub const FINGER: &str = "enrolled finger";
 pub const POLKIT: &str = "fingerprint for polkit";
 
-/// The exit status: 0, unless a polkit include is broken or one of the checks 4 to 6 (`later`) is not `ok`. Checks 1 to 3 never count, "could not check"
-/// among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
+/// The exit status: 0, unless a polkit include is broken or one of the checks 4 to 6 (`later`) is not `ok`.
+/// Checks 1 to 3 never count, "could not check" among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
 #[must_use]
 pub fn exit_status(broken_include: bool, later: &[State]) -> u8 {
     u8::from(broken_include || later.iter().any(|s| *s != State::Ok))

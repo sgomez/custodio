@@ -299,3 +299,7 @@ with an empty context.
 ### 2026-11-16 — F203 — attempt 2
 - Findings fixed (tests only): acceptance run with the fprintd service file and no owner: check 1 `could not check`, checks 4 to 6 ok, exit 0 (`doctor_acceptance`, 17 tests). Dropped the `ORDER.len()` assert and the leftover `fx.put(profiles.ini)`.
 - Passed: `doctor_acceptance`, `just quick`.
+
+### 2026-11-16 — F203 — attempt 3
+- Findings fixed: `journald_conf::parse` treats a `\`-ended non-comment line as continued in any section (test `a_backslash_outside_journal_is_could_not_check` now expects `could not check`); the over-long doc comment in `doctor_decide` is wrapped. Notes 2 and 3 not acted on (within the amendment's scope; check 6 waits at most 1.5 s per question).
+- Passed: `doctor_system` (60), `just quick`, `just mutants-diff F203` (101 mutants, 80 caught, 21 unviable, 0 missed, 2 min).

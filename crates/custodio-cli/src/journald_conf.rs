@@ -123,6 +123,7 @@ pub enum Item {
 
 /// The `[Journal]` lines of one file that matter: `Storage=` assignments, invalid values, continued lines.
 ///
+/// A line ending in a backslash counts in any section (journald joins it with the next, which may be a header).
 /// Only the `[Journal]` section counts; the key is exactly `Storage` and the value, trimmed, exactly one of
 /// `auto`, `persistent`, `volatile`, `none`.
 #[must_use]
@@ -135,15 +136,15 @@ pub fn parse(text: &str) -> Vec<Item> {
         if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
             continue;
         }
+        if line.ends_with('\\') {
+            items.push(Item::Continued(n));
+            continue;
+        }
         if let Some(rest) = line.strip_prefix('[') {
             in_journal = rest.strip_suffix(']') == Some("Journal");
             continue;
         }
         if !in_journal {
-            continue;
-        }
-        if line.ends_with('\\') {
-            items.push(Item::Continued(n));
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
@@ -189,7 +190,7 @@ pub fn evaluate(files: &Files, dir: &JournalDir) -> Verdict {
                 }
                 Item::Continued(line) => {
                     return Verdict::CouldNot(format!(
-                        "{} ends in a backslash in [Journal]: the next line is part of it and doctor does not join lines",
+                        "{} ends in a backslash: the next line is part of it and doctor does not join lines",
                         at(line)
                     ));
                 }

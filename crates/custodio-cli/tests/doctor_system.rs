@@ -383,11 +383,11 @@ journal_case!(
     "not a directory"
 );
 journal_case!(
-    a_backslash_outside_journal_is_not_looked_at,
+    a_backslash_outside_journal_is_could_not_check,
     [(ETC, "[Other]\nx=y \\\n[Journal]\nStorage=persistent\n")],
     Dir::Present,
-    "ok",
-    "persistent"
+    "could not check",
+    "backslash"
 );
 
 /// A main file of exactly `len` bytes: valid content, padded by a comment.
