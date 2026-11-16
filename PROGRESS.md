@@ -396,3 +396,8 @@ with an empty context.
 - VM `lacking` (exit 0, 97 s against 500 s): 62 cases accounted for, no `unknown`, the 12 fingerprint ids skipped with their `skip.list` reason. Phases: snap 0, vm-fingerprint 0, cycle 13, sign 10, tpmclear 9, upgrade 10, rest ≤ 18.
 - That a failing `vm-fingerprint-*` case makes the exit non-zero (evaluator note 1) is held by `scripts/test-e2e-vm-fingerprint.sh` and `test-e2e-vm-cases.sh` (green in `check`); no failing case was provoked in the real run.
 - Acceptance 20–22 are a person's. `just quick` run at the end.
+
+### 2026-11-16 — F209 — attempt 2 (findings fixed)
+- NEXT_FINDINGS: `scripts/test-tree-hash.sh` failed once under load (85 scripts at once). Cause, reproduced with 24 parallel runs (1 failure): `tree-hash.sh` copied the index with `cp`, so the copy's mtime was newer than the edited file's; git then treated a same-size edit made in the same timestamp tick as clean (racy-git check uses the index mtime). Fix: `cp -p` keeps the mtime. 90 parallel runs after the fix: 0 failures. shellcheck and `just quick` pass. No new test (the existing one is the regression test; no extra time).
+- Only `scripts/tree-hash.sh` changed (host stamp script): no product, e2e, package or VM script change, so the e2e, package-gates, coverage, memory-safety and VM results of attempt 1 stand. The four VM version fields (polkit 127-2ubuntu1.1, fprintd 1.94.5-4, libfprint 1:1.95.1+tod1-0ubuntu2, libpam-fprintd 1.94.5-4) and the 12 run / 0 skipped fingerprint counts are from attempt 1's last `full` run; no VM file changed since, so none was rerun. `check` must be rerun by the loop.
+- Fingerprint cases owed per target (7 common + own): alma10 9, arch 7, debian13 8, fedora44 9, ubuntu2604 8.

@@ -7,7 +7,8 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 index=$(mktemp)
 trap 'rm -f "$index"' EXIT
-cp "$(git rev-parse --git-path index)" "$index"
+# -p keeps the index mtime: git decides racily-clean entries (same-tick edits of equal size) by it
+cp -p "$(git rev-parse --git-path index)" "$index"
 GIT_INDEX_FILE=$index git add -A
 GIT_INDEX_FILE=$index git rm -q --cached --ignore-unmatch -- PROGRESS.md >/dev/null
 [ $# = 0 ] || GIT_INDEX_FILE=$index git rm -q -r --cached --ignore-unmatch -- "$@" >/dev/null
