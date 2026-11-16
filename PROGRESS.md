@@ -245,3 +245,11 @@ with an empty context.
 - Blocked on the polkit helper's `No session for cookie` and on the polkit text agent not re-asking after a wrong password: see `docs/findings/F200.md` (open items and next steps).
   The judge's polkit-unenrolled and -timeout orders (wrong password before the right one) probably have to change to a single right password (judge and its controls together).
 - Steps 1, 4, 5, 6 untouched/unticked; sign and the four fallbacks are still unwritten; the script still ends with the explicit `fail`.
+
+### 2026-11-16 — F200 — attempt 3 (partial, stopped at the time limit)
+- Debugging runs only (not the step-6 timed run). Polkit cases now go through `e2e/vm/fingerprint-check.sh` (pkttyagent + pkcheck; pkexec cannot work, see `docs/findings/F200.md`); the pty driver
+  waits for ECHO off before typing and judges a refusal before the next prompt. Judge: polkit-unenrolled/-timeout take one right password (no wrong-then-right), the timeout case forbids only scan/matched.
+  `scripts/test-e2e-vm-fingerprint.sh` passes. Last VM run: stage, polkit-finger, -unenrolled, -timeout, -negative, -disabled judged ok; sudo failed only because `refused` was skipped
+  by the driver (fixed in the last commit, NOT rerun in the VM).
+- Remaining: rerun the group to see sudo pass; write sign (import a key as fpuser with the test agent, sign by the PKCS#11 module with the finger, openssl verify, journal `signature made`) and the four
+  fallbacks (`CASE.restored` = `unit=active device=listed`), drop the final `fail` in fingerprint.sh and the `sign | fallback-*` skip in its judge loop; step 1 (findings are mostly there), then step 6 timed run.
