@@ -136,13 +136,16 @@ auth() { # CASE PLAN KILL_AFTER CMD...: the driver runs the command as the test 
     monitor_start "$FP/$case.monitor"
     python3 -I "$here/fingerprint-pty.py" "$FP/$case.events" "$plan" "$kill" "$FP/$case.monitor" -- su -lP -s /bin/bash "$USER_FP" -c "$(printf '%q ' "$@")" || true
     monitor_stop
+    pkill -KILL -u "$USER_FP" || true # nothing of the case stays alive to approve later
 }
-marker() { echo "/run/fp-approved-$1"; }
-approve() { rm -f "$(marker "$1")"; auth "$1" "$2" "$3" pkexec /usr/bin/touch "$(marker "$1")"; }
+CHECK=/tmp/fp-check.sh
+install -m 755 "$here/fingerprint-check.sh" "$CHECK"
+marker() { echo "/tmp/fp-approved-$1"; }
+approve() { rm -f "$(marker "$1")"; auth "$1" "$2" "$3" "$CHECK" "$(marker "$1")"; }
 
 approve polkit-finger '{"prompt-finger":["touch:enrolled-finger"]}' 0
-approve polkit-unenrolled "{\"prompt-finger\":[\"touch:not-enrolled\"],\"prompt-password\":[\"type:wrong-pw\",\"type:$FPPW\"]}" 0
-approve polkit-timeout "{\"prompt-password\":[\"type:wrong-pw\",\"type:$FPPW\"]}" 0
+approve polkit-unenrolled "{\"prompt-finger\":[\"touch:not-enrolled\"],\"prompt-password\":[\"type:$FPPW\"]}" 0
+approve polkit-timeout "{\"prompt-password\":[\"type:$FPPW\"]}" 0
 approve negative '{}' 15
 if [ -e "$(marker negative)" ]; then echo present > "$FP/negative.action"; else echo absent > "$FP/negative.action"; fi
 

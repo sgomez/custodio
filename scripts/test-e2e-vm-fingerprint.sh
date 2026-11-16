@@ -34,8 +34,8 @@ libfprint=1:1.95.1+tod1-0ubuntu2
 libpam-fprintd=1.94.5-4
 EOF2
 printf '0 start\n0.4 prompt-finger\n0.9 scan right-index-finger\n1.1 matched\n1.3 approved\n' > polkit-finger.events
-printf '0 start\n0.4 prompt-finger\n0.9 scan unenrolled\n1.1 nomatch\n1.3 prompt-password\n1.6 typed-wrong\n1.9 refused\n2.2 prompt-password\n2.5 typed-right\n2.8 approved\n' > polkit-unenrolled.events
-printf '0 start\n0.4 prompt-finger\n10.6 prompt-password\n10.9 typed-wrong\n11.2 refused\n11.5 prompt-password\n11.8 typed-right\n12.1 approved\n' > polkit-timeout.events
+printf '0 start\n0.4 prompt-finger\n0.9 scan unenrolled\n1.1 nomatch\n1.3 prompt-password\n1.6 typed-right\n1.9 approved\n' > polkit-unenrolled.events
+printf '0 start\n0.4 prompt-finger\n10.6 prompt-password\n10.9 typed-right\n11.2 approved\n' > polkit-timeout.events
 printf '0 start\n0.3 prompt-password\n0.6 typed-wrong\n0.9 refused\n1.2 prompt-password\n1.5 typed-right\n1.8 approved\n' > sudo.events
 printf '[sudo] password for fpuser: \nSorry, try again.\n[sudo] password for fpuser: \n' > sudo.text
 printf '0 start\n0.4 prompt-finger\n0.8 prompt-password\n15.5 killed\n' > negative.events
@@ -92,7 +92,7 @@ MSG="'matched'" ctl finger-nomatch polkit-finger 'sed -i "/matched/d" polkit-fin
 ctl finger-password polkit-finger 'sed -i "s/^0.4 prompt-finger/0.4 prompt-password/" polkit-finger.events'
 ctl finger-nostart polkit-finger 'sed -i "1d" polkit-finger.events'
 # polkit-unenrolled
-MSG="'refused'" ctl unenr-wrong-approved polkit-unenrolled 'sed -i "/refused/d" polkit-unenrolled.events'
+MSG="'typed-wrong'" ctl unenr-wrong-typed polkit-unenrolled 'sed -i "s/typed-right/typed-wrong/" polkit-unenrolled.events'
 MSG="'nomatch'" ctl unenr-nofail polkit-unenrolled 'sed -i "/nomatch/d" polkit-unenrolled.events'
 MSG="'matched'" ctl unenr-matched polkit-unenrolled 'printf "1.2 matched\n" >> polkit-unenrolled.events'
 ctl unenr-nopassword polkit-unenrolled 'sed -i "/prompt-password/d;/typed/d;/refused/d" polkit-unenrolled.events'

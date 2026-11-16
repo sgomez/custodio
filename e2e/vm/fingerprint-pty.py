@@ -12,6 +12,7 @@ import re
 import select
 import signal
 import socket
+import termios
 import sys
 import time
 
@@ -54,6 +55,11 @@ def main():
             if data:
                 out.write(data)
                 buf += data
+        # a refusal comes before the next prompt: judged first, so that the prompt's match does not skip it
+        m = re.search(r"(?i)sorry, try again|authentication (failure|failed)|incorrect password", buf[used:])
+        if m:
+            used += m.end()
+            emit("refused")
         pend = buf[used:]
         for pat, name in ((r"(?i)(place|swipe|scan)[^\n]*finger|finger[^\n]*(reader|sensor)", "prompt-finger"),
                           (r"(?i)password[^\n]*: ?$|password: ?", "prompt-password")):
@@ -75,11 +81,12 @@ def main():
                     emit("scan", act[6:])
                 elif act.startswith("type:"):
                     emit("typed-wrong" if act[5:].startswith("wrong") else "typed-right")
+                    # a password reader turns the echo off after its prompt and flushes the input: typing earlier is lost
+                    end = time.monotonic() + 3
+                    while time.monotonic() < end and termios.tcgetattr(fd)[3] & termios.ECHO:
+                        time.sleep(0.02)
                     os.write(fd, (act[5:] + "\n").encode())
                 break
-        if re.search(r"(?i)sorry, try again|authentication failure|incorrect password", buf[used:]):
-            used = len(buf)
-            emit("refused")
         done, st = os.waitpid(pid, os.WNOHANG)
         if done:
             status = st

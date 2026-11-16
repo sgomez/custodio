@@ -124,8 +124,9 @@ def j_finger(d, _):
 
 
 def j_password_after(ev, first_event):
-    """The finger did not match, the password prompt followed, a wrong password was refused, then the right one approved."""
-    return in_order(ev, ["prompt-finger", *first_event, "prompt-password", "typed-wrong", "refused", "prompt-password", "typed-right", "approved"])
+    """The finger did not match, the password prompt followed, the right password approved (the polkit text agent does not ask again after a wrong one:
+    docs/findings/F200.md; a wrong password is covered by the sudo case)."""
+    return in_order(ev, ["prompt-finger", *first_event, "prompt-password", "typed-right", "approved"]) + forbid(ev, "typed-wrong")
 
 
 def j_unenrolled(d, _):
@@ -141,7 +142,7 @@ def j_timeout(d, _):
     if p:
         return p
     p += j_password_after(ev, [])
-    p += forbid(ev, "scan", "matched", "nomatch")
+    p += forbid(ev, "scan", "matched")
     f, pw = first(ev, "prompt-finger"), first(ev, "prompt-password")
     if f and pw:
         wait = pw[0] - f[0]
