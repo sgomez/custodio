@@ -30,7 +30,7 @@ report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milesto
 Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
 requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
 
-To let a finger answer the polkit dialogs, see [docs/fingerprint.md](docs/fingerprint.md).
+To let a finger answer the polkit dialogs, see [docs/fingerprint.md](docs/fingerprint.md). To see what is missing on your system, run `custodio doctor`; every check and its fixes are in [docs/doctor.md](docs/doctor.md).
 
 ## Using it
 

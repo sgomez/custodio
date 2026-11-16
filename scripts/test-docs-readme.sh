@@ -27,7 +27,7 @@ timeout 900 cargo build --quiet --locked -p custodio-cli || { echo "test-docs-re
 timeout 900 cargo build --quiet --locked -p custodio-it --example docs_api_server || { echo "test-docs-readme: cannot build the test server" >&2; exit 1; }
 
 # The shared helper: the same files and the same default paths as the threat-model test.
-REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md docs/fingerprint.md)
+REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md docs/fingerprint.md docs/doctor.md)
 
 # shellcheck source=scripts/lib/docs-register-fixture.sh
 . scripts/lib/docs-register-fixture.sh

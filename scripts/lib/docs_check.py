@@ -11,7 +11,7 @@
 shows a file or output that is no command, and a line of it that starts with `$ ` fails (a command must not hide there); any other
 info string, or none, fails, so nothing is skipped silently. In a run `$ COMMAND` lines (with `\\` continuations) execute
 in one bash per block, and the lines after a command are its standard output, compared with what it printed. The only attribute after `console` is
-`fails=yes` (the last command of the block must exit non-zero) and `fixture=NAME`, which runs `$DOCS_SETUP NAME` first (the
+`for=NAME` (the block is run only by the caller that sets DOCS_FOR=NAME; the others skip it), `fails=yes` (the last command of the block must exit non-zero) and `fixture=NAME`, which runs `$DOCS_SETUP NAME` first (the
 caller puts the fixture the block needs in place; a block with `fixture=` and no DOCS_SETUP fails). The rest comes from the caller's environment:
   DOCS_PASSWORD  typed at a password prompt on /dev/tty (`custodio import` reads it there, not from stdin)
   DOCS_ANSWER    typed at the confirmation prompt of `custodio delete`
@@ -219,6 +219,8 @@ def run_doc(doc, cwd):
         if not words or words[0] != "console":
             continue
         attrs = dict(w.split("=", 1) for w in words[1:])
+        if "for" in attrs and attrs["for"] != os.environ.get("DOCS_FOR"):
+            continue  # a block another script runs (the caller names itself in DOCS_FOR)
         if "fixture" in attrs:
             if not os.environ.get("DOCS_SETUP"):
                 bad.append(f"{doc}:{line}: fixture={attrs['fixture']} but the caller gave no DOCS_SETUP")

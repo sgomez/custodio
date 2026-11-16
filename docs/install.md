@@ -106,6 +106,37 @@ The completion also offers your key ids for `list` and `delete`. It asks the ser
 only, so no authorization dialog opens and nothing is written; when the service is not running, or
 does not answer within 2 seconds, it offers no key ids.
 
+## Fingerprint for polkit dialogs
+
+Optional: let a finger answer the polkit dialogs, Custodio's among them. Enrol a finger with your desktop's tools first, then, once
+per system:
+
+```console for=fingerprint
+$ sudo custodio fingerprint enable
+Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
+A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
+To undo it: sudo custodio fingerprint disable
+```
+
+What it changes, what it does not guarantee, the refusals and the GNOME lock screen are in [fingerprint.md](fingerprint.md);
+`sudo custodio fingerprint disable` undoes it. Remove it before you remove the package: removal leaves the file, which keeps
+working.
+
+## Checking the system
+
+`custodio doctor` checks the six things that decide whether Custodio and its fingerprint work, and prints a fix under each one that
+is not right. Run it as yourself, not with `sudo`. Every check and its fixes are in [doctor.md](doctor.md).
+
+```console for=fingerprint fixture=ok
+$ custodio doctor
+ok              fingerprint reader: fprintd lists 1 reader
+ok              enrolled finger: 1 finger enrolled for you
+ok              fingerprint for polkit: active through Custodio's override /etc/pam.d/polkit-1
+ok              module in Firefox: no browser profile was found, so there is nothing to register
+ok              persistent journal: the journal is persistent (Storage=persistent)
+ok              state directory storage: the service's state directory is on an encrypted device
+```
+
 ## TPM2 Software Stack
 
 Custodio links the TPM2 Software Stack (`libtss2-esys`, `libtss2-tctildr`, `libtss2-mu`) and loads the

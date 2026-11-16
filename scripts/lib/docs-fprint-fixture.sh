@@ -69,6 +69,7 @@ fp_tree() { (cd "$1" && find . -mindepth 1 \( -type f -o -type l -o -type d \) -
 fp_bus() {
     local d=$1
     shift
+    FP_BUS_DIR=$d
     mkdir -p "$d"
     cat > "$d/bus.conf" << CONF
 <busconfig>
@@ -85,6 +86,42 @@ CONF
     export DBUS_SYSTEM_BUS_ADDRESS
     "$FP_FAKE" "$DBUS_SYSTEM_BUS_ADDRESS" "$@" > "$d/fake.out" 2> "$d/fake.err" &
     FP_FAKE_PID=$!
+    echo "$FP_FAKE_PID" > "$d/fake.pid"
     timeout 20 sh -c 'until grep -q ready "$1"; do sleep 0.1; done' _ "$d/fake.out" || return 1
 }
-fp_bus_stop() { kill "$FP_FAKE_PID" "$FP_BUS_PID" 2> /dev/null || true; wait "$FP_FAKE_PID" "$FP_BUS_PID" 2> /dev/null || true; }
+# fp_fake_swap BUSDIR ARGS...: replaces the fake fprintd on the running bus (a fixture of doctor.md needs another reader or finger).
+# Run by the fixture setup, a process of its own: the pid comes from BUSDIR/fake.pid and the bus address from the environment.
+fp_fake_swap() {
+    local d=$1
+    shift
+    kill "$(cat "$d/fake.pid")" 2> /dev/null || true
+    while kill -0 "$(cat "$d/fake.pid")" 2> /dev/null; do sleep 0.05; done
+    : > "$d/fake.out"
+    "$FP_FAKE" "$DBUS_SYSTEM_BUS_ADDRESS" "$@" > "$d/fake.out" 2> "$d/fake.err" &
+    echo $! > "$d/fake.pid"
+    disown
+    timeout 20 sh -c 'until grep -q ready "$1"; do sleep 0.1; done' _ "$d/fake.out"
+}
+# fp_doc_setup DIR BUSDIR NAME: the fixture of one block of a document. The fingerprint page's names are those of fp_root; the
+# doctor page adds ok (override written, a reader, a finger), noreader, nofinger, plainstorage (the service cannot say the state
+# directory is encrypted) and brokeninclude (the override includes a file that is gone).
+fp_doc_setup() {
+    local d=$1 bus=$2 name=$3
+    case $name in
+        ok | noreader | nofinger | plainstorage | brokeninclude | default)
+            fp_root "$d" debian
+            case $name in ok | brokeninclude) CUSTODIO_FIXTURE_ROOT=$d CUSTODIO_FIXTURE_EUID=0 "$FP_CLI" fingerprint enable > /dev/null 2>&1 ;; esac
+            [ "$name" != brokeninclude ] || rm "$d/usr/lib/pam.d/polkit-1"
+            case $name in
+                noreader) fp_fake_swap "$bus" 0 ;;
+                nofinger) fp_fake_swap "$bus" 1 none ;;
+                plainstorage) fp_fake_swap "$bus" 1 list unknown ;;
+                *) fp_fake_swap "$bus" 1 list ;;
+            esac ;;
+        *) fp_root "$d" "$name" ;;
+    esac
+}
+fp_bus_stop() {
+    kill "$(cat "$FP_BUS_DIR/fake.pid" 2> /dev/null || echo "$FP_FAKE_PID")" "$FP_BUS_PID" 2> /dev/null || true
+    wait "$FP_BUS_PID" 2> /dev/null || true
+}
