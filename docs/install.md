@@ -98,7 +98,7 @@ configuration, except zsh on most systems:
 zsh offers nothing until `compinit` runs. Ubuntu runs it for every user. On Debian, Alma, Arch and
 for Fedora users not created from the skeleton, add this line to your own `~/.zshrc`:
 
-```zsh
+```bash
 autoload -U compinit; compinit
 ```
 
