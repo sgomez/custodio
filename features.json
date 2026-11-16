@@ -69,7 +69,7 @@
         "F189"
       ],
       "verify": "just quick && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test storage_stability --locked && cargo test -p custodiod --test state_storage --locked && cargo test -p custodiod --test storage_api --locked && just mutants-diff F196",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F197",
