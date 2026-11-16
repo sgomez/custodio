@@ -79,6 +79,7 @@ pub fn state_dir(rig: &Rig) -> PathBuf {
 #[derive(Clone, Copy, Debug)]
 pub enum Shell {
     Bash,
+    Zsh,
 }
 
 impl Shell {
@@ -86,6 +87,7 @@ impl Shell {
     pub fn file(self) -> &'static str {
         match self {
             Self::Bash => "custodio.bash",
+            Self::Zsh => "_custodio",
         }
     }
 
@@ -134,6 +136,13 @@ impl Setup {
                 std::fs::create_dir(&dir)?;
                 std::fs::write(dir.join("custodio"), completion)?;
             }
+            Shell::Zsh => {
+                // A directory in `fpath`, as `compinit` of a user's zsh finds it.
+                let dir = setup.files.path().join("site-functions");
+                std::fs::create_dir(&dir)?;
+                std::fs::write(dir.join("_custodio"), completion)?;
+                std::fs::write(setup.files.path().join("init.zsh"), ZSH_INIT)?;
+            }
         }
         Ok(setup)
     }
@@ -151,6 +160,8 @@ impl Setup {
     /// What the shell offers for the words (the last one is the one being completed).
     pub fn offer(&self, words: &[&str]) -> Result<Offer, Box<dyn Error>> {
         let path = format!("{}:/usr/bin:/bin", self.bindir.path().display());
+        let results = self.files.path().join("results");
+        let _ = std::fs::remove_file(&results);
         let mut cmd = match self.shell {
             Shell::Bash => {
                 let mut c = Command::new("bash");
@@ -158,6 +169,15 @@ impl Setup {
                     .args(words);
                 c.env_clear()
                     .env("BASH_COMPLETION_USER_DIR", self.files.path());
+                c
+            }
+            Shell::Zsh => {
+                let mut c = Command::new("timeout");
+                c.args(["30", "zsh", "-f", "-c", ZSH_DRIVER, "driver"])
+                    .args(words);
+                c.env_clear()
+                    .env("COMPLETION_DIR", self.files.path())
+                    .env("RESULTS", &results);
                 c
             }
         };
@@ -169,18 +189,33 @@ impl Setup {
             .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
             .stdin(Stdio::null())
             .output()?;
-        let took = start.elapsed();
+        let mut took = start.elapsed();
+        if matches!(self.shell, Shell::Zsh) {
+            // The shell's start and `compinit` are not the completion: the driver times the TAB.
+            let secs: f64 = std::fs::read_to_string(results.with_extension("took"))?
+                .trim()
+                .parse()?;
+            took = Duration::from_secs_f64(secs);
+        }
         assert!(
             out.status.success(),
             "{}",
             String::from_utf8_lossy(&out.stderr)
         );
+        let (items, stderr) = match self.shell {
+            Shell::Bash => (
+                String::from_utf8_lossy(&out.stdout).into_owned(),
+                String::from_utf8_lossy(&out.stderr).into_owned(),
+            ),
+            // The matches come from a file; what the terminal showed besides is on stderr.
+            Shell::Zsh => (
+                std::fs::read_to_string(&results).unwrap_or_default(),
+                String::from_utf8_lossy(&out.stderr).into_owned(),
+            ),
+        };
         Ok(Offer {
-            items: String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .map(str::to_owned)
-                .collect(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            items: items.lines().map(str::to_owned).collect(),
+            stderr,
             took,
         })
     }
@@ -204,5 +239,49 @@ for i in "${!reg[@]}"; do [[ ${reg[i]} == -F ]] && fn=${reg[i + 1]}; done
 COMPREPLY=()
 "$fn" custodio "${COMP_WORDS[COMP_CWORD]}" "${COMP_WORDS[COMP_CWORD - 1]}"
 ((${#COMPREPLY[@]})) && printf '%s\n' "${COMPREPLY[@]}"
+exit 0
+"#;
+
+/// What a user's `zsh` has before the first TAB: the completion directory in `fpath`, `compinit`
+/// (no dump file), and a `compadd` that also records the matches that fit the word.
+const ZSH_INIT: &str = r#"
+fpath=($COMPLETION_DIR/site-functions $fpath)
+autoload -Uz compinit
+compinit -D
+compadd() {
+    local -a m
+    builtin compadd -O m "$@"
+    (($#m)) && print -rl -- "${m[@]}" >>$RESULTS
+    builtin compadd "$@"
+}
+PS1='' RPS1='' PROMPT_EOL_MARK=''
+unsetopt prompt_sp zle_bracketed_paste
+"#;
+
+/// Types the words and TAB into a real zsh on a pseudo terminal, with the line editor and
+/// completion system of an interactive shell. When nothing is offered, whatever the terminal shows
+/// between the TAB and the next command, bar the echo of what was typed, goes to stderr (a list of
+/// matches is not stray output).
+const ZSH_DRIVER: &str = r#"
+zmodload zsh/zpty zsh/datetime
+zpty z "TERM=dumb zsh -f -i"
+zpty -w z "source $COMPLETION_DIR/init.zsh"
+zpty -w z "echo READY"
+zpty -r z buf '*READY*READY*'
+line="$*"
+start=$EPOCHREALTIME
+zpty -w -n z "$line"$'\t'
+zpty -w z $'\x15'"echo DONE"
+zpty -r z buf '*DONE*DONE*'
+print -r -- $((EPOCHREALTIME - start)) >$RESULTS.took
+zpty -d z
+setopt extendedglob
+[[ -s $RESULTS ]] && exit 0
+buf=${buf//$'\e'\[[0-9;?]#[a-zA-Z]/}
+buf=${buf//$'\a'/}
+for l in ${(f)${buf//$'\r'/$'\n'}}; do
+    [[ -z ${l//[ $'\n']/} || $l == "$line"* || $l == *"echo DONE"* || $l == DONE* ]] && continue
+    print -r -- $l >&2
+done
 exit 0
 "#;

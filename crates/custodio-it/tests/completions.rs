@@ -327,3 +327,38 @@ fn bash_takes_the_ids_as_data() -> TestResult {
 fn bash_writes_nothing_and_asks_no_polkit() -> TestResult {
     writes_nothing_and_asks_no_polkit(Shell::Bash)
 }
+
+#[test]
+fn zsh_offers_every_command_and_option_of_the_help() -> TestResult {
+    commands_and_options(Shell::Zsh)
+}
+
+#[test]
+fn zsh_offers_the_key_ids_of_the_person() -> TestResult {
+    key_ids_of_the_person(Shell::Zsh)
+}
+
+#[test]
+fn zsh_offers_nothing_and_quickly_when_the_service_is_absent() -> TestResult {
+    service_absent(Shell::Zsh)
+}
+
+#[test]
+fn zsh_offers_nothing_within_the_bound_when_the_service_hangs() -> TestResult {
+    service_hung(Shell::Zsh)
+}
+
+#[test]
+fn zsh_offers_200_key_ids_within_2_s() -> TestResult {
+    two_hundred_keys(Shell::Zsh)
+}
+
+#[test]
+fn zsh_takes_the_ids_as_data() -> TestResult {
+    ids_are_data(Shell::Zsh)
+}
+
+#[test]
+fn zsh_writes_nothing_and_asks_no_polkit() -> TestResult {
+    writes_nothing_and_asks_no_polkit(Shell::Zsh)
+}

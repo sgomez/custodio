@@ -1,0 +1,56 @@
+#compdef custodio
+# zsh completion for custodio. Loaded by compinit from a directory in $fpath
+# (/usr/share/zsh/vendor-completions on Debian and Ubuntu, /usr/share/zsh/site-functions elsewhere).
+#
+# The key ids come from `custodio __key-ids`: it asks the service for the list only (no polkit
+# request, nothing written), prints nothing and exits 1 when the service is absent or does not
+# answer within 2 s. Every line it prints is read as data, never as shell text.
+
+_custodio_key_ids() {
+    local -a ids
+    ids=("${(@f)$(custodio __key-ids 2>/dev/null)}")
+    ids=(${ids:#})
+    compadd -- "${ids[@]}"
+}
+
+_custodio() {
+    local cur=$words[CURRENT] cmd=$words[2] prev=$words[CURRENT-1]
+
+    if ((CURRENT == 2)); then
+        if [[ $cur == -* ]]; then
+            compadd -- -h --help
+        else
+            compadd -- import list delete register fingerprint doctor
+        fi
+        return
+    fi
+
+    if [[ $cur == -* && $prev != -- ]]; then
+        case $cmd in
+            import) compadd -- --id -h --help ;;
+            register) compadd -- --module --remove --refresh-only -h --help ;;
+            list | delete | fingerprint | doctor) compadd -- -h --help ;;
+        esac
+        return
+    fi
+
+    case $cmd in
+        import)
+            # `--id` names a new key: nothing to complete.
+            [[ $prev == --id ]] || _files
+            ;;
+        list | delete)
+            if ((CURRENT == 3)) || { ((CURRENT == 4)) && [[ $prev == -- ]]; }; then
+                _custodio_key_ids
+            fi
+            ;;
+        register)
+            [[ $prev == --module ]] && _files
+            ;;
+        fingerprint)
+            ((CURRENT == 3)) && compadd -- enable disable
+            ;;
+    esac
+}
+
+_custodio "$@"
