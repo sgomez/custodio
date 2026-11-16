@@ -169,7 +169,7 @@
         "F203"
       ],
       "verify": "just quick && cargo test -p custodio-it --test completions --locked && shellcheck packaging/completions/custodio.bash && zsh -n packaging/completions/_custodio && fish --no-execute packaging/completions/custodio.fish && scripts/test-check-packages-completions.sh && scripts/test-check-packages.sh && scripts/test-check-parity.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F206",
