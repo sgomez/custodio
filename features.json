@@ -79,7 +79,7 @@
         "F193"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test fingerprint_decide --locked && just mutants-diff F197 && just fuzz-build && just lint-fuzz && just fuzz-smoke && cargo test -p custodio-cli --test fingerprint --locked && cargo test -p custodio-cli --test help --locked && scripts/test-check-fixture-seams.sh && just fixture-seams",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F198",
