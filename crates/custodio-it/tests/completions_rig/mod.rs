@@ -297,7 +297,8 @@ setopt extendedglob
 buf=${buf//$'\e'\[[0-9;?]#[a-zA-Z]/}
 buf=${buf//$'\a'/}
 for l in ${(f)${buf//$'\r'/$'\n'}}; do
-    [[ -z ${l//[ $'\n']/} || $l == "$line"* || $l == *"echo DONE"* || $l == DONE* ]] && continue
+    l=${l#"$line"}
+    [[ -z ${l//[ $'\n']/} || $l == *"echo DONE"* || $l == DONE* ]] && continue
     print -r -- $l >&2
 done
 exit 0

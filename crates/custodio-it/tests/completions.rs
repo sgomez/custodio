@@ -223,6 +223,25 @@ fn service_absent(shell: Shell) -> TestResult {
     Ok(())
 }
 
+/// Negative control of the zsh stray-output judge: a file that prints to stderr is noticed.
+#[test]
+fn zsh_stray_output_is_noticed() -> TestResult {
+    let rig = Rig::start(false)?;
+    let text = Shell::Zsh.text()?.replacen(
+        "_custodio_key_ids() {",
+        "_custodio_key_ids() {\n    print -u2 STRAYMSG",
+        1,
+    );
+    assert!(
+        text.contains("STRAYMSG"),
+        "the file has no _custodio_key_ids"
+    );
+    let setup = Setup::new(Shell::Zsh, &rig.bus.address, &text)?;
+    let got = setup.offer(&["custodio", "list", ""])?;
+    assert!(got.stderr.contains("STRAYMSG"), "{:?}", got.stderr);
+    Ok(())
+}
+
 fn service_hung(shell: Shell) -> TestResult {
     let rig = Rig::start(false)?;
     let peer = rig.client_connection()?;
