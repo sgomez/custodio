@@ -173,6 +173,7 @@ test-scripts:
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
     scripts/test-docs-fingerprint.sh
+    scripts/test-docs-guide.sh
     scripts/test-docs-install.sh
     scripts/test-docs-readme.sh
     scripts/test-docs-install-register.sh

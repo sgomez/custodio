@@ -27,7 +27,7 @@ timeout 900 cargo build --quiet --locked -p custodio-cli || { echo "test-docs-re
 timeout 900 cargo build --quiet --locked -p custodio-it --example docs_api_server || { echo "test-docs-readme: cannot build the test server" >&2; exit 1; }
 
 # The shared helper: the same files and the same default paths as the threat-model test.
-REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md docs/fingerprint.md docs/doctor.md)
+REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md docs/fingerprint.md docs/doctor.md docs/guide-ubuntu-2604.md)
 
 # shellcheck source=scripts/lib/docs-register-fixture.sh
 . scripts/lib/docs-register-fixture.sh
@@ -113,6 +113,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     }
     control "link to the threat model removed" static sed 's#(docs/threat-model\.md[^)]*)#(docs/install.md)#g'
     control "link to SECURITY.md removed" static sed 's#(SECURITY\.md[^)]*)#(docs/install.md)#g'
+    control "link to the guide removed" static sed 's#(docs/guide-ubuntu-2604\.md[^)]*)#(docs/install.md)#g'
     control "command altered" run sed '0,/^\$ custodio list$/s//$ custodio lst/'
     control "output altered" run sed '0,/^ana  ecdsa-p256  encrypted-host  /s//ana  ecdsa-p256  tpm  /'
     control "remove command replaced by refresh-only" run sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'

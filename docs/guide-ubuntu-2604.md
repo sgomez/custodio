@@ -1,0 +1,135 @@
+# Custodio on Ubuntu 26.04: from the package to your first signature
+
+This guide takes you from nothing to a key that Firefox uses to sign, and back again, on Ubuntu 26.04 with the GNOME desktop. Every
+command in a `console` block is run, as written, by `scripts/test-docs-guide.sh` on a fixture system (the real `dpkg` and the real
+`custodio` on private buses); the lines under a command are what it prints. Steps only a person can do (touching the reader,
+exporting a file from Firefox, signing in to a site) are prose. Home directory names below are `/home/ana`: yours is your own.
+
+## 1. Install the package
+
+Download `custodio_0.9.0-1_amd64.deb` to the directory you are in, then:
+
+```console
+$ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
+```
+
+The package starts nothing by itself: the service starts the first time something asks for it.
+
+## 2. Check the system
+
+```console fails=yes
+$ custodio doctor
+ok              fingerprint reader: fprintd lists 1 reader
+ok              enrolled finger: 1 finger enrolled for you
+not ok          fingerprint for polkit: fingerprint is not active for polkit
+                fix: Run: sudo custodio fingerprint enable
+not ok          module in Firefox: Firefox profile /home/ana/.mozilla/firefox/abcd1234.default-release: the module is not registered
+                fix: Run: custodio register
+not ok          module in Firefox: Firefox (snap) profile /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: the snap's copy of the module is missing
+                fix: Run: custodio register; then restart Firefox. Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+ok              persistent journal: the journal is persistent (Storage=persistent)
+ok              state directory storage: the service's state directory is on an encrypted device
+```
+
+Each line that is not `ok` has a fix under it; [doctor.md](doctor.md) explains every check. The `module in Firefox` line is fixed in step 5.
+The reader and the finger are your desktop's to set up: in GNOME Settings, Users, Fingerprint Login, enrol a finger
+(or run `fprintd-enroll` in a terminal). Then run `custodio doctor` again.
+
+## 3. Let a finger answer the polkit dialogs (optional)
+
+```console
+$ sudo custodio fingerprint enable
+Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
+A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
+To undo it: sudo custodio fingerprint disable
+```
+
+What this changes and what it does not guarantee is in [fingerprint.md](fingerprint.md). Skip this step if you prefer the password.
+
+## 4. Export your key from Firefox and import it
+
+In Firefox open Settings, Privacy & Security, Certificates, View Certificates, tab Your Certificates. Select your certificate and
+choose Backup. Save it as `ana.p12` in the directory you are in and choose a password for it. Then:
+
+```console
+$ custodio import --id ana ana.p12
+Imported key 'ana' (ecdsa-p256).
+Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+Now delete the original file: it still holds your private key.
+  shred -u ana.p12   (or remove it with your file manager and empty the trash)
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+```
+
+Delete the original file as the message says. Close Firefox completely and open it again: a running Firefox sees the change only after it restarts.
+
+## 5. Register the module and sign in
+
+```console
+$ custodio register
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+```
+
+Restart Firefox, and sign in to the site that asks for your certificate; the polkit dialog asks for your password (or your finger,
+if you did step 3). Then:
+
+```console
+$ custodio list
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03T16:05:48Z
+
+Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it is a file that root can use while the machine runs. See README.md#storage-kinds.
+```
+
+The package also installs the shell completions; open a new terminal and `custodio li` followed by Tab completes:
+
+```console
+$ ls /usr/share/bash-completion/completions/custodio
+/usr/share/bash-completion/completions/custodio
+```
+
+## 6. Take it all away
+
+Delete the key (it asks you to confirm), undo the registration and the fingerprint, then remove the package. Do these before removing the package:
+
+```console
+$ custodio delete ana
+Deleted key 'ana'.
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+```
+
+```console
+$ custodio register --remove
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+```
+
+```console
+$ sudo custodio fingerprint disable
+Removed /etc/pam.d/polkit-1. Polkit dialogs ask for the password only.
+To turn it on again: sudo custodio fingerprint enable
+```
+
+```console
+$ sudo apt-get remove custodio
+```
+
+Removal leaves the state directory and the `custodio` account on purpose, and so does purge:
+
+```console
+$ sudo ls -d /var/lib/private/custodio
+/var/lib/private/custodio
+$ getent passwd custodio | cut -d: -f1
+custodio
+```
+
+```console
+$ sudo apt-get purge custodio
+$ sudo ls -d /var/lib/private/custodio
+/var/lib/private/custodio
+$ getent passwd custodio | cut -d: -f1
+custodio
+```
+
+The keys in the state directory cannot be recovered once destroyed; [install.md](install.md#removing-and-purging) says how to destroy them on purpose.
