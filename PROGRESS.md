@@ -253,3 +253,12 @@ with an empty context.
   by the driver (fixed in the last commit, NOT rerun in the VM).
 - Remaining: rerun the group to see sudo pass; write sign (import a key as fpuser with the test agent, sign by the PKCS#11 module with the finger, openssl verify, journal `signature made`) and the four
   fallbacks (`CASE.restored` = `unit=active device=listed`), drop the final `fail` in fingerprint.sh and the `sign | fallback-*` skip in its judge loop; step 1 (findings are mostly there), then step 6 timed run.
+
+### 2026-11-16 — F200 — attempt 4
+- Done: all steps. Added `fingerprint-user.sh` (import of the key as fpuser), `fingerprint-sign.sh` (pkttyagent for the signing process), sign and the four fallbacks in `fingerprint.sh`
+  (module moved aside, daemon masked, drop-in removed, finger deleted; each restored, `CASE.restored`), journal key field `CUSTODIO_KEY_ID`; `run.sh` records `polkit_version`, `fprintd_version`,
+  `libfprint_version`, `libpam_fprintd_version` (unknown fails) and the step `vm-fingerprint`.
+- The timed run `just e2e-vm-cases full 'vm-fingerprint-*'` (earlier runs were debugging runs): exit 0, 12 cases `run`, whole command 82 s; step `vm-fingerprint=53` s, install 8, boot 14.
+  Versions: polkit 127-2ubuntu1.1, fprintd 1.94.5-4, libfprint 1:1.95.1+tod1-0ubuntu2, libpam-fprintd 1.94.5-4. The judge's `end` passed: `/etc/pam.d/polkit-1` and the sudo rule were back.
+  Budget: vm/full is not read by the loop yet (budgets.tsv); no BLOCKED.md.
+- Passed: `just quick`, `test-e2e-vm-fingerprint.sh` (~2 s), `test-e2e-vm-cases.sh`, `test-e2e-select.sh` (<1 s), `just e2e-vm-check full '<five names>'`.
