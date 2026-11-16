@@ -275,3 +275,6 @@ with an empty context.
 ### 2026-11-16 — F201 — attempt 1
 - Done (all 4 steps): one VM run (ubuntu2604, virtual sensor, pkttyagent) with a throwaway driver outside the repo; `docs/findings/F201.md` and its index line. Result: B (switch + Custodio file) asks a wrong finger / no touch twice (20 s); C (Omarchy-style) four prompts / 40 s; matching finger once everywhere. Decision: doctor warns when `/etc/pam.d/polkit-1` and `common-auth` both have a `pam_fprintd` auth line; F202 implements it.
 - VM stopped by the driver's trap (`vm.sh stop`); no qemu left. `just quick` passes. No product code changed.
+
+### 2026-11-16 — F201 — attempt 2
+- Findings fixed (docs only): the run was repeated in the VM with a new throwaway driver (same table) and the finding now quotes the `dpkg-query -W` versions, one `RESULT` line per cell (A, D, B, C), the restore lines (pam file md5 as before, drop-in and rule gone, sudo rule never moved) and `vm.sh stop` with no qemu left. Said that the harness's pam_permit file was set aside for A. `just quick` passes.
