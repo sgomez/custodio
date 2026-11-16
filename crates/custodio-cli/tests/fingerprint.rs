@@ -464,6 +464,13 @@ fn every_foreign_or_missing_piece_is_refused_and_changes_nothing() {
             Box::new(|fx| fx.remove("usr/lib/pam.d/polkit-1")),
         ),
         (
+            "vendor is a directory",
+            Box::new(|fx| {
+                fx.remove("usr/lib/pam.d/polkit-1");
+                fs::create_dir(fx.path("usr/lib/pam.d/polkit-1")).unwrap();
+            }),
+        ),
+        (
             "no module",
             Box::new(|fx| fx.remove(&format!("{MULTIARCH}/pam_fprintd.so"))),
         ),
@@ -566,4 +573,19 @@ fn disable_refuses_a_foreign_file() {
     let before = fx.tree();
     let e = assert_refused(&fx, &["disable"], &before, "foreign");
     assert!(e.contains("dpkg -S") && e.contains("pacman -Qo"), "{e}");
+}
+
+#[test]
+fn a_file_that_cannot_be_looked_at_is_not_taken_for_missing() {
+    assert_ne!(
+        rustix::process::geteuid().as_raw(),
+        0,
+        "the suite must run unprivileged"
+    );
+    let fx = Fx::new();
+    fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o000)).unwrap();
+    let o = fx.run(&["disable"]);
+    fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert_ne!(o.status.code(), Some(0), "{}", out(&o));
+    assert!(err(&o).lines().count() >= 2, "{}", err(&o));
 }

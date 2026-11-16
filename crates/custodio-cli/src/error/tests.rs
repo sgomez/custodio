@@ -328,3 +328,16 @@ fn an_unknown_key_id_is_two_lines_naming_list_with_the_id_escaped() {
         "custodio: you have no key with the id 'a\\x0ab\\x1b[31m'\nRun 'custodio list' to see the ids of your keys."
     );
 }
+
+#[test]
+fn a_fingerprint_failure_names_its_step_in_both_forms() {
+    let e = CliError::Fingerprint(crate::fingerprint_cmd::Failure::Io {
+        what: "cannot write the temporary file",
+        error: io::Error::other("disk full"),
+    });
+    assert!(
+        e.to_string()
+            .contains("cannot write the temporary file: disk full")
+    );
+    assert!(render(&e).contains("cannot write the temporary file: disk full"));
+}

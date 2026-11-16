@@ -188,3 +188,7 @@ with an empty context.
   `just fixture-seams` now also builds debug with `--features fixture-root` and requires the check to fail naming all three variables (the real-seam positive run).
 - Mutants recipe: `fingerprint_cmd.rs` added; `--exclude-re` matches only `apply_owner` / `apply_label` (comment names F199). `just quick` green.
 - Remaining: step 6 (`mutants-diff F197`, other evidence).
+- Step 6 done: `just quick` green; `fingerprint_decide` (17), `fingerprint` (17, 1.5 s), `help` (8); `just fuzz-build && just lint-fuzz && just fuzz-smoke` pass (`pam_file` runs);
+  `scripts/test-check-fixture-seams.sh` and `just fixture-seams` pass (the recipe's debug build `cargo build -p custodio-cli --features fixture-root` must fail the check
+  naming `CUSTODIO_FIXTURE_ROOT`, `_EUID` and `_FAIL`: the real-seam positive run). `just mutants-diff F197`: 130 mutants, 116 caught, 14 unviable, 0 missed (2 min).
+  Survivors fixed with: a vendor-is-a-directory case, an unreadable `etc/pam.d` case (disable must refuse, non-root only), Display tests for `Failure` and `Refusal`, a fuzz-entry test.

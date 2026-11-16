@@ -413,3 +413,24 @@ fn dconf_key_detection() {
     ));
     assert!(!dconf_disables_fingerprint(""));
 }
+
+#[test]
+fn the_fuzz_entry_reports_an_active_fingerprint_line() {
+    assert!(custodio_cli::fingerprint_decide::fuzz_pam_file(
+        b"auth sufficient pam_fprintd.so\n"
+    ));
+    assert!(!custodio_cli::fingerprint_decide::fuzz_pam_file(
+        b"# auth sufficient pam_fprintd.so\n"
+    ));
+}
+
+#[test]
+fn a_refusal_prints_its_two_lines() {
+    let mut o = base(Family::Debian);
+    o.euid = 1000;
+    let EnableDecision::Refuse(r) = decide_enable(&o) else {
+        panic!("not a refusal");
+    };
+    assert_eq!(r.to_string(), r.message());
+    assert_eq!(r.to_string().lines().count(), 2);
+}
