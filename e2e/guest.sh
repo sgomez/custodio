@@ -315,6 +315,12 @@ if [ -z "$vm" ] && phase_runs fingerprint; then
 fi
 phase_done fingerprint
 
+# The doctor cases (F204): `custodio doctor` as a regular account on the real /etc; containers only. After fingerprint.
+if [ -z "$vm" ] && phase_runs doctor; then
+    WORK=$work bash /e2e/doctor-run.sh || fail "doctor-run.sh failed"
+fi
+phase_done doctor
+
 # The upgrade case comes last, so it does not disturb the audit counts above; the lifecycle cases start from its state.
 if phase_runs upgrade; then
     if [ -n "$vm" ]; then export E2E_INSTALL=/e2e/vm/install-pkg.sh; fi # same install as N

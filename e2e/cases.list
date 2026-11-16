@@ -111,3 +111,15 @@ fingerprint-refuse-foreign
 fingerprint-refuse-no-vendor
 fingerprint-refuse-no-module
 fingerprint-disable-restores
+# F204: `custodio doctor` as a regular user on every target (e2e/doctor-run.sh); never skipped.
+doctor-six-checks
+doctor-no-reader
+doctor-override-active
+doctor-broken-include
+doctor-no-firefox-profile
+doctor-journal
+doctor-state-storage
+doctor-exit-status
+doctor-never-prompts
+doctor-root-refused
+doctor-changes-nothing

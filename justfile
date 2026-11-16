@@ -206,6 +206,7 @@ test-scripts:
     scripts/test-e2e-tpmclear.sh
     scripts/test-e2e-tpmslots.sh
     scripts/test-e2e-fingerprint.sh
+    scripts/test-e2e-doctor.sh
     scripts/test-e2e-journalkind.sh
     scripts/test-e2e-upgradekinds.sh
     scripts/test-e2e-upgrade-purge-judge.sh

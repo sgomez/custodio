@@ -38,7 +38,7 @@ phases() {
     printf '%s\n' "$@" > "$tmp/sel"
     E2E_SELECT_FILE=$tmp/sel bash -c '
         source "$1/e2e/select.sh"
-        for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done
+        for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done
         true' _ "$ROOT"
 }
 want() { # want NAME "PHASES" SELECTION...
@@ -84,18 +84,18 @@ want old-modes-only "" upgrade-oldpath-version-greater
 want mixed "user upgrade " nss-deny upgrade-no-manual-step
 all=$(cd "$ROOT" && grep -vh '^[[:space:]]*\(#\|$\)' e2e/cases.list e2e/targets/*/cases.list | sort -u)
 # shellcheck disable=SC2086 # one id per word
-want every-case "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint upgrade lifecycle " $all
+want every-case "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor upgrade lifecycle " $all
 # no selection file: everything runs, and a phase name that is none is refused
-got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
-[ "$got" = "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint upgrade lifecycle " ] || bad "no selection: the steps are '$got'"
+got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
+[ "$got" = "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor upgrade lifecycle " ] || bad "no selection: the steps are '$got'"
 if E2E_SELECT_FILE=$tmp/sel bash -c 'source "$1/e2e/select.sh"; phase_runs nonsense' _ "$ROOT" 2> /dev/null; then bad "an unknown phase was accepted"; fi
 # every id of the lists belongs to a group, and each script that reports ids of one step is in that group
 for id in $all; do
     g=$(bash -c 'source "$1/e2e/select.sh"; case_group "$2"' _ "$ROOT" "$id")
-    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | tpm | tpm-kind | sign | noplain | tpmdup | pcr | fallback | tpmfail | tpmclear | tpmslots | journalkind | fingerprint | upgrade | lifecycle | other-mode) ;; *) bad "$id: group '$g'" ;; esac
+    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | tpm | tpm-kind | sign | noplain | tpmdup | pcr | fallback | tpmfail | tpmclear | tpmslots | journalkind | fingerprint | doctor | upgrade | lifecycle | other-mode) ;; *) bad "$id: group '$g'" ;; esac
 done
 # the guest uses the decision: each step is behind phase_runs
-for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
+for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
 # a target whose own list owes no M4 case does not run the M4 steps, with or without a selection (arch reported cases its accounting does not know)
 for tgt in arch "$tmp/no-such-dir"; do
     for sel in none "$tmp/sel"; do
