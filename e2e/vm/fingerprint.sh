@@ -18,7 +18,7 @@ if [ -z "${E2E_VM:-}" ] || [ "$mode" != swtpm ]; then
     for c in $FP_CASES; do case_skip "$c" "E2E_TPM=$mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope)"; done
     exit 0
 fi
-for tool in python3 busctl journalctl pkexec custodio setpriv useradd chpasswd; do command -v "$tool" > /dev/null || fail "$tool is not installed"; done
+for tool in python3 busctl journalctl custodio setpriv useradd chpasswd; do command -v "$tool" > /dev/null || fail "$tool is not installed"; done
 
 FP=$WORK/fingerprint
 rm -rf "${FP:?}"
@@ -56,7 +56,7 @@ trap 'exit 130' INT
 trap 'exit 129' HUP
 
 # wait_for SECONDS COMMAND...: a condition, polled, bounded
-wait_for() { local s=$1; shift; timeout "$s" sh -c 'until "$@" > /dev/null 2>&1; do sleep 0.1; done' wait_for "$@"; }
+wait_for() { local s=$1; shift; export -f has_device stages_at_least; export FP USER_FP; timeout "$s" bash -c 'until "$@" > /dev/null 2>&1; do sleep 0.1; done' wait_for "$@"; }
 # shellcheck disable=SC2329 # run by wait_for, through sh
 has_device() { fprintd-list "$USER_FP" 2>&1 | grep -q 'Device at'; }
 touch_id() { python3 -I -c "import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect('/run/fpvirt/sock'); s.sendall(('SCAN '+sys.argv[1]+'\n').encode()); s.shutdown(socket.SHUT_WR)" "$1"; }
@@ -65,7 +65,8 @@ ver() { dpkg-query -W -f='${Version}' "$1" 2> /dev/null || echo unknown; }
 stages_at_least() { [ "$(grep -c 'enroll-' "$FP/enroll.out")" -ge "$1" ]; }
 
 # ---- staging: packages from the signed archive (guest only, never a dependency of the package), the virtual sensor, an enrolled finger
-apt-get install -y --no-install-recommends fprintd libpam-fprintd > "$FP/apt.log" 2>&1 || { tail -n 8 "$FP/apt.log" >&2; fail "fprintd and libpam-fprintd do not install from the archive"; }
+apt-get install -y --no-install-recommends fprintd libpam-fprintd pkexec > "$FP/apt.log" 2>&1 || { tail -n 8 "$FP/apt.log" >&2; fail "fprintd and libpam-fprintd do not install from the archive"; }
+command -v pkexec > /dev/null || fail "pkexec is not installed after the apt install"
 libpkg=$(dpkg-query -W -f='${Package}\n' 'libfprint-2-2*' 2> /dev/null | head -n 1 || true)
 libfprint=$(ver "${libpkg:-libfprint-2-2}")
 lib=$(dpkg -L "${libpkg:-libfprint-2-2}" 2> /dev/null | grep -m1 'libfprint-2\.so\.2\.' || true)
@@ -89,15 +90,15 @@ echo "$USER_FP:$FPPW" | chpasswd
 # the polkit admin identity is the test user alone (otherwise the agent asks which of the admins to be)
 mkdir -p "$(dirname "$RULE")"
 printf 'polkit.addAdminRule(function(action, subject) { return ["unix-user:%s"]; });\n' "$USER_FP" > "$RULE"
-wait_for 20 has_device || { journalctl -u fprintd --no-pager -n 10 >&2; fail "fprintd lists no device with the virtual sensor"; }
+wait_for 20 has_device || { journalctl -u fprintd --no-pager -n 10 -o cat >&2; fprintd-list "$USER_FP" >&2 2>&1 || true; ls -l /run/fpvirt >&2 2>&1 || true; systemctl cat fprintd.service 2>&1 | tail -n 12 >&2; fail "fprintd lists no device with the virtual sensor"; }
 sock=no
-if [ -S /run/fpvirt/sock ]; then sock=yes; fi
 # enrol: five scans of the same id, each when the previous stage was reported
 : > "$FP/enroll.out"
 fprintd-enroll -f right-index-finger "$USER_FP" > "$FP/enroll.out" 2>&1 &
 enroll=$!
 for i in 1 2 3 4 5; do
     wait_for 10 stages_at_least "$((i - 1))" || true
+    if wait_for 10 test -S /run/fpvirt/sock; then sock=yes; fi # the socket exists only while the device is open (the enrolment holds it)
     touch_id enrolled-finger || true
 done
 wait "$enroll" || true
@@ -133,7 +134,7 @@ auth() { # CASE PLAN KILL_AFTER CMD...: the driver runs the command as the test 
     local case=$1 plan=$2 kill=$3
     shift 3
     monitor_start "$FP/$case.monitor"
-    python3 -I "$here/fingerprint-pty.py" "$FP/$case.events" "$plan" "$kill" "$FP/$case.monitor" -- setpriv --reuid="$USER_FP" --regid="$USER_FP" --init-groups env HOME="/home/$USER_FP" "$@" || true
+    python3 -I "$here/fingerprint-pty.py" "$FP/$case.events" "$plan" "$kill" "$FP/$case.monitor" -- su -lP -s /bin/bash "$USER_FP" -c "$(printf '%q ' "$@")" || true
     monitor_stop
 }
 marker() { echo "/run/fp-approved-$1"; }
@@ -182,7 +183,7 @@ if [ -n "$p" ]; then problems="$problems
 end:
 $p"; fi
 if [ -n "$problems" ]; then
-    { for f in "$FP"/*.events.out; do echo "--- $f"; head -c 500 "$f"; done; journalctl -u fprintd --no-pager -n 10 -o cat | cut -c1-200; } >&2
+    { for f in "$FP"/*.events.out; do echo "--- $f"; tail -c 700 "$f"; done; journalctl -u polkit --no-pager -n 12 -o cat | cut -c1-200; journalctl -u fprintd --no-pager -n 10 -o cat | cut -c1-200; } >&2
     fail "fingerprint cases:$problems"
 fi
 fail "vm-fingerprint-sign and the four fallbacks are not written yet"

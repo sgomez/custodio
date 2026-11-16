@@ -237,3 +237,11 @@ with an empty context.
   the enroll scan loop, the apt package name of libfprint, whether the harness's sudo rule is under /etc/sudoers.d (grep NOPASSWD). It ends with an explicit `fail` for the unwritten sign and fallback cases.
 - Remaining: step 1 (findings/F200.md from the first run), steps 4–6: run `just e2e-vm-cases full 'vm-fingerprint-*'` (debugging run; step 6's is the timed one), then write sign (needs an fpuser key import with the
   test agent before the harness's pam file is set aside) and the four fallbacks, then drop the final `fail`. Evaluator note: the install uses `--no-install-recommends` (judge.sh checks it).
+
+### 2026-11-16 — F200 — attempt 2 (partial, stopped at the time limit)
+- VM debugging runs only (not the step-6 timed run). `e2e/vm/fingerprint.sh` fixes: `pkexec` is installed with the other packages (`--no-install-recommends`); `wait_for` runs bash
+  with exported functions (the `sh` form never saw them); the socket is checked during the enrolment; the test user runs through `su -lP`; failure output has the tail of each events file
+  and the polkit journal. `vm-fingerprint-stage` and `vm-fingerprint-negative` pass in the VM; sudo works (wrong password refused, right accepted) but its judge result was not seen.
+- Blocked on the polkit helper's `No session for cookie` and on the polkit text agent not re-asking after a wrong password: see `docs/findings/F200.md` (open items and next steps).
+  The judge's polkit-unenrolled and -timeout orders (wrong password before the right one) probably have to change to a single right password (judge and its controls together).
+- Steps 1, 4, 5, 6 untouched/unticked; sign and the four fallbacks are still unwritten; the script still ends with the explicit `fail`.
