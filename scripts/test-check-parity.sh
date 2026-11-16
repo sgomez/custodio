@@ -15,7 +15,7 @@ bad() { echo "test-check-parity: $*" >&2; fail=1; }
 GATE=$ROOT/scripts/check-parity.sh
 CLI=/usr/bin/custodio
 NONE=$FX_DIR/none.txt
-# The exceptions of the cases below: the committed ones, which excuse the two Arch-only hook files (F42) and nothing else.
+# The exceptions of the cases below: the committed ones, which excuse the Arch-only files, the daemon paths and the zsh paths and nothing else.
 cp "$ROOT/packaging/parity-exceptions.txt" "$NONE"
 
 gate() { "$GATE" "$@" > "$FX_DIR/gate.out" 2>&1; }
@@ -39,7 +39,7 @@ mixed() { fx_mix "$@"; }
 
 fx_build good 0.1.0 '' none
 expect_ok "good set" "$FX_DIR/out/good" "$NONE"
-grep -q ' 5 differences, 5 exceptions' "$FX_DIR/gate.out" || bad "the good set reports differences"
+grep -q ' 7 differences, 7 exceptions' "$FX_DIR/gate.out" || bad "the good set reports differences"
 expect_ok "default exceptions file is the committed one" "$FX_DIR/out/good"
 bare=$FX_DIR/bare.txt
 printf '# no exceptions\n' > "$bare"
@@ -166,10 +166,10 @@ fx_build ownmode 0.1.0 '' owner $CLI custodio
 mixed m3 m1 rpm ownmode
 expect_fail "owner under a mode exception" "owner differs" -- "$FX_DIR/out/m3" "$FX_DIR/ok.txt"
 
-# The committed file holds the Arch-only hook files of F42 and F58 and the two paths of the daemon (F61) and nothing else, each with a reason; the real fixtures pass with it.
+# The committed file holds the Arch-only hook files of F42 and F58, the two paths of the daemon (F61) and the two zsh completion paths (F205) and nothing else, each with a reason; the real fixtures pass with it.
 entries=$(grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/packaging/parity-exceptions.txt" | cut -d' ' -f1-5 | sort)
-want=$'/usr/lib/custodio/custodiod | arch | presence\n/usr/libexec/custodio/custodiod | arch | presence\n/usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence\n/usr/share/libalpm/hooks/zz-custodio-restart.hook | arch | presence\n/usr/share/libalpm/scripts/custodio-bus-check | arch | presence'
-[ "$entries" = "$want" ] || bad "packaging/parity-exceptions.txt holds other entries than the Arch hook files and the two daemon paths: $entries"
+want=$'/usr/lib/custodio/custodiod | arch | presence\n/usr/libexec/custodio/custodiod | arch | presence\n/usr/share/libalpm/hooks/custodio-bus-check.hook | arch | presence\n/usr/share/libalpm/hooks/zz-custodio-restart.hook | arch | presence\n/usr/share/libalpm/scripts/custodio-bus-check | arch | presence\n/usr/share/zsh/site-functions/_custodio | rpm,arch | presence\n/usr/share/zsh/vendor-completions/_custodio | deb | presence'
+[ "$entries" = "$want" ] || bad "packaging/parity-exceptions.txt holds other entries than the Arch hook files, the two daemon paths and the two zsh paths: $entries"
 if grep -v '^[[:space:]]*\(#\|$\)' "$ROOT/packaging/parity-exceptions.txt" | awk -F' [|] ' 'length($4) < 20 { bad = 1 } END { exit !bad }'; then bad "a parity exception has no reason"; fi
 expect_ok "real fixtures with the committed exceptions" "$FX_DIR/out/good" "$ROOT/packaging/parity-exceptions.txt"
 

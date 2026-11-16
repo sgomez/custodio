@@ -84,6 +84,28 @@ bus check prints a notice and does not refuse. The service checks again every ti
 that the keys stay on disk and does not stop the service; reboot after it. The keys stay, as described in
 [Removing and purging](#removing-and-purging).
 
+## Shell completion
+
+The package installs a completion for bash, zsh and fish. Each shell finds its file without
+configuration, except zsh on most systems:
+
+| Shell | File | Loaded |
+|---|---|---|
+| bash | `/usr/share/bash-completion/completions/custodio` | by the `bash-completion` package, on first use |
+| fish | `/usr/share/fish/vendor_completions.d/custodio.fish` | by fish, on first use |
+| zsh | `/usr/share/zsh/vendor-completions/_custodio` (Debian, Ubuntu) or `/usr/share/zsh/site-functions/_custodio` (Fedora, Alma, Arch) | by `compinit` |
+
+zsh offers nothing until `compinit` runs. Ubuntu runs it for every user. On Debian, Alma, Arch and
+for Fedora users not created from the skeleton, add this line to your own `~/.zshrc`:
+
+```zsh
+autoload -U compinit; compinit
+```
+
+The completion also offers your key ids for `list` and `delete`. It asks the service for the list
+only, so no authorization dialog opens and nothing is written; when the service is not running, or
+does not answer within 2 seconds, it offers no key ids.
+
 ## TPM2 Software Stack
 
 Custodio links the TPM2 Software Stack (`libtss2-esys`, `libtss2-tctildr`, `libtss2-mu`) and loads the

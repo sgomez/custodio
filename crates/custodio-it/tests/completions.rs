@@ -145,8 +145,8 @@ fn without_remove(shell: Shell, text: &str) -> String {
         Shell::Fish => text
             .lines()
             .filter(|l| !l.contains("-l remove"))
-            .map(|l| format!("{l}\n"))
-            .collect(),
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
