@@ -226,3 +226,14 @@ with an empty context.
 - Passed (each `just e2e-cases T 'fingerprint-*'`, run one at a time: parallel runs race on the package build): debian13, ubuntu2604, arch, fedora44, alma10. The group's step takes 4 s per target.
   `just quick`, `test-e2e-fingerprint.sh`, `test-e2e-select.sh` (its no-cases.list control now uses arch), `test-e2e-skips.sh`, `test-e2e-selftests.sh` green. guest.sh comments were
   shortened to stay under the 5000-token file limit.
+
+### 2026-11-16 — F200 — attempt 1
+- Done: steps 2 and 3. Judge `e2e/vm/fingerprint.py` (events format at its top; bounds: timeout prompt 10–15 s after the finger prompt, negative killed no earlier than 15 s, fallbacks ask within 5 s, sudo needs a refused wrong password
+  before the right one, fallbacks need `unit=active device=listed`, `end` judges that both set-aside files are back) and `scripts/test-e2e-vm-fingerprint.sh` (accepted set + ~75 controls, ~2 s, in `test-scripts`).
+  Wiring: 12 ids in `e2e/vm/cases.list` and (as `snap-*` does, so that `lacking` can report them skipped) in `e2e/vm/skip.list`; `check-cases.sh` refuses them skipped in a full VM run; `select.sh`
+  `case_group`/`phase_runs` (`vm-fingerprint`), `guest.sh` call; `test-e2e-vm-cases.sh` and `test-e2e-select.sh` learn the group (<1 s each). `just quick`, `e2e-vm-check` line pass.
+- Written, NOT run in a VM yet (step 4/5 untouched): `e2e/vm/fingerprint.sh` (staging, drop-in, enrol, `enable`, polkit-finger/unenrolled/timeout/negative, sudo, disabled; `restore` trap) and
+  `e2e/vm/fingerprint-pty.py` (pty driver that writes the events). Unknowns the first run settles: pkexec text-agent prompt wording (regexes in the driver), `busctl monitor` text for `verify-match`,
+  the enroll scan loop, the apt package name of libfprint, whether the harness's sudo rule is under /etc/sudoers.d (grep NOPASSWD). It ends with an explicit `fail` for the unwritten sign and fallback cases.
+- Remaining: step 1 (findings/F200.md from the first run), steps 4–6: run `just e2e-vm-cases full 'vm-fingerprint-*'` (debugging run; step 6's is the timed one), then write sign (needs an fpuser key import with the
+  test agent before the harness's pam file is set aside) and the four fallbacks, then drop the final `fail`. Evaluator note: the install uses `--no-install-recommends` (judge.sh checks it).

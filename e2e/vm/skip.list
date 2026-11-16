@@ -18,3 +18,15 @@ snap-refused-unconfined: lacking mode: the snap group runs in the full VM mode (
 snap-refused-root: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
 snap-refused-other-snap: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
 snap-unknown-methods: lacking mode: the snap group runs in the full VM mode (SPEC Design 6); the route does not depend on the TPM kind
+vm-fingerprint-stage: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-polkit-finger: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-polkit-unenrolled: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-polkit-timeout: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-sudo: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-negative: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-disabled: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-sign: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-fallback-module: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-fallback-daemon: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-fallback-reader: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-fingerprint-fallback-finger: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)

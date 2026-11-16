@@ -225,18 +225,23 @@ if phase_runs tpm-kind; then
 fi
 phase_done tpm-kind
 
-# The silent-fallback cases (F161, VM only, e2e/vm/silent.sh; skipped in the full VM mode): with libtss2-rc hidden an import that needs encrypted-tpm must fail and leave nothing;
-# with it back the import works. After tpm-kind and before sign; the library is always put back and the key deleted.
+# The silent-fallback cases (F161, VM lacking mode): e2e/vm/silent.sh.
 if phase_runs vm-silent; then
     WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/silent.sh" || fail "silent.sh failed"
 fi
 phase_done vm-silent
 
-# The snap cases (F179, VM full mode only): the real Firefox snap, e2e/vm/snap.sh. After vm-silent, before sign.
+# The snap cases (F179): e2e/vm/snap.sh.
 if phase_runs snap; then
     WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/snap.sh" || fail "snap.sh failed"
 fi
 phase_done snap
+
+# The fingerprint cases (F200, VM full): e2e/vm/fingerprint.sh.
+if phase_runs vm-fingerprint; then
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/fingerprint.sh" || fail "fingerprint.sh failed"
+fi
+phase_done vm-fingerprint
 
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.

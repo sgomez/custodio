@@ -105,4 +105,12 @@ for tgt in arch "$tmp/no-such-dir"; do
 done
 [ -d "$ROOT/e2e/targets/arch" ] && [ ! -f "$ROOT/e2e/targets/arch/cases.list" ] || bad "arch now has its own list: this control needs another target"
 
+# F200: a vm-fingerprint-* case belongs to its own step (not vm, not vm-silent); the step runs when one of them is selected, and only in a target that lists them (the VM list)
+vmt=$tmp/vmtarget; mkdir -p "$vmt"; cp "$ROOT/e2e/vm/cases.list" "$vmt/cases.list"
+printf 'vm-fingerprint-sudo\n' > "$tmp/fpsel"
+got=$(E2E_TARGET_DIR=$vmt E2E_SELECT_FILE=$tmp/fpsel bash -c 'source "$1/e2e/select.sh"; case_group vm-fingerprint-sign; case_group vm-silent-no-key; case_group vm-unit-shipped; for p in vm-fingerprint vm-silent snap; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT" | tr '\n' ' ')
+[ "$got" = "vm-fingerprint vm-silent vm vm-fingerprint " ] || bad "F200: groups and steps for a vm-fingerprint selection: '$got'"
+got=$(E2E_TARGET_DIR=$ROOT/e2e/targets/arch E2E_SELECT_FILE=$tmp/fpsel bash -c 'source "$1/e2e/select.sh"; phase_runs vm-fingerprint && printf run; true' _ "$ROOT")
+[ -z "$got" ] || bad "F200: the step runs in a target that does not list the group: '$got'"
+
 exit "$fail"

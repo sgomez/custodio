@@ -40,7 +40,7 @@ grep -v '^pcr-extended-signs$' "$LIST" > "$tmp/l1"; differs "$LIST" "$tmp/l1" li
 bash "$CHK" lint "$VSKIP" || bad "skip.list does not lint"
 
 # ---- scripts
-SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh vm/snap.sh tpmkind-cases.sh"
+SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh vm/snap.sh vm/fingerprint.sh tpmkind-cases.sh"
 stage() { # stage DIR: copies the case scripts
     local s; mkdir -p "$1/vm"; for s in $SCRIPTS; do cp "$ROOT/e2e/$s" "$1/$s"; done
 }
@@ -132,6 +132,21 @@ acct lacking "$tmp/sn5" > /dev/null || bad "the snap group skipped in a lacking 
 cp "$CHK" "$tmp/chk-snap.sh"; sed -i "s/case \$id in snap-\*) \[ \"\${CHECK_TPM_MODE:-}\" != swtpm \]/case \$id in snap-*) true/" "$tmp/chk-snap.sh"; differs "$CHK" "$tmp/chk-snap.sh" control-snap || true
 out_for "$tmp/sn6" -snap-record "skipped snap-record"
 CHK_UNDER=$tmp/chk-snap.sh acct swtpm "$tmp/sn6" > /dev/null 2>&1 || bad "control: the check without the snap rule still refuses a snap case skipped in a full VM run (the rule is not what refuses it)"
+
+# ---- vm-fingerprint (F200): the group runs in full; skipped there is refused even when the skip list names it; in lacking the group is skipped and accepted
+FP_IDS=$(ids "$LIST" | grep '^vm-fingerprint-')
+[ "$(wc -l <<< "$FP_IDS")" = 12 ] || bad "the list has not the twelve vm-fingerprint-* cases"
+out_for "$tmp/fp1" -vm-fingerprint-sign; expect_fail fp-missing "case 'vm-fingerprint-sign' was not reported" swtpm "$tmp/fp1"
+out_for "$tmp/fp2" "run vm-fingerprint-sudo"; expect_fail fp-twice "case 'vm-fingerprint-sudo' reported twice" swtpm "$tmp/fp2"
+for id in $FP_IDS; do
+    out_for "$tmp/fp4" "-$id" "skipped $id"
+    expect_fail "fp-skipped-$id" "case '$id' must run in a full VM run and was skipped" swtpm "$tmp/fp4"
+done
+{ for id in $(ids "$LIST"); do case $id in vm-fingerprint-*) echo "E2E-CASE skipped $id" ;; *) echo "E2E-CASE run $id" ;; esac; done; } > "$tmp/fp5"
+acct lacking "$tmp/fp5" > /dev/null || bad "the fingerprint group skipped in a lacking run was refused"
+cp "$CHK" "$tmp/chk-fp.sh"; sed -i "s/case \$id in vm-fingerprint-\*) \[ \"\${CHECK_TPM_MODE:-}\" != swtpm \]/case \$id in vm-fingerprint-*) true/" "$tmp/chk-fp.sh"; differs "$CHK" "$tmp/chk-fp.sh" control-fp || true
+out_for "$tmp/fp6" -vm-fingerprint-stage "skipped vm-fingerprint-stage"
+CHK_UNDER=$tmp/chk-fp.sh acct swtpm "$tmp/fp6" > /dev/null 2>&1 || bad "control: the check without the fingerprint rule still refuses a fingerprint case skipped in a full VM run (the rule is not what refuses it)"
 
 # ---- tpmbound
 TB="fallback-tpmbound-import fallback-tpmbound-cli-list upgrade-kinds-tpmbound"
