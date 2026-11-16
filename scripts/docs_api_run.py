@@ -344,8 +344,44 @@ def run(doc_path, address, workdir, server_bin):
     return fails
 
 
+def names_in_fn(path, impl_re):
+    """The string literals that `name()` returns in the impl blocks of `path` whose header matches impl_re."""
+    src = read(path)
+    out = set()
+    for m in re.finditer(r"^impl " + impl_re + r" \{\n(.*?)\n\}", src, re.S | re.M):
+        fn = re.search(r"pub const fn name\(self\)[^{]*\{(.*?)\n    \}", m.group(1), re.S)
+        if fn:
+            out |= set(re.findall(r'=> "([^"]+)"', fn.group(1)))
+    return out
+
+
+def derived_names(api_path, audit_path):
+    """The error names, journal outcomes and StateStorageReason values of the documents equal those the code defines."""
+    bad = []
+    api, audit = read(api_path), read(audit_path)
+    code_errs = set(re.findall(r'pub const ERROR_\w+: &str =\s*"' + re.escape(ERROR_PREFIX) + r'(\w+)"', read("crates/custodio-client/src/lib.rs")))
+    doc_errs = set(error_items(api))
+    if code_errs != doc_errs:
+        bad.append(f"error names: the code has {sorted(code_errs - doc_errs)} more, the document {sorted(doc_errs - code_errs)} more")
+    code_out = names_in_fn("crates/custodiod/src/audit.rs", r"Outcome") | names_in_fn("crates/custodiod/src/audit/operation.rs", r"\w+Outcome")
+    sec = section(audit, r"^## Outcomes")
+    doc_out = set(re.findall(r"^\| `([a-z_]+)` \|", sec, re.M))
+    if code_out != doc_out:
+        bad.append(f"journal outcomes: the code has {sorted(code_out - doc_out)} more, the document {sorted(doc_out - code_out)} more")
+    code_rs = names_in_fn("crates/custodiod/src/storage.rs", r"UnknownReason")
+    doc_rs = set(re.findall(r"^- reason `([\w-]+)`:", section(api, r"^### Method `StateStorageReason`"), re.M))
+    if code_rs != doc_rs:
+        bad.append(f"StateStorageReason: the code has {sorted(code_rs - doc_rs)} more, the document {sorted(doc_rs - code_rs)} more")
+    for what, got in (("error names", code_errs), ("journal outcomes", code_out), ("StateStorageReason values", code_rs)):
+        if not got:
+            bad.append(f"no {what} found in the code: the extraction is broken")
+    return bad
+
+
 def main(argv):
-    if len(argv) == 3 and argv[1] == "static":
+    if len(argv) == 4 and argv[1] == "names":
+        bad = derived_names(argv[2], argv[3])
+    elif len(argv) == 3 and argv[1] == "static":
         bad = static(argv[2])
     elif len(argv) == 6 and argv[1] == "run":
         bad = run(*argv[2:])
