@@ -268,3 +268,6 @@ with an empty context.
   the contract amendment says skip.list holds the ids (separate commit); dead branch in `fingerprint-pty.py` removed; the redundant `disabled.scans` and `no-fprintd` dropped from the judge and its controls;
   `k.p12` is deleted after the import.
 - Passed: `test-e2e-vm-fingerprint.sh`, `just e2e-vm-cases full 'vm-fingerprint-*'` (exit 0, 12 `run`, step `vm-fingerprint`=53 s), `just quick`.
+
+### 2026-11-16 — F200 — attempt 6
+- Findings fixed (docs only): `docs/findings/F200.md` rewritten under the rules of `docs/findings.md` (headed `## F200`, conclusions first with versions, no diary); index line added. `just quick` passes.
