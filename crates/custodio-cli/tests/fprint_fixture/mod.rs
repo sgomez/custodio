@@ -497,6 +497,8 @@ impl Fx {
         Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
             .arg("doctor")
             .env_clear()
+            // Under cargo llvm-cov the instrumented binary writes its profile where this says.
+            .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
             .env("PATH", &empty)
             .env("CUSTODIO_FIXTURE_ROOT", self.root())
             .env("CUSTODIO_FIXTURE_EUID", euid)

@@ -68,6 +68,8 @@ impl Case {
         let o = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
             .arg("doctor")
             .env_clear()
+            // Under cargo llvm-cov the instrumented binary writes its profile where this says.
+            .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
             .env("PATH", self.outside.path().join("bin"))
             .env("TMPDIR", self.outside.path().join("tmp"))
             .env("CUSTODIO_FIXTURE_ROOT", self.fx.root())
@@ -211,6 +213,8 @@ fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_
         .args(["register", "--module"])
         .arg(c.module())
         .env_clear()
+        // Under cargo llvm-cov the instrumented binary writes its profile where this says.
+        .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
         .env("HOME", c.fx.home())
         .env("PATH", c.outside.path().join("bin"))
         .env("TMPDIR", c.outside.path().join("tmp"))
