@@ -18,7 +18,6 @@ use fprint_fixture::{
 const FIREFOX: &str = "module in Firefox";
 const JOURNAL: &str = "persistent journal";
 const STORAGE: &str = "state directory storage";
-const ORDER: [&str; 6] = [READER, FINGER, POLKIT_CHECK, FIREFOX, JOURNAL, STORAGE];
 
 struct Run {
     text: String,
@@ -129,7 +128,6 @@ fn everything_satisfied_is_exit_status_0_with_the_six_checks_in_order() {
             (STORAGE, "ok", None),
         ],
     );
-    assert_eq!(ORDER.len(), 6);
     assert_eq!((r.code, r.stderr.as_str()), (0, ""), "{}", r.text);
 }
 
@@ -177,6 +175,30 @@ fn fprintd_not_installed_and_no_finger_enrolled_are_unsatisfied_and_exit_status_
         ],
     );
     assert_eq!(r.code, 0);
+}
+
+#[test]
+fn a_service_file_with_no_owner_is_could_not_check_on_check_1_and_exit_status_0() {
+    let r = run(
+        |fx| {
+            custodios(fx);
+            register_profile(fx, true);
+        },
+        Fake {
+            fprintd: false,
+            ..finger()
+        },
+    );
+    expect(
+        &r,
+        &[
+            (READER, "could not check", Some("fprintd")),
+            (FIREFOX, "ok", None),
+            (JOURNAL, "ok", None),
+            (STORAGE, "ok", None),
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.text);
 }
 
 #[test]
@@ -250,7 +272,6 @@ fn an_unregistered_profile_is_not_ok_with_the_register_fix_and_exit_status_1() {
 fn a_malformed_profiles_ini_alone_is_could_not_check_and_exit_status_1() {
     let r = run(
         |fx| {
-            fx.put(".mozilla/firefox/profiles.ini", "x");
             fs::create_dir_all(fx.home().join(".mozilla/firefox")).unwrap();
             fs::write(fx.home().join(".mozilla/firefox/profiles.ini"), "[P\n\u{0}").unwrap();
         },
