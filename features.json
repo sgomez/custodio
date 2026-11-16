@@ -109,7 +109,7 @@
         "F197"
       ],
       "verify": "just quick && scripts/test-e2e-vm-fingerprint.sh && scripts/test-e2e-vm-cases.sh && just e2e-vm-cases full 'vm-fingerprint-*' && just e2e-vm-check full 'vm-fingerprint-sign vm-fingerprint-fallback-module vm-fingerprint-fallback-daemon vm-fingerprint-fallback-reader vm-fingerprint-fallback-finger'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F201",
