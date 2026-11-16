@@ -52,6 +52,16 @@ fooled by a copy; whoever can make you touch the reader, or has your finger, can
 password where the password is the only way in (a failed finger always falls back to it). Custodio cannot see which finger or
 which reader answered. See the [threat model](threat-model.md) for the full list of what is not guaranteed.
 
+The finger only answers the polkit dialog; every limit of the threat model's "Not guaranteed" list still holds with it:
+
+- The dialog cannot prove what is being signed, and does not show which key or file is involved.
+- An audit entry records the uid and pid of the calling program, not a person; the app-id of a flatpak caller is a claim, not an authorization.
+- Root can use a `tpm` key; the `encrypted-tpm` and `encrypted-host` kinds protect less, because root can take the key from the service's memory.
+- A TPM clear, some firmware updates or a new motherboard lose the keys wrapped by the TPM; import the `.p12` again.
+- Deleting a key does not erase its bytes from filesystem blocks, snapshots or backups.
+- Ownership follows the numeric uid, so a reused uid owns the old keys.
+- SELinux adds no protection: Custodio ships no policy.
+
 ## When `enable` refuses
 
 `enable` refuses, changes nothing and exits with status 1. Each message below is exactly what it prints.
