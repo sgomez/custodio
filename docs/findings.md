@@ -106,3 +106,4 @@ Rules:
 - [F195](findings/F195.md) — import failures: a MAC-bearing unusable file with a wrong password gives the same `MAC tag mismatch` as a good one; (b) cannot be told there.
 - [F199](findings/F199.md) — fprintd packages, module paths and the ctypes PAM client per family; Debian's fprintd profile is off by default
 - [F200](findings/F200.md) — VM fingerprint group (Ubuntu 26.04, polkit 127, fprintd 1.94.5): pkexec fails under su so pkttyagent+pkcheck; text agent asks the password once; timeout reports `no-match`; journal key field `CUSTODIO_KEY_ID`.
+- [F201](findings/F201.md) — double prompt, switch + override on Ubuntu 26.04: matching finger prompts once, a wrong finger or no touch twice (B 20 s) or four times/40 s (Omarchy-style file); doctor warns on both fprintd lines.
