@@ -135,3 +135,16 @@ with an empty context.
   to `Unreadable` (b); unit tests for both; finding records the rule and the 1-in-256 padding chance. `just quick` green;
   `mutants-diff F195`: 21 mutants, 15 caught, 6 unviable, 0 missed.
 - Note 4 (CLI test in-process) accepted by the evaluator.
+
+### 2026-11-16 — F196 — attempt 1
+- Done (all steps ticked): route 2 of F189. `storage.rs`: `UnknownReason` (7 wire values: `no-mount`, `not-block-filesystem`, `sysfs-incomplete`,
+  `layer-not-classified`, `members-disagree`, `fscrypt-not-excluded`, `state-dir-unresolved`; `ALL`, `name()`), `Diagnosis` (verdict + reason, reason only on unknown),
+  `diagnose_with` / `diagnose_state_dir`; `classify`, `classify_with`, `classify_state_dir` keep their signatures and verdicts. `startup::start` takes a closure returning `Diagnosis`.
+  Bus: new read-only method `StateStorageReason` (`s`, empty unless unknown), docs/api.md section with the values; the snap socket does not serve it
+  (`snap_socket_surface::other_methods_are_unknown` lists it). `api_contract.rs` reads `- reason` lines and compares both ways with `UnknownReason::ALL` through `name()`, with removed/renamed/invented controls.
+- Tests: `storage_stability.rs` (one case → (verdict, reason) table, 34 cases, each read twice; no threads, per the evaluator's note), `storage_api.rs` (reason per value, empty for proven, no polkit / no state change via the existing helpers).
+- Decision: `state_storage`, `storage_api` and the new `storage_stability` are their own `[[test]]` targets (not in `tests/it.rs`) because the `verify` runs `--test <name>`; `every_test_file_is_a_module_here` lists them as exceptions.
+- Mapping notes: a dm node with no `dm/` directory is `layer-not-classified` (indistinguishable from a disk without a hardware link); `dm/uuid` missing or empty is `sysfs-incomplete`.
+- No journal field added (optional); `start_journals_storage_field` is unchanged and `docs/audit.md` is not touched.
+- Evidence: `just quick` green, `just api-contract`, `scripts/test-docs-api.sh`, the three `--test` targets pass; `snap_socket_surface` (in `it`, run by `just quick`) passes;
+  `just mutants-diff F196`: 40 mutants, 29 caught, 11 unviable, 0 missed (6 min 13 s; no budget row).
