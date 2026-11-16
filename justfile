@@ -138,6 +138,7 @@ package-gate-test:
     scripts/test-package-scripts.sh
     scripts/test-check-packages.sh
     scripts/test-check-packages-deps.sh
+    scripts/test-check-packages-pam.sh
     scripts/test-check-parity.sh
     scripts/test-glibc-ceiling.sh
     scripts/test-snap-base-fit.sh

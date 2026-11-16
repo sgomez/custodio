@@ -28,7 +28,7 @@ run_case() {
     local label=$1 want=$2 stub_exit=$3 status=0
     shift 3
     : > "$tmp/calls"
-    PATH="$tmp/stubs:/usr/bin:/bin" CALLS="$tmp/calls" STUB_EXIT=$stub_exit "$@" || status=$?
+    PATH="$tmp/stubs:/usr/bin:/bin" CALLS="$tmp/calls" STUB_EXIT=$stub_exit "$@" 2>/dev/null || status=$?
     [ "$status" -eq 0 ] || bad "$label: exit status $status"
     [ "$(cat "$tmp/calls")" = "$want" ] || bad "$label: calls were: $(tr '\n' ';' < "$tmp/calls")"
 }
@@ -83,5 +83,46 @@ for stub_exit in 0 1; do
         run_case "arch $fn$suffix" "$want" $stub_exit bash -c ". '$tmp/archlinux/INSTALL'; $fn"
     done
 done
+
+# The install notice (acceptance 5): the real install script of each format, extracted from the fixture package, prints it on stderr after a first install
+# and prints nothing on an upgrade; the exit status and the calls are those of the cases above. The removal scripts say nothing about PAM or the fingerprint.
+# err_case LABEL WANT(notice|none) COMMAND...: stderr of the command, run with the stubs, holds the notice or is empty of "fingerprint".
+err_case() {
+    local label=$1 want=$2 status=0
+    shift 2
+    : > "$tmp/calls"
+    PATH="$tmp/stubs:/usr/bin:/bin" CALLS="$tmp/calls" "$@" 2> "$tmp/err" > /dev/null || status=$?
+    [ "$status" -eq 0 ] || bad "$label: exit status $status"
+    if [ "$want" = notice ]; then
+        grep -qF 'fingerprint is off' "$tmp/err" || bad "$label: the notice does not say the fingerprint is off: $(cat "$tmp/err")"
+        grep -qF 'sudo custodio fingerprint enable' "$tmp/err" || bad "$label: the notice lacks the enable command"
+        grep -qF 'custodio doctor' "$tmp/err" || bad "$label: the notice lacks custodio doctor"
+    else
+        grep -qiE 'fingerprint|doctor' "$tmp/err" && bad "$label: unexpected notice: $(cat "$tmp/err")"
+    fi
+    return 0
+}
+err_case "deb postinst configure (install)" notice sh "$tmp/deb/postinst" configure
+err_case "deb postinst configure (upgrade)" none sh "$tmp/deb/postinst" configure 0.0.9
+err_case "rpm post (install)" notice sh "$tmp/rpm/post" 1
+err_case "rpm post (upgrade)" none sh "$tmp/rpm/post" 2
+err_case "arch post_install" notice bash -c ". '$tmp/archlinux/INSTALL'; post_install"
+err_case "arch post_upgrade" none bash -c ". '$tmp/archlinux/INSTALL'; post_upgrade"
+
+# no_pam LABEL COMMAND...: the removal script prints nothing about PAM or the fingerprint (stdout and stderr).
+no_pam() {
+    local label=$1
+    shift
+    : > "$tmp/calls"
+    PATH="$tmp/stubs:/usr/bin:/bin" CALLS="$tmp/calls" "$@" > "$tmp/out" 2>&1 || true
+    ! grep -qiE 'pam\.d|pam_|fingerprint' "$tmp/out" || bad "$label: the removal output mentions PAM or the fingerprint: $(cat "$tmp/out")"
+}
+no_pam "deb prerm remove" sh "$tmp/deb/prerm" remove
+no_pam "deb postrm remove" sh "$tmp/deb/postrm" remove
+no_pam "deb postrm purge" sh "$tmp/deb/postrm" purge
+no_pam "rpm preun" sh "$tmp/rpm/preun" 0
+no_pam "rpm postun" sh "$tmp/rpm/postun" 0
+no_pam "arch pre_remove" bash -c ". '$tmp/archlinux/INSTALL'; pre_remove"
+no_pam "arch post_remove" bash -c ". '$tmp/archlinux/INSTALL'; post_remove"
 
 exit "$fail"

@@ -200,3 +200,12 @@ with an empty context.
   `mutants` with the other two system-call functions, comment updated); the always-true package assert is now `libpam-fprintd`; a drop guard restores directory modes.
 - Evidence: `just quick`, `fingerprint_decide` (17), `fingerprint` (33), `help` (8), fuzz build/lint/smoke, `test-check-fixture-seams.sh`, `just fixture-seams` pass;
   `just mutants-diff F197`: 132 mutants, 118 caught, 14 unviable, 0 missed (2 min).
+
+### 2026-11-16 — F198 — attempt 1
+- Gate: `scripts/check_packages.py` has the three rules per format (a: "PAM directory" for any file under /etc/pam.d or /usr/lib/pam.d; b: `/etc/pam.d` in any script — deb control scripts, rpm
+  scriptlets, Arch `.INSTALL` and the files under libalpm hooks/scripts; c: the install script holds `sudo custodio fingerprint enable` and `custodio doctor`).
+- `scripts/test-check-packages-pam.sh` (new, in `package-gate-test`; ~15 s): clean + pam-usr, pam-etc, names-pam (in the post-removal script, not the install one), no-enable, no-doctor, parallel.
+  New `nfpm_edit.py` op `scripts-dir DIR` sets scripts per format from files.
+- Notice (stderr, one text in three formats, first install only): deb `postinst` (`$2` empty), rpm `post` (`$1`=1), Arch `post_install`. Removal scripts unchanged.
+- `scripts/test-package-scripts.sh`: notice on install/absent on upgrade, removal scripts silent on pam/fingerprint. `test-arch-lifecycle.sh` now expects the notice on post_install stderr.
+- Passed: `just quick`, test-check-packages-pam, test-check-packages, -deps, test-package-scripts, deb/rpm/arch lifecycle, arch/rpm scripts-static.

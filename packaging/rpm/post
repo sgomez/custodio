@@ -21,4 +21,12 @@ if [ "${1:-0}" -ge 2 ] && [ -e /run/custodio-restart-after-upgrade ]; then
 else
     systemctl start custodio-firefox.socket || true
 fi
+# The notice is for a first install only ($1 is 1); an upgrade stays silent. Nothing here runs the command or touches the login configuration.
+if [ "${1:-0}" -eq 1 ]; then
+    {
+        echo "custodio: the fingerprint is off for Custodio's dialogs; they ask for your password."
+        echo "custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable"
+        echo "custodio: to check the setup at any time, run: custodio doctor"
+    } >&2
+fi
 exit 0

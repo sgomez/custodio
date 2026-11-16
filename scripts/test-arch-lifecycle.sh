@@ -17,7 +17,7 @@
 #   pre_install, pre_upgrade   BUS; systemd-sysusers -.  Exit 0. A bus without ProcessFD, or a failing systemd-sysusers, or none on PATH:
 #                              the account is still created (the installation goes on whatever the status), the messages are on stderr, exit 1
 #                              (also when both fail). Only the embedded check function equals packaging/bus-check.sh.
-#   post_install               systemctl enable custodio-firefox.socket; systemctl start custodio-firefox.socket (F173). No output, no file changed.
+#   post_install               systemctl enable custodio-firefox.socket; systemctl start custodio-firefox.socket (F173). The install notice on stderr (F198), nothing on stdout, no file changed.
 #   post_upgrade               systemctl enable custodio-firefox.socket; systemctl is-active --quiet custodio-firefox.socket; only when that
 #                              says inactive: systemctl is-active --quiet custodio.service and, when active, systemctl stop custodio.service,
 #                              systemctl start custodio-firefox.socket, systemctl start custodio.service; when the service is stopped only
@@ -92,6 +92,9 @@ BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop
 SYSUSERS='systemd-sysusers -'
 ACTIVE='systemctl is-active --quiet custodio.service'
 SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
+INSTALL_NOTICE="custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
+custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable
+custodio: to check the setup at any time, run: custodio doctor" # F198
 ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 RESTART_HOOK=$'systemd-hook restart custodio.service\nsystemctl try-restart custodio.service'
 SRC=$ROOT/packaging/arch
@@ -115,7 +118,8 @@ cases() {
         run post_install
         want_ok "post_install $L"
         want_calls "post_install $L" "systemctl enable $SOCK"$'\n'"systemctl start $SOCK"
-        [ -z "$out$err" ] || bad "post_install $L printed: $out$err"
+        [ -z "$out" ] || bad "post_install $L printed on stdout: $out"
+        [ "$err" = "$INSTALL_NOTICE" ] || bad "post_install $L: stderr is not the install notice: $err"
         [ -e "$root/stub/sock-active" ] || bad "post_install $L: the socket was not started"
         [ "$(root_snapshot)" = "$snap" ] || bad "post_install $L changed files"
         [ ! -e "$root/fs-calls" ] || bad "post_install $L called a file tool: $(cat "$root/fs-calls")"

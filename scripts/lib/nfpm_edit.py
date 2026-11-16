@@ -3,7 +3,7 @@
 usage: nfpm_edit.py SRC DST OP [ARG...]
 Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | recommends-add FMT DEP | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | recommends-add FMT DEP | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE | scripts-dir DIR
 """
 import sys
 
@@ -104,6 +104,12 @@ elif op == "script-add":  # a script file of the real set, under a key the gate 
     target[args[1]] = ov["scripts"].get("postinstall", "packaging/deb/postinst")
 elif op == "script-set":  # a script file of the test, under a key the real set has
     cfg["overrides"][args[0]]["scripts"][args[1]] = args[2]
+elif op == "scripts-dir":  # scripts-dir DIR: every DIR/FMT-KEY (FMT deb, rpm or archlinux, KEY preinstall, postinstall, preremove or postremove) is the script of that format and key
+    import os
+    for fmt in ("deb", "rpm", "archlinux"):
+        for key in ("preinstall", "postinstall", "preremove", "postremove"):
+            if os.path.exists(f"{args[0]}/{fmt}-{key}"):
+                cfg["overrides"][fmt]["scripts"][key] = f"{args[0]}/{fmt}-{key}"
 elif op != "none":
     sys.exit("nfpm_edit: unknown op " + op)
 yaml.safe_dump(cfg, open(dst, "w"), sort_keys=False)
