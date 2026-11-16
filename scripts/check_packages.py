@@ -82,7 +82,7 @@ LABELS = ("deb", "rpm", "arch")
 
 def wanted_files(label):
     """path -> mode of every file the package of this format installs."""
-    return {**expected.FILES, expected.DAEMON[label]: 0o755, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
+    return {**expected.FILES, expected.DAEMON[label]: 0o755, expected.ZSH[label]: 0o644, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
 
 
 def check_config():
@@ -110,9 +110,9 @@ def check_config():
             if dst in seen[label]:
                 fail("nfpm.yaml", f"{dst} is listed twice" + ("" if packager is None else f" for {label}"))
             seen[label][dst] = info.get("mode")
-            if packager is not None and dst not in expected.ARCH_ONLY_FILES and dst not in expected.DAEMON.values() and dst != expected.UNIT:
-                # A packager-limited entry is for a file of that format's own: the Arch-only files, the daemon, the unit.
-                fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files, the daemon and the unit may be")
+            if packager is not None and dst not in expected.ARCH_ONLY_FILES and dst not in expected.DAEMON.values() and dst not in expected.ZSH.values() and dst != expected.UNIT:
+                # A packager-limited entry is for a file of that format's own: the Arch-only files, the daemon, the zsh completion, the unit.
+                fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files, the daemon, the zsh completion and the unit may be")
             if dst in expected.ARCH_ONLY_FILES and label != "arch":
                 fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
         if not dst.startswith("/usr/"):
