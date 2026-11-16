@@ -368,3 +368,8 @@ with an empty context.
 ### 2026-11-16 — F207 — attempt 4
 - Step 5 reading done against SPEC Design 5 and the threat model's "Not guaranteed": `docs/fingerprint.md` now lists each limit of that list (intent, uid/pid and app-id, root and the encrypted kinds, TPM clear, erasure, uid reuse, SELinux). Lock screen, Firefox restart, doctor, guide, install.md sections and refusals are present. Step 6 done.
 - Passed (measured): `test-docs-fingerprint` ~10 s, `-readme` 2 s, `-guide` 4 s, `-install` 4 s, `-install-register` 1 s, `just quick` 51 s. All well under the 120 s default.
+
+### 2026-11-16 — F207 — attempt 2 (findings fixed)
+- `test-docs-fingerprint.sh` now runs `static` on `docs/fingerprint.md` too. Refusal blocks for all five systems' os-release (Ubuntu, Alma added; `fp_root` writes `ID_LIKE`) and for `global-fedora`, `global-arch` (count raised to 11). `docs/doctor.md` gains a `plainreason` block (`unknown` with reason `not-block-filesystem`).
+- Guide: install, remove and purge show the package's `custodio:` notice (the `apt-get` stand-in prints those lines of dpkg's output on stdout; control "install notice altered"). The completion block sources the shipped file (a `source` stand-in through BASH_ENV reads it from the package root) and prints the candidates for `li`. `docs_check.py` gives `DOCS_COMMANDS` (every command of the block) to `DOCS_CHECK`; the guide script lists each command with its handler and fails on one no handler knows.
+- All five verify scripts and `just quick` pass. Guide script about 5 s, fingerprint script about 10 s.

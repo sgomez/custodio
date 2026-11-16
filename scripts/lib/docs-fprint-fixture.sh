@@ -37,18 +37,23 @@ W
 
 # fp_root DIR NAME: (re)creates the fixture root DIR for the system NAME: debian (the default: module, fprintd, no override),
 # debian-foreign (someone else's polkit-1), omarchy, global-debian, global-fedora, global-arch (fingerprint on for the whole system),
-# nomodule-debian, nomodule-fedora, nomodule-arch, nomodule-ubuntu.
+# nomodule-debian, nomodule-fedora, nomodule-arch, nomodule-ubuntu, nomodule-alma (the os-release of each of the five systems).
 fp_root() {
     local d=$1 name=$2 os=debian lib=usr/lib/x86_64-linux-gnu/security
     rm -rf "${d:?}"
     case $name in
         *fedora) os=fedora lib=usr/lib64/security ;;
+        *alma) os=almalinux lib=usr/lib64/security ;;
         *arch) os=arch lib=usr/lib/security ;;
         omarchy) os=arch lib=usr/lib/security ;;
         *ubuntu) os=ubuntu ;;
     esac
     mkdir -p "$d/etc/pam.d" "$d/usr/lib/pam.d" "$d/usr/share/dbus-1/system-services" "$d/home/person" "$d/etc/systemd"
-    echo "ID=$os" > "$d/etc/os-release"
+    case $os in
+        ubuntu) printf 'ID=ubuntu\nID_LIKE=debian\n' > "$d/etc/os-release" ;;
+        almalinux) printf 'ID="almalinux"\nID_LIKE="rhel centos fedora"\n' > "$d/etc/os-release" ;;
+        *) echo "ID=$os" > "$d/etc/os-release" ;;
+    esac
     echo "auth include system-auth" > "$d/usr/lib/pam.d/polkit-1"
     echo "[D-BUS Service]" > "$d/usr/share/dbus-1/system-services/net.reactivated.Fprint.service"
     printf '[Journal]\nStorage=persistent\n' > "$d/etc/systemd/journald.conf"
@@ -103,12 +108,12 @@ fp_fake_swap() {
     timeout 20 sh -c 'until grep -q ready "$1"; do sleep 0.1; done' _ "$d/fake.out"
 }
 # fp_doc_setup DIR BUSDIR NAME: the fixture of one block of a document. The fingerprint page's names are those of fp_root; the
-# doctor page adds ok (override written, a reader, a finger), noreader, nofinger, plainstorage (the service cannot say the state
-# directory is encrypted) and brokeninclude (the override includes a file that is gone).
+# doctor page adds ok (override written, a reader, a finger), noreader, nofinger, plainstorage and plainreason (the service cannot say the state
+# directory is encrypted, without and with a reason) and brokeninclude (the override includes a file that is gone).
 fp_doc_setup() {
     local d=$1 bus=$2 name=$3
     case $name in
-        ok | noreader | nofinger | plainstorage | brokeninclude | default)
+        ok | noreader | nofinger | plainstorage | plainreason | brokeninclude | default)
             fp_root "$d" debian
             case $name in ok | brokeninclude) CUSTODIO_FIXTURE_ROOT=$d CUSTODIO_FIXTURE_EUID=0 "$FP_CLI" fingerprint enable > /dev/null 2>&1 ;; esac
             [ "$name" != brokeninclude ] || rm "$d/usr/lib/pam.d/polkit-1"
@@ -116,6 +121,7 @@ fp_doc_setup() {
                 noreader) fp_fake_swap "$bus" 0 ;;
                 nofinger) fp_fake_swap "$bus" 1 none ;;
                 plainstorage) fp_fake_swap "$bus" 1 list unknown ;;
+                plainreason) fp_fake_swap "$bus" 1 list unknown not-block-filesystem ;;
                 *) fp_fake_swap "$bus" 1 list ;;
             esac ;;
         *) fp_root "$d" "$name" ;;

@@ -11,9 +11,12 @@ Download `custodio_0.9.0-1_amd64.deb` to the directory you are in, then:
 
 ```console
 $ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
+custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
+custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable
+custodio: to check the setup at any time, run: custodio doctor
 ```
 
-The package starts nothing by itself: the service starts the first time something asks for it.
+`apt-get` prints its own progress too; the lines above, which start with `custodio:`, are the package's own notice, shown on a first install only.
 
 ## 2. Check the system
 
@@ -84,9 +87,13 @@ Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it
 The package also installs the shell completions; open a new terminal and `custodio li` followed by Tab completes:
 
 ```console
-$ ls /usr/share/bash-completion/completions/custodio
-/usr/share/bash-completion/completions/custodio
+$ source /usr/share/bash-completion/completions/custodio
+$ COMP_WORDS=(custodio li) COMP_CWORD=1
+$ _custodio; echo "${COMPREPLY[@]}"
+list
 ```
+
+The last two lines are what the Tab key does for you: they ask the completion for the words that start with `li`.
 
 ## 6. Take it all away
 
@@ -113,6 +120,9 @@ To turn it on again: sudo custodio fingerprint enable
 
 ```console
 $ sudo apt-get remove custodio
+custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio).
+custodio: the account custodio was kept too, because the keys belong to its uid.
+custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated.
 ```
 
 Removal leaves the state directory and the `custodio` account on purpose, and so does purge:
@@ -126,6 +136,9 @@ custodio
 
 ```console
 $ sudo apt-get purge custodio
+custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio).
+custodio: the account custodio was kept too, because the keys belong to its uid.
+custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated.
 $ sudo ls -d /var/lib/private/custodio
 /var/lib/private/custodio
 $ getent passwd custodio | cut -d: -f1

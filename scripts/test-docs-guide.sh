@@ -82,6 +82,8 @@ cd $d
 unshare --map-root-user --mount env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket dpkg --root=$d/droot --log=$d/droot/dpkg.log \\
     --force-depends --force-bad-path --no-triggers \$act "\$arg" > $d/dpkg.out 2>&1 || { tail -n 5 $d/dpkg.out >&2; exit 1; }
 echo "\$act" >> $d/dpkg.acts
+# apt shows dpkg's progress too; the guide shows only what the package's maintainer scripts print (they start with "custodio:").
+grep '^custodio:' $d/dpkg.out || true
 W
     # ls and getent look into the root of the package, so that what removal leaves can be shown.
     cat > "$bin/ls" << W
@@ -95,6 +97,10 @@ W
 [ "\$1" = passwd ] || exit 2
 grep "^\$2:" $d/droot/etc/passwd
 W
+    # bash's `source` of an absolute path reads it from the root of the package.
+    cat > "$bin/benv" << W
+source() { local f=\$1; shift; case \$f in /*) f=$d/droot\$f ;; esac; builtin source "\$f" "\$@"; }
+W
     chmod +x "$bin"/*
 }
 
@@ -106,6 +112,19 @@ set -u
 d=$2
 snap() { . $ROOT/scripts/lib/lifecycle-fixtures.sh; lc_snapshot_state $2/droot; }
 echo "\$1" >> \$d/ran
+# Every command of the block has a handler that ran it (the stand-in or the real tool); one that no handler knows fails.
+while IFS= read -r c; do
+    case \$c in
+        "sudo apt-get install ./"* | "sudo apt-get remove custodio" | "sudo apt-get purge custodio") h=apt-get-to-dpkg ;;
+        "sudo custodio fingerprint enable" | "sudo custodio fingerprint disable") h=custodio-fixture-root-as-root ;;
+        "custodio doctor" | "custodio import --id ana ana.p12" | "custodio register" | "custodio register --remove" | "custodio list" | "custodio delete ana") h=custodio-fixture ;;
+        "sudo ls -d /var/lib/private/custodio") h=ls-in-package-root ;;
+        "getent passwd custodio | cut -d: -f1") h=getent-in-package-root ;;
+        "source /usr/share/bash-completion/completions/custodio" | "COMP_WORDS=(custodio li) COMP_CWORD=1" | '_custodio; echo "\${COMPREPLY[@]}"') h=bash-completion ;;
+        *) echo "no handler knows: \$c" >&2; exit 1 ;;
+    esac
+    echo "  \$h: \$c" >> \$d/handlers
+done <<< "\$DOCS_COMMANDS"
 case \$1 in
     "sudo apt-get install ./custodio_0.9.0-1_amd64.deb")
         [ -x \$d/droot/usr/libexec/custodio/custodiod ] || { echo "the package's files are not in the root" >&2; exit 1; }
@@ -154,7 +173,7 @@ run_guide() {
     local srv_pid=$!
     timeout 20 sh -c 'until grep -q ready "$1"; do sleep 0.1; done' _ "$d/server.out"
     uid=$(reg_uid)
-    HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d GS_LOG=$d/gs.log \
+    BASH_ENV=$d/bin/benv HOME=$d/home PATH=$d/bin:$PATH STUB_LOG=$d/modutil.log CHECK_DIR=$d GS_LOG=$d/gs.log \
         CUSTODIO_FIXTURE_ROOT=$d/root CUSTODIO_FIXTURE_EUID=$uid \
         DOCS_PASSWORD=test-password DOCS_ANSWER=yes DOCS_HOME_SHOWN=/home/ana DOCS_CHECK=$d/check.sh \
         timeout 300 unshare -rm sh -c '
@@ -178,6 +197,8 @@ python3 -I "$LIB" links "$DOC" || fail=1
 run_guide "$DOC" "$TMP/real" || fail=1
 echo "commands run, in order (first command of each block):"
 sed 's/^/  /' "$TMP/real/ran" 2> /dev/null || true
+echo "every command and the handler that ran it:"
+cat "$TMP/real/handlers" 2> /dev/null || true
 
 if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     pids=() names=()
@@ -199,6 +220,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "command in a text block" static sed '0,/^## 1\. Install the package$/s//```text\n$ rm -rf \/etc\n```\n\n&/'
     control "an extra command" run sed '0,/^\$ custodio list$/s//$ custodio frobnicate\n$ custodio list/'
     control "output altered" run sed '0,/^Imported key /s//Imported key X/'
+    control "install notice altered" run sed '0,/^custodio: to check the setup at any time, run: custodio doctor$/s//custodio: to check the setup, run: custodio doctor/'
     control "deb name changed" run sed 's/custodio_0\.9\.0-1_amd64\.deb/custodio_0.9.1-1_amd64.deb/'
     control "register --remove after the removal" run python3 -I -c '
 import re, sys

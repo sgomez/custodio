@@ -98,7 +98,21 @@ custodio fingerprint: fingerprint is already on for the whole system, so this ov
 Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
 ```
 
-On the Fedora family it is `with-fingerprint` in authselect; on Arch it is `pam_fprintd` in `system-auth`. The message is the same.
+On the Fedora family it is `with-fingerprint` in authselect:
+
+```console fails=yes fixture=global-fedora
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
+Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
+```
+
+On Arch it is `pam_fprintd` in `system-auth`:
+
+```console fails=yes fixture=global-arch
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
+Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
+```
 
 The PAM module or fprintd is not installed. The message names the packages of the system:
 
@@ -114,7 +128,19 @@ custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
 Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
 ```
 
+```console fails=yes fixture=nomodule-ubuntu
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
+```
+
 ```console fails=yes fixture=nomodule-fedora
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install fprintd-pam and fprintd and run 'sudo custodio fingerprint enable' again.
+```
+
+```console fails=yes fixture=nomodule-alma
 $ sudo custodio fingerprint enable 2>&1
 custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
 Install fprintd-pam and fprintd and run 'sudo custodio fingerprint enable' again.

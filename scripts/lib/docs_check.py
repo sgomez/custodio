@@ -263,7 +263,9 @@ def run_doc(doc, cwd):
         print(f"{'FAIL' if any(b.startswith(f'{doc}:{line}:') for b in bad) else 'ok  '} {doc}:{line} ({len(cmds)} commands)")
         if os.environ.get("DOCS_CHECK"):
             first = cmds[0][0].split("\n")[0]
-            if subprocess.run([os.environ["DOCS_CHECK"], first], env=env, cwd=cwd, check=False).returncode != 0:
+            # Every command of the block (its first line), one per line, for a caller that lists them and the handler of each.
+            every = dict(env, DOCS_COMMANDS="\n".join(c[0].split("\n")[0] for c in cmds))
+            if subprocess.run([os.environ["DOCS_CHECK"], first], env=every, cwd=cwd, check=False).returncode != 0:
                 bad.append(f"{doc}:{line}: the effect check after `{first}` failed")
     return bad, ran
 

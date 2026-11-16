@@ -121,5 +121,21 @@ custodio doctor: a check that decides the exit status is not satisfied (checks 4
 Do what the fix under it says, then run 'custodio doctor' again.
 ```
 
+When the service gives a reason, the report names it and says what it means, and the fix changes with it:
+
+```console fails=yes fixture=plainreason
+$ custodio doctor 2>&1
+ok              fingerprint reader: fprintd lists 1 reader
+ok              enrolled finger: 1 finger enrolled for you
+not ok          fingerprint for polkit: fingerprint is not active for polkit
+                fix: Run: sudo custodio fingerprint enable
+ok              module in Firefox: no browser profile was found, so there is nothing to register
+ok              persistent journal: the journal is persistent (Storage=persistent)
+not ok          state directory storage: the service's state directory is not known to be on an encrypted device (reason not-block-filesystem: the state directory is on a filesystem that is not on one block device (tmpfs, overlay, a network filesystem, btrfs or an anonymous device))
+                fix: Keep the state directory on a local ext4, xfs or similar filesystem. Or use full-disk encryption (README.md#full-disk-encryption).
+custodio doctor: a check that decides the exit status is not satisfied (checks 4 to 6)
+Do what the fix under it says, then run 'custodio doctor' again.
+```
+
 When the service is not running, or does not answer, this check and the one on the journal say `could not check` and the exit status
 is 1: start the service (`systemctl start custodio.service`) and run `custodio doctor` again.

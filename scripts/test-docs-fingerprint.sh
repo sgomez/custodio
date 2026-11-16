@@ -86,7 +86,7 @@ CHECK
         for want in enabled disabled refused gsettings; do
             grep -qx "$want" "$d/checked" 2> /dev/null || { echo "the effect '$want' was never checked: the page lacks the command" >&2; rc=1; }
         done
-        [ "$(grep -cx refused "$d/checked" 2> /dev/null || true)" -ge 7 ] || { echo "fewer than seven refusals ran" >&2; rc=1; }
+        [ "$(grep -cx refused "$d/checked" 2> /dev/null || true)" -ge 11 ] || { echo "fewer than eleven refusals ran" >&2; rc=1; }
     elif [ "$kind" = doctor ]; then
         # Every check of the CLI has its section, and every section is a check of the CLI.
         python3 -I - "$doc" "$d/names" << 'PY' || rc=1
@@ -115,6 +115,7 @@ static() {
 }
 DOCTOR=${DOCTOR:-docs/doctor.md}
 INSTALL=${INSTALL:-docs/install.md}
+static "$DOC" || fail=1
 static "$DOCTOR" "" || fail=1
 # The new parts of docs/install.md (the sections `Fingerprint for polkit dialogs` and `Checking the system`) are console blocks and are
 # run here; its bash blocks stay with test-docs-install.sh. A page where those sections are missing runs nothing and fails.
