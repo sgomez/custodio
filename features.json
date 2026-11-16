@@ -195,7 +195,7 @@
         "F205"
       ],
       "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F207",
