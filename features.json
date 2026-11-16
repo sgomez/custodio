@@ -154,7 +154,7 @@
         "F203"
       ],
       "verify": "just quick && just e2e-cases debian13 'doctor-*' && just e2e-cases ubuntu2604 'doctor-*' && just e2e-cases fedora44 'doctor-*' && just e2e-cases alma10 'doctor-*' && just e2e-cases arch 'doctor-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F205",
