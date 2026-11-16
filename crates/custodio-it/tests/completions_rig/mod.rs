@@ -39,12 +39,19 @@ pub fn binary() -> Result<PathBuf, Box<dyn Error>> {
     Ok(path)
 }
 
+/// Under `cargo llvm-cov` the instrumented binary writes its profile where this variable says; with
+/// the environment cleared it would write one into the current directory (the temporary HOME).
+fn profile_file() -> Option<(&'static str, std::ffi::OsString)> {
+    std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v))
+}
+
 /// `custodio __key-ids` with `address` as the system bus.
 pub fn key_ids(address: &str) -> Result<Output, Box<dyn Error>> {
     Ok(Command::new(binary()?)
         .arg("__key-ids")
         .env_clear()
         .env("DBUS_SYSTEM_BUS_ADDRESS", address)
+        .envs(profile_file())
         .stdin(Stdio::null())
         .output()?)
 }
@@ -204,6 +211,7 @@ impl Setup {
             .env("PATH", path)
             .env("HOME", self.home.path())
             .env("DBUS_SYSTEM_BUS_ADDRESS", &self.address)
+            .envs(profile_file())
             .stdin(Stdio::null())
             .output()?;
         let mut took = start.elapsed();
