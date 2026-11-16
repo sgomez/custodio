@@ -32,6 +32,7 @@ pub mod fingerprint_cmd;
 pub mod fingerprint_decide;
 pub mod help;
 pub mod journald_conf;
+pub mod key_ids;
 pub mod list;
 pub mod parse;
 pub mod register_cli;

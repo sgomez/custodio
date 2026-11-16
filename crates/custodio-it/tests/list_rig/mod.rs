@@ -83,7 +83,7 @@ impl Authorizer for CountingPolkit {
 
 pub struct Bus {
     child: Child,
-    address: String,
+    pub address: String,
 }
 
 impl Bus {

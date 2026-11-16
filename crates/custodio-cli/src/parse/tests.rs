@@ -100,3 +100,17 @@ fn parse_args_wants_import_and_derives_ids_from_plain_stems() {
         Err(ArgError::BadId)
     );
 }
+
+#[test]
+fn the_hidden_key_ids_command_takes_no_argument_and_is_not_in_the_help() {
+    assert_eq!(args(&["__key-ids"]), Ok(Command::KeyIds));
+    assert_eq!(args(&["__key-ids", "x"]), Err(ArgError::Usage));
+    assert_eq!(args(&["__key-ids", "--help"]), Err(ArgError::Usage));
+    assert!(help::command("__key-ids").is_none());
+    let mut rendered = help::global();
+    for c in help::COMMANDS {
+        rendered.push_str(&help::text(Some(c.name)));
+    }
+    assert!(!rendered.contains("__key-ids"));
+    assert!(!crate::USAGE.contains("__key-ids"));
+}

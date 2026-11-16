@@ -9,6 +9,8 @@ use custodio_cli::agent::process::Pkttyagent;
 use custodio_cli::agent::{Process, WithAgent};
 use custodio_cli::browser_files::local_address;
 use custodio_cli::bus::DbusImporter;
+use custodio_cli::key_ids;
+use custodio_cli::list::KeyLister;
 use custodio_cli::register_discover::Environment;
 use custodio_cli::register_native::{
     RegisterArgs, RegisterError, RunError, default_journal_socket, refresh_only_command,
@@ -60,6 +62,9 @@ fn run() -> Result<(), CliError> {
     if matches!(command, Command::Doctor) {
         return custodio_cli::doctor_cmd::run(&mut io::stdout()).map_err(CliError::Doctor);
     }
+    if matches!(command, Command::KeyIds) {
+        return key_ids();
+    }
     if let Command::Help(topic) = &command {
         // A closed standard output is not a failure of the tool.
         let out_tty = rustix::termios::isatty(io::stdout());
@@ -87,7 +92,11 @@ fn run() -> Result<(), CliError> {
         .map_err(CliError::Import),
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
             .map_err(CliError::Delete),
-        Command::Register(_) | Command::Help(_) | Command::Fingerprint(_) | Command::Doctor => {
+        Command::Register(_)
+        | Command::Help(_)
+        | Command::Fingerprint(_)
+        | Command::Doctor
+        | Command::KeyIds => {
             unreachable!("handled before the bus is opened")
         }
         Command::List(None) => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
@@ -96,6 +105,23 @@ fn run() -> Result<(), CliError> {
             show_command(&bus, &storage, &id, &mut io::stdout(), &mut io::stderr())
                 .map_err(CliError::List)
         }
+    }
+}
+
+/// The hidden `__key-ids`: on any failure nothing is printed and the exit status is 1, so a shell
+/// completion sees an empty list. The whole call, connecting included, gets `CALL_LIMIT`.
+fn key_ids() -> Result<(), CliError> {
+    let text = key_ids::within(key_ids::CALL_LIMIT, || {
+        let bus = DbusImporter::system().ok()?;
+        let keys = bus.list_keys().ok()?;
+        Some(key_ids::render(&keys))
+    });
+    match text {
+        Some(text) => {
+            let _ = io::stdout().write_all(text.as_bytes());
+            Ok(())
+        }
+        None => std::process::exit(1),
     }
 }
 

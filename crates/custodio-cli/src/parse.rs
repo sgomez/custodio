@@ -28,6 +28,8 @@ pub enum Command {
     Register(register_native::RegisterArgs),
     Fingerprint(crate::fingerprint_cmd::Action),
     Doctor,
+    /// `__key-ids`, hidden: the key ids for the shell completions.
+    KeyIds,
     /// `--help` or `-h`: the help of a command, or of the whole tool.
     Help(Option<&'static str>),
 }
@@ -53,6 +55,9 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
             ArgError::Usage => ArgError::CommandUsage(spec.name),
             other => other,
         });
+    }
+    if args.len() == 1 && args[0] == "__key-ids" {
+        return Ok(Command::KeyIds);
     }
     if args.len() == 1 && is_help(&args[0]) {
         return Ok(Command::Help(None));
