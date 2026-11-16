@@ -89,7 +89,7 @@
         "F197"
       ],
       "verify": "just quick && scripts/test-check-packages-pam.sh && scripts/test-check-packages.sh && scripts/test-package-scripts.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F199",
