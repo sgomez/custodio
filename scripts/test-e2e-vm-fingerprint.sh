@@ -41,7 +41,7 @@ printf '[sudo] password for fpuser: \nSorry, try again.\n[sudo] password for fpu
 printf '0 start\n0.4 prompt-finger\n0.8 prompt-password\n15.5 killed\n' > negative.events
 echo absent > negative.action
 printf '0 start\n0.3 prompt-password\n0.6 typed-right\n0.9 approved\n' > disabled.events
-echo absent > disabled.pam; echo 0 > disabled.scans
+echo absent > disabled.pam
 printf '0 start\n0.4 prompt-finger\n0.9 scan right-index-finger\n1.1 matched\n1.5 approved\n' > sign.events
 openssl ecparam -name prime256v1 -genkey -noout -out k.pem 2> /dev/null
 openssl ec -in k.pem -pubout -out sign.pub 2> /dev/null
@@ -118,7 +118,6 @@ MSG="'typed-right'" ctl neg-password negative 'printf "5 typed-right\n" >> negat
 # disabled
 MSG="'prompt-finger'" ctl dis-finger disabled 'sed -i "s/^0.3 prompt-password/0.2 prompt-finger\n0.3 prompt-password/" disabled.events'
 MSG='still names' ctl dis-pam disabled 'echo fprintd > disabled.pam'
-MSG='scan was consumed' ctl dis-scans disabled 'echo 1 > disabled.scans'
 # sign
 MSG='does not verify' ctl sign-flipped sign "python3 -I -c \"d=bytearray(open('sign.sig','rb').read()); d[10]^=1; open('sign.sig','wb').write(d)\""
 MSG='does not verify' ctl sign-otherdata sign 'printf "other" > sign.data'

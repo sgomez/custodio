@@ -39,7 +39,8 @@ MODPATH=''
 
 restore() { # the files set aside are back, whatever happened
     local f
-    rm -f "$PAMF" "$RULE"
+    rm -f "$RULE"
+    # idempotent: the file at $PAMF is the override only while the harness's file is set aside
     [ ! -f "$ASIDE" ] || mv -f "$ASIDE" "$PAMF"
     for f in $SUDO_FILES; do [ ! -f "$SUDO_ASIDE/$(basename "$f")" ] || mv -f "$SUDO_ASIDE/$(basename "$f")" "$f"; done
     SUDO_FILES=''
@@ -126,6 +127,7 @@ openssl pkcs12 -export -inkey "$FP/user/k.key" -in "$FP/user/k.crt" -name "$KEY"
 rm -f "$FP/user/k.key"
 chmod 644 "$FP/user/k.p12"
 timeout 300 su -l "$USER_FP" -c "WORK=$WORK MODULE=$MODULE bash $here/fingerprint-user.sh $FP/user $KEY $FP/user/k.p12" > "$FP/user/alice.out" 2>&1 || { cat "$FP/user/alice.out" >&2; fail "the test user could not import the key"; }
+rm -f "$FP/user/k.p12" # no key material stays in the evidence
 
 # the harness's pam_permit file is a foreign file for `enable`: set aside, the real layout used
 mv -f "$PAMF" "$ASIDE"
@@ -234,11 +236,10 @@ fprintd_back fallback-finger
 custodio fingerprint disable > "$FP/disable.out" 2>&1 || fail "custodio fingerprint disable failed: $(head -c 300 "$FP/disable.out")"
 if [ -e "$PAMF" ] && grep -q pam_fprintd "$PAMF"; then echo fprintd > "$FP/disabled.pam"; else echo absent > "$FP/disabled.pam"; fi
 approve disabled "{\"prompt-password\":[\"type:$FPPW\"]}" 0
-echo 0 > "$FP/disabled.scans"
-if grep -qE 'prompt-finger|matched' "$FP/disabled.events"; then echo 1 > "$FP/disabled.scans"; fi
 
 # the files set aside are back: checked after restore, which the exit trap runs again
 restore
+restore # what the exit trap will do again: it must leave the files where they are
 state=''
 if [ -f "$PAMF" ] && grep -q pam_permit "$PAMF"; then state='polkit-1=back '; fi
 if grep -q NOPASSWD /etc/sudoers.d/* 2> /dev/null; then state="${state}sudo-rule=back"; fi

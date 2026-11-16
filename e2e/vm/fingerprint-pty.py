@@ -64,8 +64,6 @@ def main():
         for pat, name in ((r"(?i)(place|swipe|scan)[^\n]*finger|finger[^\n]*(reader|sensor)", "prompt-finger"),
                           (r"(?i)password[^\n]*: ?$|password: ?", "prompt-password")):
             mm = re.search(pat, pend)
-            if mm and name == "prompt-password" and re.search(r"(?i)finger", pend[: mm.start()] + mm[0]) and False:
-                continue
             if mm:
                 used += mm.end()
                 emit(name)

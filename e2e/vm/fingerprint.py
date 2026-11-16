@@ -10,7 +10,7 @@ Evidence files (DIR/):
                     approved, killed (the waiting process was killed by the harness)
   sudo.text         the transcript of sudo (case sudo)
   negative.action   `absent` or `present` (the file the approved action would leave)
-  disabled.pam      `absent` or `no-fprintd` (what /etc/pam.d/polkit-1 is after disable), disabled.scans (scans consumed, a number)
+  disabled.pam      `absent` (what /etc/pam.d/polkit-1 is after disable)
   sign.{data,sig,pub}, sign.journal  the signed bytes, the DER signature, the public key (PEM), the journal entries of the service (`-o json`, one per line)
   CASE.restored     `unit=active device=listed` (fallback cases: fprintd is back before the next case)
   end.state         `polkit-1=back sudo-rule=back` (the files the group set aside are back; judged by `end`)"""
@@ -183,15 +183,13 @@ def j_negative(d, _):
 
 def j_disabled(d, _):
     p, ev = base(d, "disabled")
-    p += need(d, "disabled.pam", "disabled.scans")
+    p += need(d, "disabled.pam")
     if p:
         return p
     p += in_order(ev, ["prompt-password", "typed-right", "approved"])
     p += forbid(ev, "prompt-finger", "scan", "matched", "nomatch")
-    if read(d, "disabled.pam").strip() not in ("absent", "no-fprintd"):
+    if read(d, "disabled.pam").strip() not in ("absent",):
         p.append("/etc/pam.d/polkit-1 still names the fingerprint module after disable")
-    if read(d, "disabled.scans").strip() != "0":
-        p.append("a scan was consumed after disable")
     return p
 
 

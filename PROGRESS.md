@@ -262,3 +262,9 @@ with an empty context.
   Versions: polkit 127-2ubuntu1.1, fprintd 1.94.5-4, libfprint 1:1.95.1+tod1-0ubuntu2, libpam-fprintd 1.94.5-4. The judge's `end` passed: `/etc/pam.d/polkit-1` and the sudo rule were back.
   Budget: vm/full is not read by the loop yet (budgets.tsv); no BLOCKED.md.
 - Passed: `just quick`, `test-e2e-vm-fingerprint.sh` (~2 s), `test-e2e-vm-cases.sh`, `test-e2e-select.sh` (<1 s), `just e2e-vm-check full '<five names>'`.
+
+### 2026-11-16 — F200 — attempt 5
+- Findings fixed: `restore` is idempotent (`$PAMF` is removed only while the harness's file is set aside, so the exit trap's second pass leaves the file; `end` runs `restore` twice before it records the state);
+  the contract amendment says skip.list holds the ids (separate commit); dead branch in `fingerprint-pty.py` removed; the redundant `disabled.scans` and `no-fprintd` dropped from the judge and its controls;
+  `k.p12` is deleted after the import.
+- Passed: `test-e2e-vm-fingerprint.sh`, `just e2e-vm-cases full 'vm-fingerprint-*'` (exit 0, 12 `run`, step `vm-fingerprint`=53 s), `just quick`.
