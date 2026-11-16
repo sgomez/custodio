@@ -335,3 +335,10 @@ with an empty context.
 ### 2026-11-16 — F205 — attempt 3
 - Finding fixed (tests only): the zsh driver now strips the echoed words from each terminal line instead of dropping the line, so stray output on the TAB line reaches stderr. Negative control `zsh_stray_output_is_noticed` (a copy of `_custodio` that prints to stderr from `_custodio_key_ids`). `completions`: 26 pass, 7 s.
 - Passed: `cargo test -p custodio-it --test completions`, `just quick`.
+
+### 2026-11-16 — F206 — attempt 1
+- Steps 1-3 done. `just check` (red once: `docs/install.md` had a ```zsh block, now ```bash; rerun green, 81 script tests in 63 s), `just api-contract`, `just fuzz-smoke` (18 targets run = 1 + 11 + 6 from `cargo fuzz list` of the three fuzz crates), `just memory-safety` (41 s, exit 0) pass.
+- e2e fixes: `cli-list-none` judge accepts the F180 `Warning:` line on stderr (selftest case added); `tpmfail` judge and its script test look for the CLI sentence of each error, not the bus error name that F193 stopped printing. Two earlier e2e runs also showed pty timeouts in `cli-import-pkttyagent*` on fedora44/debian13 that did not repeat (load with six at once, not reproduced; watch for it).
+- Final e2e on this tree (`just e2e`, six records, exit 0, wall 173 s): alma10 149 s, arch 153, debian13 swtpm 173, fedora44 139, ubuntu2604 147, debian13 none 157; all under `budgets.tsv` rows. Per log `E2E-CASE run doctor-` = 11 on all six (debian13 none too); `fingerprint-` run: alma10 9, arch 7, debian13 8 (swtpm and none), fedora44 9, ubuntu2604 8; no fingerprint/doctor case skipped.
+- Acceptance 16 (docs commands run as written) is NOT proven here: the Design 5 documents come in F207. VM group (acceptance 18, 19) is left to F209.
+- Remaining: steps 4 (`package-gates`), 5 (`coverage`, `crap`), 6 (rerun `check` after the e2e script edits, `just quick`). No regression test was added beyond the selftest case (<1 s).
