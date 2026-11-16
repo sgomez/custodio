@@ -94,41 +94,50 @@ fn no_device_is_not_ok_with_its_fix_and_the_finger_could_not_be_checked() {
     assert_eq!(calls.lock().unwrap().as_slice(), ["GetDevices"]);
 }
 
-#[test]
-fn fprintd_not_installed_names_the_packages_of_the_family() {
+fn not_installed(os: &str, must: &[&str], must_not: &[&str]) {
     let bus = Bus::new();
-    for (os, must, must_not) in [
-        (
-            "ID=ubuntu\nID_LIKE=debian\n",
-            "libpam-fprintd",
-            "fprintd-pam",
-        ),
-        (
-            "ID=\"almalinux\"\nID_LIKE=\"rhel centos fedora\"\n",
-            "fprintd-pam",
-            "libpam-fprintd",
-        ),
-        ("ID=arch\n", "Install fprintd.", "pam"),
-    ] {
-        let fx = Fx::new();
-        fx.put("etc/os-release", os);
-        fx.remove(SERVICE);
-        let (o, text) = doctor(&fx, &bus.address);
-        assert_eq!(state(&text, READER), "not ok", "{os}: {text}");
-        let fix = fixes(&text, READER).join("\n");
-        assert!(fix.contains(must) && !fix.contains(must_not), "{os}: {fix}");
-        assert_eq!(exit(&o), 0);
-    }
     let fx = Fx::new();
-    fx.put("etc/os-release", "ID=plan9\n");
+    fx.put("etc/os-release", os);
     fx.remove(SERVICE);
-    let (_, text) = doctor(&fx, &bus.address);
+    let (o, text) = doctor(&fx, &bus.address);
+    assert_eq!(state(&text, READER), "not ok", "{os}: {text}");
     let fix = fixes(&text, READER).join("\n");
     assert!(
-        ["libpam-fprintd", "fprintd-pam", "fprintd (Arch)"]
-            .iter()
-            .all(|p| fix.contains(p)),
-        "{fix}"
+        must.iter().all(|p| fix.contains(p)) && !must_not.iter().any(|p| fix.contains(p)),
+        "{os}: {fix}"
+    );
+    assert_eq!(exit(&o), 0);
+}
+
+#[test]
+fn fprintd_not_installed_names_the_debian_packages() {
+    not_installed(
+        "ID=ubuntu\nID_LIKE=debian\n",
+        &["libpam-fprintd"],
+        &["fprintd-pam"],
+    );
+}
+
+#[test]
+fn fprintd_not_installed_names_the_fedora_packages() {
+    not_installed(
+        "ID=\"almalinux\"\nID_LIKE=\"rhel centos fedora\"\n",
+        &["fprintd-pam"],
+        &["libpam-fprintd"],
+    );
+}
+
+#[test]
+fn fprintd_not_installed_names_the_arch_package() {
+    not_installed("ID=arch\n", &["Install fprintd."], &["pam"]);
+}
+
+#[test]
+fn fprintd_not_installed_on_an_unknown_family_names_all_three() {
+    not_installed(
+        "ID=plan9\n",
+        &["libpam-fprintd", "fprintd-pam", "fprintd (Arch)"],
+        &[],
     );
 }
 

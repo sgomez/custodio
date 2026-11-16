@@ -96,30 +96,31 @@ fn a_vendor_less_root_without_the_override_is_not_a_broken_include() {
     assert_eq!(code(&o), 0);
 }
 
+fn broken_include_exit(fake: Fake) {
+    let fx = Fx::new();
+    custodios(&fx);
+    fx.remove(VENDOR);
+    let bus = Bus::new();
+    serve(&bus.address, fake);
+    let (o, text) = doctor(&fx, &bus.address);
+    assert_eq!(code(&o), 1, "{text}");
+    assert!(
+        text.lines().next().unwrap().contains(POLKIT_CHECK),
+        "{text}"
+    );
+}
+
 #[test]
-fn a_broken_include_is_exit_status_1_whatever_checks_1_and_2_say() {
-    for (fake, what) in [
-        (
-            Fake {
-                fingers: Fingers::List(&["left-thumb"]),
-                ..Fake::new(1)
-            },
-            "everything else satisfied",
-        ),
-        (Fake::new(0), "no reader"),
-    ] {
-        let fx = Fx::new();
-        custodios(&fx);
-        fx.remove(VENDOR);
-        let bus = Bus::new();
-        serve(&bus.address, fake);
-        let (o, text) = doctor(&fx, &bus.address);
-        assert_eq!(code(&o), 1, "{what}: {text}");
-        assert!(
-            text.lines().next().unwrap().contains(POLKIT_CHECK),
-            "{what}: {text}"
-        );
-    }
+fn a_broken_include_is_exit_status_1_with_everything_else_satisfied() {
+    broken_include_exit(Fake {
+        fingers: Fingers::List(&["left-thumb"]),
+        ..Fake::new(1)
+    });
+}
+
+#[test]
+fn a_broken_include_is_exit_status_1_with_no_reader() {
+    broken_include_exit(Fake::new(0));
 }
 
 #[test]
@@ -133,39 +134,74 @@ fn someone_elses_file_with_an_auth_line_is_active_through_that_file() {
     assert_eq!(code(&o), 0);
 }
 
-#[test]
-fn a_file_with_the_module_only_in_a_comment_or_an_account_line_is_not_active() {
-    for text in [
-        "#%PAM-1.0\n# auth sufficient pam_fprintd.so\nauth include system-auth\n",
-        "auth include system-auth\naccount sufficient pam_fprintd.so\n",
-    ] {
-        let fx = Fx::new();
-        fx.put(POLKIT, text);
-        let (o, out) = doctor(&fx, NO_BUS);
-        assert_eq!(state(&out, POLKIT_CHECK), "not ok", "{text}: {out}");
-        assert_eq!(code(&o), 0);
-    }
+fn not_active(text: &str) {
+    let fx = Fx::new();
+    fx.put(POLKIT, text);
+    let (o, out) = doctor(&fx, NO_BUS);
+    assert_eq!(state(&out, POLKIT_CHECK), "not ok", "{text}: {out}");
+    assert_eq!(code(&o), 0);
 }
 
 #[test]
-fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_every_family() {
-    let named = ["common-auth", "authselect", "system-auth", "pam.d/sudo"];
-    for ((os, file, content), named) in GLOBAL_FORMS.into_iter().zip(named) {
-        let fx = Fx::new();
-        fx.put("etc/os-release", os);
-        fx.put(file, content);
-        let (o, text) = doctor(&fx, NO_BUS);
-        assert_eq!(state(&text, POLKIT_CHECK), "ok", "{file}: {text}");
-        let line = polkit_text(&text);
-        assert!(
-            line.contains("whole system")
-                && line.contains("sudo uses the finger too")
-                && line.contains(named),
-            "{file}: {line}"
-        );
-        assert!(!text.contains("warning"), "global alone: {text}");
-        assert_eq!(code(&o), 0);
-    }
+fn a_file_with_the_module_only_in_a_comment_is_not_active() {
+    not_active("#%PAM-1.0\n# auth sufficient pam_fprintd.so\nauth include system-auth\n");
+}
+
+#[test]
+fn a_file_with_the_module_only_in_an_account_line_is_not_active() {
+    not_active("auth include system-auth\naccount sufficient pam_fprintd.so\n");
+}
+
+#[test]
+fn a_dash_auth_line_counts_as_active_as_enable_reads_it() {
+    // `-auth` is an auth line to PAM and to `first_fprintd_auth_line`, which `enable` uses.
+    let fx = Fx::new();
+    fx.put(
+        POLKIT,
+        "-auth sufficient pam_fprintd.so\nauth include system-auth\n",
+    );
+    let (o, text) = doctor(&fx, NO_BUS);
+    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{text}");
+    assert!(polkit_text(&text).contains("not Custodio's"), "{text}");
+    assert_eq!(code(&o), 0);
+}
+
+fn global_on(i: usize, named: &str) {
+    let (os, file, content) = GLOBAL_FORMS[i];
+    let fx = Fx::new();
+    fx.put("etc/os-release", os);
+    fx.put(file, content);
+    let (o, text) = doctor(&fx, NO_BUS);
+    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{file}: {text}");
+    let line = polkit_text(&text);
+    assert!(
+        line.contains("whole system")
+            && line.contains("sudo uses the finger too")
+            && line.contains(named),
+        "{file}: {line}"
+    );
+    assert!(!text.contains("warning"), "global alone: {text}");
+    assert_eq!(code(&o), 0);
+}
+
+#[test]
+fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_debian() {
+    global_on(0, "common-auth");
+}
+
+#[test]
+fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_fedora() {
+    global_on(1, "authselect");
+}
+
+#[test]
+fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_arch_system_auth() {
+    global_on(2, "system-auth");
+}
+
+#[test]
+fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_arch_sudo() {
+    global_on(3, "pam.d/sudo");
 }
 
 #[test]

@@ -285,3 +285,7 @@ with an empty context.
 - Decisions the contract left open: a broken include puts check 3 first (its own line, not a copy); `-auth ... pam_fprintd.so` counts as active (F197's `first_fprintd_auth_line` does; the contract's "control" with `-auth` would contradict that, so the controls are a comment and an `account` line); exit 2 for root (as `register`), 1 for a broken include (report on stdout, two lines on stderr).
 - Measured: `doctor_reader` 1.5 s (14 cases), `doctor_polkit` 0.02 s (11), lib tests 0.3 s, `just fixture-seams` 4.6 s warm, `mutants-diff F202` 2 min (67 mutants: 0 missed after one round).
 - Passed: `just quick`, `doctor_reader`, `doctor_polkit`, `help`, `scripts/test-check-fixture-seams.sh`, `just fixture-seams`, `just mutants-diff F202`.
+
+### 2026-11-16 — F202 — attempt 2
+- Findings fixed: contract amended (separate commit) so `-auth` is proven active, not a not-active control, with a new `doctor_polkit` case; serial loops in `doctor_reader` (four families) and `doctor_polkit` (two broken-include fakes, comment/account, four global forms) are now one `#[test]` each over a shared helper. Tests only, no product code changed.
+- Passed: `doctor_reader` (17, 1.5 s), `doctor_polkit` (17, 0.01 s), `just quick`.
