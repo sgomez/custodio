@@ -80,6 +80,7 @@ pub fn state_dir(rig: &Rig) -> PathBuf {
 pub enum Shell {
     Bash,
     Zsh,
+    Fish,
 }
 
 impl Shell {
@@ -88,6 +89,7 @@ impl Shell {
         match self {
             Self::Bash => "custodio.bash",
             Self::Zsh => "_custodio",
+            Self::Fish => "custodio.fish",
         }
     }
 
@@ -143,6 +145,12 @@ impl Setup {
                 std::fs::write(dir.join("_custodio"), completion)?;
                 std::fs::write(setup.files.path().join("init.zsh"), ZSH_INIT)?;
             }
+            Shell::Fish => {
+                // A directory in `fish_complete_path`, as the vendor directory of a package.
+                let dir = setup.files.path().join("vendor_completions.d");
+                std::fs::create_dir(&dir)?;
+                std::fs::write(dir.join("custodio.fish"), completion)?;
+            }
         }
         Ok(setup)
     }
@@ -169,6 +177,15 @@ impl Setup {
                     .args(words);
                 c.env_clear()
                     .env("BASH_COMPLETION_USER_DIR", self.files.path());
+                c
+            }
+            Shell::Fish => {
+                let mut c = Command::new("fish");
+                c.args(["-c", FISH_DRIVER]).args(words);
+                c.env_clear().env(
+                    "COMPLETION_DIR",
+                    self.files.path().join("vendor_completions.d"),
+                );
                 c
             }
             Shell::Zsh => {
@@ -203,7 +220,7 @@ impl Setup {
             String::from_utf8_lossy(&out.stderr)
         );
         let (items, stderr) = match self.shell {
-            Shell::Bash => (
+            Shell::Bash | Shell::Fish => (
                 String::from_utf8_lossy(&out.stdout).into_owned(),
                 String::from_utf8_lossy(&out.stderr).into_owned(),
             ),
@@ -284,4 +301,13 @@ for l in ${(f)${buf//$'\r'/$'\n'}}; do
     print -r -- $l >&2
 done
 exit 0
+"#;
+
+/// `complete -C` of a real fish, with the directory in `fish_complete_path`: the candidates for
+/// the words, one per line, without their descriptions.
+const FISH_DRIVER: &str = r#"
+set -p fish_complete_path $COMPLETION_DIR
+for line in (complete -C "$argv")
+    string split -m1 \t -- $line | head -n1
+end
 "#;

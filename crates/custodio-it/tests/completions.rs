@@ -137,13 +137,26 @@ fn check_commands_and_options(setup: &Setup) -> Result<(), String> {
     Ok(())
 }
 
+/// The completion text without the option `--remove` of `register`: the word in bash and zsh
+/// (one string of options), the line of its own in fish.
+fn without_remove(shell: Shell, text: &str) -> String {
+    match shell {
+        Shell::Bash | Shell::Zsh => text.replace("--remove", ""),
+        Shell::Fish => text
+            .lines()
+            .filter(|l| !l.contains("-l remove"))
+            .map(|l| format!("{l}\n"))
+            .collect(),
+    }
+}
+
 fn commands_and_options(shell: Shell) -> TestResult {
     let rig = Rig::start(false)?;
     let text = shell.text()?;
     let setup = Setup::new(shell, &rig.bus.address, &text)?;
     check_commands_and_options(&setup)?;
     // Negative control: the same comparison fails on a copy without `--remove`.
-    let cut = Setup::new(shell, &rig.bus.address, &text.replace("--remove", ""))?;
+    let cut = Setup::new(shell, &rig.bus.address, &without_remove(shell, &text))?;
     let err = check_commands_and_options(&cut).expect_err("a missing option goes unnoticed");
     assert!(err.contains("register"), "{err}");
     Ok(())
@@ -361,4 +374,39 @@ fn zsh_takes_the_ids_as_data() -> TestResult {
 #[test]
 fn zsh_writes_nothing_and_asks_no_polkit() -> TestResult {
     writes_nothing_and_asks_no_polkit(Shell::Zsh)
+}
+
+#[test]
+fn fish_offers_every_command_and_option_of_the_help() -> TestResult {
+    commands_and_options(Shell::Fish)
+}
+
+#[test]
+fn fish_offers_the_key_ids_of_the_person() -> TestResult {
+    key_ids_of_the_person(Shell::Fish)
+}
+
+#[test]
+fn fish_offers_nothing_and_quickly_when_the_service_is_absent() -> TestResult {
+    service_absent(Shell::Fish)
+}
+
+#[test]
+fn fish_offers_nothing_within_the_bound_when_the_service_hangs() -> TestResult {
+    service_hung(Shell::Fish)
+}
+
+#[test]
+fn fish_offers_200_key_ids_within_2_s() -> TestResult {
+    two_hundred_keys(Shell::Fish)
+}
+
+#[test]
+fn fish_takes_the_ids_as_data() -> TestResult {
+    ids_are_data(Shell::Fish)
+}
+
+#[test]
+fn fish_writes_nothing_and_asks_no_polkit() -> TestResult {
+    writes_nothing_and_asks_no_polkit(Shell::Fish)
 }
