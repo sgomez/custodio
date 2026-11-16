@@ -188,6 +188,8 @@ run_guide() {
     done
     # Every command the guide's blocks hold was run by a handler: the list of what ran is the list of the first commands.
     [ "$(tr '\n' ' ' < "$d/dpkg.acts" 2> /dev/null)" = "-i -r -P " ] || { echo "dpkg did not run install, remove and purge in that order: $(tr '\n' ' ' < "$d/dpkg.acts" 2> /dev/null)" >&2; rc=1; }
+    # AFTER_RUN COMMAND: the caller's checks on the fixture once the way back is done (test-docs-manual-m7.sh); $d is its argument.
+    [ -z "${AFTER_RUN:-}" ] || "$AFTER_RUN" "$d" || rc=1
     sed -n 's/^/    /p' "$d/run.out" "$d/run.err" | tail -n 30 >&2
     return "$rc"
 }

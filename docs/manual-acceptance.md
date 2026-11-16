@@ -1,4 +1,4 @@
-# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15, M3 acceptance 14 to 16, M4 acceptance 13 to 15)
+# Manual acceptance steps (M01 acceptance 11 to 13, M2 acceptance 12 to 15, M3 acceptance 14 to 16, M4 acceptance 13 to 15, M7 acceptance 20 to 22)
 
 This page has four parts. Sections 1 to 9 are the M01 steps. A person follows them in a graphical Debian 13 or
 Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (LibreOffice) and 13 (the
@@ -6,7 +6,7 @@ Ubuntu 26.04 session. They cover the M01 SPEC.md acceptance 11 (rFirma), 12 (Lib
 `ubuntu2404` (the M2 acceptance 12 to 15; the `ubuntu2404` part, section 14, no longer applies: the system is not supported); start at section 10. Sections 16 to 19 are the M3 steps (the M3
 acceptance 14 to 16: the client API by hand, a flatpak, Firefox and LibreOffice with a second account); start at
 section 16. Sections 20 to 23 are the M4 steps (the M4 acceptance 13 to 15: a hardware TPM, a VM without a TPM and a copy of
-the state directory); start at section 20. Section 25 is the M6 step (acceptance 19: the Firefox snap on an Ubuntu 26.04 desktop). Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
+the state directory); start at section 20. Section 25 is the M6 step (acceptance 19: the Firefox snap on an Ubuntu 26.04 desktop). Sections 26 to 29 are the M7 steps (acceptance 22: from the package to a signature with a finger and back; acceptance 20 and 21: the reviews of the documents and of the help; and the form to return). Nothing here is automated. Commands that were run while writing this page (openssl, `certutil`, `modutil`, the
 `custodio import` flags) say so; everything else is marked **unverified**: adjust it to your NSS,
 LibreOffice and rFirma version and write down what you changed.
 
@@ -1119,3 +1119,219 @@ as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The co
 | 6 | Firefox with the P-256 key | the page loads, a polkit dialog for each signature | |
 | 7 | the dialog refused | the handshake fails | |
 | 8 | the journal query | every signature with the Firefox label and Firefox's pid | |
+
+## 26. M7 acceptance 22: from the package to a signature with a finger, and back
+
+On Ubuntu 26.04 with a **real fingerprint reader** and **no Custodio installed**, a person uses only the documents
+([docs/guide-ubuntu-2604.md](guide-ubuntu-2604.md), [docs/fingerprint.md](fingerprint.md), [docs/doctor.md](doctor.md) and
+[docs/install.md](install.md)) and does the steps below, writing in the form of section 29 the line that shows each result. Nothing
+here is run by the build loop on a real system. `scripts/test-docs-manual-m7.sh` runs every `console` block of this section as
+written on a fixture system (the real `dpkg`, the real `custodio` on private buses, a fake fprintd), so the output under a command is what a
+correct system prints. Three things are a person's and are not verified by that run: the certificate you import is the file you
+exported from Firefox, not the test file the script uses; every touch of the reader; and every site and Firefox window. Where a
+line below differs from your screen, write the difference in the form: it is a place where the documents were not enough. Home directory
+names are `/home/ana`: yours is your own.
+
+1. Download `custodio_0.9.0-1_amd64.deb` and install it. You must see the install notice:
+
+```console
+$ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
+custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
+custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable
+custodio: to check the setup at any time, run: custodio doctor
+```
+
+2. Run `custodio doctor`. It must name what is missing. Enrol a finger with your desktop if the first lines say none is enrolled
+   (the reader and the finger are a person's):
+
+```console fails=yes
+$ custodio doctor
+ok              fingerprint reader: fprintd lists 1 reader
+ok              enrolled finger: 1 finger enrolled for you
+not ok          fingerprint for polkit: fingerprint is not active for polkit
+                fix: Run: sudo custodio fingerprint enable
+not ok          module in Firefox: Firefox profile /home/ana/.mozilla/firefox/abcd1234.default-release: the module is not registered
+                fix: Run: custodio register
+not ok          module in Firefox: Firefox (snap) profile /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: the snap's copy of the module is missing
+                fix: Run: custodio register; then restart Firefox. Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+ok              persistent journal: the journal is persistent (Storage=persistent)
+ok              state directory storage: the service's state directory is on an encrypted device
+```
+
+3. Turn the fingerprint on:
+
+```console
+$ sudo custodio fingerprint enable
+Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
+A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
+To undo it: sudo custodio fingerprint disable
+```
+
+   Then run `pkexec true` in a terminal: the dialog must take your finger. Run `sudo true`: it must still ask for your password. Both
+   are a person's (a finger at a screen).
+
+4. In Firefox export your certificate (Settings, Privacy & Security, View Certificates, Your Certificates, Backup) as `ana.p12` into the
+   directory you are in, with a password, and import it. Use **your exported file** in this command; approve the dialog with your finger:
+
+```console
+$ custodio import --id ana ana.p12
+Imported key 'ana' (ecdsa-p256).
+Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+Now delete the original file: it still holds your private key.
+  shred -u ana.p12   (or remove it with your file manager and empty the trash)
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+```
+
+   On your machine the storage line may differ (a TPM key says `tpm`); write what you see.
+
+5. Register the module, restart Firefox completely, and sign in with your finger at a real site that requires a client certificate
+   (a person's):
+
+```console
+$ custodio register
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+```
+
+6. List the keys and try the completion:
+
+```console
+$ custodio list
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03T16:05:48Z
+
+Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it is a file that root can use while the machine runs. See README.md#storage-kinds.
+```
+
+```console
+$ source /usr/share/bash-completion/completions/custodio
+$ COMP_WORDS=(custodio li) COMP_CWORD=1
+$ _custodio; echo "${COMPREPLY[@]}"
+list
+```
+
+   In a new terminal type `custodio li` and press Tab: it must complete to `list` (a person's key press).
+
+7. Run `custodio doctor` again, with the finger enabled and Firefox registered: every line must say `ok` and none may show a fix
+   (the screen of your machine; the fixture of the script cannot show it).
+
+8. The way back. Delete the key, undo the registration and the fingerprint, and remove the package, in this order:
+
+```console
+$ custodio delete ana
+Deleted key 'ana'.
+Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+```
+
+```console
+$ custodio register --remove
+Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
+Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+```
+
+```console
+$ sudo custodio fingerprint disable
+Removed /etc/pam.d/polkit-1. Polkit dialogs ask for the password only.
+To turn it on again: sudo custodio fingerprint enable
+```
+
+```console
+$ sudo apt-get remove custodio
+custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio).
+custodio: the account custodio was kept too, because the keys belong to its uid.
+custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated.
+```
+
+```console
+$ sudo apt-get purge custodio
+custodio: the signing keys are still on disk in /var/lib/custodio (the real directory is /var/lib/private/custodio).
+custodio: the account custodio was kept too, because the keys belong to its uid.
+custodio: deleting that directory by hand destroys the keys for good; they cannot be exported or recreated.
+```
+
+9. The final checks. Removal and purge keep the state directory and the `custodio` account, and nothing else. Save this as `final-checks.sh`
+   and run it with `bash final-checks.sh`: each line says `clean` or `NOT CLEAN`, and the exit status is 0 only when all are clean.
+   Write the output in the form. Setting `R` to another root, as the script of this page does on a fixture, checks that root instead.
+
+```bash
+R=${R:-}
+KEPT="$R/var/lib/private/custodio $R/var/lib/custodio"
+rc=0
+check() { # check NAME COMMAND...: clean when the command succeeds
+    local name=$1; shift
+    if "$@"; then echo "clean: $name"; else echo "NOT CLEAN: $name"; rc=1; fi
+}
+polkit_file_absent() { [ ! -e "$R/etc/pam.d/polkit-1" ]; }
+no_firefox_entry() { ! grep -rqsi custodio "$HOME"/.mozilla/firefox/*/pkcs11.txt "$HOME"/snap/firefox/common/.mozilla/firefox/*/pkcs11.txt; }
+no_module_copy() { [ -z "$(find "$HOME" "$R/usr" -name 'libcustodio_pkcs11*' 2> /dev/null)" ]; }
+nothing_else_left() {
+    local f k keep extra=
+    for f in $(find "$R/etc" "$R/usr" "$R/var" "$R/run" "$HOME" -iname '*custodio*' 2> /dev/null); do
+        keep=
+        for k in $KEPT; do case $f in "$k" | "$k"/*) keep=1 ;; esac; done
+        [ -n "$keep" ] || extra="$extra $f"
+    done
+    [ -z "$extra" ] || { echo "left:$extra"; return 1; }
+}
+check "/etc/pam.d/polkit-1 is absent" polkit_file_absent
+check "no Custodio entry in the Firefox profiles" no_firefox_entry
+check "no copy of the module" no_module_copy
+check "nothing left beyond the state directory" nothing_else_left
+exit "$rc"
+```
+
+## 27. M7 acceptance 20: the documents against the design
+
+A person reads [docs/fingerprint.md](fingerprint.md), the lock-screen and Firefox-restart parts of it, [docs/doctor.md](doctor.md),
+[docs/guide-ubuntu-2604.md](guide-ubuntu-2604.md) and [docs/threat-model.md](threat-model.md), and checks, with SPEC.md's Design 5 and the Threat
+model's "Not guaranteed" list open, that every item is present and agrees with [docs/api.md](api.md), [docs/audit.md](audit.md) and the
+report in `docs/findings/`. Write in the form of section 29 each place where an item is missing, wrong or says something another document
+contradicts, with the file and the line. Nothing is run here.
+
+```text
+Items to find: how to turn it on and off; exactly what it changes (one file, every polkit action, not sudo, not the login);
+the fallback to the password; each limit of "Not guaranteed"; what to do when enable refuses; the lock screen of GNOME;
+the Firefox restart; every check of doctor with its fix; Debian 13 and Alma 10 not run in a VM.
+```
+
+## 28. M7 acceptance 21: the help alone
+
+A person who has not read the documents runs `custodio --help` and then the help of each command (`custodio <command> --help`), reading
+nothing else, and says for each command whether the help is enough to use it. Write in the form each command whose help was not enough
+and what was missing.
+
+```text
+custodio --help
+custodio import --help
+custodio list --help
+custodio delete --help
+custodio register --help
+custodio doctor --help
+custodio fingerprint --help
+```
+
+## 29. M7 result form
+
+One copy per reader. Reader (the model of the person's machine and reader: make, model) ________ Ubuntu release ________ Custodio package
+version ________ polkit, fprintd, libfprint and libpam-fprintd versions ________
+
+| Step of section 26 | Pass / fail | The line on the screen that shows it |
+|---|---|---|
+| 1 install and notice | | |
+| 2 doctor names what is missing | | |
+| 3 enable; pkexec takes the finger; sudo asks the password | | |
+| 4 import with the finger | | |
+| 5 register; sign in at a site with the finger | | |
+| 6 list and the completion | | |
+| 7 doctor reports nothing to fix | | |
+| 8 delete, register --remove, disable, remove, purge | | |
+| 9 final checks (paste the output of final-checks.sh) | | |
+| 20 documents against the design (section 27) | | |
+| 21 the help alone (section 28) | | |
+
+Every place the documents were not enough (file, step, what you needed and did not find):
+
+________
+
+Report the filled form to the milestone approver as in section 9. Do not paste key files, passwords or the `.p12`.
