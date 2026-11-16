@@ -25,6 +25,7 @@ pub mod colour;
 pub mod delete;
 pub mod error;
 pub mod failure;
+pub mod fingerprint_decide;
 pub mod help;
 pub mod list;
 pub mod parse;

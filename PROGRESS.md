@@ -153,3 +153,14 @@ with an empty context.
 - Done (finding 1): a node named `dm-*` without `dm/` is now `sysfs-incomplete` (F189's kernel gap); the fixture has a populated `slaves/`. Finding 2: api.md wording fixed.
   Finding 3: dropped `a_reason_goes_with_unknown_and_only_with_it` (the table check already pairs verdict and reason; product coverage unchanged).
 - Evidence: `just quick`, `just api-contract`, `scripts/test-docs-api.sh`, `storage_stability`, `state_storage`, `storage_api` pass; `just mutants-diff F196`: 40 mutants, 29 caught, 11 unviable, 0 missed (6 min).
+
+### 2026-11-16 — F197 — attempt 1
+- Done (steps 1, 2 ticked): `crates/custodio-cli/src/fingerprint_decide.rs` (pure: `file_bytes`, `is_custodios`, `pam_has_fprintd`,
+  `first_fprintd_auth_line`, `authselect_has_fingerprint`, `dconf_disables_fingerprint`, `family_from_os_release`, `Observed`,
+  `decide_enable` / `decide_disable`, `lock_note_shown` (unknown family shows the note), `NO_READER_WARNING`, `LOCK_NOTE`);
+  `tests/fingerprint_decide.rs` (15 tests, 0.00 s). Fuzz target `pam_file` (in fuzz-smoke's list; `fuzz-build`, `lint-fuzz`, `fuzz-smoke` pass).
+  Module added to the custodio-cli `mutants` list. `just quick` green.
+- Decisions: an inline `#` ends a PAM line (Linux-PAM); `-auth ... pam_fprintd.so` counts as active; already-Custodio's wins over a global switch.
+- Not done: step 3 (command module, seam feature `CUSTODIO_FIXTURE_*`, `tests/fingerprint.rs`, `Command::Fingerprint` in parse/help/main, error rendering),
+  step 4 (man page), step 5 (fixture-seams scripts and recipe), step 6 (mutants-diff and evidence). Remember: the command module and
+  `apply_owner`/`apply_label` exclusion (`--exclude-re`) go in the `mutants` recipe with a comment naming F199.
