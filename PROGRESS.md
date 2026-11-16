@@ -209,3 +209,7 @@ with an empty context.
 - Notice (stderr, one text in three formats, first install only): deb `postinst` (`$2` empty), rpm `post` (`$1`=1), Arch `post_install`. Removal scripts unchanged.
 - `scripts/test-package-scripts.sh`: notice on install/absent on upgrade, removal scripts silent on pam/fingerprint. `test-arch-lifecycle.sh` now expects the notice on post_install stderr.
 - Passed: `just quick`, test-check-packages-pam, test-check-packages, -deps, test-package-scripts, deb/rpm/arch lifecycle, arch/rpm scripts-static.
+
+### 2026-11-16 — F198 — attempt 2
+- Findings fixed in `scripts/test-package-scripts.sh`: removal silence now rejects `pam|fingerprint` (case-insensitive); the `custodio: ` lines of the deb, rpm and Arch install stderr are compared byte for byte (other stderr, e.g. journalctl catalog noise in deb, is ignored).
+- Passed: `test-package-scripts.sh`, `just quick`.

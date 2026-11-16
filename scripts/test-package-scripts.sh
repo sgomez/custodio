@@ -97,6 +97,7 @@ err_case() {
         grep -qF 'fingerprint is off' "$tmp/err" || bad "$label: the notice does not say the fingerprint is off: $(cat "$tmp/err")"
         grep -qF 'sudo custodio fingerprint enable' "$tmp/err" || bad "$label: the notice lacks the enable command"
         grep -qF 'custodio doctor' "$tmp/err" || bad "$label: the notice lacks custodio doctor"
+        grep -E "^custodio: " "$tmp/err" > "$tmp/notice.${label%% *}" || true  # only the notice lines: a real tool may add its own stderr
     else
         grep -qiE 'fingerprint|doctor' "$tmp/err" && bad "$label: unexpected notice: $(cat "$tmp/err")"
     fi
@@ -109,13 +110,17 @@ err_case "rpm post (upgrade)" none sh "$tmp/rpm/post" 2
 err_case "arch post_install" notice bash -c ". '$tmp/archlinux/INSTALL'; post_install"
 err_case "arch post_upgrade" none bash -c ". '$tmp/archlinux/INSTALL'; post_upgrade"
 
+# One text in the three formats.
+cmp -s "$tmp/notice.deb" "$tmp/notice.rpm" || bad "the deb and rpm notices differ"
+cmp -s "$tmp/notice.deb" "$tmp/notice.arch" || bad "the deb and Arch notices differ: $(diff "$tmp/notice.deb" "$tmp/notice.arch")"
+
 # no_pam LABEL COMMAND...: the removal script prints nothing about PAM or the fingerprint (stdout and stderr).
 no_pam() {
     local label=$1
     shift
     : > "$tmp/calls"
     PATH="$tmp/stubs:/usr/bin:/bin" CALLS="$tmp/calls" "$@" > "$tmp/out" 2>&1 || true
-    ! grep -qiE 'pam\.d|pam_|fingerprint' "$tmp/out" || bad "$label: the removal output mentions PAM or the fingerprint: $(cat "$tmp/out")"
+    ! grep -qiE 'pam|fingerprint' "$tmp/out" || bad "$label: the removal output mentions PAM or the fingerprint: $(cat "$tmp/out")"
 }
 no_pam "deb prerm remove" sh "$tmp/deb/prerm" remove
 no_pam "deb postrm remove" sh "$tmp/deb/postrm" remove
