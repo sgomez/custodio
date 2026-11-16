@@ -386,3 +386,13 @@ with an empty context.
 
 ### 2026-11-16 — F208 — attempt 3
 - Fixed NEXT_FINDINGS: the block-kind check of `test-docs-release-notes.sh` now uses `kinds --only-console`; control "a bash block in the notes" added. Both the 0.9.0 and 0.8.0 runs pass (~20 s each).
+
+### 2026-11-16 — F209 — attempt 1
+- No fix was needed: every suite passed on the tree at `e7c873b` (no product, script or e2e change in this session), so each ran once. All steps ticked.
+- Host: `CHECK_FORCE=1 just check` exit 0 (85 script tests, 69 s); `just api-contract` 0; `just fuzz-smoke` 0 (18 targets run, equals `cargo fuzz list` at F206); `just memory-safety` 0. The `"a b c"` control is the one `check` already holds from F206 and was not repeated.
+- `just e2e`: six records, exit 0, wall 219 s (alma10 162, arch 192, debian13 swtpm 219, fedora44 175, ubuntu2604 179, debian13 none 198; all under their `budgets.tsv` rows). `E2E-CASE run doctor-` = 11 on all six. Fingerprint cases owed (7 common + own) and run: alma10 9, arch 7, debian13 8 (swtpm and none), fedora44 9, ubuntu2604 8; none skipped.
+- `just package-gates` 0 (66 s; 87 findings, 87 excepted, 0 stale). `just coverage` 0 (65 s), `just crap` 0 (1297 functions, worst 28.1, threshold 30).
+- VM `full` (exit 0, 372 s against the 580 s row): 12 `E2E-CASE run vm-fingerprint-`, 0 skipped, `check-cases: 62 cases accounted for`. Record (taken from this last full run, the final tree): polkit 127-2ubuntu1.1, fprintd 1.94.5-4, libfprint 1:1.95.1+tod1-0ubuntu2, libpam-fprintd 1.94.5-4; no `unknown`. Phases (s): image 16, boot 18, install 8, tools 2, cycle 14, snap 206, vm-fingerprint 55, sign 9, noplain 2, pcr 6, fallback 2, tpmclear 8, upgrade 10, setup 2, teardown 6.
+- VM `lacking` (exit 0, 97 s against 500 s): 62 cases accounted for, no `unknown`, the 12 fingerprint ids skipped with their `skip.list` reason. Phases: snap 0, vm-fingerprint 0, cycle 13, sign 10, tpmclear 9, upgrade 10, rest ≤ 18.
+- That a failing `vm-fingerprint-*` case makes the exit non-zero (evaluator note 1) is held by `scripts/test-e2e-vm-fingerprint.sh` and `test-e2e-vm-cases.sh` (green in `check`); no failing case was provoked in the real run.
+- Acceptance 20–22 are a person's. `just quick` run at the end.
