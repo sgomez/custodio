@@ -33,7 +33,8 @@ cli_list_only_problems() {
 cli_none_problems() {
     [ "$2" = 0 ] || echo "the list of an account with no keys exited $2, expected 0"
     grep -qxF 'You have no keys in the custodio service.' "$1" || echo "$1 does not say that there are no keys"
-    ! grep -qvxF -e 'You have no keys in the custodio service.' -e 'Import one with: custodio import <file.p12>' "$1" || echo "$1 shows more than the sentence and the import hint although the account has none"
+    # the full-disk-encryption warning (F180) follows on stderr: the container's state directory is on no encrypted device the service can tell
+    ! grep -vxF -e 'You have no keys in the custodio service.' -e 'Import one with: custodio import <file.p12>' "$1" | grep -qv '^Warning: ' || echo "$1 shows more than the sentence, the import hint and a warning although the account has none: $(head -c 600 "$1" | tr '\n' '|')"
 }
 # cli_has_keys_problems LISTFILE: the list is not the none sentence (the control that the other account's list is not empty at the same time)
 cli_has_keys_problems() {

@@ -33,6 +33,8 @@ expect_bad only-foreign cli_list_only_problems "$tmp/list" a
 expect_bad only-missing cli_list_only_problems "$tmp/list" a b c
 w none 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>'
 expect_ok none cli_none_problems "$tmp/none" 0
+w nonewarn 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>' 'Warning: the state directory is not known to be encrypted.'
+expect_ok none-with-warning cli_none_problems "$tmp/nonewarn" 0
 expect_bad none-exit cli_none_problems "$tmp/none" 1
 expect_bad none-with-keys cli_none_problems "$tmp/list" 0
 w nonenothing 'something else'
