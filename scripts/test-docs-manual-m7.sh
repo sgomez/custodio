@@ -109,7 +109,11 @@ t = sys.stdin.read()
 sys.stdout.write(t.replace("```console\n$ custodio list\n", "```bash\n$ custodio list\n", 1))'
     control "a custodio command with a wrong flag" run sed '0,/^\$ custodio import --id ana ana.p12$/s//$ custodio import --idd ana ana.p12/'
     control "an output line changed" run sed '0,/^Imported key /s//Imported key X/'
-    control "install notice altered" run sed '0,/^custodio: to check the setup at any time, run: custodio doctor$/s//custodio: to check the setup, run: custodio doctor/'
+    control "an extra console command whose output then differs" run python3 -I -c '
+import re, sys
+t = sys.stdin.read()
+m = re.search(r"(```console\n\$ custodio delete ana\n)", t)
+sys.stdout.write(t.replace(m.group(1), m.group(1) + "$ custodio list\n", 1))'
     control "register --remove missing from the way back" run python3 -I -c '
 import re, sys
 t = sys.stdin.read()
