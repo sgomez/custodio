@@ -99,7 +99,7 @@
         "F197"
       ],
       "verify": "just quick && scripts/test-e2e-fingerprint.sh && just e2e-cases debian13 'fingerprint-*' && just e2e-cases ubuntu2604 'fingerprint-*' && ! grep -qs '^fingerprint-' e2e/targets/fedora44/skip.list e2e/targets/alma10/skip.list e2e/targets/arch/skip.list && just e2e-cases fedora44 'fingerprint-*' && just e2e-cases alma10 'fingerprint-*' && just e2e-cases arch 'fingerprint-*'",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F200",
