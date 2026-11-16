@@ -536,7 +536,7 @@ fn edit_fix(source: &crate::journald_conf::Source, by_default: bool) -> String {
     }
 }
 
-const FDE: &str = "Use full-disk encryption (README.md#";
+const FDE: &str = "full-disk encryption (README.md#";
 
 fn reason_fix(reason: &str) -> Option<(&'static str, &'static str)> {
     Some(match reason {
@@ -577,7 +577,7 @@ fn storage(f: &Facts) -> Check {
         Service::Unreachable(why) => (
             State::CouldNotCheck,
             format!("could not ask the Custodio service: {}", escape(why)),
-            Some("Check that the package is installed and the service runs: systemctl status custodiod (and its socket), then run 'custodio doctor' again.".to_owned()),
+            Some("Check that the package is installed and the service runs: systemctl status custodio.service (the package is custodio), then run 'custodio doctor' again.".to_owned()),
         ),
         Service::Answered(StateStorage::Encrypted, _) => (
             State::Ok,
@@ -587,7 +587,7 @@ fn storage(f: &Facts) -> Check {
         Service::Answered(StateStorage::NotEncrypted, _) => (
             State::NotOk,
             "the service's state directory is not on an encrypted device".to_owned(),
-            Some(format!("{FDE}{README_ANCHOR}): without it whoever takes this machine can use your keys, though they cannot copy a tpm key.")),
+            Some(format!("Use {FDE}{README_ANCHOR}): without it whoever takes this machine can use your keys, though they cannot copy a tpm key.")),
         ),
         Service::Answered(StateStorage::Unknown, reason) => {
             let reason = reason.as_deref().unwrap_or("");
@@ -595,12 +595,12 @@ fn storage(f: &Facts) -> Check {
                 Some((what, todo)) => (
                     State::NotOk,
                     format!("the service's state directory is not known to be on an encrypted device (reason {reason}: {what})"),
-                    Some(format!("{todo} Or {}{README_ANCHOR}).", FDE.to_lowercase())),
+                    Some(format!("{todo} Or use {FDE}{README_ANCHOR}).")),
                 ),
                 None => (
                     State::NotOk,
                     "the service's state directory is not known to be on an encrypted device (the service gave no reason it knows)".to_owned(),
-                    Some(format!("Update the service if it is old, and see {FDE}{README_ANCHOR}).")),
+                    Some(format!("Update the service if it is old, or use {FDE}{README_ANCHOR}).")),
                 ),
             }
         }
