@@ -116,7 +116,9 @@ pub fn family_from_os_release(text: &str) -> Family {
     }
 }
 
-fn packages(family: Family) -> &'static str {
+/// The packages `fprintd` and its PAM module come in, for the family.
+#[must_use]
+pub fn packages(family: Family) -> &'static str {
     match family {
         Family::Debian => "libpam-fprintd and fprintd",
         Family::Fedora => "fprintd-pam and fprintd",
@@ -246,19 +248,41 @@ pub const fn lock_note_shown(schema_present: bool, key_set_false: bool, family: 
     schema_present && !key_set_false && !matches!(family, Family::Fedora)
 }
 
-fn global_fingerprint(o: &Observed) -> bool {
+/// The file that makes fingerprint global, as the person would name it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlobalVia {
+    CommonAuth,
+    Authselect,
+    SystemAuth,
+    Sudo,
+}
+
+/// How fingerprint is on for the whole system on this family, if it is.
+#[must_use]
+pub fn global_via(o: &Observed) -> Option<GlobalVia> {
     let pam = |t: &Option<String>| t.as_deref().is_some_and(pam_has_fprintd);
     let select = || {
         o.authselect
             .as_deref()
             .is_some_and(authselect_has_fingerprint)
     };
+    let common = || pam(&o.common_auth).then_some(GlobalVia::CommonAuth);
+    let chosen = || select().then_some(GlobalVia::Authselect);
+    let arch = || {
+        pam(&o.system_auth)
+            .then_some(GlobalVia::SystemAuth)
+            .or_else(|| pam(&o.sudo).then_some(GlobalVia::Sudo))
+    };
     match o.family {
-        Family::Debian => pam(&o.common_auth),
-        Family::Fedora => select(),
-        Family::Arch => pam(&o.system_auth) || pam(&o.sudo),
-        Family::Unknown => pam(&o.common_auth) || select() || pam(&o.system_auth) || pam(&o.sudo),
+        Family::Debian => common(),
+        Family::Fedora => chosen(),
+        Family::Arch => arch(),
+        Family::Unknown => common().or_else(chosen).or_else(arch),
     }
+}
+
+fn global_fingerprint(o: &Observed) -> bool {
+    global_via(o).is_some()
 }
 
 fn not_root() -> Refusal {

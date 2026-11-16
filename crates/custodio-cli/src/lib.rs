@@ -23,6 +23,8 @@ pub mod bus;
 pub mod cert_text;
 pub mod colour;
 pub mod delete;
+pub mod doctor_cmd;
+pub mod doctor_decide;
 pub mod error;
 pub mod failure;
 pub mod fingerprint_cmd;
@@ -207,6 +209,7 @@ pub enum CliError {
     Delete(DeleteFailure),
     Register(register_native::RegisterError),
     Fingerprint(fingerprint_cmd::Failure),
+    Doctor(doctor_cmd::Failure),
 }
 
 impl fmt::Display for CliError {
@@ -219,6 +222,7 @@ impl fmt::Display for CliError {
             Self::Delete(e) => write!(f, "custodio: {e}"),
             Self::Register(e) => write!(f, "{e}"),
             Self::Fingerprint(e) => write!(f, "{e}"),
+            Self::Doctor(e) => write!(f, "{e}"),
         }
     }
 }
@@ -230,16 +234,19 @@ impl std::error::Error for CliError {}
 pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
-        Err(CliError::Args(_) | CliError::Register(register_native::RegisterError::Refused(_))) => {
-            2
-        }
+        Err(
+            CliError::Args(_)
+            | CliError::Register(register_native::RegisterError::Refused(_))
+            | CliError::Doctor(doctor_cmd::Failure::Root),
+        ) => 2,
         Err(
             CliError::SystemBus(_)
             | CliError::Import(_)
             | CliError::List(_)
             | CliError::Delete(_)
             | CliError::Register(_)
-            | CliError::Fingerprint(_),
+            | CliError::Fingerprint(_)
+            | CliError::Doctor(doctor_cmd::Failure::BrokenInclude),
         ) => 1,
     }
 }

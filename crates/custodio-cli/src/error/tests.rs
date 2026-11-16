@@ -16,7 +16,12 @@ fn io_err() -> io::Error {
 
 /// One sample of every variant. Each `match` has no wildcard, so a variant added to an enum fails
 /// to compile here until it is listed.
+#[allow(
+    clippy::too_many_lines,
+    reason = "one sample of every variant of every error: the list is the point"
+)]
 fn samples() -> Vec<CliError> {
+    use crate::doctor_cmd::Failure;
     let mut all = Vec::new();
     for a in [
         ArgError::Usage,
@@ -102,6 +107,7 @@ fn samples() -> Vec<CliError> {
         what: "cannot write",
         error: io_err(),
     }));
+    all.extend([Failure::Root, Failure::BrokenInclude].map(CliError::Doctor));
     match all.first() {
         Some(
             CliError::Args(_)
@@ -110,7 +116,8 @@ fn samples() -> Vec<CliError> {
             | CliError::List(_)
             | CliError::Delete(_)
             | CliError::Register(_)
-            | CliError::Fingerprint(_),
+            | CliError::Fingerprint(_)
+            | CliError::Doctor(_),
         )
         | None => {}
     }

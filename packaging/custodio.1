@@ -18,6 +18,8 @@ custodio \- import, list and delete keys of the custodio signing service
 .br
 .B custodio fingerprint
 .RB ( enable | disable )
+.br
+.B custodio doctor
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -186,6 +188,27 @@ removes the file, only if it is exactly the one
 .B enable
 writes; with no file it says so and succeeds, and with any other file it refuses.
 It takes no options.
+.PP
+.B doctor
+prints one line for each check, with its state (\fBok\fR, \fBnot ok\fR or \fBcould not check\fR) and, under every check that is not ok, what to do.
+It only reads: it changes nothing, and it never opens a polkit dialog, a password prompt or a browser.
+It refuses to run as root, because the answers are about the person who runs it.
+The checks are:
+.BR fprintd
+lists a fingerprint reader (or is not installed, and the line names the packages for the distribution);
+you have an enrolled finger (over ssh,
+.B fprintd
+refuses to say, and the line says \fBcould not check\fR, never missing);
+and fingerprint is active for polkit, through Custodio's override, through another
+.IR /etc/pam.d/polkit\-1
+or for the whole system (then
+.BR sudo (8)
+uses the finger too).
+A polkit include that does not resolve (the vendor file of the override is missing) is reported first and makes the exit status 1.
+A warning is added when the override and the system's common-auth both ask for the finger, which asks it twice.
+.B fprintd
+is waited for 1.5 seconds for each question.
+The exit status is 0 unless a polkit include is broken: a missing reader or finger does not count, because the fingerprint is optional.
 .PP
 When standard input is a terminal,
 .B import

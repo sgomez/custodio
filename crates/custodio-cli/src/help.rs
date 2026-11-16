@@ -121,6 +121,21 @@ disable removes the file, only if it is Custodio's.",
         options: &[],
         example: "custodio fingerprint enable",
     },
+    CommandSpec {
+        name: "doctor",
+        summary: "check what fingerprint needs for polkit dialogs",
+        usage: "",
+        description: "Prints one line per check, with its state (ok, not ok, could not check) and, under every check that is not ok, what to do. It only reads: \
+it changes nothing, and it never opens a polkit dialog, a password prompt or a browser. It refuses to run as root, because the answers are about the person who runs it.\n\
+The checks: fprintd lists a fingerprint reader (or is not installed, and the line names the packages); you have an enrolled finger \
+(over ssh fprintd refuses to say, and the line says could not check, not missing); fingerprint is active for polkit, through Custodio's \
+override, another /etc/pam.d/polkit-1 or the whole system (then sudo uses the finger too). A polkit include that does not resolve is reported first; \
+so is a warning when the override and common-auth both ask for the finger.\n\
+Exit status: 0, unless a polkit include is broken. A missing reader or finger does not count: the fingerprint is optional.",
+        args: &[],
+        options: &[],
+        example: "custodio doctor",
+    },
 ];
 
 /// The command named `name`.

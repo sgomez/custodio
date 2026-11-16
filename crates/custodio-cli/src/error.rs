@@ -59,6 +59,7 @@ fn lines(error: &CliError) -> (String, String) {
         CliError::Delete(e) => delete(e),
         CliError::Register(e) => register(e),
         CliError::Fingerprint(e) => fingerprint(e),
+        CliError::Doctor(e) => doctor(e),
     }
 }
 
@@ -118,6 +119,21 @@ fn delete(error: &DeleteFailure) -> (String, String) {
         DeleteFailure::Output(e) => (
             format!("custodio: the key was deleted but the output failed: {e}"),
             "Nothing more to do: run 'custodio list' to see the keys that are left.".to_owned(),
+        ),
+    }
+}
+
+fn doctor(error: &crate::doctor_cmd::Failure) -> (String, String) {
+    use crate::doctor_cmd::Failure;
+    match error {
+        Failure::Root => (
+            "custodio doctor: refused to run as root".to_owned(),
+            "Run it as the person who will use the finger: the answers are about that person."
+                .to_owned(),
+        ),
+        Failure::BrokenInclude => (
+            "custodio doctor: a polkit include is broken (the first line of the report)".to_owned(),
+            "Do what its fix says, then run 'custodio doctor' again.".to_owned(),
         ),
     }
 }

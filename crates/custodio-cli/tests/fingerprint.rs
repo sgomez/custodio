@@ -2,21 +2,19 @@
 //! `fixture-root` seam (a dev-dependency of the crate on itself), so every path is under a temporary root.
 //! Owner `root:root` and the `SELinux` label need a real `/etc`: F199 proves them.
 
-use std::collections::BTreeMap;
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::os::unix::fs::{PermissionsExt, symlink};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::process::{Command, Output};
 use std::time::Duration;
 
 use custodio_cli::fingerprint_decide::file_bytes;
-use zbus::{OwnedObjectPath, block_on};
 
-const POLKIT: &str = "etc/pam.d/polkit-1";
-const MULTIARCH: &str = "usr/lib/x86_64-linux-gnu/security";
-const OMARCHY: &str = "#%PAM-1.0\nauth sufficient pam_fprintd.so\nauth include system-auth\n";
+mod fprint_fixture;
+
+use fprint_fixture::{
+    Bus, Fx, GLOBAL_FORMS, MULTIARCH, OMARCHY, POLKIT, Tree, err, fake_fprintd, out,
+};
 
 /// Restores a directory's mode on drop, so a failed assert still lets the temporary tree be deleted.
 struct RestoreMode(PathBuf);
@@ -25,107 +23,6 @@ impl Drop for RestoreMode {
     fn drop(&mut self) {
         let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
     }
-}
-
-struct Fx {
-    dir: tempfile::TempDir,
-}
-
-type Tree = BTreeMap<String, (String, Vec<u8>, u32)>;
-
-impl Fx {
-    /// A Debian-family system with polkit's vendor file, the module (multiarch), fprintd and no override.
-    fn new() -> Self {
-        let fx = Self {
-            dir: tempfile::tempdir().unwrap(),
-        };
-        fx.put("etc/os-release", "ID=debian\n");
-        fx.put("etc/pam.d/.keep", "");
-        fx.put("usr/lib/pam.d/polkit-1", "auth include system-auth\n");
-        fx.put(&format!("{MULTIARCH}/pam_fprintd.so"), "module");
-        fx.put(
-            "usr/share/dbus-1/system-services/net.reactivated.Fprint.service",
-            "[D-BUS Service]\n",
-        );
-        fx
-    }
-
-    fn root(&self) -> &Path {
-        self.dir.path()
-    }
-
-    fn path(&self, rel: &str) -> PathBuf {
-        self.root().join(rel)
-    }
-
-    fn put(&self, rel: &str, text: &str) {
-        let p = self.path(rel);
-        fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(p, text).unwrap();
-    }
-
-    fn remove(&self, rel: &str) {
-        fs::remove_file(self.path(rel)).unwrap();
-    }
-
-    fn tree(&self) -> Tree {
-        let mut tree = Tree::new();
-        walk(self.root(), self.root(), &mut tree);
-        tree
-    }
-
-    fn run(&self, args: &[&str]) -> Output {
-        self.run_with(args, &[("DBUS_SYSTEM_BUS_ADDRESS", &self.no_bus())])
-    }
-
-    fn no_bus(&self) -> String {
-        format!("unix:path={}", self.path("no-bus").display())
-    }
-
-    fn run_with(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_custodio-cli"));
-        c.arg("fingerprint")
-            .args(args)
-            .env("CUSTODIO_FIXTURE_ROOT", self.root())
-            .env("CUSTODIO_FIXTURE_EUID", "0");
-        for (k, v) in env {
-            c.env(k, v);
-        }
-        c.output().unwrap()
-    }
-}
-
-fn walk(root: &Path, dir: &Path, tree: &mut Tree) {
-    for e in fs::read_dir(dir).unwrap() {
-        let p = e.unwrap().path();
-        let rel = p.strip_prefix(root).unwrap().to_string_lossy().into_owned();
-        let m = fs::symlink_metadata(&p).unwrap();
-        let mode = m.permissions().mode();
-        if m.is_dir() {
-            tree.insert(rel, ("dir".into(), vec![], mode));
-            walk(root, &p, tree);
-        } else if m.file_type().is_symlink() {
-            let to = fs::read_link(&p).unwrap();
-            tree.insert(
-                rel,
-                (
-                    "link".into(),
-                    to.as_os_str().as_encoded_bytes().to_vec(),
-                    mode,
-                ),
-            );
-        } else {
-            tree.insert(rel, ("file".into(), fs::read(&p).unwrap(), mode));
-        }
-    }
-}
-
-fn out(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stdout).into_owned()
-}
-
-fn err(o: &Output) -> String {
-    String::from_utf8_lossy(&o.stderr).into_owned()
 }
 
 /// The command refused: non-zero, a message of at least two lines naming the next step, nothing changed.
@@ -137,88 +34,6 @@ fn assert_refused(fx: &Fx, args: &[&str], before: &Tree, what: &str) -> String {
     assert!(e.starts_with("custodio"), "{what}: {e}");
     assert_eq!(&fx.tree(), before, "{what}: the tree changed");
     e
-}
-
-// ---- a private bus with a fake net.reactivated.Fprint ----
-
-struct Bus {
-    child: Child,
-    address: String,
-}
-
-impl Bus {
-    fn new() -> Self {
-        let mut child = Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut address = String::new();
-        BufReader::new(child.stdout.take().unwrap())
-            .read_line(&mut address)
-            .unwrap();
-        Self {
-            child,
-            address: address.trim().to_owned(),
-        }
-    }
-}
-
-impl Drop for Bus {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-struct Manager {
-    calls: Arc<Mutex<Vec<String>>>,
-    devices: usize,
-    delay: Duration,
-}
-
-#[zbus::interface(name = "net.reactivated.Fprint.Manager")]
-impl Manager {
-    fn get_devices(&self) -> Vec<OwnedObjectPath> {
-        self.calls.lock().unwrap().push("GetDevices".into());
-        std::thread::sleep(self.delay);
-        (0..self.devices)
-            .map(|i| {
-                OwnedObjectPath::try_from(format!("/net/reactivated/Fprint/Device/{i}")).unwrap()
-            })
-            .collect()
-    }
-
-    fn get_default_device(&self) -> OwnedObjectPath {
-        self.calls.lock().unwrap().push("GetDefaultDevice".into());
-        OwnedObjectPath::try_from("/net/reactivated/Fprint/Device/0").unwrap()
-    }
-}
-
-/// Serves the fake on `address`; returns the calls it records.
-fn fake_fprintd(address: &str, devices: usize, delay: Duration) -> Arc<Mutex<Vec<String>>> {
-    let calls = Arc::new(Mutex::new(Vec::new()));
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
-    let manager = Manager {
-        calls: calls.clone(),
-        devices,
-        delay,
-    };
-    let address = address.to_owned();
-    std::thread::spawn(move || {
-        block_on(async {
-            let _connection = zbus::connection::Builder::address(address.as_str())
-                .name("net.reactivated.Fprint")
-                .serve_at("/net/reactivated/Fprint/Manager", manager)
-                .build()
-                .await
-                .unwrap();
-            ready_tx.send(()).unwrap();
-            std::future::pending::<()>().await;
-        });
-    });
-    ready_rx.recv().unwrap();
-    calls
 }
 
 const WARNING: &str = "no fingerprint reader";
@@ -560,9 +375,7 @@ fn the_module_is_found_in_usr_lib() {
 
 // ---- acceptance 3: fingerprint already global ----
 
-const GLOBAL_PAM: &str = "auth sufficient pam_fprintd.so\nauth required pam_unix.so\n";
-
-fn global_form_refused(os: &str, file: &str, text: &str) {
+fn global_form_refused((os, file, text): (&str, &str, &str)) {
     let fx = Fx::new();
     fx.put("etc/os-release", os);
     fx.put(file, text);
@@ -576,26 +389,22 @@ fn global_form_refused(os: &str, file: &str, text: &str) {
 
 #[test]
 fn global_fingerprint_on_debian_is_refused_as_redundant() {
-    global_form_refused("ID=debian\n", "etc/pam.d/common-auth", GLOBAL_PAM);
+    global_form_refused(GLOBAL_FORMS[0]);
 }
 
 #[test]
 fn global_fingerprint_on_fedora_is_refused_as_redundant() {
-    global_form_refused(
-        "ID=fedora\n",
-        "etc/authselect/authselect.conf",
-        "sssd\nwith-fingerprint\n",
-    );
+    global_form_refused(GLOBAL_FORMS[1]);
 }
 
 #[test]
 fn global_fingerprint_in_arch_system_auth_is_refused_as_redundant() {
-    global_form_refused("ID=arch\n", "etc/pam.d/system-auth", GLOBAL_PAM);
+    global_form_refused(GLOBAL_FORMS[2]);
 }
 
 #[test]
 fn global_fingerprint_in_arch_sudo_is_refused_as_redundant() {
-    global_form_refused("ID=arch\n", "etc/pam.d/sudo", GLOBAL_PAM);
+    global_form_refused(GLOBAL_FORMS[3]);
 }
 
 // ---- acceptance 4: disable ----

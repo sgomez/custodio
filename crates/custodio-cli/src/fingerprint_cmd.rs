@@ -66,16 +66,16 @@ enum Fail {
 }
 
 /// The root every path is under, the uid, and the injected failure.
-struct Env {
-    root: PathBuf,
-    euid: u32,
+pub(crate) struct Env {
+    pub(crate) root: PathBuf,
+    pub(crate) euid: u32,
     fail: Option<Fail>,
     /// Real system: owner and label are applied.
     real: bool,
 }
 
 #[cfg(feature = "fixture-root")]
-fn env() -> Env {
+pub(crate) fn env() -> Env {
     let root = std::env::var_os("CUSTODIO_FIXTURE_ROOT").map(PathBuf::from);
     let euid = std::env::var("CUSTODIO_FIXTURE_EUID")
         .ok()
@@ -96,7 +96,7 @@ fn env() -> Env {
 }
 
 #[cfg(not(feature = "fixture-root"))]
-fn env() -> Env {
+pub(crate) fn env() -> Env {
     Env {
         root: PathBuf::from("/"),
         euid: rustix::process::geteuid().as_raw(),
@@ -195,7 +195,7 @@ fn ask_devices() -> bool {
     .unwrap_or(false)
 }
 
-fn observe(env: &Env) -> Observed {
+pub(crate) fn observe(env: &Env) -> Observed {
     let root = env.root.as_path();
     let text = |p: &str| read_text(&root.join(p));
     Observed {

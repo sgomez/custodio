@@ -57,6 +57,9 @@ fn run() -> Result<(), CliError> {
         return custodio_cli::fingerprint_cmd::run(*action, &mut io::stdout(), &mut io::stderr())
             .map_err(CliError::Fingerprint);
     }
+    if matches!(command, Command::Doctor) {
+        return custodio_cli::doctor_cmd::run(&mut io::stdout()).map_err(CliError::Doctor);
+    }
     if let Command::Help(topic) = &command {
         // A closed standard output is not a failure of the tool.
         let out_tty = rustix::termios::isatty(io::stdout());
@@ -84,7 +87,7 @@ fn run() -> Result<(), CliError> {
         .map_err(CliError::Import),
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
             .map_err(CliError::Delete),
-        Command::Register(_) | Command::Help(_) | Command::Fingerprint(_) => {
+        Command::Register(_) | Command::Help(_) | Command::Fingerprint(_) | Command::Doctor => {
             unreachable!("handled before the bus is opened")
         }
         Command::List(None) => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
