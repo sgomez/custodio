@@ -22,6 +22,13 @@ use std::time::Duration;
 
 use zbus::{OwnedObjectPath, block_on};
 
+/// The CLI under test. Cargo sets the variable for integration tests; the documents' fake service (an example of
+/// `custodio-it`) includes this file only for the fake and never starts the CLI.
+const CLI_BIN: &str = match option_env!("CARGO_BIN_EXE_custodio-cli") {
+    Some(path) => path,
+    None => "custodio-cli",
+};
+
 pub const POLKIT: &str = "etc/pam.d/polkit-1";
 pub const MULTIARCH: &str = "usr/lib/x86_64-linux-gnu/security";
 pub const OMARCHY: &str = "#%PAM-1.0\nauth sufficient pam_fprintd.so\nauth include system-auth\n";
@@ -106,7 +113,7 @@ impl Fx {
     }
 
     pub fn run_with(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_custodio-cli"));
+        let mut c = Command::new(CLI_BIN);
         c.arg("fingerprint")
             .args(args)
             .env("CUSTODIO_FIXTURE_ROOT", self.root())
@@ -494,7 +501,7 @@ impl Fx {
 
     pub fn doctor_as(&self, bus: &str, euid: &str) -> Output {
         let empty = self.path("empty-path");
-        Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
+        Command::new(CLI_BIN)
             .arg("doctor")
             .env_clear()
             // Under cargo llvm-cov the instrumented binary writes its profile where this says.

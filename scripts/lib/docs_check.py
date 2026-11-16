@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Shared checks of the user documents (README.md, docs/threat-model.md, SECURITY.md) for the F185 script tests.
 
-  docs_check.py kinds DOC                  every fenced block has an info string the tests know (`console`, `bash`)
+  docs_check.py kinds [--only-console] DOC every fenced block has an info string the tests know (`console`, `bash`, `text`);
+                                           `--only-console` also fails on any `bash` block (a document whose commands all run)
   docs_check.py links DOC [REQUIRED...]    every relative link resolves to a file, and a #anchor to a heading of it;
                                            each REQUIRED path (relative to the repository root) is linked
   docs_check.py run DOC BASEDIR            run every `console` block (see below)
 
-`console` blocks are run; a `bash` block is never run (the document keeps those to what no test can exercise); any other
+`console` blocks are run; a `bash` block is never run (the document keeps those to what no test can exercise); a `text` block
+shows a file or output that is no command, and a line of it that starts with `$ ` fails (a command must not hide there); any other
 info string, or none, fails, so nothing is skipped silently. In a run `$ COMMAND` lines (with `\\` continuations) execute
 in one bash per block, and the lines after a command are its standard output, compared with what it printed. The only attribute after `console` is
-`fails=yes` (the last command of the block must exit non-zero). The rest comes from the caller's environment:
+`fails=yes` (the last command of the block must exit non-zero) and `fixture=NAME`, which runs `$DOCS_SETUP NAME` first (the
+caller puts the fixture the block needs in place; a block with `fixture=` and no DOCS_SETUP fails). The rest comes from the caller's environment:
   DOCS_PASSWORD  typed at a password prompt on /dev/tty (`custodio import` reads it there, not from stdin)
   DOCS_ANSWER    typed at the confirmation prompt of `custodio delete`
   DOCS_HOME_SHOWN  the home directory the document shows; the real $HOME in the output is rewritten to it
@@ -28,7 +31,7 @@ import threading
 import fcntl
 import termios
 
-KNOWN = ("console", "bash")
+KNOWN = ("console", "bash", "text")
 ROOT = os.getcwd()
 
 
@@ -104,18 +107,23 @@ def links(doc):
     return found
 
 
-def check_kinds(doc):
+def check_kinds(doc, only_console=False):
     bad, bash = [], 0
     try:
         found = blocks(read(doc))
     except ValueError as e:
         return [str(e)], 0
-    for info, _, line in found:
+    for info, body, line in found:
         word = info.split()[0] if info else ""
         if word not in KNOWN:
             bad.append(f"{doc}:{line}: a fenced block with info string {info!r}: use `console` (run by the test) or `bash` (never run)")
         elif word == "bash":
             bash += 1
+            if only_console:
+                bad.append(f"{doc}:{line}: a `bash` block: every command of this document is a `console` block, which the test runs")
+        elif word == "text":
+            bad.extend(f"{doc}:{line + n}: a `text` block with a command line {row!r}: commands are `console` blocks"
+                       for n, row in enumerate(body) if row.startswith("$ "))
     return bad, bash
 
 
@@ -211,6 +219,13 @@ def run_doc(doc, cwd):
         if not words or words[0] != "console":
             continue
         attrs = dict(w.split("=", 1) for w in words[1:])
+        if "fixture" in attrs:
+            if not os.environ.get("DOCS_SETUP"):
+                bad.append(f"{doc}:{line}: fixture={attrs['fixture']} but the caller gave no DOCS_SETUP")
+                continue
+            if subprocess.run([os.environ["DOCS_SETUP"], attrs["fixture"]], env=env, cwd=cwd, check=False).returncode != 0:
+                bad.append(f"{doc}:{line}: the fixture {attrs['fixture']!r} could not be put in place")
+                continue
         try:
             cmds = commands(body)
         except ValueError as e:
@@ -253,8 +268,9 @@ def run_doc(doc, cwd):
 
 def main(argv):
     if len(argv) >= 3 and argv[1] == "kinds":
-        bad, bash = check_kinds(argv[2])
-        print(f"{argv[2]}: {bash} bash block(s), never run")
+        only = argv[2] == "--only-console"
+        bad, bash = check_kinds(argv[-1], only)
+        print(f"{argv[-1]}: {bash} bash block(s), {'none allowed' if only else 'never run'}")
     elif len(argv) >= 3 and argv[1] == "links":
         bad = check_links(argv[2], argv[3:])
     elif len(argv) == 4 and argv[1] == "run":

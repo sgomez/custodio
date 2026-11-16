@@ -30,6 +30,8 @@ report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milesto
 Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
 requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
 
+To let a finger answer the polkit dialogs, see [docs/fingerprint.md](docs/fingerprint.md).
+
 ## Using it
 
 Import a `.p12` file. The command asks for the file's password on the terminal, then polkit asks you to approve:
