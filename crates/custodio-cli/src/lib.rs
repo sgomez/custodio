@@ -30,6 +30,7 @@ pub mod failure;
 pub mod fingerprint_cmd;
 pub mod fingerprint_decide;
 pub mod help;
+pub mod journald_conf;
 pub mod list;
 pub mod parse;
 pub mod register_cli;
@@ -246,7 +247,7 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
             | CliError::Delete(_)
             | CliError::Register(_)
             | CliError::Fingerprint(_)
-            | CliError::Doctor(doctor_cmd::Failure::BrokenInclude),
+            | CliError::Doctor(doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied),
         ) => 1,
     }
 }

@@ -23,7 +23,10 @@ fn doctor(fx: &Fx, bus: &str) -> (std::process::Output, String) {
     );
     assert_eq!(fx.tree(), before, "doctor changed the tree");
     let text = out(&o);
-    assert!(err(&o).is_empty(), "{}", err(&o));
+    // Checks 1 and 2 never write to standard error; a bus with no Custodio service leaves check 6 `could not check`,
+    // which is the one thing doctor may say there (and exit 1 for).
+    let e = err(&o);
+    assert!(e.is_empty() || e.contains("checks 4 to 6"), "{e}");
     (o, text)
 }
 
@@ -106,7 +109,11 @@ fn not_installed(os: &str, must: &[&str], must_not: &[&str]) {
         must.iter().all(|p| fix.contains(p)) && !must_not.iter().any(|p| fix.contains(p)),
         "{os}: {fix}"
     );
-    assert_eq!(exit(&o), 0);
+    assert_eq!(
+        exit(&o),
+        1,
+        "checks 1 to 3 do not count; check 6 has no service on this bus"
+    );
 }
 
 #[test]
@@ -147,7 +154,11 @@ fn a_service_file_with_no_owner_is_could_not_check_not_missing() {
     let bus = Bus::new();
     let (o, text) = doctor(&fx, &bus.address);
     assert_eq!(state(&text, READER), "could not check", "{text}");
-    assert_eq!(exit(&o), 0);
+    assert_eq!(
+        exit(&o),
+        1,
+        "checks 1 to 3 do not count; check 6 has no service on this bus"
+    );
 }
 
 #[test]
@@ -159,7 +170,11 @@ fn a_bus_that_cannot_be_reached_is_could_not_check_with_the_reason() {
         section(&text, READER)[0].contains("could not ask fprintd:"),
         "{text}"
     );
-    assert_eq!(exit(&o), 0);
+    assert_eq!(
+        exit(&o),
+        1,
+        "checks 1 to 3 do not count; check 6 has no service on this bus"
+    );
 }
 
 #[test]

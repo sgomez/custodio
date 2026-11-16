@@ -90,7 +90,7 @@ impl Drop for ScratchDb {
 }
 
 /// Whether the system NSS loads the p11-kit proxy: whether `modutil` lists it in a new database.
-fn nss_loads_p11_kit(program: &OsStr) -> Result<bool, String> {
+pub(crate) fn nss_loads_p11_kit(program: &OsStr) -> Result<bool, String> {
     let db = ScratchDb::create()?;
     modutil(
         program,

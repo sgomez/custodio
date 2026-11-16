@@ -20,6 +20,9 @@ fn facts(reader: Reader, fingers: Fingers) -> Facts {
         },
         reader,
         fingers,
+        firefox: Firefox::NoProfile,
+        journal: Verdict::Persistent(String::new()),
+        service: Service::Answered(StateStorage::Encrypted, None),
     }
 }
 
@@ -58,7 +61,13 @@ fn checks_1_to_3_unsatisfied_in_any_mix_are_exit_status_0() {
         Reader::Failed("x".into()),
     ] {
         let report = decide(&facts(reader, Fingers::NotAsked));
-        assert!(report.checks.iter().all(|c| c.state != State::Ok));
+        assert!(
+            report
+                .checks
+                .iter()
+                .filter(|c| !c.later)
+                .all(|c| c.state != State::Ok)
+        );
         assert_eq!(report.exit_status(), 0);
     }
     let report = decide(&facts(Reader::Devices(1), Fingers::NoPrints));

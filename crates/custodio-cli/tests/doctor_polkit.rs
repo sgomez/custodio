@@ -17,7 +17,14 @@ const ASKS_TWICE: &str = "asked twice";
 
 fn doctor(fx: &Fx, bus: &str) -> (Output, String) {
     let before = fx.tree();
-    let o = fx.doctor(bus);
+    // Checks 4 to 6 are satisfied (a fake service answers `encrypted`) so that the exit status is check 3's alone;
+    // `NO_BUS` means "nothing to say about checks 1 and 2" here: a bus whose fprintd lists no reader.
+    let private = (bus == NO_BUS).then(Bus::new);
+    let address = private.as_ref().map_or(bus, |b| b.address.as_str());
+    if private.is_some() {
+        serve(address, Fake::new(0));
+    }
+    let o = fx.doctor(address);
     assert_eq!(fx.tree(), before, "doctor changed the tree");
     assert!(err(&o).lines().count() != 1, "{}", err(&o));
     let text = out(&o);

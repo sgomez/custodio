@@ -107,7 +107,7 @@ fn samples() -> Vec<CliError> {
         what: "cannot write",
         error: io_err(),
     }));
-    all.extend([Failure::Root, Failure::BrokenInclude].map(CliError::Doctor));
+    all.extend([Failure::Root, Failure::BrokenInclude, Failure::Unsatisfied].map(CliError::Doctor));
     match all.first() {
         Some(
             CliError::Args(_)
@@ -355,6 +355,7 @@ fn a_doctor_failure_names_what_happened_in_both_forms() {
     for (failure, words) in [
         (Failure::Root, "as root"),
         (Failure::BrokenInclude, "include"),
+        (Failure::Unsatisfied, "not satisfied"),
     ] {
         let e = CliError::Doctor(failure);
         assert!(e.to_string().contains(words), "{e}");

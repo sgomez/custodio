@@ -351,7 +351,7 @@ mutants *args:
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
     # custodio-cli: apply_owner (chown root:root), apply_label (SELinux) and restorecon_path (the absolute path of restorecon) of fingerprint_cmd.rs are only a system call each and need real root and
     # SELinux; F199 proves them on a real /etc. They are excluded by name (three functions), and nothing else is (the label step's failure path is tested).
-    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --file crates/custodio-cli/src/colour.rs --file crates/custodio-cli/src/error.rs --file crates/custodio-cli/src/cert_text.rs --file crates/custodio-cli/src/list.rs --file crates/custodio-cli/src/fingerprint_decide.rs --file crates/custodio-cli/src/fingerprint_cmd.rs --file crates/custodio-cli/src/doctor_decide.rs --file crates/custodio-cli/src/doctor_cmd.rs --exclude-re 'fingerprint_cmd\.rs.*(replace (apply_(owner|label)|restorecon_path)\b| in apply_(owner|label)$)' --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
+    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --file crates/custodio-cli/src/colour.rs --file crates/custodio-cli/src/error.rs --file crates/custodio-cli/src/cert_text.rs --file crates/custodio-cli/src/list.rs --file crates/custodio-cli/src/fingerprint_decide.rs --file crates/custodio-cli/src/fingerprint_cmd.rs --file crates/custodio-cli/src/doctor_decide.rs --file crates/custodio-cli/src/doctor_cmd.rs --file crates/custodio-cli/src/journald_conf.rs --exclude-re 'fingerprint_cmd\.rs.*(replace (apply_(owner|label)|restorecon_path)\b| in apply_(owner|label)$)' --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
     for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client target/mutants-cli; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
@@ -562,7 +562,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules cli_args cert_fields pam_file":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules cli_args cert_fields pam_file journald_conf":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000

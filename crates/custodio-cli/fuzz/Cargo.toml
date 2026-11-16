@@ -47,5 +47,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "journald_conf"
+path = "fuzz_targets/journald_conf.rs"
+test = false
+doc = false
+bench = false
+
 # Keep out of the main workspace: fuzz targets need nightly and sanitizer flags.
 [workspace]

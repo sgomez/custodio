@@ -11,15 +11,28 @@
 //! bus saying the name has no owner (`ServiceUnknown`); a name that is there and times out, an error, a
 //! service file with no owner and a bus that cannot be reached are all "could not check".
 
+use std::ffi::OsStr;
 use std::fmt;
-use std::io::Write;
+use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use custodio_client::{BUS_NAME, OBJECT_PATH};
 use zbus::{Connection, OwnedObjectPath, block_on};
 
-use crate::doctor_decide::{Facts, Fingers, Reader, decide};
+use crate::browser_files::{local_address, read_bounded};
+use crate::doctor_decide::{
+    Copy, Entry, Facts, Fingers, Firefox, ProfileFact, Reader, Service, decide,
+};
 use crate::fingerprint_cmd::{env, observe};
+use crate::journald_conf;
+use crate::register_discover::{Environment, Profile, discover};
+use crate::register_modutil::nss_loads_p11_kit;
+use crate::register_native::{INSTALLED_MODULE, MODUTIL, Plan, parse_entries, plan};
+use crate::register_snap::copy_path;
+use crate::storage::StateStorage;
 
 /// How long each question to `fprintd` is waited for.
 pub const ASK_LIMIT: Duration = Duration::from_millis(1500);
@@ -35,6 +48,8 @@ pub enum Failure {
     Root,
     /// A polkit include is broken; the report is on standard output.
     BrokenInclude,
+    /// Check 4, 5 or 6 is not `ok`; the report is on standard output.
+    Unsatisfied,
 }
 
 impl fmt::Display for Failure {
@@ -42,6 +57,7 @@ impl fmt::Display for Failure {
         match self {
             Self::Root => f.write_str("custodio doctor: refused to run as root"),
             Self::BrokenInclude => f.write_str("custodio doctor: a polkit include is broken"),
+            Self::Unsatisfied => f.write_str("custodio doctor: check 4, 5 or 6 is not satisfied"),
         }
     }
 }
@@ -136,25 +152,181 @@ fn ask() -> (Reader, Fingers) {
     (reader, fingers)
 }
 
+/// Check 4, read-only: the discovery and the decisions of `custodio register`, without its writes.
+fn observe_firefox(root: &Path) -> Firefox {
+    let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) else {
+        return Firefox::CouldNot("HOME is not set".to_owned());
+    };
+    let env = Environment {
+        home: home.into(),
+        xdg_config_home: std::env::var_os("XDG_CONFIG_HOME"),
+        local_address: local_address(),
+    };
+    let profiles = match discover(&env) {
+        Ok(p) => p,
+        Err(e) => return Firefox::CouldNot(e.to_string()),
+    };
+    if profiles.is_empty() {
+        return Firefox::NoProfile;
+    }
+    let installed = root.join(INSTALLED_MODULE.trim_start_matches('/'));
+    let mut p11_kit = None;
+    let facts = profiles
+        .iter()
+        .map(|p| profile_fact(p, &env, &installed, &mut p11_kit))
+        .collect();
+    Firefox::Profiles(facts)
+}
+
+fn profile_fact(
+    profile: &Profile,
+    env: &Environment,
+    installed: &Path,
+    p11_kit: &mut Option<bool>,
+) -> ProfileFact {
+    let copy_file = copy_path(&env.home);
+    let module = if profile.snap { &copy_file } else { installed };
+    let mut entry = entry_of(profile, module);
+    if entry == Entry::Missing && !profile.snap {
+        // `register` skips native profiles where the system NSS loads the p11-kit proxy; it decides with a scratch database.
+        let on = *p11_kit.get_or_insert_with(|| nss_loads_p11_kit(OsStr::new(MODUTIL)) == Ok(true));
+        if on {
+            entry = Entry::P11Kit;
+        }
+    }
+    ProfileFact {
+        browser: profile.browser,
+        path: profile.path.display().to_string(),
+        copy: profile.snap.then(|| copy_state(&copy_file, installed)),
+        entry,
+    }
+}
+
+fn entry_of(profile: &Profile, module: &Path) -> Entry {
+    let bytes = match read_bounded(&profile.path.join("pkcs11.txt")) {
+        Ok(b) => b.unwrap_or_default(),
+        Err(e) => return Entry::CouldNot(e.to_string()),
+    };
+    let entries = parse_entries(&String::from_utf8_lossy(&bytes));
+    let Some(module) = module.to_str() else {
+        return Entry::CouldNot("the module path is not valid UTF-8".to_owned());
+    };
+    match plan(&entries, module, |l| Path::new(l).exists()) {
+        Plan::Present(name) => Entry::Present(name),
+        Plan::PresentElsewhere(name) => Entry::PresentElsewhere(name),
+        Plan::Refresh { .. } => Entry::Stale,
+        Plan::Add(_) | Plan::NameTaken => Entry::Missing,
+    }
+}
+
+fn copy_state(copy: &Path, installed: &Path) -> Copy {
+    match fs::symlink_metadata(copy) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Copy::Missing,
+        Err(e) => return Copy::CouldNot(format!("{}: {e}", copy.display())),
+        // `register` replaces a link, never follows it.
+        Ok(m) if !m.file_type().is_file() => return Copy::Stale,
+        Ok(_) => {}
+    }
+    let read = |p: &Path| fs::read(p).map_err(|e| Copy::CouldNot(format!("{}: {e}", p.display())));
+    match (read(installed), read(copy)) {
+        (Ok(a), Ok(b)) if a == b => Copy::UpToDate,
+        (Ok(_), Ok(_)) => Copy::Stale,
+        (Err(c), _) | (_, Err(c)) => c,
+    }
+}
+
+/// Check 5: the files and one `stat`.
+fn observe_journal(root: &Path) -> journald_conf::Verdict {
+    match journald_conf::read(root) {
+        Ok(files) => journald_conf::evaluate(&files, &journald_conf::stat_journal_dir(root)),
+        Err(why) => journald_conf::Verdict::CouldNot(why),
+    }
+}
+
+/// One read-only question to the service, bounded by [`ASK_LIMIT`].
+fn ask_service() -> Service {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let connection = match block_on(Connection::system()) {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = tx.send(Err(e.to_string()));
+                return;
+            }
+        };
+        let call = |method: &str| {
+            block_on(connection.call_method(
+                Some(BUS_NAME),
+                OBJECT_PATH,
+                Some(BUS_NAME),
+                method,
+                &(),
+            ))
+            .map_err(|e| (is_service_unknown(&e), e.to_string()))
+            .and_then(|r| {
+                r.body()
+                    .deserialize::<String>()
+                    .map_err(|e| (false, e.to_string()))
+            })
+        };
+        let storage = call("StateStorage");
+        let unknown =
+            matches!(&storage, Ok(w) if StateStorage::from_wire(w) == StateStorage::Unknown);
+        let _ = tx.send(storage.map_err(|(none, why)| {
+            if none {
+                format!("nothing owns {BUS_NAME} on the system bus")
+            } else {
+                why
+            }
+        }));
+        if unknown {
+            // A service that predates the method answers `UnknownMethod`: no reason, none invented.
+            let _ = tx.send(call("StateStorageReason").map_err(|(_, why)| why));
+        }
+    });
+    let timed_out = || format!("no answer within {} ms", ASK_LIMIT.as_millis());
+    let wire = match rx.recv_timeout(ASK_LIMIT) {
+        Ok(Ok(wire)) => wire,
+        Ok(Err(why)) => return Service::Unreachable(why),
+        Err(_) => return Service::Unreachable(timed_out()),
+    };
+    let storage = StateStorage::from_wire(&wire);
+    let reason = if storage == StateStorage::Unknown {
+        rx.recv_timeout(ASK_LIMIT).ok().and_then(Result::ok)
+    } else {
+        None
+    };
+    Service::Answered(storage, reason)
+}
+
 /// Run the command, writing the report to `out`.
 ///
 /// # Errors
-/// [`Failure::Root`] when run as root; [`Failure::BrokenInclude`] after the report when a polkit include is broken.
+/// [`Failure::Root`] when run as root; [`Failure::BrokenInclude`] or [`Failure::Unsatisfied`] after the report.
 pub fn run<W: Write>(out: &mut W) -> Result<(), Failure> {
     let env = env();
     if env.euid == 0 {
         return Err(Failure::Root);
     }
     let files = observe(&env);
+    // The service is asked while fprintd is: each wait is bounded by itself.
+    let service = std::thread::spawn(ask_service);
     let (reader, fingers) = ask();
+    let service = service
+        .join()
+        .unwrap_or_else(|_| Service::Unreachable("the question did not finish".to_owned()));
     let report = decide(&Facts {
         files,
         reader,
         fingers,
+        firefox: observe_firefox(&env.root),
+        journal: observe_journal(&env.root),
+        service,
     });
     let _ = out.write_all(report.text().as_bytes());
-    match report.exit_status() {
-        0 => Ok(()),
-        _ => Err(Failure::BrokenInclude),
+    match (report.exit_status(), report.broken_include) {
+        (0, _) => Ok(()),
+        (_, true) => Err(Failure::BrokenInclude),
+        (_, false) => Err(Failure::Unsatisfied),
     }
 }

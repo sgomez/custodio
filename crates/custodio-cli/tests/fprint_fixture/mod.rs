@@ -59,11 +59,22 @@ impl Fx {
             "usr/share/dbus-1/system-services/net.reactivated.Fprint.service",
             "[D-BUS Service]\n",
         );
+        // Checks 4 and 5 of doctor are satisfied: no browser profile (an empty home), a persistent journal.
+        fs::create_dir_all(fx.home()).unwrap();
+        fx.put(
+            "etc/systemd/journald.conf",
+            "[Journal]\nStorage=persistent\n",
+        );
         fx
     }
 
     pub fn root(&self) -> &Path {
         self.dir.path()
+    }
+
+    /// The home directory of the person doctor runs for.
+    pub fn home(&self) -> PathBuf {
+        self.root().join("home/person")
     }
 
     pub fn path(&self, rel: &str) -> PathBuf {
@@ -181,9 +192,35 @@ pub enum Fingers {
     Other,
 }
 
+/// How the fake Custodio service answers `StateStorage` and `StateStorageReason`.
+#[derive(Clone)]
+pub struct Svc {
+    /// The wire value of `StateStorage`.
+    pub storage: &'static str,
+    /// `StateStorageReason`; `None`: the method does not exist (a service that predates it).
+    pub reason: Option<&'static str>,
+    /// Wait before `StateStorage` answers.
+    pub delay: Duration,
+    /// `StateStorage` answers with an error.
+    pub error: bool,
+}
+
+impl Svc {
+    pub fn answering(storage: &'static str, reason: Option<&'static str>) -> Self {
+        Self {
+            storage,
+            reason,
+            delay: Duration::ZERO,
+            error: false,
+        }
+    }
+}
+
 /// How the fake answers.
 #[derive(Clone)]
 pub struct Fake {
+    /// The Custodio service on the same bus; `None`: nothing owns its name.
+    pub service: Option<Svc>,
     pub devices: usize,
     /// `GetDevices` answers with an error.
     pub devices_error: bool,
@@ -197,6 +234,7 @@ pub struct Fake {
 impl Fake {
     pub fn new(devices: usize) -> Self {
         Self {
+            service: Some(Svc::answering("encrypted", Some(""))),
             devices,
             devices_error: false,
             delay: Duration::ZERO,
@@ -306,27 +344,117 @@ pub fn fake_fprintd(address: &str, devices: usize, delay: Duration) -> Calls {
     )
 }
 
+/// What the fakes on the bus recorded.
+#[derive(Clone, Default)]
+pub struct Served {
+    pub fprintd: Calls,
+    pub service: Calls,
+    /// Every call to the fake polkit authority, by method name.
+    pub polkit: Calls,
+}
+
+struct Custodio {
+    calls: Calls,
+    svc: Svc,
+}
+
+#[zbus::interface(name = "com.rfirma.Custodio1")]
+impl Custodio {
+    fn state_storage(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> Result<String, FprintError> {
+        record(&self.calls, "StateStorage", &header);
+        std::thread::sleep(self.svc.delay);
+        if self.svc.error {
+            return Err(FprintError::Internal("the service is broken".into()));
+        }
+        Ok(self.svc.storage.to_owned())
+    }
+
+    fn state_storage_reason(
+        &self,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> zbus::fdo::Result<String> {
+        let Some(reason) = self.svc.reason else {
+            // A service that predates the method.
+            return Err(zbus::fdo::Error::UnknownMethod(
+                "Unknown method 'StateStorageReason'".into(),
+            ));
+        };
+        record(&self.calls, "StateStorageReason", &header);
+        Ok(reason.to_owned())
+    }
+}
+
+/// The polkit authority: it records every `CheckAuthorization` (and says no).
+struct Authority {
+    calls: Calls,
+}
+
+#[zbus::interface(name = "org.freedesktop.PolicyKit1.Authority")]
+impl Authority {
+    fn check_authorization(
+        &self,
+        _subject: (
+            String,
+            std::collections::HashMap<String, zbus::OwnedVariant>,
+        ),
+        action_id: String,
+        _details: std::collections::HashMap<String, String>,
+        _flags: u32,
+        _cancellation_id: String,
+    ) -> (bool, bool, std::collections::HashMap<String, String>) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("CheckAuthorization {action_id}"));
+        (false, false, std::collections::HashMap::new())
+    }
+}
+
 /// Serves `fake` on `address`; returns the calls it records.
 pub fn serve(address: &str, fake: Fake) -> Calls {
-    let calls = Calls::default();
+    serve_all(address, fake).fprintd
+}
+
+/// Serves `fake`, the Custodio service and a polkit authority on `address`; returns what each recorded.
+pub fn serve_all(address: &str, fake: Fake) -> Served {
+    let served = Served::default();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let manager = Manager {
-        calls: calls.clone(),
+        calls: served.fprintd.clone(),
         fake: fake.clone(),
     };
     let address = address.to_owned();
-    let served = calls.clone();
+    let all = served.clone();
     std::thread::spawn(move || {
         block_on(async {
             let mut builder = zbus::connection::Builder::address(address.as_str())
                 .name("net.reactivated.Fprint")
-                .serve_at("/net/reactivated/Fprint/Manager", manager);
+                .name("org.freedesktop.PolicyKit1")
+                .serve_at("/net/reactivated/Fprint/Manager", manager)
+                .serve_at(
+                    "/org/freedesktop/PolicyKit1/Authority",
+                    Authority {
+                        calls: all.polkit.clone(),
+                    },
+                );
             for i in 0..fake.devices {
                 let device = Device {
-                    calls: served.clone(),
+                    calls: all.fprintd.clone(),
                     fake: fake.clone(),
                 };
                 builder = builder.serve_at(device_path(i), device);
+            }
+            if let Some(svc) = fake.service.clone() {
+                builder = builder.name("com.rfirma.Custodio1").serve_at(
+                    "/com/rfirma/Custodio1",
+                    Custodio {
+                        calls: all.service.clone(),
+                        svc: svc.clone(),
+                    },
+                );
             }
             let _connection = builder.build().await.unwrap();
             ready_tx.send(()).unwrap();
@@ -334,7 +462,7 @@ pub fn serve(address: &str, fake: Fake) -> Calls {
         });
     });
     ready_rx.recv().unwrap();
-    calls
+    served
 }
 
 // ---- `custodio doctor` ----
@@ -355,6 +483,7 @@ impl Fx {
             .env("CUSTODIO_FIXTURE_ROOT", self.root())
             .env("CUSTODIO_FIXTURE_EUID", euid)
             .env("DBUS_SYSTEM_BUS_ADDRESS", bus)
+            .env("HOME", self.home())
             .stdin(Stdio::null())
             .output()
             .unwrap()

@@ -131,6 +131,11 @@ fn doctor(error: &crate::doctor_cmd::Failure) -> (String, String) {
             "Run it as the person who will use the finger: the answers are about that person."
                 .to_owned(),
         ),
+        Failure::Unsatisfied => (
+            "custodio doctor: a check that decides the exit status is not satisfied (checks 4 to 6)"
+                .to_owned(),
+            "Do what the fix under it says, then run 'custodio doctor' again.".to_owned(),
+        ),
         Failure::BrokenInclude => (
             "custodio doctor: a polkit include is broken (the first line of the report)".to_owned(),
             "Do what its fix says, then run 'custodio doctor' again.".to_owned(),
