@@ -278,3 +278,10 @@ with an empty context.
 
 ### 2026-11-16 — F201 — attempt 2
 - Findings fixed (docs only): the run was repeated in the VM with a new throwaway driver (same table) and the finding now quotes the `dpkg-query -W` versions, one `RESULT` line per cell (A, D, B, C), the restore lines (pam file md5 as before, drop-in and rule gone, sudo rule never moved) and `vm.sh stop` with no qemu left. Said that the harness's pam_permit file was set aside for A. `just quick` passes.
+
+### 2026-11-16 — F202 — attempt 1
+- Done (all 5 steps): `custodio doctor` (`doctor_decide` pure, `doctor_cmd` observes), help entry, man page section and synopsis, both modules in the `mutants` list (no function excluded), no new seam variable. Shared test fixture moved to `tests/fprint_fixture/mod.rs` (root builder, `GLOBAL_FORMS`, fake fprintd with `Fake`/`Fingers`, records the `ALLOW_INTERACTIVE_AUTH` flag); `tests/fingerprint.rs` uses it (33 tests pass). `fingerprint_decide` gained `global_via` (same detection as `enable`, now says which file) and a public `packages`.
+- Contract amendment (separate commit): each question to fprintd waits 1.5 s (`ASK_LIMIT`); "not installed" = no service file AND `ServiceUnknown`; anything else is "could not check". Tests use the signals crossed (no file + slow owner, no file + erroring owner, file + no owner).
+- Decisions the contract left open: a broken include puts check 3 first (its own line, not a copy); `-auth ... pam_fprintd.so` counts as active (F197's `first_fprintd_auth_line` does; the contract's "control" with `-auth` would contradict that, so the controls are a comment and an `account` line); exit 2 for root (as `register`), 1 for a broken include (report on stdout, two lines on stderr).
+- Measured: `doctor_reader` 1.5 s (14 cases), `doctor_polkit` 0.02 s (11), lib tests 0.3 s, `just fixture-seams` 4.6 s warm, `mutants-diff F202` 2 min (67 mutants: 0 missed after one round).
+- Passed: `just quick`, `doctor_reader`, `doctor_polkit`, `help`, `scripts/test-check-fixture-seams.sh`, `just fixture-seams`, `just mutants-diff F202`.
