@@ -75,3 +75,5 @@ journal-kind-purge
 journal-kind-owner
 journal-kind-key-lost
 journal-kind-temporarily-unavailable
+# F199: pam-auth-update --enable/--disable fprintd leave the override byte-identical (Debian family)
+fingerprint-pam-auth-update

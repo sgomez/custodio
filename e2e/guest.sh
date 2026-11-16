@@ -304,6 +304,12 @@ if phase_runs journalkind; then
 fi
 phase_done journalkind
 
+# The fingerprint cases (F199): the installed `custodio fingerprint` on the real /etc/pam.d; root only, no daemon, keys or TPM; the test agent's PAM file is set aside and put back. Containers only.
+if [ -z "$vm" ] && phase_runs fingerprint; then
+    WORK=$work bash /e2e/fingerprint-run.sh || fail "fingerprint-run.sh failed"
+fi
+phase_done fingerprint
+
 # The upgrade case comes last, so it does not disturb the audit counts above; the lifecycle cases start from its state.
 if phase_runs upgrade; then
     if [ -n "$vm" ]; then export E2E_INSTALL=/e2e/vm/install-pkg.sh; fi # same install as N

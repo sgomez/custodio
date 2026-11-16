@@ -8,3 +8,5 @@ purge-notice-keys
 reinstall-after-purge-keys-listed
 reinstall-after-purge-signs-with-polkit
 reinstall-after-purge-no-import
+# F199: pam-auth-update --enable/--disable fprintd leave the override byte-identical (Debian family)
+fingerprint-pam-auth-update
