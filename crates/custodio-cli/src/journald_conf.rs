@@ -349,3 +349,6 @@ pub fn fuzz_journald_conf(data: &[u8]) -> bool {
     }
     matches!(verdict, Verdict::Persistent(_))
 }
+
+#[cfg(test)]
+mod tests;

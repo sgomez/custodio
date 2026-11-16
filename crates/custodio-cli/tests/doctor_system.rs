@@ -390,15 +390,63 @@ journal_case!(
     "persistent"
 );
 
+/// A main file of exactly `len` bytes: valid content, padded by a comment.
+fn padded(len: usize) -> String {
+    let head = "[Journal]\nStorage=persistent\n#";
+    format!("{head}{}", "x".repeat(len - head.len()))
+}
+
 #[test]
-fn a_file_over_1_mib_is_could_not_check() {
-    let big = format!(
-        "[Journal]\nStorage=persistent\n#{}\n",
-        "x".repeat(1024 * 1024)
-    );
-    let (s, section) = journal(&[(ETC, &big)], Dir::Present);
+fn a_file_of_exactly_1_mib_is_read() {
+    let (s, section) = journal(&[(ETC, &padded(1024 * 1024))], Dir::Present);
+    assert_eq!(s, "ok", "{section}");
+}
+
+#[test]
+fn a_file_of_100_kib_is_read() {
+    let (s, section) = journal(&[(ETC, &padded(100 * 1024))], Dir::Present);
+    assert_eq!(s, "ok", "{section}");
+}
+
+#[test]
+fn a_file_one_byte_over_1_mib_is_could_not_check() {
+    let (s, section) = journal(&[(ETC, &padded(1024 * 1024 + 1))], Dir::Present);
     assert_eq!(s, "could not check", "{section}");
     assert!(section.contains("longer than"), "{section}");
+}
+
+journal_case!(
+    a_comment_ending_in_a_backslash_is_not_a_continued_line,
+    [(
+        ETC,
+        "[Journal]\n# a note \\\n;another \\\nStorage=persistent\n"
+    )],
+    Dir::Present,
+    "ok",
+    "persistent"
+);
+journal_case!(
+    the_default_names_the_line_of_the_comment,
+    [(USR, "[Journal]\n#x\n#Storage=volatile\n")],
+    Dir::Present,
+    "not ok",
+    "/usr/lib/systemd/journald.conf:3"
+);
+
+#[test]
+fn a_drop_in_directory_that_cannot_be_read_is_could_not_check() {
+    let fx = Fx::new();
+    fx.put("etc/systemd/journald.conf.d/a.conf", "[Journal]\n");
+    let dir = fx.path("etc/systemd/journald.conf.d");
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).unwrap();
+    let o = fx.doctor(NO_BUS);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    let text = out(&o);
+    assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
+    assert!(
+        section(&text, JOURNAL).join("").contains("journald.conf.d"),
+        "{text}"
+    );
 }
 
 #[test]

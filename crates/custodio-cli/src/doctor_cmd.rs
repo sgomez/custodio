@@ -220,12 +220,19 @@ fn entry_of(profile: &Profile, module: &Path) -> Entry {
 }
 
 fn copy_state(copy: &Path, installed: &Path) -> Copy {
-    match fs::symlink_metadata(copy) {
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Copy::Missing,
-        Err(e) => return Copy::CouldNot(format!("{}: {e}", copy.display())),
-        // `register` replaces a link, never follows it.
-        Ok(m) if !m.file_type().is_file() => return Copy::Stale,
-        Ok(_) => {}
+    let meta = match fs::symlink_metadata(copy) {
+        Ok(m) => m,
+        Err(e) => {
+            return if e.kind() == io::ErrorKind::NotFound {
+                Copy::Missing
+            } else {
+                Copy::CouldNot(format!("{}: {e}", copy.display()))
+            };
+        }
+    };
+    // `register` replaces a link, never follows it.
+    if !meta.file_type().is_file() {
+        return Copy::Stale;
     }
     let read = |p: &Path| fs::read(p).map_err(|e| Copy::CouldNot(format!("{}: {e}", p.display())));
     match (read(installed), read(copy)) {

@@ -355,3 +355,14 @@ fn an_unreadable_pkcs11_txt_is_could_not_check_naming_the_file() {
         "{s}"
     );
 }
+
+#[test]
+fn a_snap_copy_that_is_a_link_is_stale_even_when_it_points_to_the_same_bytes() {
+    let c = Case::new(false);
+    let copy = snap(&c, None);
+    fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(c.module(), &copy).unwrap();
+    let (_, text, _) = c.doctor();
+    let s = check4(&text);
+    assert!(s.starts_with("not ok") && s.contains("stale"), "{s}");
+}
