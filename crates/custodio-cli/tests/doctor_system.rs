@@ -413,25 +413,22 @@ fn a_file_that_is_not_utf_8_is_could_not_check() {
     );
 }
 
-fn unreadable(rel: &str, auto_dir: bool) -> String {
+#[test]
+fn an_unreadable_file_is_could_not_check_naming_it() {
     let fx = Fx::new();
-    fx.put(ETC, "[Journal]\nStorage=auto\n");
-    let target = fx.path(rel);
-    if auto_dir {
-        fs::create_dir_all(&target).unwrap();
-    }
+    let target = fx.path(ETC);
     let original = fs::metadata(&target).unwrap().permissions();
-    fs::set_permissions(&target, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.doctor(NO_BUS);
     fs::set_permissions(&target, original).unwrap();
     let text = out(&o);
     assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
-    section(&text, JOURNAL).join("\n")
-}
-
-#[test]
-fn an_unreadable_file_is_could_not_check_naming_it() {
-    assert!(unreadable(ETC, false).contains("/etc/systemd/journald.conf"));
+    assert!(
+        section(&text, JOURNAL)
+            .join("")
+            .contains("/etc/systemd/journald.conf"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -441,7 +438,7 @@ fn a_journal_directory_that_cannot_be_stat_ed_is_could_not_check() {
     fx.put(ETC, "[Journal]\nStorage=auto\n");
     fs::create_dir_all(fx.path("var/log/journal")).unwrap();
     let parent = fx.path("var/log");
-    fs::set_permissions(&parent, fs::Permissions::from_mode(0)).unwrap();
+    fs::set_permissions(&parent, fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.doctor(NO_BUS);
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
     let text = out(&o);

@@ -25,6 +25,7 @@ pub mod colour;
 pub mod delete;
 pub mod doctor_cmd;
 pub mod doctor_decide;
+pub mod doctor_later;
 pub mod error;
 pub mod failure;
 pub mod fingerprint_cmd;

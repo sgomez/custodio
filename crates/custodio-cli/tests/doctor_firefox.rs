@@ -3,6 +3,7 @@
 
 mod fprint_fixture;
 
+use std::fmt::Write as _;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -49,14 +50,14 @@ impl Case {
         for (i, n) in names.iter().enumerate() {
             fs::create_dir_all(root.join(n)).unwrap();
             fs::write(root.join(n).join("pkcs11.txt"), entries).unwrap();
-            ini += &format!("[Profile{i}]\nName=n{i}\nIsRelative=1\nPath={n}\n\n");
+            writeln!(ini, "[Profile{i}]\nName=n{i}\nIsRelative=1\nPath={n}\n").unwrap();
         }
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("profiles.ini"), ini).unwrap();
         root
     }
 
-    fn entry(&self, name: &str, library: &Path) -> String {
+    fn entry(name: &str, library: &Path) -> String {
         format!("library={}\nname={name}\n\n", library.display())
     }
 
@@ -112,14 +113,14 @@ fn check4(text: &str) -> String {
 #[test]
 fn a_profile_with_the_module_in_pkcs11_txt_is_ok_and_named() {
     let c = Case::new(false);
-    let e = c.entry("Custodio", &c.module());
+    let e = Case::entry("Custodio", &c.module());
     let root = c.root(".mozilla/firefox", &["a.default"], &e);
     let (_, text, runs) = c.doctor();
     let s = check4(&text);
     assert!(s.starts_with("ok"), "{text}");
     assert!(s.contains(root.join("a.default").to_str().unwrap()), "{s}");
     assert!(!s.contains("fix:"), "{s}");
-    assert!(runs.is_empty(), "nothing needs the p11-kit probe: {runs:?}");
+    assert_eq!(runs.len(), 0, "nothing needs the p11-kit probe: {runs:?}");
 }
 
 #[test]
@@ -144,7 +145,7 @@ fn an_entry_whose_file_is_gone_is_stale_with_the_same_fix() {
     c.root(
         ".mozilla/firefox",
         &["a.default"],
-        &c.entry("Custodio", &gone),
+        &Case::entry("Custodio", &gone),
     );
     let (_, text, _) = c.doctor();
     let s = check4(&text);
@@ -159,7 +160,7 @@ fn another_module_with_the_name_is_not_taken_for_ours() {
     c.root(
         ".mozilla/firefox",
         &["a.default"],
-        &c.entry("Custodio", &other),
+        &Case::entry("Custodio", &other),
     );
     let (_, text, _) = c.doctor();
     assert!(check4(&text).starts_with("not ok"), "{text}");
@@ -173,7 +174,7 @@ fn a_custodio_module_at_another_path_that_exists_is_ok() {
     c.root(
         ".mozilla/firefox",
         &["a.default"],
-        &c.entry("Custodio", &at),
+        &Case::entry("Custodio", &at),
     );
     let (_, text, _) = c.doctor();
     assert!(check4(&text).starts_with("ok"), "{text}");
@@ -183,7 +184,7 @@ fn a_custodio_module_at_another_path_that_exists_is_ok() {
 fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_discovery_as_register()
  {
     let c = Case::new(false);
-    let e = c.entry("Custodio", &c.module());
+    let e = Case::entry("Custodio", &c.module());
     c.root(".mozilla/firefox", &["a.default", "b.default"], &e);
     c.root(".thunderbird", &["t.default"], "");
     c.root(".config/librewolf/librewolf", &["l.default"], &e);
@@ -258,7 +259,7 @@ fn snap(c: &Case, copy: Option<&str>) -> PathBuf {
     c.root(
         "snap/firefox/common/.mozilla/firefox",
         &["s.default"],
-        &c.entry("Custodio", &copy_path),
+        &Case::entry("Custodio", &copy_path),
     );
     copy_path
 }
@@ -324,7 +325,7 @@ fn no_profile_at_all_is_ok_says_so_and_the_exit_status_is_unaffected() {
     );
     assert_eq!(state(&text, CHECK), "ok");
     assert_eq!(o.status.code(), Some(0), "{text}{}", err(&o));
-    assert!(runs.is_empty());
+    assert_eq!(runs.len(), 0, "{runs:?}");
 }
 
 #[test]
@@ -337,7 +338,7 @@ fn a_malformed_profiles_ini_is_could_not_check_naming_the_file() {
     let s = check4(&text);
     assert!(s.starts_with("could not check"), "{s}");
     assert!(s.contains("profiles.ini"), "{s}");
-    assert!(runs.is_empty());
+    assert_eq!(runs.len(), 0, "{runs:?}");
 }
 
 #[test]

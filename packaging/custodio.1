@@ -208,7 +208,18 @@ A polkit include that does not resolve (the vendor file of the override is missi
 A warning is added when the override and the system's common-auth both ask for the finger, which asks it twice.
 .B fprintd
 is waited for 1.5 seconds for each question.
-The exit status is 0 unless a polkit include is broken: a missing reader or finger does not count, because the fingerprint is optional.
+Three more checks follow.
+The module is registered in each Firefox profile, one line per profile, found as
+.B register
+finds them (the Firefox snap's copy of the module included, and a stale copy is not ok);
+a system where NSS loads the p11-kit proxy needs no registration;
+the fix is \fBcustodio register\fR.
+The systemd journal is persistent, read from \fIjournald.conf\fR, its drop-ins and \fI/var/log/journal\fR, never with \fBjournalctl\fR;
+a line that is not ok names the file and line that set it.
+The service's state directory is on an encrypted device: not-encrypted or unknown is not ok and the fix points to full-disk encryption;
+a service that does not answer in 1.5 seconds is \fBcould not check\fR.
+The exit status is 0 only when no polkit include is broken and these three checks are ok (\fBcould not check\fR counts as not ok there):
+a missing reader or finger does not count, because the fingerprint is optional.
 .PP
 When standard input is a terminal,
 .B import

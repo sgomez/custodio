@@ -1,5 +1,6 @@
 use super::*;
 use crate::fingerprint_decide::{Family, file_bytes};
+use crate::storage::StateStorage;
 
 fn facts(reader: Reader, fingers: Fingers) -> Facts {
     Facts {
