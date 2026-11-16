@@ -131,7 +131,7 @@ fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
         }
         Failure::Io { what, error } => (
             format!("custodio fingerprint: {what}: {error}"),
-            "Nothing was left behind. Check /etc/pam.d (free space, read-only mount, SELinux) and run the command again.".to_owned(),
+            "Check with ls -l /etc/pam.d/polkit-1 whether the file is there, fix /etc/pam.d (free space, read-only mount, SELinux) and run the command again.".to_owned(),
         ),
     }
 }

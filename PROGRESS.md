@@ -192,3 +192,11 @@ with an empty context.
   `scripts/test-check-fixture-seams.sh` and `just fixture-seams` pass (the recipe's debug build `cargo build -p custodio-cli --features fixture-root` must fail the check
   naming `CUSTODIO_FIXTURE_ROOT`, `_EUID` and `_FAIL`: the real-seam positive run). `just mutants-diff F197`: 130 mutants, 116 caught, 14 unviable, 0 missed (2 min).
   Survivors fixed with: a vendor-is-a-directory case, an unreadable `etc/pam.d` case (disable must refuse, non-root only), Display tests for `Failure` and `Refusal`, a fuzz-entry test.
+
+### 2026-11-16 — F197 — attempt 2
+- Findings fixed: (1) `tests/fingerprint.rs` has no looping test now: one `#[test]` per refusal, module layout, global form, not-root action and failing step (33 tests, 1.5 s, parallel);
+  (2) a failing directory flush after the rename removes the file again (new seam value `CUSTODIO_FIXTURE_FAIL=flush`, own test); the `Io` second line no longer claims
+  "nothing was left behind" (it says to check `ls -l /etc/pam.d/polkit-1`, true for `disable` too). Notes: `restorecon` by absolute path (`restorecon_path`, excluded from
+  `mutants` with the other two system-call functions, comment updated); the always-true package assert is now `libpam-fprintd`; a drop guard restores directory modes.
+- Evidence: `just quick`, `fingerprint_decide` (17), `fingerprint` (33), `help` (8), fuzz build/lint/smoke, `test-check-fixture-seams.sh`, `just fixture-seams` pass;
+  `just mutants-diff F197`: 132 mutants, 118 caught, 14 unviable, 0 missed (2 min).

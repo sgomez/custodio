@@ -32,7 +32,7 @@ pub enum Action {
 #[derive(Debug)]
 pub enum Failure {
     Refused(Refusal),
-    /// A system call failed; `what` says which step. Nothing was left behind.
+    /// A system call failed; `what` says which step. On `enable` a failed step leaves no file; on `disable` the file may remain.
     Io {
         what: &'static str,
         error: io::Error,
@@ -61,6 +61,7 @@ const LOGIN_SCHEMA: &str = "usr/share/glib-2.0/schemas/org.gnome.login-screen.gs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Fail {
     Rename,
+    Flush,
     Label,
 }
 
@@ -83,6 +84,7 @@ fn env() -> Env {
     let fail = match std::env::var("CUSTODIO_FIXTURE_FAIL").as_deref() {
         Ok("rename") => Some(Fail::Rename),
         Ok("label") => Some(Fail::Label),
+        Ok("flush") => Some(Fail::Flush),
         _ => None,
     };
     Env {
@@ -220,7 +222,7 @@ fn observe(env: &Env) -> Observed {
 /// Run the command, writing what it did to `out` and warnings to `err`.
 ///
 /// # Errors
-/// A [`Failure`]: a refusal, or a step that failed with nothing left behind.
+/// A [`Failure`]: a refusal, or a step that failed.
 pub fn run<W: Write, E: Write>(action: Action, out: &mut W, err: &mut E) -> Result<(), Failure> {
     let env = env();
     let mut observed = observe(&env);
@@ -356,9 +358,17 @@ fn put_in_place(env: &Env, tmp: &Path, dir: &Path) -> Result<(), Failure> {
         return Err(failure);
     }
     // The rename is only durable once the directory is.
-    File::open(dir)
-        .and_then(|d| d.sync_all())
-        .map_err(io_failure("cannot flush /etc/pam.d"))
+    let flushed = if env.fail == Some(Fail::Flush) {
+        Err(io::Error::other("injected failure"))
+    } else {
+        File::open(dir).and_then(|d| d.sync_all())
+    };
+    if let Err(error) = flushed {
+        // The change is not known to be durable: take it back, as the label step does.
+        let _ = fs::remove_file(&target);
+        return Err(io_failure("cannot flush /etc/pam.d")(error));
+    }
+    Ok(())
 }
 
 fn label_step(env: &Env, target: &Path) -> Result<(), Failure> {
@@ -383,6 +393,15 @@ fn apply_owner(file: &File) -> io::Result<()> {
     .map_err(Into::into)
 }
 
+/// An absolute path, so a caller's `PATH` cannot choose the binary run as root.
+fn restorecon_path() -> &'static str {
+    if Path::new("/usr/sbin/restorecon").exists() {
+        "/usr/sbin/restorecon"
+    } else {
+        "/sbin/restorecon"
+    }
+}
+
 /// The label the policy gives a file at that path, where `SELinux` is enforcing. Proven on fedora and
 /// alma by F199 (a test here would need `SELinux`); excluded from `mutants`.
 fn apply_label(target: &Path) -> io::Result<()> {
@@ -390,7 +409,7 @@ fn apply_label(target: &Path) -> io::Result<()> {
     if !enforcing {
         return Ok(());
     }
-    let status = std::process::Command::new("restorecon")
+    let status = std::process::Command::new(restorecon_path())
         .arg("-F")
         .arg(target)
         .status()?;

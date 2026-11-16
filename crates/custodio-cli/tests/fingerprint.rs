@@ -18,11 +18,19 @@ const POLKIT: &str = "etc/pam.d/polkit-1";
 const MULTIARCH: &str = "usr/lib/x86_64-linux-gnu/security";
 const OMARCHY: &str = "#%PAM-1.0\nauth sufficient pam_fprintd.so\nauth include system-auth\n";
 
+/// Restores a directory's mode on drop, so a failed assert still lets the temporary tree be deleted.
+struct RestoreMode(PathBuf);
+
+impl Drop for RestoreMode {
+    fn drop(&mut self) {
+        let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+    }
+}
+
 struct Fx {
     dir: tempfile::TempDir,
 }
 
-type Setup = Box<dyn Fn(&Fx)>;
 type Tree = BTreeMap<String, (String, Vec<u8>, u32)>;
 
 impl Fx {
@@ -369,23 +377,35 @@ fn the_lock_screen_note_is_not_shown_when_the_key_is_set_false() {
 
 // ---- atomic write ----
 
+fn failed_step_leaves_nothing(step: &str) {
+    let fx = Fx::new();
+    let before = fx.tree();
+    let o = fx.run_with(
+        &["enable"],
+        &[
+            ("DBUS_SYSTEM_BUS_ADDRESS", &fx.no_bus()),
+            ("CUSTODIO_FIXTURE_FAIL", step),
+        ],
+    );
+    assert_ne!(o.status.code(), Some(0), "{step}");
+    assert!(err(&o).lines().count() >= 2, "{step}: {}", err(&o));
+    assert!(!fx.path(POLKIT).exists(), "{step}");
+    assert_eq!(fx.tree(), before, "{step}: a file was left behind");
+}
+
 #[test]
-fn a_failed_step_leaves_no_file_and_no_temporary_file() {
-    for step in ["rename", "label"] {
-        let fx = Fx::new();
-        let before = fx.tree();
-        let o = fx.run_with(
-            &["enable"],
-            &[
-                ("DBUS_SYSTEM_BUS_ADDRESS", &fx.no_bus()),
-                ("CUSTODIO_FIXTURE_FAIL", step),
-            ],
-        );
-        assert_ne!(o.status.code(), Some(0), "{step}");
-        assert!(err(&o).lines().count() >= 2, "{step}: {}", err(&o));
-        assert!(!fx.path(POLKIT).exists(), "{step}");
-        assert_eq!(fx.tree(), before, "{step}: a file was left behind");
-    }
+fn a_failed_rename_leaves_no_file_and_no_temporary_file() {
+    failed_step_leaves_nothing("rename");
+}
+
+#[test]
+fn a_failed_flush_takes_the_file_back() {
+    failed_step_leaves_nothing("flush");
+}
+
+#[test]
+fn a_failed_label_leaves_no_file_and_no_temporary_file() {
+    failed_step_leaves_nothing("label");
 }
 
 #[test]
@@ -396,17 +416,16 @@ fn an_unwritable_pam_directory_is_refused_and_nothing_is_created() {
         "the suite must run unprivileged"
     );
     let fx = Fx::new();
+    let _restore = RestoreMode(fx.path("etc/pam.d"));
     fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o555)).unwrap();
     let before = fx.tree();
     let e = assert_refused(&fx, &["enable"], &before, "unwritable");
     assert!(e.contains("custodio fingerprint"), "{e}");
-    fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 // ---- not root ----
 
-#[test]
-fn not_root_is_refused_by_the_real_uid() {
+fn not_root_is_refused(action: &str) {
     assert_ne!(
         rustix::process::geteuid().as_raw(),
         0,
@@ -414,133 +433,169 @@ fn not_root_is_refused_by_the_real_uid() {
     );
     let fx = Fx::new();
     let before = fx.tree();
-    for action in ["enable", "disable"] {
-        let o = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
-            .args(["fingerprint", action])
-            .env("CUSTODIO_FIXTURE_ROOT", fx.root())
-            .env_remove("CUSTODIO_FIXTURE_EUID")
-            .env("DBUS_SYSTEM_BUS_ADDRESS", fx.no_bus())
-            .output()
-            .unwrap();
-        assert_ne!(o.status.code(), Some(0), "{action}");
-        assert!(
-            err(&o).contains("must run as root") && err(&o).lines().count() == 2,
-            "{}",
-            err(&o)
-        );
-        assert_eq!(fx.tree(), before);
-    }
+    let o = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
+        .args(["fingerprint", action])
+        .env("CUSTODIO_FIXTURE_ROOT", fx.root())
+        .env_remove("CUSTODIO_FIXTURE_EUID")
+        .env("DBUS_SYSTEM_BUS_ADDRESS", fx.no_bus())
+        .output()
+        .unwrap();
+    assert_ne!(o.status.code(), Some(0), "{action}");
+    assert!(
+        err(&o).contains("must run as root") && err(&o).lines().count() == 2,
+        "{}",
+        err(&o)
+    );
+    assert_eq!(fx.tree(), before);
+}
+
+#[test]
+fn enable_is_refused_by_the_real_uid() {
+    not_root_is_refused("enable");
+}
+
+#[test]
+fn disable_is_refused_by_the_real_uid() {
+    not_root_is_refused("disable");
 }
 
 // ---- acceptance 2: every other refusal ----
 
-#[test]
-fn every_foreign_or_missing_piece_is_refused_and_changes_nothing() {
-    let mut changed = file_bytes().to_vec();
-    changed[40] ^= 1;
-    let cases: Vec<(&str, Setup)> = vec![
-        ("omarchy", Box::new(|fx| fx.put(POLKIT, OMARCHY))),
-        (
-            "administrator",
-            Box::new(|fx| fx.put(POLKIT, "#%PAM-1.0\nauth include system-auth\n")),
-        ),
-        (
-            "one byte changed",
-            Box::new(move |fx| fs::write(fx.path(POLKIT), &changed).unwrap()),
-        ),
-        (
-            "symlink to a custodio file",
-            Box::new(|fx| {
-                fs::write(fx.path("elsewhere"), file_bytes()).unwrap();
-                symlink("../../elsewhere", fx.path(POLKIT)).unwrap();
-            }),
-        ),
-        (
-            "symlink to nothing",
-            Box::new(|fx| symlink("/nonexistent/x", fx.path(POLKIT)).unwrap()),
-        ),
-        (
-            "no vendor file",
-            Box::new(|fx| fx.remove("usr/lib/pam.d/polkit-1")),
-        ),
-        (
-            "vendor is a directory",
-            Box::new(|fx| {
-                fx.remove("usr/lib/pam.d/polkit-1");
-                fs::create_dir(fx.path("usr/lib/pam.d/polkit-1")).unwrap();
-            }),
-        ),
-        (
-            "no module",
-            Box::new(|fx| fx.remove(&format!("{MULTIARCH}/pam_fprintd.so"))),
-        ),
-        (
-            "no fprintd",
-            Box::new(|fx| {
-                fx.remove("usr/share/dbus-1/system-services/net.reactivated.Fprint.service");
-            }),
-        ),
-    ];
-    for (what, setup) in cases {
-        let fx = Fx::new();
-        setup(&fx);
-        let before = fx.tree();
-        let e = assert_refused(&fx, &["enable"], &before, what);
-        if what == "no module" || what == "no fprintd" {
-            assert!(
-                e.contains("libpam-fprintd") || e.contains("fprintd"),
-                "{what}: {e}"
-            );
-        }
-    }
+fn refused_with(what: &str, setup: impl FnOnce(&Fx)) -> String {
+    let fx = Fx::new();
+    setup(&fx);
+    let before = fx.tree();
+    assert_refused(&fx, &["enable"], &before, what)
 }
 
 #[test]
-fn the_module_is_found_in_each_layout_and_only_there() {
-    for dir in [MULTIARCH, "usr/lib64/security", "usr/lib/security"] {
-        let fx = Fx::new();
+fn an_omarchy_style_file_is_refused() {
+    refused_with("omarchy", |fx| fx.put(POLKIT, OMARCHY));
+}
+
+#[test]
+fn an_administrators_file_is_refused() {
+    refused_with("administrator", |fx| {
+        fx.put(POLKIT, "#%PAM-1.0\nauth include system-auth\n");
+    });
+}
+
+#[test]
+fn a_file_with_one_byte_changed_is_refused() {
+    let mut changed = file_bytes().to_vec();
+    changed[40] ^= 1;
+    refused_with("one byte changed", |fx| {
+        fs::write(fx.path(POLKIT), &changed).unwrap();
+    });
+}
+
+#[test]
+fn a_symlink_to_a_custodio_file_is_refused() {
+    refused_with("symlink to a custodio file", |fx| {
+        fs::write(fx.path("elsewhere"), file_bytes()).unwrap();
+        symlink("../../elsewhere", fx.path(POLKIT)).unwrap();
+    });
+}
+
+#[test]
+fn a_symlink_to_nothing_is_refused() {
+    refused_with("symlink to nothing", |fx| {
+        symlink("/nonexistent/x", fx.path(POLKIT)).unwrap();
+    });
+}
+
+#[test]
+fn no_vendor_file_is_refused() {
+    refused_with("no vendor file", |fx| fx.remove("usr/lib/pam.d/polkit-1"));
+}
+
+#[test]
+fn a_vendor_file_that_is_a_directory_is_refused() {
+    refused_with("vendor is a directory", |fx| {
+        fx.remove("usr/lib/pam.d/polkit-1");
+        fs::create_dir(fx.path("usr/lib/pam.d/polkit-1")).unwrap();
+    });
+}
+
+#[test]
+fn no_module_is_refused_naming_the_package() {
+    let e = refused_with("no module", |fx| {
         fx.remove(&format!("{MULTIARCH}/pam_fprintd.so"));
-        let before = fx.tree();
-        assert_refused(&fx, &["enable"], &before, &format!("absent from {dir}"));
-        fx.put(&format!("{dir}/pam_fprintd.so"), "module");
-        let o = fx.run(&["enable"]);
-        assert_eq!(o.status.code(), Some(0), "present in {dir}: {}", err(&o));
-        assert_eq!(fs::read(fx.path(POLKIT)).unwrap(), file_bytes());
-    }
+    });
+    assert!(e.contains("libpam-fprintd"), "{e}");
+}
+
+#[test]
+fn no_fprintd_is_refused() {
+    refused_with("no fprintd", |fx| {
+        fx.remove("usr/share/dbus-1/system-services/net.reactivated.Fprint.service");
+    });
+}
+
+fn module_found_only_in(dir: &str) {
+    let fx = Fx::new();
+    fx.remove(&format!("{MULTIARCH}/pam_fprintd.so"));
+    let before = fx.tree();
+    assert_refused(&fx, &["enable"], &before, &format!("absent from {dir}"));
+    fx.put(&format!("{dir}/pam_fprintd.so"), "module");
+    let o = fx.run(&["enable"]);
+    assert_eq!(o.status.code(), Some(0), "present in {dir}: {}", err(&o));
+    assert_eq!(fs::read(fx.path(POLKIT)).unwrap(), file_bytes());
+}
+
+#[test]
+fn the_module_is_found_in_the_multiarch_layout() {
+    module_found_only_in(MULTIARCH);
+}
+
+#[test]
+fn the_module_is_found_in_usr_lib64() {
+    module_found_only_in("usr/lib64/security");
+}
+
+#[test]
+fn the_module_is_found_in_usr_lib() {
+    module_found_only_in("usr/lib/security");
 }
 
 // ---- acceptance 3: fingerprint already global ----
 
+const GLOBAL_PAM: &str = "auth sufficient pam_fprintd.so\nauth required pam_unix.so\n";
+
+fn global_form_refused(os: &str, file: &str, text: &str) {
+    let fx = Fx::new();
+    fx.put("etc/os-release", os);
+    fx.put(file, text);
+    let before = fx.tree();
+    let e = assert_refused(&fx, &["enable"], &before, file);
+    assert!(
+        e.contains("redundant") && e.contains("Turn the global switch off"),
+        "{file}: {e}"
+    );
+}
+
 #[test]
-fn every_global_form_is_refused_as_redundant() {
-    let pam = "auth sufficient pam_fprintd.so\nauth required pam_unix.so\n";
-    let cases: [(&str, &str, &str, &str); 4] = [
-        ("debian", "ID=debian\n", "etc/pam.d/common-auth", pam),
-        (
-            "fedora",
-            "ID=fedora\n",
-            "etc/authselect/authselect.conf",
-            "sssd\nwith-fingerprint\n",
-        ),
-        (
-            "arch system-auth",
-            "ID=arch\n",
-            "etc/pam.d/system-auth",
-            pam,
-        ),
-        ("arch sudo", "ID=arch\n", "etc/pam.d/sudo", pam),
-    ];
-    for (what, os, file, text) in cases {
-        let fx = Fx::new();
-        fx.put("etc/os-release", os);
-        fx.put(file, text);
-        let before = fx.tree();
-        let e = assert_refused(&fx, &["enable"], &before, what);
-        assert!(
-            e.contains("redundant") && e.contains("Turn the global switch off"),
-            "{what}: {e}"
-        );
-    }
+fn global_fingerprint_on_debian_is_refused_as_redundant() {
+    global_form_refused("ID=debian\n", "etc/pam.d/common-auth", GLOBAL_PAM);
+}
+
+#[test]
+fn global_fingerprint_on_fedora_is_refused_as_redundant() {
+    global_form_refused(
+        "ID=fedora\n",
+        "etc/authselect/authselect.conf",
+        "sssd\nwith-fingerprint\n",
+    );
+}
+
+#[test]
+fn global_fingerprint_in_arch_system_auth_is_refused_as_redundant() {
+    global_form_refused("ID=arch\n", "etc/pam.d/system-auth", GLOBAL_PAM);
+}
+
+#[test]
+fn global_fingerprint_in_arch_sudo_is_refused_as_redundant() {
+    global_form_refused("ID=arch\n", "etc/pam.d/sudo", GLOBAL_PAM);
 }
 
 // ---- acceptance 4: disable ----
@@ -583,9 +638,9 @@ fn a_file_that_cannot_be_looked_at_is_not_taken_for_missing() {
         "the suite must run unprivileged"
     );
     let fx = Fx::new();
+    let _restore = RestoreMode(fx.path("etc/pam.d"));
     fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.run(&["disable"]);
-    fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o755)).unwrap();
     assert_ne!(o.status.code(), Some(0), "{}", out(&o));
     assert!(err(&o).lines().count() >= 2, "{}", err(&o));
 }
