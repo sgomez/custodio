@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PAM client of the fingerprint-* cases (F199). Usage: fingerprint-pam.py SERVICE USER PASSWORD.
 
-Runs pam_start/pam_authenticate for SERVICE with PASSWORD as the answer to every prompt, then reads its own /proc/self/maps and prints
+Runs pam_start/pam_authenticate for SERVICE with PASSWORD as the answer to every prompt, then reads its own /proc/self/maps (before pam_end) and prints
 `rc=<pam_authenticate result> fprintd=<1 if pam_fprintd.so is mapped, else 0>`. The mapping shows that the service's stack loaded pam_fprintd.
 """
 import ctypes
@@ -50,9 +50,11 @@ def main(service, user, password):
     rc = pam.pam_start(service.encode(), user.encode(), ctypes.byref(c), ctypes.byref(handle))
     if rc == 0:
         rc = pam.pam_authenticate(handle, 0)
-        pam.pam_end(handle, rc)
+    # read the maps before pam_end: libpam unloads its modules there
     with open("/proc/self/maps", encoding="utf-8") as f:
         mapped = any("pam_fprintd.so" in line for line in f)
+    if handle:
+        pam.pam_end(handle, rc)
     print(f"rc={rc} fprintd={int(mapped)}")
 
 

@@ -27,12 +27,13 @@ MODULE_ASIDE=$module.fp-aside
 command -v custodio > /dev/null || fail "custodio is not installed"
 owes() { grep -qxF -- "$1" "${E2E_TARGET_DIR:-/e2e-target}/cases.list" 2> /dev/null; } # a case of this family only (the common ones are in e2e/cases.list)
 
+label() { stat -c %C -- "$1" 2> /dev/null || echo '?'; } # the SELinux label; '?' where the file system has none (stat fails without SELinux)
 manifest() { # PATH...: one line per path: path type mode owner label hash [mtime]; an absent path says so
     local p f
     for p in "$@"; do
         if [ ! -e "$p" ] && [ ! -L "$p" ]; then echo "$p absent"; continue; fi
         find "$p" -print0 | sort -z | while IFS= read -r -d '' f; do
-            printf '%s %s' "$f" "$(stat -c '%F %a %U:%G %C' -- "$f" | tr ' ' '_')"
+            printf '%s %s %s' "$f" "$(stat -c '%F %a %U:%G' -- "$f" | tr ' ' '_')" "$(label "$f")"
             if [ -f "$f" ] && [ ! -L "$f" ]; then printf ' %s' "$(sha256sum < "$f" | cut -c1-64)"; else printf ' -'; fi
             if [ -n "${FP_MTIME:-}" ]; then printf ' %s' "$(stat -c %Y -- "$f")"; fi
             echo
@@ -100,7 +101,7 @@ stat -c '%a %U:%G %F' $PAMD/polkit-1 | obs enable-file stat
 if owes fingerprint-selinux-label; then
     cp "$OBS/enable-file.rc" "$OBS/selinux-label.rc" # the label of the file the first enable wrote
     { cat /sys/fs/selinux/enforce 2> /dev/null || echo 0; } | tr -d '\0' | obs selinux-label enforcing
-    stat -c %C $PAMD/polkit-1 | obs selinux-label label
+    label $PAMD/polkit-1 | obs selinux-label label
     { matchpathcon -n $PAMD/polkit-1 2> /dev/null || true; } | obs selinux-label default
     { restorecon -n -v $PAMD/polkit-1 2>&1 || true; } | obs selinux-label restorecon
 fi

@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
 # (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
-# (the polkit agent needs one). Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
-# Usage: guest.sh TARGET [oldpath|m3]: "m3" (F142) installs the M3 build, then this tree's package over it (e2e/upgrade-m3.sh); "oldpath" (F61) installs the old-path fixture (/pkg-oldpath)
+#. Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
+# Usage: guest.sh TARGET [oldpath|m3]: "m3" (F142) installs the M3 build, then this tree's package over it; "oldpath" (F61) installs the old-path fixture (/pkg-oldpath)
 # and reports the upgrade-oldpath-* cases only; a target with a no-oldpath marker skips them in the main run.
-# Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh collects them in target/e2e/phases.tsv).
+# Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh: phases.tsv).
 # F160: with E2E_VM=1 (e2e/vm/run.sh) apt has installed the package and the TPM is the VM's own: no install, tpm_setup, swtpm or drop-in;
-# the VM-only cases (e2e/vm/judge.sh) are judged at the end. E2E_TPM says what the case scripts expect. E2E_DIR (default /e2e) holds select.sh, report.sh and the VM files.
-# With E2E_SELECT (F63, `just e2e-cases`: case ids separated by spaces) only those cases are reported, by report.sh, and a step that no selected case
-# needs is not run (select.sh); the setup (install, service, user, import) always is.
+# the VM-only cases (e2e/vm/judge.sh) are judged at the end. E2E_TPM says what the cases expect. E2E_DIR (default /e2e) holds select.sh, report.sh, the VM files.
+# With E2E_SELECT (F63, `just e2e-cases`: ids separated by spaces) only those cases are reported, and a step no selected case needs is not run (select.sh);
+# the setup (install, service, user, import) always runs.
 set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
 vm=${E2E_VM:-}
-# F163: E2E_PCR_HALF (VM only, from e2e/vm/run.sh): `first` runs the selection and, last, the first pcr half; after the power cycle `second` runs only the second.
+# F163: E2E_PCR_HALF (VM only): `first` runs the selection and the first pcr half last; after the power cycle `second` runs the second.
 pcr_half=${E2E_PCR_HALF:-}
 case $pcr_half in "" | first | second) ;; *) echo "e2e: FAIL: E2E_PCR_HALF='$pcr_half' is not first or second" >&2; exit 1 ;; esac
 [ -z "$pcr_half" ] || [ -n "$vm" ] || { echo "e2e: FAIL: E2E_PCR_HALF is for a VM run" >&2; exit 1; }
@@ -170,7 +170,7 @@ if phase_runs journal; then
 fi
 phase_done journal
 
-# The ownership cases (F91): two ordinary accounts, each with a session and an agent of its own. After the journal step (whose counts they would change) and before the upgrade; every key it imports is deleted.
+# The ownership cases (F91): two accounts with a session and agent each; their keys are deleted.
 if phase_runs owner; then
     WORK=$work MODULE=$MODULE START=$start bash /e2e/owner-run.sh || fail "owner-run.sh failed"
 fi
@@ -304,7 +304,7 @@ if phase_runs journalkind; then
 fi
 phase_done journalkind
 
-# The fingerprint cases (F199): the installed `custodio fingerprint` on the real /etc/pam.d; root only, no daemon, keys or TPM; the test agent's PAM file is set aside and put back. Containers only.
+# The fingerprint cases (F199): root only, the real /etc/pam.d; containers only.
 if [ -z "$vm" ] && phase_runs fingerprint; then
     WORK=$work bash /e2e/fingerprint-run.sh || fail "fingerprint-run.sh failed"
 fi

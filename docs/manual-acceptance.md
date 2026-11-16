@@ -314,6 +314,16 @@ or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
    ```
 
    Expected: no line names the service (`custodio`), polkit or the module (`libcustodio_pkcs11`) during import, signing and denial. Any AVC at all: copy it into the notes, with the step it happened in.
+   **Fingerprint override label (F199).** The container group cannot show this: its kernel has no SELinux, so it reports "SELinux not enforcing here". On this host
+   (`getenforce` prints `Enforcing`, `fprintd` and `fprintd-pam` installed, no `/etc/pam.d/polkit-1`):
+
+   ```sh
+   sudo custodio fingerprint enable
+   ls -Z /etc/pam.d/polkit-1; matchpathcon -n /etc/pam.d/polkit-1; sudo restorecon -n -v /etc/pam.d/polkit-1
+   sudo custodio fingerprint disable
+   ```
+
+   Expected: the two labels are equal, `restorecon -n -v` prints nothing, and `disable` leaves no `/etc/pam.d/polkit-1`. A different label or any output of `restorecon` is a failure of acceptance 17.
 8. The audit comparison, the base query of `docs/audit.md` ("Queries") with the window of the run:
 
    ```sh

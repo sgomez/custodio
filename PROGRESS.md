@@ -213,3 +213,16 @@ with an empty context.
 ### 2026-11-16 — F198 — attempt 2
 - Findings fixed in `scripts/test-package-scripts.sh`: removal silence now rejects `pam|fingerprint` (case-insensitive); the `custodio: ` lines of the deb, rpm and Arch install stderr are compared byte for byte (other stderr, e.g. journalctl catalog noise in deb, is ignored).
 - Passed: `test-package-scripts.sh`, `just quick`.
+
+### 2026-11-16 — F199 — attempt 1
+- Done (all 5 steps): `e2e/fingerprint.py` (judge) + `scripts/test-e2e-fingerprint.sh` (accepted set + 38 negative controls, <1 s, in `test-scripts`); `e2e/fingerprint-run.sh` (guest step, after
+  journalkind, containers only), `e2e/fingerprint-pam.py` (ctypes PAM client); ids in `e2e/cases.list` (7 common) and per-target lists (`pam-auth-update` on debian13/ubuntu2604, `selinux-label` +
+  `authselect` on fedora44/alma10, new lists); Containerfiles add fprintd + the PAM module (+ authselect, libselinux-utils, policycoreutils on the rpm family). Finding: `docs/findings/F199.md`
+  (Debian's fprintd profile is off by default, so the evaluator's note 1 did not apply; authselect `local` profile is present on both rpm targets).
+- Observation that `pam_fprintd` was reached through the override: the client reads `/proc/self/maps` after `pam_authenticate` and before `pam_end` (libpam dlcloses at `pam_end`): `fprintd=1` with
+  the override, `fprintd=0` after `disable`. The authselect case edits `/etc/pam.d/system-auth` first; `apply-changes` must regenerate it (proves the tool ran) and leave the override identical.
+- SELinux: not enforcing on this host; the run record shows `fingerprint: note: SELinux not enforcing here: the label ... was NOT proven`. The enforcing check is a person's run: added to
+  `docs/manual-acceptance.md` section 11 (step 7, "Fingerprint override label").
+- Passed (each `just e2e-cases T 'fingerprint-*'`, run one at a time: parallel runs race on the package build): debian13, ubuntu2604, arch, fedora44, alma10. The group's step takes 4 s per target.
+  `just quick`, `test-e2e-fingerprint.sh`, `test-e2e-select.sh` (its no-cases.list control now uses arch), `test-e2e-skips.sh`, `test-e2e-selftests.sh` green. guest.sh comments were
+  shortened to stay under the 5000-token file limit.
