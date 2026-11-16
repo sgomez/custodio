@@ -24,7 +24,7 @@ mkgood() { # DIR
     local d=$1 h=$1/hidden r=$1/restored
     mkdir -p "$h" "$r"
     echo partial > "$h/has2.out"; echo 1 > "$h/has2.rc"
-    printf "Error: the credential could not be sealed (com.rfirma.Custodio1.Error.CredentialsUnavailable)\n" > "$h/import.out"; echo 1 > "$h/import.rc"
+    printf "custodio: the credential service is unavailable; nothing was stored\n" > "$h/import.out"; echo 1 > "$h/import.rc"
     printf 'd /var/lib/custodio 700 4096\nf /var/lib/custodio/other.rec 600 120\nabc123  /var/lib/custodio/other.rec\n' > "$h/state-before"
     cp "$h/state-before" "$h/state-after"
     printf 'other\trsa2048\tencrypted-tpm\n' > "$h/list.out"
@@ -49,7 +49,7 @@ ctl() {
 }
 ctl succeeds vm-silent-import-fails "printf \"Imported key '$ID' (rsa2048).\n$ETPM_TEXT\n\" > hidden/import.out; echo 0 > hidden/import.rc"
 ctl exit0 vm-silent-import-fails 'echo 0 > hidden/import.rc'
-ctl othererr vm-silent-import-fails 'echo "Error (com.rfirma.Custodio1.Error.TpmFailed)" > hidden/import.out'
+ctl othererr vm-silent-import-fails 'echo "custodio: the TPM failed or cannot be used; nothing was stored" > hidden/import.out'
 ctl hidden-yes vm-silent-import-fails 'echo yes > hidden/has2.out; echo 0 > hidden/has2.rc'
 ctl newfile vm-silent-nothing-stored 'echo "f /var/lib/custodio/vs-key.rec 600 900" >> hidden/state-after'
 ctl newsum vm-silent-nothing-stored 'echo "def456  /var/lib/custodio/vs-key.rec" >> hidden/state-after'
@@ -70,7 +70,7 @@ for k in tpm encrypted-host encrypted-tpm; do
 done
 ctl weaker-in-text vm-silent-no-key 'echo "Storage: encrypted-host." >> hidden/import.out'
 ctl lists-empty vm-silent-no-key ': > hidden/list.out; : > hidden/cli-list.out'
-ctl restored-fails vm-silent-restored-imports 'echo "Error (com.rfirma.Custodio1.Error.CredentialsUnavailable)" > restored/import.out'
+ctl restored-fails vm-silent-restored-imports 'echo "custodio: the credential service is unavailable; nothing was stored" > restored/import.out'
 for k in tpm encrypted-host; do
     ctl "restored-$k" vm-silent-restored-imports "sed -i s/encrypted-tpm/$k/g restored/import.out restored/list.out"
 done
