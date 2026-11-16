@@ -219,7 +219,7 @@
         "F207"
       ],
       "verify": "just quick && DOC=docs/release-notes-v0.9.0.md scripts/test-docs-release-notes.sh && scripts/test-docs-threat-model.sh && scripts/test-docs-api.sh && scripts/test-docs-manual-m7.sh",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F209",
