@@ -26,7 +26,10 @@ fn doctor(fx: &Fx, bus: &str) -> (std::process::Output, String) {
     // Checks 1 and 2 never write to standard error; a bus with no Custodio service leaves check 6 `could not check`,
     // which is the one thing doctor may say there (and exit 1 for).
     let e = err(&o);
-    assert!(e.is_empty() || e.contains("checks 4 to 6"), "{e}");
+    assert!(
+        e.is_empty() || e.contains("did not pass: state directory storage"),
+        "{e}"
+    );
     (o, text)
 }
 

@@ -160,3 +160,45 @@ fn text_from_outside_is_escaped_and_fixes_sit_under_their_check() {
     assert!(lines[1].trim_start().starts_with("fix: "));
     assert!(lines[1].starts_with(' '));
 }
+
+#[test]
+fn a_foreign_polkit_file_without_the_finger_is_not_fixed_by_enable() {
+    let mut f = facts(Reader::Devices(1), Fingers::Listed(1));
+    for file in [
+        FileState::Regular(b"auth include common-auth\n".to_vec()),
+        FileState::NotRegular,
+    ] {
+        f.files.polkit_file = file.clone();
+        let polkit = decide(&f)
+            .checks
+            .into_iter()
+            .find(|c| c.name == POLKIT)
+            .unwrap();
+        assert_eq!(polkit.state, State::NotOk, "{file:?}");
+        let fix = polkit.fix.unwrap();
+        assert!(
+            !fix.starts_with("Run: sudo custodio fingerprint enable"),
+            "{fix}"
+        );
+        assert!(fix.contains("dpkg -S"), "{fix}");
+    }
+}
+
+#[test]
+fn the_failing_checks_are_named_once_each_in_report_order() {
+    let mut f = facts(Reader::Devices(1), Fingers::Listed(1));
+    assert_eq!(decide(&f).failing(), Vec::<&str>::new());
+    f.service = Service::Unreachable("x".into());
+    let missing = |path: &str| ProfileFact {
+        browser: "Firefox",
+        path: path.into(),
+        copy: None,
+        entry: Entry::Missing,
+    };
+    f.firefox = Firefox::Profiles(vec![missing("/a"), missing("/b")]);
+    f.files.polkit_file = FileState::NotRegular;
+    assert_eq!(
+        decide(&f).failing(),
+        ["module in browsers", "state directory storage"]
+    );
+}

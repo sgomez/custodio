@@ -172,8 +172,7 @@ fn a_pipe_on_one_stream_decides_for_stderr_and_a_pipe_on_stdout_for_both() -> Re
 /// Every failing run is at least two lines on stderr, a status, and nothing on stdout.
 #[test]
 fn every_failing_command_prints_what_went_wrong_then_the_next_step() -> Res {
-    let cases: [(&[&str], i32); 5] = [
-        (&[], 2),
+    let cases: [(&[&str], i32); 4] = [
         (&["frobnicate"], 2),
         (&["register", "--bogus"], 2),
         (&["delete", "some-key"], 1),

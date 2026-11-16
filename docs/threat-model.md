@@ -105,17 +105,25 @@ Custodio does not defend against:
   Fedora or Arch. On Debian 13 (run) and RHEL/Alma 10 (inferred from Debian 13, not run), with systemd 257, the daemon binds user credentials to a PCR when a TPM is present, the
   service refuses them, and the `encrypted-tpm` kind is unavailable. Systems with a systemd older than 257 are not supported.
 - **That the override covers only Custodio.** With `custodio fingerprint enable`, the finger answers every polkit action, not only
-  Custodio's: any dialog that asks for the password accepts it.
-- **That a finger is as strong as a password.** A fingerprint can be copied from surfaces, some readers are fooled by a copy, and
-  someone can make you touch the reader. It is a convenience; the password is the fallback.
-- **That a finger at the machine cannot approve a remote request.** A request that arrives over ssh and reaches polkit can be
-  approved by a finger on the reader of the machine, by whoever is there.
-- **The login and lock screens.** They are not Custodio's: `custodio fingerprint` does not change them, and what they accept is
-  set by the desktop and its PAM files.
-- **That the password path survives a vanished vendor file.** If the file that `/etc/pam.d/polkit-1` includes disappears (a package
-  removed, a distribution upgrade), polkit's password path breaks too, and only `custodio doctor` notices.
+  Custodio's: `pkexec`, software installation, disk management and the actions that ask for an administrator accept it too.
+  Custodio cannot narrow it: PAM has one service for polkit.
+- **That a finger is as strong as a password.** It is weaker. A fingerprint can be copied from surfaces, some readers are fooled
+  by a copy, and it can be taken from a person who is asleep or coerced. A person who needs the password barrier keeps the
+  fingerprint off.
+- **That a finger at the machine cannot approve a remote request.** On Ubuntu the polkit helper is socket activated, so a polkit
+  authentication started from an ssh session also asks for the finger, and a touch on the local reader approves it. On Fedora,
+  `pam_fprintd` skips remote sessions (observed; the reason is inferred).
+- **The login and lock screens.** They are not Custodio's. On Ubuntu, and on any GNOME where
+  `org.gnome.login-screen enable-fingerprint-authentication` keeps its default `true`, enrolling a finger is enough for the lock
+  screen to accept it, with or without Custodio's override. [docs/fingerprint.md](fingerprint.md#the-gnome-lock-screen-on-ubuntu)
+  says how to turn it off. Fedora and Bazzite keep it off through authselect; Omarchy uses a separate file.
+- **That the password path survives a vanished vendor file.** If the file that `/etc/pam.d/polkit-1` includes disappears (a future
+  polkit package that moves it), polkit's password path fails while the finger still works. `sudo` is unaffected, so the system
+  can be recovered. `custodio doctor` detects it; nothing watches for it between its runs.
 - **Debian 13 and Alma 10 with a finger.** The run with a virtual fingerprint sensor in a VM was made on Ubuntu 26.04;
-  Debian 13 and Alma 10 were not run in a VM, and what is said of them comes from the packages' files.
+  Debian 13 and Alma 10 were not run in a VM, and what is said of them comes from the packages' files. On them `enable` proceeds
+  only when the files are as where it was run (the vendor file at `/usr/lib/pam.d/polkit-1`, no `/etc/pam.d/polkit-1`), and
+  refuses otherwise.
 - **Several dialogs per page.** TLS client authentication signs once per handshake, and every signature asks.
 
 ## The Firefox snap socket

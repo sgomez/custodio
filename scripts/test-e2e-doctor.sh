@@ -18,17 +18,17 @@ L3_OFF='not ok          fingerprint for polkit: fingerprint is not active for po
 L3_ON="ok              fingerprint for polkit: active through Custodio's override /etc/pam.d/polkit-1"
 L3_BR='not ok          fingerprint for polkit: Custodio'"'"'s override /etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing: no polkit dialog can authenticate
                 fix: Reinstall polkit (it ships that file), or remove the override: sudo custodio fingerprint disable'
-L4='ok              module in Firefox: no browser profile was found, so there is nothing to register'
-L4N='could not check module in Firefox: could not look for browser profiles: x
+L4='ok              module in browsers: no browser profile was found, so there is nothing to register'
+L4N='could not check module in browsers: could not look for browser profiles: x
                 fix: Fix or remove that file, then run '"'"'custodio doctor'"'"' again.'
 L5='ok              persistent journal: the journal is persistent (/var/log/journal exists)'
 L5N='not ok          persistent journal: Storage=volatile: the journal is kept in memory
                 fix: As root: remove or change the line at x, then restart systemd-journald.'
 L6='not ok          state directory storage: the service'"'"'s state directory is not known to be on an encrypted device (reason not-block-filesystem: x)
-                fix: Use full-disk encryption (README.md#x).'
+                fix: x Or use full-disk encryption on the disk that holds /var/lib/custodio (LUKS: x).'
 L6N='could not check state directory storage: could not ask the Custodio service: x
                 fix: Start it.'
-ERR1='custodio doctor: check 4, 5 or 6 is not satisfied'
+ERR1='custodio doctor: did not pass: state directory storage'
 # run DIR NAME OUT RC ERR
 run() { w "$1/$2.out" "$3"$'\n'; w "$1/$2.rc" "$4"; w "$1/$2.err" "$5"; w "$1/$2.pam.before" 'a'; w "$1/$2.pam.after" 'a'; }
 good() {

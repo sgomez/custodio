@@ -405,3 +405,18 @@ with an empty context.
 ### 2026-11-16 — F209 — attempt 3 (findings checked)
 - NEXT_FINDINGS: `just e2e` failed once on alma10 (swtpm): `cli-import-pkttyagent` and `cli-delete-pkttyagent` timed out (the 60 s expect of `e2e/cli-pty.py`; no prompt from pkttyagent) while six targets ran at once; the guest's temp dir was gone, so no events file survived. It is not reproducible: `E2E_TPM=swtpm just e2e alma10` alone exit 0 (95 s, both cases `run`), and the full `just e2e` rerun on the unchanged tree exit 0 (six records, wall 172 s, row limits kept). No product, e2e or script change in this attempt, so no earlier result changes; the failure is recorded as an intermittent load-dependent timeout in the alma10 pkttyagent cases (it ran right after `appid-*` left app.slice with ~4400 children, a possible cause, not proven). If it recurs, the next session should keep `$CLI/*.events` of a failed run in the log before changing anything.
 - Unchanged and still standing from attempts 1–2: the VM `full`/`lacking` results, versions, 12 run / 0 skipped fingerprint counts and per-target fingerprint counts (alma10 9, arch 7, debian13 8, fedora44 9, ubuntu2604 8).
+
+### 2026-11-17 — F210 — manual review (with the person)
+- Done: pre-review of acceptances 20 and 21, fixes from it. Docs: fingerprint.md (login/lock-screen claims, the SPEC's
+  "Not guaranteed" list item by item, refusals for vendor file, fprintd and disable), doctor.md (every state, foreign file),
+  threat-model.md (the six fingerprint items as in SPEC), guide and manual-acceptance show enable's lock-screen note (the
+  ubuntu fixture now has GNOME's login-screen schema). CLI: doctor's fix for a foreign polkit-1 no longer says `enable`;
+  doctor's last line names the failing checks; storage fixes say what to do instead of citing README.md (not installed);
+  check "module in Firefox" renamed "module in browsers"; `register` skips print once (stderr) and name `--remove` when
+  that was the run; `custodio` alone prints the help; `usage:` built from the help table. Help: sudo in the fingerprint
+  example, polkit dialog for import/delete, key types and id rule, when to run register.
+- Decisions: purge keeps the keys (M2 decision stands, the person confirmed it).
+- Not done / known issues: the output of doctor and the other commands is still hard to read; the person wants a redesign,
+  as its own feature. Other `README.md` references in CLI messages (list note, import/list storage warning, export hint,
+  "report a bug") point to a file the package does not install.
+- Next session should: nothing for F210; the person closes it with `just milestone pass F210` after reading.

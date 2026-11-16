@@ -1,13 +1,13 @@
-//! Checks 4 to 6 of `custodio doctor` (F203): the module in Firefox, the persistent journal and the state directory's
+//! Checks 4 to 6 of `custodio doctor` (F203): the module in the browsers, the persistent journal and the state directory's
 //! storage, from observed values only. Split from [`crate::doctor_decide`], which owns the report and the exit status.
 
 use crate::cert_text::escape;
 use crate::delete::RESTART_NOTE;
 use crate::doctor_decide::{Check, State, check};
 use crate::journald_conf::{Cause, Source, Verdict};
-use crate::storage::{README_ANCHOR, StateStorage};
+use crate::storage::StateStorage;
 
-pub const FIREFOX: &str = "module in Firefox";
+pub const FIREFOX: &str = "module in browsers";
 pub const JOURNAL: &str = "persistent journal";
 pub const STORAGE: &str = "state directory storage";
 
@@ -228,7 +228,7 @@ fn edit_fix(source: &Source, by_default: bool) -> String {
     }
 }
 
-const FDE: &str = "full-disk encryption (README.md#";
+const FDE: &str = "full-disk encryption on the disk that holds /var/lib/custodio (LUKS: your installer's encryption option, or cryptsetup)";
 
 fn reason_fix(reason: &str) -> Option<(&'static str, &'static str)> {
     Some(match reason {
@@ -280,7 +280,7 @@ pub fn storage(f: &Service) -> Check {
         Service::Answered(StateStorage::NotEncrypted, _) => (
             State::NotOk,
             "the service's state directory is not on an encrypted device".to_owned(),
-            Some(format!("Use {FDE}{README_ANCHOR}): without it whoever takes this machine can use your keys, though they cannot copy a tpm key.")),
+            Some(format!("Use {FDE}: without it whoever takes this machine can use your keys, though they cannot copy a tpm key.")),
         ),
         Service::Answered(StateStorage::Unknown, reason) => {
             let reason = reason.as_deref().unwrap_or("");
@@ -288,12 +288,12 @@ pub fn storage(f: &Service) -> Check {
                 Some((what, todo)) => (
                     State::NotOk,
                     format!("the service's state directory is not known to be on an encrypted device (reason {reason}: {what})"),
-                    Some(format!("{todo} Or use {FDE}{README_ANCHOR}).")),
+                    Some(format!("{todo} Or use {FDE}.")),
                 ),
                 None => (
                     State::NotOk,
                     "the service's state directory is not known to be on an encrypted device (the service gave no reason it knows)".to_owned(),
-                    Some(format!("Update the service if it is old, or use {FDE}{README_ANCHOR}).")),
+                    Some(format!("Update the service if it is old, or use {FDE}.")),
                 ),
             }
         }

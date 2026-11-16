@@ -159,6 +159,11 @@ fn acceptance_10_registration_on_one_home() {
         text.contains("x.default") && text.contains("close the browser"),
         "{text}"
     );
+    assert_eq!(
+        text.matches("close the browser").count(),
+        1,
+        "said once: {text}"
+    );
     assert_eq!(exactly_one_in_each(&[&s.legacy, &s.snap]), Ok(()));
     assert!(
         exactly_one_in_each(&[&s.xdg]).is_err(),

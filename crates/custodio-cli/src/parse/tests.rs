@@ -53,7 +53,7 @@ fn a_bad_line_of_a_known_command_names_the_command() {
             "{text}"
         );
     }
-    assert_eq!(args(&[]), Err(ArgError::Usage));
+    assert_eq!(args(&[]), Ok(Command::Help(None)));
     assert_eq!(args(&["nosuch"]), Err(ArgError::Usage));
     assert!(ArgError::Usage.to_string().contains("custodio --help"));
 }
@@ -76,7 +76,7 @@ fn the_commands_parse_as_before() {
 
 #[test]
 fn the_fuzz_entry_point_survives_odd_input() {
-    assert!(!fuzz_cli_args(vec![]));
+    assert!(fuzz_cli_args(vec![]));
     assert!(fuzz_cli_args(vec!["--help".into()]));
     assert!(!fuzz_cli_args(vec!["--help".into(), String::new()]));
     assert!(fuzz_cli_args(vec!["import".into(), "a.p12".into()]));
@@ -112,5 +112,5 @@ fn the_hidden_key_ids_command_takes_no_argument_and_is_not_in_the_help() {
         rendered.push_str(&help::text(Some(c.name)));
     }
     assert!(!rendered.contains("__key-ids"));
-    assert!(!crate::USAGE.contains("__key-ids"));
+    assert!(!crate::usage().contains("__key-ids"));
 }

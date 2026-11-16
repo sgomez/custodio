@@ -77,7 +77,7 @@ fn finish_writes_the_diagnostic_of_a_failure_only() {
         2
     );
     let text = String::from_utf8_lossy(&err);
-    assert!(text.trim_end().ends_with(custodio_cli::USAGE), "{text}");
+    assert!(text.trim_end().ends_with(&custodio_cli::usage()), "{text}");
 }
 
 fn run(args: &[&str]) -> io::Result<Output> {
@@ -95,8 +95,7 @@ fn run(args: &[&str]) -> io::Result<Output> {
 #[test]
 fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io::Error> {
     for args in [
-        &[][..],
-        &["import"],
+        &["import"][..],
         &["import", "--password", "x", "a.p12"],
         &["import", "--id", "a", "--id", "b", "a.p12"],
         &["import", "my cert.p12"],
@@ -113,6 +112,14 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
         assert_eq!(out.stdout, b"" as &[u8], "{args:?}");
         assert_ne!(out.stderr, b"" as &[u8], "{args:?}");
     }
+    Ok(())
+}
+
+#[test]
+fn the_binary_alone_prints_the_help() -> Result<(), io::Error> {
+    let out = run(&[])?;
+    assert_eq!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Commands:"));
     Ok(())
 }
 

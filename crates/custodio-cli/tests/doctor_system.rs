@@ -554,7 +554,7 @@ fn not_encrypted_is_not_ok_with_the_full_disk_encryption_advice() {
     let r = storage(Some(Svc::answering("not-encrypted", Some(""))));
     assert_eq!(state(&r.text, STORAGE), "not ok", "{}", r.text);
     assert!(
-        line(&r).contains("README.md#full-disk-encryption"),
+        line(&r).contains("cryptsetup") && !line(&r).contains("README"),
         "{}",
         line(&r)
     );

@@ -11,7 +11,7 @@ import os
 import re
 import sys
 
-NAMES = ["fingerprint reader", "enrolled finger", "fingerprint for polkit", "module in Firefox", "persistent journal", "state directory storage"]
+NAMES = ["fingerprint reader", "enrolled finger", "fingerprint for polkit", "module in browsers", "persistent journal", "state directory storage"]
 WORDS = ("not ok", "could not check", "ok")  # longest-match order does not matter: each is followed by spaces
 LINE = re.compile(r"^(ok|not ok|could not check) +([^:]+): (.*)$")
 FIX = re.compile(r"^ {16}fix: (.*)$")

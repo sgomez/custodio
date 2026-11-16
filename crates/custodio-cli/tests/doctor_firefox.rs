@@ -1,4 +1,4 @@
-//! `custodio doctor`, check 4 (the module in Firefox): fixture homes, no bus, a `modutil` stub that records its
+//! `custodio doctor`, check 4 (the module in browsers): fixture homes, no bus, a `modutil` stub that records its
 //! arguments. Every run leaves the fixture tree (root and home) byte-identical and runs `modutil` on no profile.
 
 mod fprint_fixture;
@@ -11,7 +11,7 @@ use std::process::{Command, Output, Stdio};
 
 use fprint_fixture::{Bus, Fake, Fingers, Fx, err, out, serve_all, state};
 
-const CHECK: &str = "module in Firefox";
+const CHECK: &str = "module in browsers";
 const MODULE_REL: &str = "usr/lib/custodio/libcustodio_pkcs11.so";
 
 /// The fixture system, with the installed module, and a directory outside it for the `modutil` stub and its record.

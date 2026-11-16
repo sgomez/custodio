@@ -64,7 +64,6 @@ fn every_command_prints_its_help() -> Res {
 #[test]
 fn usage_errors_go_to_stderr_and_say_how_to_get_help() -> Res {
     let mut lines: Vec<Vec<&str>> = vec![
-        vec![],
         vec!["nosuch"],
         vec!["--nosuch"],
         vec!["--help", "list"],

@@ -86,7 +86,10 @@ fn samples() -> Vec<CliError> {
         RegisterError::Run(RunError::MissingModule(bad_path)),
         RegisterError::Run(RunError::NoModutil(OsString::from(ESC))),
         RegisterError::Run(RunError::NoHome),
-        RegisterError::Skipped(2),
+        RegisterError::Skipped {
+            count: 2,
+            remove: false,
+        },
         RegisterError::Refresh(ESC.into()),
     ] {
         match &e {
@@ -99,7 +102,7 @@ fn samples() -> Vec<CliError> {
                 | RunError::NoModutil(_)
                 | RunError::NoHome => {}
             },
-            RegisterError::Skipped(_) | RegisterError::Refresh(_) => {}
+            RegisterError::Skipped { .. } | RegisterError::Refresh(_) => {}
         }
         all.push(CliError::Register(e));
     }
@@ -107,7 +110,14 @@ fn samples() -> Vec<CliError> {
         what: "cannot write",
         error: io_err(),
     }));
-    all.extend([Failure::Root, Failure::BrokenInclude, Failure::Unsatisfied].map(CliError::Doctor));
+    all.extend(
+        [
+            Failure::Root,
+            Failure::BrokenInclude,
+            Failure::Unsatisfied(vec!["x"]),
+        ]
+        .map(CliError::Doctor),
+    );
     match all.first() {
         Some(
             CliError::Args(_)
@@ -355,11 +365,40 @@ fn a_doctor_failure_names_what_happened_in_both_forms() {
     for (failure, words) in [
         (Failure::Root, "as root"),
         (Failure::BrokenInclude, "include"),
-        (Failure::Unsatisfied, "not satisfied"),
+        (
+            Failure::Unsatisfied(vec!["module in browsers", "state directory storage"]),
+            "did not pass: module in browsers, state directory storage",
+        ),
     ] {
         let e = CliError::Doctor(failure);
         assert!(e.to_string().contains(words), "{e}");
         let text = render(&e);
         assert!(text.contains(words) && text.lines().count() == 2, "{text}");
+    }
+}
+
+#[test]
+fn a_skipped_profile_names_the_command_that_was_run() {
+    for (remove, count, first, again) in [
+        (
+            false,
+            1,
+            "custodio: 1 profile skipped",
+            "run 'custodio register' again",
+        ),
+        (
+            true,
+            2,
+            "custodio: 2 profiles skipped",
+            "run 'custodio register --remove' again",
+        ),
+    ] {
+        let text = render(&CliError::Register(RegisterError::Skipped {
+            count,
+            remove,
+        }));
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], first, "{text}");
+        assert!(lines[1].contains(again), "{text}");
     }
 }

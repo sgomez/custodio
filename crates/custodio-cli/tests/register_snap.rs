@@ -282,13 +282,13 @@ fn a_stale_copy_is_replaced_in_place() {
     // a held snap profile does not stop the refresh
     plant(&s.copy, b"stale");
     hold(&s.profile);
-    let (_, out, _) = command(
+    let (_, _, err) = command(
         &s,
         &args(&s.module, false, false),
         Path::new("/nonexistent"),
     );
     assert_eq!(fs::read(&s.copy).unwrap(), module_bytes(&s));
-    assert!(out.contains("close the browser"), "{out}");
+    assert!(err.contains("close the browser"), "{err}");
 }
 
 #[test]
@@ -302,9 +302,10 @@ fn a_held_snap_profile_gets_no_new_copy() {
         Path::new("/nonexistent"),
     );
     assert!(result.is_err());
+    let shown = format!("{out}{err}");
     assert!(
-        out.contains("s.default") && err.contains("close the browser"),
-        "{out}{err}"
+        shown.contains("s.default") && shown.matches("close the browser").count() == 1,
+        "{shown}"
     );
     assert_eq!(
         s.f.snapshot(),

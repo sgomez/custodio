@@ -39,8 +39,9 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "store the key of a PKCS#12 file in the service",
         usage: "[--id <key id>] <file.p12>",
         description: "Reads the file, asks for its password on the terminal and sends both to the service.\n\
-The password is never taken from arguments or the environment.\n\
-If the file cannot be used the error says whether to retype the password or to export the file again. \
+The password is never taken from arguments or the environment. Then a polkit dialog asks for your login password \
+(or a finger, after 'custodio fingerprint enable').\n\
+Only RSA 2048 and ECDSA P-256 keys are accepted. If the file cannot be used the error says whether to retype the password or to export the file again. \
 After a successful import it says that Firefox and any other running program that loaded the module see the key only after they restart.",
         args: &[(
             "<file.p12>",
@@ -49,7 +50,7 @@ After a successful import it says that Firefox and any other running program tha
         options: &[OptionSpec {
             flag: "--id",
             value: Some("<key id>"),
-            text: "name the stored key (default: the file name without its extension)",
+            text: "name the stored key: 1 to 64 letters, digits, _ or - (default: the file name without its extension)",
         }],
         example: "custodio import --id work work.p12",
     },
@@ -71,7 +72,8 @@ It asks for no authorization.",
         name: "delete",
         summary: "delete one of your keys",
         usage: "[--] <key id>",
-        description: "Asks on the terminal to confirm, then deletes the key and its certificate. It cannot be recovered.\n\
+        description: "Asks on the terminal to confirm, then a polkit dialog asks for your login password (or a finger), then it deletes \
+the key and its certificate. It cannot be recovered.\n\
 Write -- before a key id that starts with a dash. \
 After a successful delete it says that Firefox and any other running program that loaded the module see the change only after they restart.",
         args: &[("<key id>", "the key to delete")],
@@ -83,6 +85,7 @@ After a successful delete it says that Firefox and any other running program tha
         summary: "make the module visible to the native browsers",
         usage: "",
         description: "Adds the module to the profiles of Firefox, Thunderbird and the browsers like them, for the user who runs it.\n\
+Run it once after installing, and again after creating a browser profile; restart the browser afterwards.\n\
 It refuses to run as root, needs no authorization and does not use the service.",
         args: &[],
         options: &[
@@ -99,7 +102,7 @@ It refuses to run as root, needs no authorization and does not use the service."
             OptionSpec {
                 flag: "--refresh-only",
                 value: None,
-                text: "only replace the snap copy of the module if it differs",
+                text: "only update the copy of the module that the Firefox snap loads, if it differs",
             },
         ],
         example: "custodio register --module /usr/lib/custodio/libcustodio_pkcs11.so",
@@ -119,11 +122,11 @@ disable removes the file, only if it is Custodio's.",
             ("disable", "remove it"),
         ],
         options: &[],
-        example: "custodio fingerprint enable",
+        example: "sudo custodio fingerprint enable",
     },
     CommandSpec {
         name: "doctor",
-        summary: "check the fingerprint, Firefox, the journal and the state directory",
+        summary: "check the fingerprint, the browsers, the journal and the state directory",
         usage: "",
         description: "Prints one line per check, with its state (ok, not ok, could not check) and, under every check that is not ok, what to do. It only reads: \
 it changes nothing, and it never opens a polkit dialog, a password prompt or a browser. It refuses to run as root, because the answers are about the person who runs it.\n\
@@ -131,11 +134,11 @@ The checks: fprintd lists a fingerprint reader (or is not installed, and the lin
 (over ssh fprintd refuses to say, and the line says could not check, not missing); fingerprint is active for polkit, through Custodio's \
 override, another /etc/pam.d/polkit-1 or the whole system (then sudo uses the finger too). A polkit include that does not resolve is reported first; \
 so is a warning when the override and common-auth both ask for the finger.\n\
-Three more checks: the Custodio module is registered in each Firefox profile (one line per profile, the snap's copy of the module included; \
+Three more checks: the Custodio module is registered in each browser profile (one line per profile, the snap's copy of the module included; \
 a system where NSS loads the p11-kit proxy needs no registration; the fix is custodio register); the systemd journal is persistent, read from \
 journald.conf and its drop-ins and /var/log/journal, never from journalctl (the line names the file and line that set it); and the service's \
 state directory is on an encrypted device (not-encrypted or unknown is not ok, the fix points to full-disk encryption; the service not answering is could not check).\n\
-Exit status: 0 only when no polkit include is broken and the last three checks (Firefox, the journal, the state directory) are ok; could not check counts there. \
+Exit status: 0 only when no polkit include is broken and the last three checks (the browsers, the journal, the state directory) are ok; could not check counts there. \
 A missing reader or finger does not count: the fingerprint is optional.",
         args: &[],
         options: &[],

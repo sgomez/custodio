@@ -31,9 +31,16 @@ password include /usr/lib/pam.d/polkit-1
 session  include /usr/lib/pam.d/polkit-1
 ```
 
-It applies to every polkit action, not only Custodio's: any dialog that asks for your password accepts a finger. It does not touch
-`sudo` and it does not touch the login screen: both keep asking for the password. A wrong finger, or ten seconds without a touch,
-falls back to the password prompt of the same dialog. Running `enable` again changes nothing.
+It applies to every polkit action, not only Custodio's: any dialog that asks for your password accepts a finger, `pkexec`,
+software installation and disk management included, and the actions that ask for an administrator too. Custodio cannot narrow it
+to its own actions: PAM has one service for polkit. It does not touch `sudo`, which keeps asking for the password, nor the login
+and lock screens, which have their own settings ([below](#the-gnome-lock-screen-on-ubuntu)). A wrong finger, or ten seconds
+without a touch, falls back to the password prompt of the same dialog. Running `enable` again changes nothing.
+
+On GNOME, `enable` adds a `note:` line about the lock screen; with no reader it still writes the file and warns that polkit keeps
+asking for the password until there is a reader and an enrolled finger.
+
+Run `sudo custodio fingerprint disable` before removing the package.
 
 ## Turn it off
 
@@ -47,20 +54,25 @@ It removes the file only if it is Custodio's. After it the system is as it was b
 
 ## What the fingerprint does not guarantee
 
-A fingerprint is a convenience, not a stronger proof than the password. It can be copied from surfaces and some readers are
-fooled by a copy; whoever can make you touch the reader, or has your finger, can approve a dialog. It never replaces the
-password where the password is the only way in (a failed finger always falls back to it). Custodio cannot see which finger or
-which reader answered. See the [threat model](threat-model.md) for the full list of what is not guaranteed.
+- **It is weaker than a password.** A fingerprint can be lifted from surfaces and some readers are fooled by a copy; it can be
+  taken from a person who is asleep or coerced. If you need the password barrier, keep the fingerprint off. Custodio cannot see
+  which finger or which reader answered.
+- **It answers every polkit action**, not only Custodio's (above).
+- **A finger at the machine can approve a remote request.** On Ubuntu a polkit authentication started from an ssh session also
+  asks for the finger, and a touch on the local reader approves it. On Fedora, `pam_fprintd` skips remote sessions.
+- **The login and lock screens are not Custodio's.** On Ubuntu, enrolling a finger is enough for the lock screen to accept it,
+  with or without the override ([below](#the-gnome-lock-screen-on-ubuntu)). Fedora and Bazzite keep it off through authselect;
+  Omarchy uses a separate file.
+- **If the vendor file disappears** after `enable` (`/usr/lib/pam.d/polkit-1`, for example moved by a future polkit package), the
+  password path of polkit fails while the finger still works. `sudo` is unaffected, so the system can be recovered:
+  `sudo custodio fingerprint disable`. `custodio doctor` detects it; nothing watches for it between its runs.
+- **Debian 13 and AlmaLinux 10 were not run** in a virtual machine (below). On them `enable` proceeds only when the files are as
+  on the systems where it was run, and refuses otherwise.
 
-The finger only answers the polkit dialog; every limit of the threat model's "Not guaranteed" list still holds with it:
-
-- The dialog cannot prove what is being signed, and does not show which key or file is involved.
-- An audit entry records the uid and pid of the calling program, not a person; the app-id of a flatpak caller is a claim, not an authorization.
-- Root can use a `tpm` key; the `encrypted-tpm` and `encrypted-host` kinds protect less, because root can take the key from the service's memory.
-- A TPM clear, some firmware updates or a new motherboard lose the keys wrapped by the TPM; import the `.p12` again.
-- Deleting a key does not erase its bytes from filesystem blocks, snapshots or backups.
-- Ownership follows the numeric uid, so a reused uid owns the old keys.
-- SELinux adds no protection: Custodio ships no policy.
+The other limits of the [threat model](threat-model.md)'s "Not guaranteed" list still hold with a finger: the dialog does not show
+which key or what is signed; an audit entry records a uid and pid, not a person; root can use a key; a TPM clear loses the
+TPM-wrapped keys; deleting a key does not erase its bytes; a reused uid owns the old keys; SELinux adds nothing; and the `.p12`
+you imported stays on disk until you delete it.
 
 ## When `enable` refuses
 
@@ -114,6 +126,18 @@ custodio fingerprint: fingerprint is already on for the whole system, so this ov
 Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
 ```
 
+On Arch the global switch can also be `pam_fprintd` in `/etc/pam.d/sudo`. On Debian and Ubuntu,
+`sudo pam-auth-update --disable fprintd` turns it off.
+
+The vendor file `/usr/lib/pam.d/polkit-1`, which the override includes, is missing or is not a regular file (on a system where
+polkit keeps it elsewhere, such as an untested one):
+
+```console fails=yes fixture=novendor-debian
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: /usr/lib/pam.d/polkit-1 is missing or is not a regular file, so the override has nothing to include; nothing was changed
+Check that polkit is installed and where its PAM file is ('rpm -ql polkit' or 'dpkg -L polkit'), and report it if it is elsewhere.
+```
+
 The PAM module or fprintd is not installed. The message names the packages of the system:
 
 | System | Packages |
@@ -125,6 +149,12 @@ The PAM module or fprintd is not installed. The message names the packages of th
 ```console fails=yes fixture=nomodule-debian
 $ sudo custodio fingerprint enable 2>&1
 custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
+```
+
+```console fails=yes fixture=nofprintd-debian
+$ sudo custodio fingerprint enable 2>&1
+custodio fingerprint: fprintd is not installed; nothing was changed
 Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
 ```
 
@@ -152,18 +182,26 @@ custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
 Install fprintd and run 'sudo custodio fingerprint enable' again.
 ```
 
+`disable` refuses, and changes nothing, when the file is not Custodio's:
+
+```console fails=yes fixture=debian-foreign
+$ sudo custodio fingerprint disable 2>&1
+custodio fingerprint: /etc/pam.d/polkit-1 is not Custodio's (or is not a regular file); nothing was changed
+Find who owns it with 'dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path, and remove it yourself if you mean to.
+```
+
 ## The GNOME lock screen on Ubuntu
 
 On GNOME, an enrolled finger may also unlock the lock screen, because GDM and the lock screen use their own PAM file
 (`/etc/pam.d/gdm-fingerprint`) and the GNOME setting `org.gnome.login-screen enable-fingerprint-authentication`, not
-`polkit-1`. `custodio fingerprint` changes neither. To turn the finger off on the lock screen and the login screen:
+`polkit-1`. `custodio fingerprint` changes neither. To turn the finger off on the lock screen:
 
 ```console
 $ gsettings set org.gnome.login-screen enable-fingerprint-authentication false
 ```
 
-The setting of the `gdm` user (the login screen itself) is a separate one, set as that user; that step is untested on Ubuntu
-26.04 here.
+The login screen reads the same setting of the `gdm` user, a separate one set as that user; that step was not tested on Ubuntu
+26.04, so this page does not show it.
 
 ## Restart Firefox after importing or deleting a key
 
@@ -173,5 +211,6 @@ Firefox completely and start it again, or the new key does not show (or the dele
 ## Other systems
 
 The commands are the same on every supported system; only the package names differ (the table above). The tests that run this
-page use a fixture system and a fake fprintd, so nothing here was tried with a real reader. Debian 13 and AlmaLinux 10 were not
-run in a virtual machine; Ubuntu 26.04 is the system the Ubuntu 26.04 guide is written for.
+page use a fixture system and a fake fprintd. Ubuntu 26.04, Fedora 44, Bazzite and Arch with Omarchy were run (Ubuntu 26.04 in a
+virtual machine with a virtual fingerprint sensor); Debian 13 and AlmaLinux 10 were not run in a virtual machine, and what this
+page says of them comes from their packages' files.

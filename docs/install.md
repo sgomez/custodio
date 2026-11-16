@@ -132,7 +132,7 @@ $ custodio doctor
 ok              fingerprint reader: fprintd lists 1 reader
 ok              enrolled finger: 1 finger enrolled for you
 ok              fingerprint for polkit: active through Custodio's override /etc/pam.d/polkit-1
-ok              module in Firefox: no browser profile was found, so there is nothing to register
+ok              module in browsers: no browser profile was found, so there is nothing to register
 ok              persistent journal: the journal is persistent (Storage=persistent)
 ok              state directory storage: the service's state directory is on an encrypted device
 ```

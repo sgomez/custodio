@@ -65,7 +65,7 @@ case \$1 in
         [ ! -e "\$pam" ] || { echo "the file is still there after disable" >&2; exit 1; }
         [ "\$(fp_tree $d/root)" = "\$(cat \$d/tree.before)" ] || { echo "the tree differs from before enable" >&2; exit 1; }
         echo disabled >> "\$d/checked" ;;
-    *"fingerprint enable 2>&1")
+    *"fingerprint enable 2>&1" | *"fingerprint disable 2>&1")
         [ "\$(fp_tree $d/root)" = "\$(cat \$d/tree.fixture)" ] || { echo "a refused enable changed the tree" >&2; exit 1; }
         echo refused >> "\$d/checked" ;;
     "custodio doctor"*)
@@ -86,7 +86,7 @@ CHECK
         for want in enabled disabled refused gsettings; do
             grep -qx "$want" "$d/checked" 2> /dev/null || { echo "the effect '$want' was never checked: the page lacks the command" >&2; rc=1; }
         done
-        [ "$(grep -cx refused "$d/checked" 2> /dev/null || true)" -ge 11 ] || { echo "fewer than eleven refusals ran" >&2; rc=1; }
+        [ "$(grep -cx refused "$d/checked" 2> /dev/null || true)" -ge 14 ] || { echo "fewer than fourteen refusals ran" >&2; rc=1; }
     elif [ "$kind" = doctor ]; then
         # Every check of the CLI has its section, and every section is a check of the CLI.
         python3 -I - "$doc" "$d/names" << 'PY' || rc=1

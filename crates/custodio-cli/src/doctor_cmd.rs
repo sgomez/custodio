@@ -48,8 +48,8 @@ pub enum Failure {
     Root,
     /// A polkit include is broken; the report is on standard output.
     BrokenInclude,
-    /// Check 4, 5 or 6 is not `ok`; the report is on standard output.
-    Unsatisfied,
+    /// These checks that decide the exit status are not `ok`; the report is on standard output.
+    Unsatisfied(Vec<&'static str>),
 }
 
 impl fmt::Display for Failure {
@@ -57,7 +57,9 @@ impl fmt::Display for Failure {
         match self {
             Self::Root => f.write_str("custodio doctor: refused to run as root"),
             Self::BrokenInclude => f.write_str("custodio doctor: a polkit include is broken"),
-            Self::Unsatisfied => f.write_str("custodio doctor: check 4, 5 or 6 is not satisfied"),
+            Self::Unsatisfied(names) => {
+                write!(f, "custodio doctor: did not pass: {}", names.join(", "))
+            }
         }
     }
 }
@@ -334,6 +336,6 @@ pub fn run<W: Write>(out: &mut W) -> Result<(), Failure> {
     match (report.exit_status(), report.broken_include) {
         (0, _) => Ok(()),
         (_, true) => Err(Failure::BrokenInclude),
-        (_, false) => Err(Failure::Unsatisfied),
+        (_, false) => Err(Failure::Unsatisfied(report.failing())),
     }
 }

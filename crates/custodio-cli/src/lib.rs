@@ -14,7 +14,7 @@ pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use help::{COMMANDS, CommandSpec, OptionSpec};
 pub use list::{KeyEntry, KeyLister, ListFailure, run_list, run_show};
-pub use parse::{ArgError, Command, ImportArgs, USAGE, fuzz_cli_args, parse_args, parse_command};
+pub use parse::{ArgError, Command, ImportArgs, fuzz_cli_args, parse_args, parse_command, usage};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
@@ -249,7 +249,9 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
             | CliError::Delete(_)
             | CliError::Register(_)
             | CliError::Fingerprint(_)
-            | CliError::Doctor(doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied),
+            | CliError::Doctor(
+                doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied(_),
+            ),
         ) => 1,
     }
 }

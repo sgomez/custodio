@@ -8,15 +8,18 @@ use crate::fingerprint_cmd::Action;
 use crate::help;
 use crate::register_native;
 
-pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
-       custodio list [[--] <key id>]\n\
-       custodio delete <key id>\n\
-       custodio register [--module <path>] [--remove | --refresh-only]\n\
-       custodio fingerprint (enable | disable)\n\
-       custodio doctor\n\
-The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
-arguments or the environment.\n\
-Run 'custodio --help' for help.";
+/// The usage of every command, from the same table as the help, aligned under the first.
+#[must_use]
+pub fn usage() -> String {
+    let mut text = String::new();
+    for (i, c) in help::COMMANDS.iter().enumerate() {
+        text.push_str(if i == 0 { "usage: " } else { "       " });
+        text.push_str(&c.usage_line());
+        text.push('\n');
+    }
+    text.push_str("Run 'custodio --help' for help.");
+    text
+}
 
 /// What the command line asks for.
 #[derive(Debug, PartialEq, Eq)]
@@ -59,7 +62,7 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
     if args.len() == 1 && args[0] == "__key-ids" {
         return Ok(Command::KeyIds);
     }
-    if args.len() == 1 && is_help(&args[0]) {
+    if args.is_empty() || (args.len() == 1 && is_help(&args[0])) {
         return Ok(Command::Help(None));
     }
     Err(ArgError::Usage)
@@ -133,14 +136,14 @@ pub enum ArgError {
 impl fmt::Display for ArgError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage => f.write_str(USAGE),
+            Self::Usage => f.write_str(&usage()),
             Self::CommandUsage(name) => match help::command(name) {
                 Some(c) => write!(
                     f,
                     "usage: {}\nRun 'custodio {name} --help' for help.",
                     c.usage_line()
                 ),
-                None => f.write_str(USAGE),
+                None => f.write_str(&usage()),
             },
             Self::BadId => f.write_str("cannot derive a key id from the file name; use --id"),
         }

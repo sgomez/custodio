@@ -37,7 +37,8 @@ W
 
 # fp_root DIR NAME: (re)creates the fixture root DIR for the system NAME: debian (the default: module, fprintd, no override),
 # debian-foreign (someone else's polkit-1), omarchy, global-debian, global-fedora, global-arch (fingerprint on for the whole system),
-# nomodule-debian, nomodule-fedora, nomodule-arch, nomodule-ubuntu, nomodule-alma (the os-release of each of the five systems).
+# novendor-debian (no vendor file), nofprintd-debian (no fprintd), nomodule-debian, nomodule-fedora, nomodule-arch, nomodule-ubuntu, nomodule-alma (the os-release of each of the five systems;
+# ubuntu also has GNOME's login-screen schema).
 fp_root() {
     local d=$1 name=$2 os=debian lib=usr/lib/x86_64-linux-gnu/security
     rm -rf "${d:?}"
@@ -50,7 +51,11 @@ fp_root() {
     esac
     mkdir -p "$d/etc/pam.d" "$d/usr/lib/pam.d" "$d/usr/share/dbus-1/system-services" "$d/home/person" "$d/etc/systemd"
     case $os in
-        ubuntu) printf 'ID=ubuntu\nID_LIKE=debian\n' > "$d/etc/os-release" ;;
+        ubuntu)
+            printf 'ID=ubuntu\nID_LIKE=debian\n' > "$d/etc/os-release"
+            # Ubuntu's desktop is GNOME: libgdm1 ships this schema, so `enable` prints the lock-screen note.
+            mkdir -p "$d/usr/share/glib-2.0/schemas" && : > "$d/usr/share/glib-2.0/schemas/org.gnome.login-screen.gschema.xml"
+            ;;
         almalinux) printf 'ID="almalinux"\nID_LIKE="rhel centos fedora"\n' > "$d/etc/os-release" ;;
         *) echo "ID=$os" > "$d/etc/os-release" ;;
     esac
@@ -64,6 +69,8 @@ fp_root() {
         global-debian) printf 'auth sufficient pam_fprintd.so\nauth required pam_unix.so\n' > "$d/etc/pam.d/common-auth" ;;
         global-fedora) mkdir -p "$d/etc/authselect" && printf 'sssd\nwith-fingerprint\n' > "$d/etc/authselect/authselect.conf" ;;
         global-arch) printf 'auth sufficient pam_fprintd.so\nauth required pam_unix.so\n' > "$d/etc/pam.d/system-auth" ;;
+        novendor-debian) rm "$d/usr/lib/pam.d/polkit-1" ;;
+        nofprintd-debian) rm "$d/usr/share/dbus-1/system-services/net.reactivated.Fprint.service" ;;
     esac
 }
 
@@ -109,14 +116,16 @@ fp_fake_swap() {
 }
 # fp_doc_setup DIR BUSDIR NAME: the fixture of one block of a document. The fingerprint page's names are those of fp_root; the
 # doctor page adds ok (override written, a reader, a finger), noreader, nofinger, plainstorage and plainreason (the service cannot say the state
-# directory is encrypted, without and with a reason) and brokeninclude (the override includes a file that is gone).
+# directory is encrypted, without and with a reason), brokeninclude (the override includes a file that is gone) and foreign
+# (someone else's polkit-1 without the finger).
 fp_doc_setup() {
     local d=$1 bus=$2 name=$3
     case $name in
-        ok | noreader | nofinger | plainstorage | plainreason | brokeninclude | default)
+        ok | noreader | nofinger | plainstorage | plainreason | brokeninclude | foreign | default)
             fp_root "$d" debian
             case $name in ok | brokeninclude) CUSTODIO_FIXTURE_ROOT=$d CUSTODIO_FIXTURE_EUID=0 "$FP_CLI" fingerprint enable > /dev/null 2>&1 ;; esac
             [ "$name" != brokeninclude ] || rm "$d/usr/lib/pam.d/polkit-1"
+            [ "$name" != foreign ] || echo "# the administrator's own file" > "$d/etc/pam.d/polkit-1"
             case $name in
                 noreader) fp_fake_swap "$bus" 0 ;;
                 nofinger) fp_fake_swap "$bus" 1 none ;;

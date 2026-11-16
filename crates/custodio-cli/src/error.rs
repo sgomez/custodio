@@ -29,7 +29,7 @@ fn args(error: &ArgError) -> String {
     match error {
         ArgError::Usage => format!(
             "custodio: unknown command or wrong arguments\n{}",
-            crate::USAGE
+            crate::usage()
         ),
         ArgError::CommandUsage(name) => {
             format!("custodio: wrong arguments for '{name}'\n{error}")
@@ -131,10 +131,9 @@ fn doctor(error: &crate::doctor_cmd::Failure) -> (String, String) {
             "Run it as the person who will use the finger: the answers are about that person."
                 .to_owned(),
         ),
-        Failure::Unsatisfied => (
-            "custodio doctor: a check that decides the exit status is not satisfied (checks 4 to 6)"
-                .to_owned(),
-            "Do what the fix under it says, then run 'custodio doctor' again.".to_owned(),
+        Failure::Unsatisfied(names) => (
+            format!("custodio doctor: did not pass: {}", names.join(", ")),
+            "Do what their fix lines say, then run 'custodio doctor' again.".to_owned(),
         ),
         Failure::BrokenInclude => (
             "custodio doctor: a polkit include is broken (the first line of the report)".to_owned(),
@@ -169,9 +168,15 @@ fn register(error: &RegisterError) -> (String, String) {
             "Run it as the user whose browsers should see Custodio.".to_owned(),
         ),
         RegisterError::Run(e) => run(e),
-        RegisterError::Skipped(n) => (
-            format!("custodio: {n} profile(s) skipped"),
-            "Fix what is named above and run 'custodio register' again.".to_owned(),
+        RegisterError::Skipped { count, remove } => (
+            format!(
+                "custodio: {} skipped",
+                crate::register_cli::profiles(*count)
+            ),
+            format!(
+                "Fix what is named above and run 'custodio register{}' again.",
+                if *remove { " --remove" } else { "" }
+            ),
         ),
         RegisterError::Refresh(why) => (
             format!("custodio: {why}"),

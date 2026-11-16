@@ -102,7 +102,7 @@ pub const READER: &str = "fingerprint reader";
 pub const FINGER: &str = "enrolled finger";
 pub const POLKIT: &str = "fingerprint for polkit";
 
-/// The exit status: 0, unless a polkit include is broken or one of the checks 4 to 6 (`later`) is not `ok`.
+/// The exit status: 0, unless a polkit include is broken or one of the `later` checks (Firefox, journal, storage) is not `ok`.
 /// Checks 1 to 3 never count, "could not check" among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
 #[must_use]
 pub fn exit_status(broken_include: bool, later: &[State]) -> u8 {
@@ -120,6 +120,22 @@ impl Report {
             .map(|c| c.state)
             .collect();
         exit_status(self.broken_include, &later)
+    }
+
+    /// The names of the checks that make the exit status 1 and are not `ok`, each once, in report order.
+    #[must_use]
+    pub fn failing(&self) -> Vec<&'static str> {
+        let mut names: Vec<&'static str> = Vec::new();
+        for c in self
+            .checks
+            .iter()
+            .filter(|c| c.later && c.state != State::Ok)
+        {
+            if !names.contains(&c.name) {
+                names.push(c.name);
+            }
+        }
+        names
     }
 
     /// One line per check, then its warning and its fix, indented.
@@ -298,6 +314,16 @@ fn polkit(f: &Facts) -> (Check, bool) {
                 via_text(via)
             ),
             None,
+        )
+    } else if o.polkit_file != FileState::Missing {
+        // `enable` refuses a file that is not Custodio's, so it cannot be the fix here.
+        check(
+            State::NotOk,
+            POLKIT,
+            format!("fingerprint is not active for polkit, and {POLKIT_FILE} is not Custodio's"),
+            Some(format!(
+                "Look at who owns {POLKIT_FILE} ('dpkg -S', 'rpm -qf' or 'pacman -Qo'), and remove or merge it yourself before running 'sudo custodio fingerprint enable'."
+            )),
         )
     } else {
         check(

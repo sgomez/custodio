@@ -189,6 +189,8 @@ fn command_result(f: &Fixture, m: &Path) -> (Result<(), String>, String) {
     )
     .map_err(|e| e.to_string());
     assert!(err.is_empty() || r.is_err());
+    // What the person sees: standard output, then standard error.
+    out.extend(err);
     (r, String::from_utf8(out).unwrap())
 }
 

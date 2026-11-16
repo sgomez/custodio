@@ -1,5 +1,5 @@
 use super::*;
-use crate::{ArgError, Command, ImportArgs, parse_command};
+use crate::{ArgError, Command, ImportArgs, help, parse_command};
 
 const P256: &[u8] = include_bytes!("../../../custodio-it/tests/fixtures/cert-p256-other.der");
 const RSA: &[u8] = include_bytes!("../../../custodio-it/tests/fixtures/cert-rsa3072.der");
@@ -255,9 +255,7 @@ fn list_takes_one_optional_key_id() {
     ] {
         assert_eq!(args(bad), Err(ArgError::CommandUsage("list")), "{bad:?}");
     }
-    for bad in [&["List"][..], &[]] {
-        assert_eq!(args(bad), Err(ArgError::Usage), "{bad:?}");
-    }
+    assert_eq!(args(&["List"]), Err(ArgError::Usage));
 }
 
 #[test]
@@ -273,9 +271,13 @@ fn import_still_parses_through_the_dispatcher() {
 }
 
 #[test]
-fn the_usage_names_both_commands() {
-    assert!(crate::USAGE.contains("custodio import"));
-    assert!(crate::USAGE.contains("custodio list"));
+fn the_usage_lists_each_command_as_its_help_does_aligned_under_the_first() {
+    let usage = crate::usage();
+    let lines: Vec<&str> = usage.lines().collect();
+    for (i, c) in help::COMMANDS.iter().enumerate() {
+        let prefix = if i == 0 { "usage: " } else { "       " };
+        assert_eq!(lines[i], format!("{prefix}{}", c.usage_line()), "{usage}");
+    }
 }
 
 #[test]

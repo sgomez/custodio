@@ -88,8 +88,12 @@ pub fn parse_register_args<I: IntoIterator<Item = String>>(args: I) -> Option<Re
 pub enum RegisterError {
     Refused(Refusal),
     Run(RunError),
-    /// This many profiles were skipped for a reason the person can fix; each was named above.
-    Skipped(usize),
+    /// This many profiles were skipped for a reason the person can fix; each was named above. `remove`: the run was
+    /// `--remove`, so that is the command to run again.
+    Skipped {
+        count: usize,
+        remove: bool,
+    },
     /// Refresh-only mode could not replace the copy.
     Refresh(String),
 }
@@ -99,9 +103,10 @@ impl fmt::Display for RegisterError {
         match self {
             Self::Refused(r) => write!(f, "{r}"),
             Self::Run(e) => write!(f, "{e}"),
-            Self::Skipped(n) => write!(
+            Self::Skipped { count, .. } => write!(
                 f,
-                "custodio: {n} profile(s) skipped; fix what is named above and run this again"
+                "custodio: {} skipped; fix what is named above and run this again",
+                profiles(*count)
             ),
             Self::Refresh(why) => write!(f, "custodio: {why}"),
         }
@@ -110,7 +115,17 @@ impl fmt::Display for RegisterError {
 
 impl std::error::Error for RegisterError {}
 
-/// `custodio register`: refuse root and sudo, run, print one line per profile on `out` and the fixable skips on `err`.
+/// "1 profile" or "N profiles".
+#[must_use]
+pub fn profiles(count: usize) -> String {
+    if count == 1 {
+        "1 profile".to_owned()
+    } else {
+        format!("{count} profiles")
+    }
+}
+
+/// `custodio register`: refuse root and sudo, run, print one line per profile on `out`, a fixable skip on `err` instead.
 ///
 /// # Errors
 /// See [`RegisterError`].
@@ -138,14 +153,18 @@ pub fn register_command<W: io::Write, E: io::Write>(
     }
     let mut skipped = 0;
     for line in &report.lines {
-        let _ = writeln!(out, "{line}");
         if line.outcome.is_fixable_skip() {
             skipped += 1;
             let _ = writeln!(err, "custodio: {line}");
+        } else {
+            let _ = writeln!(out, "{line}");
         }
     }
     if skipped > 0 {
-        return Err(RegisterError::Skipped(skipped));
+        return Err(RegisterError::Skipped {
+            count: skipped,
+            remove: args.remove,
+        });
     }
     Ok(())
 }

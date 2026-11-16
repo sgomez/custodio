@@ -1150,9 +1150,9 @@ ok              fingerprint reader: fprintd lists 1 reader
 ok              enrolled finger: 1 finger enrolled for you
 not ok          fingerprint for polkit: fingerprint is not active for polkit
                 fix: Run: sudo custodio fingerprint enable
-not ok          module in Firefox: Firefox profile /home/ana/.mozilla/firefox/abcd1234.default-release: the module is not registered
+not ok          module in browsers: Firefox profile /home/ana/.mozilla/firefox/abcd1234.default-release: the module is not registered
                 fix: Run: custodio register
-not ok          module in Firefox: Firefox (snap) profile /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: the snap's copy of the module is missing
+not ok          module in browsers: Firefox (snap) profile /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: the snap's copy of the module is missing
                 fix: Run: custodio register; then restart Firefox. Firefox and any other running program that loaded the Custodio module see this change only after they restart.
 ok              persistent journal: the journal is persistent (Storage=persistent)
 ok              state directory storage: the service's state directory is on an encrypted device
@@ -1165,6 +1165,7 @@ $ sudo custodio fingerprint enable
 Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
 A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
 To undo it: sudo custodio fingerprint disable
+note: on GNOME, enrolling a finger also lets it unlock the lock screen unless org.gnome.login-screen enable-fingerprint-authentication is false. Custodio does not change that setting.
 ```
 
    Then run `pkexec true` in a terminal: the dialog must take your finger. Run `sudo true`: it must still ask for your password. Both

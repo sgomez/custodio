@@ -63,7 +63,8 @@ fn the_help_names_no_option_that_is_not_in_the_table() {
 #[test]
 fn every_example_starts_with_its_command_and_is_accepted_by_the_parser() {
     for c in COMMANDS {
-        let words: Vec<String> = c.example.split(' ').map(str::to_owned).collect();
+        let line = c.example.strip_prefix("sudo ").unwrap_or(c.example);
+        let words: Vec<String> = line.split(' ').map(str::to_owned).collect();
         assert_eq!(words[..2], ["custodio".to_owned(), c.name.to_owned()]);
         let parsed = parse_command(words[1..].iter().cloned());
         assert!(

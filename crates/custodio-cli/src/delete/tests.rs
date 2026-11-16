@@ -173,5 +173,5 @@ fn a_double_dash_lets_an_id_start_with_a_dash() {
 
 #[test]
 fn the_usage_text_names_delete() {
-    assert!(crate::USAGE.contains("custodio delete <key id>"));
+    assert!(crate::usage().contains("custodio delete [--] <key id>"));
 }

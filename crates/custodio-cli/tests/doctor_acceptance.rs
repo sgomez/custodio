@@ -15,7 +15,7 @@ use fprint_fixture::{
     section, serve_all, state,
 };
 
-const FIREFOX: &str = "module in Firefox";
+const FIREFOX: &str = "module in browsers";
 const JOURNAL: &str = "persistent journal";
 const STORAGE: &str = "state directory storage";
 
