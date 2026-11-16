@@ -40,6 +40,16 @@ to that caller it looks exactly like a key that does not exist.
 - **The Firefox snap socket** (below): a peer that is not the Firefox snap, a call beyond listing and signing, a socket
   replaced by the snap, and a peer that exhausts the service.
 - **The registration command** (below): it must not write outside the user's own browser profiles and snap directory.
+- **The fingerprint command** ([docs/fingerprint.md](fingerprint.md)). `custodio fingerprint enable` writes one file, `/etc/pam.d/polkit-1`,
+  and only when the vendor file it includes exists. On a system that does not match what it knows it refuses rather than guesses. It
+  must not lock anyone out of polkit: a failed or missing finger falls back to the password. It never destroys someone else's
+  configuration: a file it did not write is left alone. It writes atomically, with the mode, owner and label of the other files in
+  `/etc/pam.d/`.
+- **`custodio doctor`** ([docs/doctor.md](doctor.md)) changes nothing: it reads and reports.
+- **Certificate text.** The subject and issuer names in a `.p12` are chosen by whoever made the file, so they are untrusted: they are
+  printed as data and never interpreted.
+- **The shell completions** ask nothing of polkit, write nothing and fail silently: a completion never shows a dialog, and an
+  absent or slow service gives no candidates and no error.
 
 ## Out of scope
 
@@ -55,6 +65,11 @@ Custodio does not defend against:
   subsystem; forwarding entries off the machine.
 - **A compromise of snapd, of AppArmor or of the snap's publisher,** and a snap whose confinement was loosened
   (devmode, classic confinement). Escapes from the flatpak sandbox and flaws in `xdg-dbus-proxy`.
+- **fprintd, libfprint and the reader's driver.** Whether a finger is matched, and by what, is theirs. Custodio only asks PAM.
+- **An administrator who edits PAM after `enable`.** A file that was edited is the administrator's: Custodio does not touch it again,
+  and a change that removes the vendor include or the fingerprint line is theirs to answer for.
+- **A compromised package.** The maintainer scripts and the files the package installs run as root; a package that was tampered
+  with can do anything root can.
 - **A hostile package mirror,** the integrity of package downloads, and an administrator who deliberately switches the
   system bus to a daemon that lacks `ProcessFD` after installing.
 
@@ -89,6 +104,18 @@ Custodio does not defend against:
 - **Platforms.** `encrypted-tpm` was run end to end on a virtual TPM on Ubuntu 26.04, not on real firmware, and not on
   Fedora or Arch. On Debian 13 (run) and RHEL/Alma 10 (inferred from Debian 13, not run), with systemd 257, the daemon binds user credentials to a PCR when a TPM is present, the
   service refuses them, and the `encrypted-tpm` kind is unavailable. Systems with a systemd older than 257 are not supported.
+- **That the override covers only Custodio.** With `custodio fingerprint enable`, the finger answers every polkit action, not only
+  Custodio's: any dialog that asks for the password accepts it.
+- **That a finger is as strong as a password.** A fingerprint can be copied from surfaces, some readers are fooled by a copy, and
+  someone can make you touch the reader. It is a convenience; the password is the fallback.
+- **That a finger at the machine cannot approve a remote request.** A request that arrives over ssh and reaches polkit can be
+  approved by a finger on the reader of the machine, by whoever is there.
+- **The login and lock screens.** They are not Custodio's: `custodio fingerprint` does not change them, and what they accept is
+  set by the desktop and its PAM files.
+- **That the password path survives a vanished vendor file.** If the file that `/etc/pam.d/polkit-1` includes disappears (a package
+  removed, a distribution upgrade), polkit's password path breaks too, and only `custodio doctor` notices.
+- **Debian 13 and Alma 10 with a finger.** The run with a virtual fingerprint sensor in a VM was made on Ubuntu 26.04;
+  Debian 13 and Alma 10 were not run in a VM, and what is said of them comes from the packages' files.
 - **Several dialogs per page.** TLS client authentication signs once per handshake, and every signature asks.
 
 ## The Firefox snap socket

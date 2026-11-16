@@ -16,7 +16,7 @@ It stops a process running as you from signing by mistake. It does not protect a
 running as the same uid, against root, or your intent: the dialog cannot prove what is being
 signed. What it protects, from whom and what it leaves out is in the [threat model](docs/threat-model.md); to
 report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milestones.md](docs/milestones.md); what the first public release contains is in the
-[release notes](docs/release-notes-v0.8.0.md), and the steps a person checks it by in
+[release notes](docs/release-notes-v0.8.0.md) (and [0.9.0](docs/release-notes-v0.9.0.md)), and the steps a person checks it by in
 [docs/manual-acceptance.md](docs/manual-acceptance.md).
 
 ## Names

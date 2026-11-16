@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Test of the release notes (F186). The systems the notes name as supported equal the targets of e2e/targets, the README links
 # the notes, every relative link resolves, the block-kind rule holds, the `console` blocks run as written (`custodio register` on
-# the real CLI, the fixtures of F185), and the notes carry the version of the decision "First public release" in docs/decisions.md.
-# The notes' version is not compared with Cargo.toml: bumping it is the release step (`just release`). Prose is a person's
+# the real CLI, the fixtures of F185), and the notes carry the version of their file name (title and every vX.Y.Z).
+# The notes' version is not compared with Cargo.toml. Prose is a person's
 # (SPEC acceptance 20). Negative controls: broken copies of the notes, the README or the targets must fail.
 # Usage: scripts/test-docs-release-notes.sh   (DOC, README_DOC, TARGETS override the real files; CHECK_ONLY=1 skips the controls)
 # shellcheck disable=SC2016,SC2034,SC1091,SC2086,SC2116
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
-DOC=${DOC:-docs/release-notes-v0.8.0.md}
+DOC=${DOC:-docs/release-notes-v0.9.0.md}
 README_DOC=${README_DOC:-README.md}
 TARGETS=${TARGETS:-e2e/targets}
 LIB=scripts/lib/docs_check.py
@@ -46,14 +46,14 @@ systems() {
     [ "$have" = "$want" ] || { echo "$doc: the supported systems differ from $targets: notes [$(echo $have)] targets [$(echo $want)]" >&2; return 1; }
 }
 
-# version DOC: the version of the notes is the one of the decision (docs/decisions.md, the token of the title).
+# version DOC: the version of the notes is the one in the file name (release-notes-vX.Y.Z.md); the title and every vX.Y.Z of the text equal it.
 version() {
     local want have
-    want=$(sed -n 's/^## [0-9-]* — First public release: \(v[0-9][0-9.]*\), no name$/\1/p' docs/decisions.md)
-    [ -n "$want" ] || { echo "docs/decisions.md has no decision 'First public release: vX.Y.Z, no name'" >&2; return 1; }
-    [ "$want" = v0.8.0 ] || { echo "the decision says $want, the contract says v0.8.0" >&2; return 1; }
-    have=$(grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' "$1" | sort -u | tr '\n' ' ')
-    [ "$have" = "$want " ] || { echo "$1 names the versions [$have], the decision is $want" >&2; return 1; }
+    want=$(basename "$1" | sed -n 's/^release-notes-\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)\.md$/\1/p')
+    [ -n "$want" ] || { echo "$1: the file name is not release-notes-vX.Y.Z.md" >&2; return 1; }
+    # a link target is a path (the previous notes' file name), not a version the notes name
+    have=$(sed 's/\](\([^)]*\))/]()/g' "$1" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | sort -u | tr '\n' ' ')
+    [ "$have" = "$want " ] || { echo "$1 names the versions [$have], the file name says $want" >&2; return 1; }
     head -n 1 "$1" | grep -q -- "$want" || { echo "$1: the first line (the title) does not carry $want" >&2; return 1; }
 }
 
@@ -101,7 +101,9 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "a system with no target added" static "$DOC" sed '0,/^- Arch\b/s//- Gentoo\n- Arch/'
     control "README without the link to the notes" readme "$README_DOC" sed "s#(${DOC}[^)]*)#(docs/install.md)#g; s#(${DOC#docs/}[^)]*)#(docs/install.md)#g"
     control "a broken link in the notes" static "$DOC" sed '$a [x](no-such-file.md)'
-    control "version v1.0.0" static "$DOC" sed 's/v0\.8\.0/v1.0.0/g'
+    VER=$(basename "$DOC" .md); VER=${VER#release-notes-}
+    control "version v1.0.0" static "$DOC" sed "s/${VER//./\\.}/v1.0.0/g"
+    control "title with another version" static "$DOC" sed "1s/${VER//./\\.}/v0.0.1/"
     control "a console command that fails" run "$DOC" sed 's/^\$ custodio register$/$ custodio register --nonsense/'
     # an unknown directory in a copy of e2e/targets
     mkdir -p "$TMP/targets"

@@ -178,6 +178,7 @@ test-scripts:
     scripts/test-docs-readme.sh
     scripts/test-docs-install-register.sh
     scripts/test-docs-release-notes.sh
+    DOC=docs/release-notes-v0.8.0.md scripts/test-docs-release-notes.sh
     scripts/test-docs-threat-model.sh
     scripts/test-tpm-record-check.sh
     scripts/test-install-real.sh

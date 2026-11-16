@@ -17,7 +17,7 @@ fi
 mkdir -p "$out/logs"
 rm -f "$out"/logs/* "$out"/results
 
-cmds=$(for r in "$@"; do just --show "$r" | tail -n +2 | sed 's/^[[:space:]]*//' | grep '^scripts/'; done)
+cmds=$(for r in "$@"; do just --show "$r" | tail -n +2 | sed 's/^[[:space:]]*//' | grep -E '^(DOC=[^ ]+ )?scripts/'; done)
 [ -n "$cmds" ] || { echo "run-script-tests: no scripts in: $*" >&2; exit 1; }
 # Unknown ones (new tests) first, then slowest first.
 ordered=$(while IFS= read -r c; do
