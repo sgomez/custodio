@@ -342,3 +342,6 @@ with an empty context.
 - Final e2e on this tree (`just e2e`, six records, exit 0, wall 173 s): alma10 149 s, arch 153, debian13 swtpm 173, fedora44 139, ubuntu2604 147, debian13 none 157; all under `budgets.tsv` rows. Per log `E2E-CASE run doctor-` = 11 on all six (debian13 none too); `fingerprint-` run: alma10 9, arch 7, debian13 8 (swtpm and none), fedora44 9, ubuntu2604 8; no fingerprint/doctor case skipped.
 - Acceptance 16 (docs commands run as written) is NOT proven here: the Design 5 documents come in F207. VM group (acceptance 18, 19) is left to F209.
 - Remaining: steps 4 (`package-gates`), 5 (`coverage`, `crap`), 6 (rerun `check` after the e2e script edits, `just quick`). No regression test was added beyond the selftest case (<1 s).
+
+### 2026-11-16 — F206 — attempt 2
+- Step 4 done. `just package-gates` red once: namcap `incorrect-owner` (0:0) on the three completion files in the Arch package; same cause as the existing entries (nfpm writes numeric owner ids only), so three entries with that reason in `packaging/lint/namcap.txt` (a finding that is not a defect). Rerun exit 0 (87 findings, 87 excepted, 0 stale; 15 s wall second run, 84 s the first). No test added.
