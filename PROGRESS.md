@@ -164,3 +164,15 @@ with an empty context.
 - Not done: step 3 (command module, seam feature `CUSTODIO_FIXTURE_*`, `tests/fingerprint.rs`, `Command::Fingerprint` in parse/help/main, error rendering),
   step 4 (man page), step 5 (fixture-seams scripts and recipe), step 6 (mutants-diff and evidence). Remember: the command module and
   `apply_owner`/`apply_label` exclusion (`--exclude-re`) go in the `mutants` recipe with a comment naming F199.
+- Step 5 done (same attempt): `scripts/check-fixture-seams.sh` (binary: no `CUSTODIO_FIXTURE_ROOT|EUID|FAIL` string; tree: no shipped file names the feature `fixture-root`
+  or a variable, no manifest enables it outside dev-dependencies / `fixture-root = []`), `scripts/test-check-fixture-seams.sh` (3 binary cases, 4 tree cases, passes),
+  `just fixture-seams` (release build of custodio-cli, then both checks; passes), wired into `test-scripts` and `shell-scripts-test`. `just quick` green.
+  Still to do in step 3/6: a positive run on a real build with the feature (`cargo build -p custodio-cli --features fixture-root`) as a step of the test script,
+  once the feature exists; the string the check looks for is `CUSTODIO_FIXTURE_ROOT` (and `_EUID`, `_FAIL`), so the seam code must hold them as literals.
+- Remaining: steps 3, 4, 6 (see above). Step 3 is the large one: start with `tests/fingerprint.rs` and the feature `fixture-root = []` in custodio-cli/Cargo.toml.
+- Step 5 done (same attempt): `scripts/check-fixture-seams.sh` (binary: no `CUSTODIO_FIXTURE_ROOT|EUID|FAIL` string; tree: no shipped file names the feature `fixture-root`
+  or a variable, no manifest enables it outside dev-dependencies / `fixture-root = []`), `scripts/test-check-fixture-seams.sh` (3 binary cases, 4 tree cases, passes),
+  `just fixture-seams` (release build of custodio-cli, then both checks; passes), wired into `test-scripts` and `shell-scripts-test`. `just quick` green.
+  Still to do in step 3/6: a positive run on a real build with the feature (`cargo build -p custodio-cli --features fixture-root`) as a step of the test script,
+  once the feature exists; the check looks for the strings `CUSTODIO_FIXTURE_ROOT`, `_EUID`, `_FAIL`, so the seam code must hold them as literals.
+- Remaining: steps 3, 4, 6. Step 3 is the large one: start with `tests/fingerprint.rs` and the feature `fixture-root = []` in custodio-cli/Cargo.toml.

@@ -215,12 +215,22 @@ test-scripts:
     scripts/test-check-snap-sockets.sh
     scripts/test-check-test-socket-dir.sh
     scripts/test-check-test-label.sh
+    scripts/test-check-fixture-seams.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
     scripts/test-tree-hash.sh
+    scripts/test-check-fixture-seams.sh
+
+# F197: the fixture seam of custodio-cli (feature `fixture-root`, variables CUSTODIO_FIXTURE_*) is not in what ships: the release binary,
+# built the way the packages build it (`cargo build --release --locked`, default features), has none of its names, and no shipped file or
+# manifest enables it.
+fixture-seams:
+    cargo build --release --locked -p custodio-cli
+    scripts/check-fixture-seams.sh target/release/custodio-cli
+    scripts/check-fixture-seams.sh
 
 # The exposure of the service is not above M5's 0.7 (tenths of the 0-10 score of `systemd-analyze security`: 7; lower is safer). F170 measured
 # `PrivateUsers=identity` at 0.7 and `no` at 0.8, so the uid route cannot be paid for by loosening something else.
