@@ -131,7 +131,7 @@
         "F201"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test doctor_reader --locked && cargo test -p custodio-cli --test help --locked && scripts/test-check-fixture-seams.sh && just fixture-seams && just mutants-diff F202 && cargo test -p custodio-cli --test doctor_polkit --locked",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F203",
