@@ -61,7 +61,7 @@ version() {
 static() {
     local rc=0
     [ -s "$1" ] || { echo "$1 is missing or empty" >&2; return 1; }
-    python3 -I "$LIB" kinds "$1" || rc=1
+    python3 -I "$LIB" kinds --only-console "$1" || rc=1
     python3 -I "$LIB" links "$1" || rc=1
     systems "$1" "$3" || rc=1
     version "$1" || rc=1
@@ -104,6 +104,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     VER=$(basename "$DOC" .md); VER=${VER#release-notes-}
     control "version v1.0.0" static "$DOC" sed "s/${VER//./\\.}/v1.0.0/g"
     control "title with another version" static "$DOC" sed "1s/${VER//./\\.}/v0.0.1/"
+    control "a bash block in the notes" static "$DOC" sed '$a \n```bash\ntrue\n```'
     control "a console command that fails" run "$DOC" sed 's/^\$ custodio register$/$ custodio register --nonsense/'
     # an unknown directory in a copy of e2e/targets
     mkdir -p "$TMP/targets"

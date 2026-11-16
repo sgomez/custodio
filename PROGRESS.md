@@ -383,3 +383,6 @@ with an empty context.
 
 ### 2026-11-16 — F208 — attempt 2
 - Fixed NEXT_FINDINGS: removed the seven stray self-referencing symlinks (`fix(F208)` commit); replaced the control "install notice altered" (already in `test-docs-guide.sh`) in `test-docs-manual-m7.sh` with "an extra console command whose output then differs" (`$ custodio list` inserted into the `custodio delete ana` block). `scripts/test-docs-manual-m7.sh` passes, 6.5 s with all controls.
+
+### 2026-11-16 — F208 — attempt 3
+- Fixed NEXT_FINDINGS: the block-kind check of `test-docs-release-notes.sh` now uses `kinds --only-console`; control "a bash block in the notes" added. Both the 0.9.0 and 0.8.0 runs pass (~20 s each).
