@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# Runs as root inside the systemd container, the same on every target: installs the package with the target's own step
-# (/e2e-target/install.sh), starts the real service, imports a key, and runs user.sh in a logind session of an ordinary user
-#. Prints the record of the run (the target's probe.sh) and one E2E-CASE line per case (report.sh).
+# Runs as root inside the systemd container, the same on every target: installs the package (/e2e-target/install.sh), starts the real service,
+# imports a key, and runs user.sh in a logind session of an ordinary user. Prints the record (the target's probe.sh) and one E2E-CASE line per case (report.sh).
 # Usage: guest.sh TARGET [oldpath|m3]: "m3" (F142) installs the M3 build, then this tree's package over it; "oldpath" (F61) installs the old-path fixture (/pkg-oldpath)
-# and reports the upgrade-oldpath-* cases only; a target with a no-oldpath marker skips them in the main run.
-# Each step prints `E2E-PHASE NAME SECONDS` when it ends (run.sh: phases.tsv).
+# and reports the upgrade-oldpath-* cases only; a target with a no-oldpath marker skips them.
+# Each step prints `E2E-PHASE NAME SECONDS` at its end.
 # F160: with E2E_VM=1 (e2e/vm/run.sh) apt has installed the package and the TPM is the VM's own: no install, tpm_setup, swtpm or drop-in;
 # the VM-only cases (e2e/vm/judge.sh) are judged at the end. E2E_TPM says what the cases expect. E2E_DIR (default /e2e) holds select.sh, report.sh, the VM files.
 # With E2E_SELECT (F63, `just e2e-cases`: ids separated by spaces) only those cases are reported, and a step no selected case needs is not run (select.sh);
-# the setup (install, service, user, import) always runs.
+# the setup always runs.
 set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
@@ -315,10 +314,8 @@ if [ -z "$vm" ] && phase_runs fingerprint; then
 fi
 phase_done fingerprint
 
-# The doctor cases (F204): `custodio doctor` as a regular account on the real /etc; containers only. After fingerprint.
-if [ -z "$vm" ] && phase_runs doctor; then
-    WORK=$work bash /e2e/doctor-run.sh || fail "doctor-run.sh failed"
-fi
+# The doctor cases (F204): containers only, after fingerprint.
+if [ -z "$vm" ] && phase_runs doctor; then WORK=$work bash /e2e/doctor-run.sh || fail "doctor-run.sh failed"; fi
 phase_done doctor
 
 # The upgrade case comes last, so it does not disturb the audit counts above; the lifecycle cases start from its state.
