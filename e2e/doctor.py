@@ -151,7 +151,8 @@ def main(case, d):
             if want == "ok":
                 need("the journal is persistent" in c["text"], f"{r}: ok without 'the journal is persistent'")
             else:
-                need("journal" in (c["fix"] or ""), f"{r}: not ok without a fix for the journal")
+                fix = c["fix"] or ""
+                need(("mkdir -p /var/log/journal" in fix) if not dir_ else ("restart systemd-journald" in fix), f"{r}: the fix does not name the documented step: {fix!r}")
         b, j = run("base"), run("jflip")
         need(line(b, NAMES[4])["word"] != line(j, NAMES[4])["word"], "the staged journal did not flip the line")
         need([c["raw"] for c in b if c["name"] != NAMES[4]] == [c["raw"] for c in j if c["name"] != NAMES[4]], "the flip changed another line")

@@ -93,26 +93,27 @@ if [ -d /var/log/journal ]; then
     [ -z "$(find "$DROPIN_DIR" -name '*.conf' 2> /dev/null)" ] || fail "cannot stage the journal flip: journald.conf.d holds files"
     [ -d "$DROPIN_DIR" ] || { mkdir -p "$DROPIN_DIR"; made_dir=1; }
     printf '[Journal]\nStorage=volatile\n' > "$DROPIN"
-    echo 1 | obs jflip.dir; echo volatile | obs jflip.storage
+    echo 1 | obs jflip.dir
 else
     mkdir -p /var/log/journal
     made_dir_var=1
-    echo 1 | obs jflip.dir; echo "$storage" | obs jflip.storage
+    echo 1 | obs jflip.dir
 fi
 journal_staged=1
 systemctl restart systemd-journald
-sleep 1
+# the effective Storage= is re-read after the restart, as the base run does
+storage_now=$(systemd-analyze cat-config systemd/journald.conf 2> /dev/null | sed -n 's/^Storage=//p' | tail -n 1)
+echo "${storage_now:-auto}" | obs jflip.storage
 udoc jflip
 rm -f "$DROPIN"
 if [ -n "$made_dir" ]; then rmdir "$DROPIN_DIR"; made_dir=''; fi
 if [ -n "$made_dir_var" ]; then rmdir /var/log/journal; made_dir_var=''; fi
 systemctl restart systemd-journald
 journal_staged=''
-sleep 1
 
 # never prompts: no terminal, no agent, a time limit; the journal is read from a cursor taken after the restart
 polkit_count() { journalctl --no-pager -q -o cat --since "$1" 2> /dev/null | grep -ci 'polkit.*\(authoriz\|check\)\|Registered Authentication Agent' || true; }
-sig_count() { journalctl --no-pager -q -o cat --since "$1" 2> /dev/null | grep -c 'CUSTODIO_\|signature made' || true; }
+sig_count() { journalctl --no-pager -q -o export -u custodio.service --since "$1" 2> /dev/null | grep -c 'MESSAGE_ID=29c3d30e6c4242406c6db3f120d36401' || true; }
 journalctl --sync > /dev/null 2>&1 || true
 since=$(date '+%Y-%m-%d %H:%M:%S')
 polkit_count "$since" | obs never.pk.before
