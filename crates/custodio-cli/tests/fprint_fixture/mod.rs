@@ -219,6 +219,8 @@ impl Svc {
 /// How the fake answers.
 #[derive(Clone)]
 pub struct Fake {
+    /// Whether `net.reactivated.Fprint` is served at all.
+    pub fprintd: bool,
     /// The Custodio service on the same bus; `None`: nothing owns its name.
     pub service: Option<Svc>,
     pub devices: usize,
@@ -234,6 +236,7 @@ pub struct Fake {
 impl Fake {
     pub fn new(devices: usize) -> Self {
         Self {
+            fprintd: true,
             service: Some(Svc::answering("encrypted", Some(""))),
             devices,
             devices_error: false,
@@ -426,35 +429,31 @@ pub fn serve_all(address: &str, fake: Fake) -> Served {
         calls: served.fprintd.clone(),
         fake: fake.clone(),
     };
+    let address_again = address.to_owned();
+    let service = fake.service.clone();
     let address = address.to_owned();
     let all = served.clone();
     std::thread::spawn(move || {
         block_on(async {
             let mut builder = zbus::connection::Builder::address(address.as_str())
-                .name("net.reactivated.Fprint")
                 .name("org.freedesktop.PolicyKit1")
-                .serve_at("/net/reactivated/Fprint/Manager", manager)
                 .serve_at(
                     "/org/freedesktop/PolicyKit1/Authority",
                     Authority {
                         calls: all.polkit.clone(),
                     },
                 );
-            for i in 0..fake.devices {
-                let device = Device {
-                    calls: all.fprintd.clone(),
-                    fake: fake.clone(),
-                };
-                builder = builder.serve_at(device_path(i), device);
-            }
-            if let Some(svc) = fake.service.clone() {
-                builder = builder.name("com.rfirma.Custodio1").serve_at(
-                    "/com/rfirma/Custodio1",
-                    Custodio {
-                        calls: all.service.clone(),
-                        svc: svc.clone(),
-                    },
-                );
+            if fake.fprintd {
+                builder = builder
+                    .name("net.reactivated.Fprint")
+                    .serve_at("/net/reactivated/Fprint/Manager", manager);
+                for i in 0..fake.devices {
+                    let device = Device {
+                        calls: all.fprintd.clone(),
+                        fake: fake.clone(),
+                    };
+                    builder = builder.serve_at(device_path(i), device);
+                }
             }
             let _connection = builder.build().await.unwrap();
             ready_tx.send(()).unwrap();
@@ -462,6 +461,25 @@ pub fn serve_all(address: &str, fake: Fake) -> Served {
         });
     });
     ready_rx.recv().unwrap();
+    // The service has its own connection: a slow answer of it must not hold up fprintd's.
+    if let Some(svc) = service {
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let calls = served.service.clone();
+        let address = address_again;
+        std::thread::spawn(move || {
+            block_on(async {
+                let _connection = zbus::connection::Builder::address(address.as_str())
+                    .name("com.rfirma.Custodio1")
+                    .serve_at("/com/rfirma/Custodio1", Custodio { calls, svc })
+                    .build()
+                    .await
+                    .unwrap();
+                ready_tx.send(()).unwrap();
+                std::future::pending::<()>().await;
+            });
+        });
+        ready_rx.recv().unwrap();
+    }
     served
 }
 
