@@ -345,6 +345,14 @@ fn walk_node(node: &Path, path: &mut Vec<PathBuf>) -> Walked {
             Err(UnknownReason::SysfsIncomplete)
         };
     }
+    // The kernel names a device-mapper node `dm-<minor>`; without its `dm/` directory it is still being set up
+    // (`slaves/` is filled before `dm/` appears), not a layer of another kind.
+    if node
+        .file_name()
+        .is_some_and(|n| n.as_encoded_bytes().starts_with(b"dm-"))
+    {
+        return Err(UnknownReason::SysfsIncomplete);
+    }
     // A physical disk: a hardware `device` link, nothing stacked on it (loop, zram and nbd have no such link).
     let stacked = fs::read_dir(node.join("slaves")).is_ok_and(|mut d| d.next().is_some());
     if node.join("device").exists() && node.join("dev").is_file() && !stacked {

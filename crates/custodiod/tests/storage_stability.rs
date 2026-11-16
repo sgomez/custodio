@@ -297,10 +297,13 @@ fn cases() -> Vec<Case> {
         case(
             "dm node without dm directory",
             |t| {
-                t.node("virtual/block/dm-0", "252:0")?;
+                // F189's kernel gap: `slaves/` is already full, `dm/` does not exist yet.
+                let part = plain(t)?;
+                let dm = t.node("virtual/block/dm-0", "252:0")?;
+                Tree::link_slaves(&dm, &[&part])?;
                 mounted(t, "252:0", "ext4")
             },
-            (Unknown, Some(LayerNotClassified)),
+            (Unknown, Some(SysfsIncomplete)),
         ),
         case(
             "disk without a device link",
@@ -392,15 +395,6 @@ fn every_case_has_its_verdict_and_its_reason() -> Res {
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
-    Ok(())
-}
-
-#[test]
-fn a_reason_goes_with_unknown_and_only_with_it() -> Res {
-    for c in cases() {
-        let (storage, reason) = run(&c)?;
-        assert_eq!(storage == Unknown, reason.is_some(), "{}", c.name);
-    }
     Ok(())
 }
 
