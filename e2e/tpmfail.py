@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -I
 """The judgements of the tpmfail-* cases (F139, acceptance 7 of SPEC.md), as functions of files. Each subcommand prints one problem per line and nothing when the evidence is
 right (exit 0 either way; exit 2 on a bad call), so scripts/test-e2e-tpmfail.sh can show each one fails on bad evidence. The five facts of an injection:
-  tpmfail.py failed OUT RC ERROR       (a) the import exited non-zero, the CLI named com.rfirma.Custodio1.Error.ERROR, and printed no success, no Storage line
+  tpmfail.py failed OUT RC ERROR       (a) the import exited non-zero, the CLI said what it says for com.rfirma.Custodio1.Error.ERROR, and printed no success, no Storage line
   tpmfail.py nothing BEFORE AFTER LIST ID
                                        (b) the state directory listings (find + sha256) are identical, and LIST ("ID<TAB>TYPE<TAB>KIND") has no ID
   tpmfail.py journal JSON ID CAUSE SECRET...
@@ -16,6 +16,11 @@ import re
 import sys
 
 ERROR_PREFIX = "com.rfirma.Custodio1.Error."
+# What the CLI says for each error (crates/custodio-cli/src/failure.rs): the error name itself is no longer printed
+MESSAGE = {
+    "TpmFailed": "the TPM failed or cannot be used; nothing was stored",
+    "CredentialsUnavailable": "the credential service is unavailable; nothing was stored",
+}
 WEAKER = ("encrypted-host", "encrypted-tpm")
 
 
@@ -31,8 +36,8 @@ def failed_problems(out, rc, error):
     elif int(status) == 0:
         problems.append("the import exited 0")
     text = read(out)
-    if f"({ERROR_PREFIX}{error})" not in text:
-        problems.append(f"{out}: the CLI does not name {ERROR_PREFIX}{error}")
+    if MESSAGE[error] not in text:
+        problems.append(f"{out}: the CLI does not say {MESSAGE[error]!r} ({ERROR_PREFIX}{error})")
     for line in text.split("\n"):
         if line.startswith(("Imported key", "Storage:")):
             problems.append(f"{out}: a success line: {line!r}")

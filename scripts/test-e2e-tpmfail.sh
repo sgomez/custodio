@@ -14,11 +14,10 @@ expect_ok() { local out; out=$("$@") || { bad "failed to run: $*"; return; }; [ 
 expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad evidence accepted ($*)"; }
 
 # (a) the import failed with the documented error
-E=com.rfirma.Custodio1.Error
-printf 'Password for x.p12: \ncustodio: the service answered with an unknown error (%s.TpmFailed)\n' "$E" > "$tmp/out-ok"
-printf 'Password for x.p12: \ncustodio: the service answered with an unknown error (%s.CredentialsUnavailable)\n' "$E" > "$tmp/out-cred"
+printf 'Password for x.p12: \ncustodio: the TPM failed or cannot be used; nothing was stored\n' > "$tmp/out-ok"
+printf 'Password for x.p12: \ncustodio: the credential service is unavailable; nothing was stored\n' > "$tmp/out-cred"
 printf "Password for x.p12: \nImported key 'k' (rsa2048).\nStorage: tpm. The key is in the TPM.\n" > "$tmp/out-success"
-printf "custodio: the service answered with an unknown error (%s.TpmFailed)\nImported key 'k' (rsa2048).\n" "$E" > "$tmp/out-both"
+printf "custodio: the TPM failed or cannot be used; nothing was stored\nImported key 'k' (rsa2048).\n" > "$tmp/out-both"
 printf 'custodio: internal error\n' > "$tmp/out-other"
 echo 1 > "$tmp/rc1"; echo 0 > "$tmp/rc0"; echo x > "$tmp/rcx"
 expect_ok tf failed "$tmp/out-ok" "$tmp/rc1" TpmFailed
