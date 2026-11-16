@@ -119,7 +119,7 @@
         "F200"
       ],
       "verify": "f=docs/findings/F201.md && grep -q '^## F201' \"$f\" && for w in 'pam-auth-update' 'common-auth' 'pam_fprintd' 'max-tries' 'virtual' 'pkttyagent' 'ubuntu2604' 'Omarchy'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F201.md)' docs/findings.md",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F202",
