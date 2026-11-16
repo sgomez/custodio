@@ -25,7 +25,6 @@ use crate::fingerprint_cmd::{env, observe};
 pub const ASK_LIMIT: Duration = Duration::from_millis(1500);
 
 const DESTINATION: &str = "net.reactivated.Fprint";
-const SERVICE_UNKNOWN: &str = "org.freedesktop.DBus.Error.ServiceUnknown";
 const NO_PRINTS: &str = "net.reactivated.Fprint.Error.NoEnrolledPrints";
 const DENIED: &str = "net.reactivated.Fprint.Error.PermissionDenied";
 
@@ -76,11 +75,7 @@ fn ask_reader(connection: &Connection) -> Answer {
 
 /// The bus says nothing owns the name (zbus turns the well-known bus errors into [`zbus::fdo::Error`]).
 fn is_service_unknown(error: &zbus::Error) -> bool {
-    match error {
-        zbus::Error::FDO(e) => matches!(**e, zbus::fdo::Error::ServiceUnknown(_)),
-        zbus::Error::MethodError(name, _, _) => name.as_str() == SERVICE_UNKNOWN,
-        _ => false,
-    }
+    matches!(error, zbus::Error::FDO(e) if matches!(**e, zbus::fdo::Error::ServiceUnknown(_)))
 }
 
 fn ask_fingers(connection: &Connection, device: &OwnedObjectPath) -> Answer {

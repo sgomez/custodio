@@ -176,6 +176,27 @@ fn a_name_that_is_there_and_does_not_answer_is_could_not_check_even_without_a_se
     assert_eq!(exit(&o), 0);
 }
 
+#[test]
+fn an_error_from_a_name_that_is_there_is_could_not_check_even_without_a_service_file() {
+    let fx = Fx::new();
+    fx.remove(SERVICE);
+    let bus = Bus::new();
+    serve(
+        &bus.address,
+        Fake {
+            devices_error: true,
+            ..Fake::new(1)
+        },
+    );
+    let (o, text) = doctor(&fx, &bus.address);
+    assert_eq!(state(&text, READER), "could not check", "{text}");
+    assert!(
+        section(&text, READER)[0].contains("the manager is broken"),
+        "{text}"
+    );
+    assert_eq!(exit(&o), 0);
+}
+
 fn finger_case(fingers: Fingers) -> (std::process::Output, String, Vec<String>) {
     let fx = Fx::new();
     let bus = Bus::new();

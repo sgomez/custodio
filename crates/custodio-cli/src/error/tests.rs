@@ -348,3 +348,17 @@ fn a_fingerprint_failure_names_its_step_in_both_forms() {
     );
     assert!(render(&e).contains("cannot write the temporary file: disk full"));
 }
+
+#[test]
+fn a_doctor_failure_names_what_happened_in_both_forms() {
+    use crate::doctor_cmd::Failure;
+    for (failure, words) in [
+        (Failure::Root, "as root"),
+        (Failure::BrokenInclude, "include"),
+    ] {
+        let e = CliError::Doctor(failure);
+        assert!(e.to_string().contains(words), "{e}");
+        let text = render(&e);
+        assert!(text.contains(words) && text.lines().count() == 2, "{text}");
+    }
+}

@@ -185,6 +185,8 @@ pub enum Fingers {
 #[derive(Clone)]
 pub struct Fake {
     pub devices: usize,
+    /// `GetDevices` answers with an error.
+    pub devices_error: bool,
     /// Wait before `GetDevices` answers.
     pub delay: Duration,
     pub fingers: Fingers,
@@ -196,6 +198,7 @@ impl Fake {
     pub fn new(devices: usize) -> Self {
         Self {
             devices,
+            devices_error: false,
             delay: Duration::ZERO,
             fingers: Fingers::NoPrints,
             fingers_delay: Duration::ZERO,
@@ -235,10 +238,13 @@ impl Manager {
     fn get_devices(
         &self,
         #[zbus(header)] header: zbus::message::Header<'_>,
-    ) -> Vec<OwnedObjectPath> {
+    ) -> Result<Vec<OwnedObjectPath>, FprintError> {
         record(&self.calls, "GetDevices", &header);
         std::thread::sleep(self.fake.delay);
-        (0..self.fake.devices).map(device_path).collect()
+        if self.fake.devices_error {
+            return Err(FprintError::Internal("the manager is broken".into()));
+        }
+        Ok((0..self.fake.devices).map(device_path).collect())
     }
 
     fn get_default_device(

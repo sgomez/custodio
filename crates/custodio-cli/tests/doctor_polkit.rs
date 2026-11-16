@@ -149,7 +149,8 @@ fn a_file_with_the_module_only_in_a_comment_or_an_account_line_is_not_active() {
 
 #[test]
 fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_every_family() {
-    for (os, file, content) in GLOBAL_FORMS {
+    let named = ["common-auth", "authselect", "system-auth", "pam.d/sudo"];
+    for ((os, file, content), named) in GLOBAL_FORMS.into_iter().zip(named) {
         let fx = Fx::new();
         fx.put("etc/os-release", os);
         fx.put(file, content);
@@ -157,7 +158,9 @@ fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_every_famil
         assert_eq!(state(&text, POLKIT_CHECK), "ok", "{file}: {text}");
         let line = polkit_text(&text);
         assert!(
-            line.contains("whole system") && line.contains("sudo uses the finger too"),
+            line.contains("whole system")
+                && line.contains("sudo uses the finger too")
+                && line.contains(named),
             "{file}: {line}"
         );
         assert!(!text.contains("warning"), "global alone: {text}");
