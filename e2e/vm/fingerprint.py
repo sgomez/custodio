@@ -225,8 +225,8 @@ def j_sign(d, _):
     if len(ents) != 1:
         p.append(f"the journal holds {len(ents)} sign entries, expected exactly 1")
     for e in ents:
-        if e.get("CUSTODIO_KEY") != key or str(e.get("CUSTODIO_UID", "")) != uid:
-            p.append(f"the journal entry is for key '{e.get('CUSTODIO_KEY')}' uid '{e.get('CUSTODIO_UID')}', not '{key}' uid '{uid}'")
+        if e.get("CUSTODIO_KEY_ID") != key or str(e.get("CUSTODIO_UID", "")) != uid:
+            p.append(f"the journal entry is for key '{e.get('CUSTODIO_KEY_ID')}' uid '{e.get('CUSTODIO_UID')}', not '{key}' uid '{uid}'")
         if SIGN_ACTION not in str(e.get("MESSAGE", "")):
             p.append(f"the journal entry's message is not '{SIGN_ACTION}'")
     return p

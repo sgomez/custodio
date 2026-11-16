@@ -5,7 +5,8 @@
 #   vm-fingerprint-disabled  vm-fingerprint-sign  vm-fingerprint-fallback-module  vm-fingerprint-fallback-daemon  vm-fingerprint-fallback-reader  vm-fingerprint-fallback-finger
 # The judge is e2e/vm/fingerprint.py; the evidence is written here in $WORK/fingerprint (formats at the top of the judge). A staging that fails FAILS the run: no skip path (acceptance 19).
 # The group works on its own account (fpuser, with a password), never the harness's: /etc/pam.d/polkit-1 (the harness's pam_permit) and the harness's passwordless sudo rule are set
-# aside and put back by an exit trap, and `end.state` says both are back. The cases sign and fallback-* are not written yet (attempt 1): the run fails after the others.
+# aside and put back by an exit trap, and `end.state` says both are back. The fallback cases break one thing each (module moved, daemon masked, drop-in removed, finger deleted),
+# the exit trap undoes each too, and CASE.restored says fprintd is up again before the next case.
 set -euo pipefail
 fail() { echo "e2e: FAIL: $*" >&2; exit 1; }
 : "${WORK:?}"
@@ -31,6 +32,10 @@ SUDO_ASIDE=/var/lib/e2e-sudo-aside
 FPPW='fp-Right-pw-1'
 USER_FP=fpuser
 SUDO_FILES=''
+KEY=fp-key
+MODULE=${MODULE:-/usr/lib/custodio/libcustodio_pkcs11.so}
+MODSAVE=/var/lib/e2e-pam_fprintd.so
+MODPATH=''
 
 restore() { # the files set aside are back, whatever happened
     local f
@@ -38,6 +43,8 @@ restore() { # the files set aside are back, whatever happened
     [ ! -f "$ASIDE" ] || mv -f "$ASIDE" "$PAMF"
     for f in $SUDO_FILES; do [ ! -f "$SUDO_ASIDE/$(basename "$f")" ] || mv -f "$SUDO_ASIDE/$(basename "$f")" "$f"; done
     SUDO_FILES=''
+    [ -z "$MODPATH" ] || [ ! -f "$MODSAVE" ] || mv -f "$MODSAVE" "$MODPATH"
+    systemctl unmask fprintd.service > /dev/null 2>&1 || true
     rm -rf "$DROPIN_DIR"
     systemctl daemon-reload || true
     systemctl stop fprintd.service || true
@@ -75,16 +82,19 @@ if [ -n "$lib" ] && grep -q FP_VIRTUAL_DEVICE "$lib"; then virt=yes; fi
 # the pam-auth-update profile of fprintd must not be on for sudo's stack: only polkit-1 gets the finger, from the override
 if grep -q pam_fprintd /etc/pam.d/common-auth; then pam-auth-update --disable fprintd > /dev/null 2>&1 || true; fi
 if grep -q pam_fprintd /etc/pam.d/common-auth; then fail "pam_fprintd is still in /etc/pam.d/common-auth: sudo would show the finger"; fi
-mkdir -p "$DROPIN_DIR"
-cat > "$DROPIN_DIR/virt.conf" << 'EOF2'
+write_dropin() {
+    mkdir -p "$DROPIN_DIR"
+    cat > "$DROPIN_DIR/virt.conf" << 'EOF2'
 [Service]
 Environment=FP_VIRTUAL_DEVICE=/run/fpvirt/sock
 RuntimeDirectory=fpvirt
 ExecStart=
 ExecStart=/usr/libexec/fprintd --no-timeout
 EOF2
-systemctl daemon-reload
-systemctl restart fprintd.service
+    systemctl daemon-reload
+    systemctl restart fprintd.service
+}
+write_dropin
 id "$USER_FP" > /dev/null 2>&1 || useradd -m -s /bin/bash -G sudo "$USER_FP"
 echo "$USER_FP:$FPPW" | chpasswd
 # the polkit admin identity is the test user alone (otherwise the agent asks which of the admins to be)
@@ -92,18 +102,30 @@ mkdir -p "$(dirname "$RULE")"
 printf 'polkit.addAdminRule(function(action, subject) { return ["unix-user:%s"]; });\n' "$USER_FP" > "$RULE"
 wait_for 20 has_device || { journalctl -u fprintd --no-pager -n 10 -o cat >&2; fprintd-list "$USER_FP" >&2 2>&1 || true; ls -l /run/fpvirt >&2 2>&1 || true; systemctl cat fprintd.service 2>&1 | tail -n 12 >&2; fail "fprintd lists no device with the virtual sensor"; }
 sock=no
-# enrol: five scans of the same id, each when the previous stage was reported
-: > "$FP/enroll.out"
-fprintd-enroll -f right-index-finger "$USER_FP" > "$FP/enroll.out" 2>&1 &
-enroll=$!
-for i in 1 2 3 4 5; do
-    wait_for 10 stages_at_least "$((i - 1))" || true
-    if wait_for 10 test -S /run/fpvirt/sock; then sock=yes; fi # the socket exists only while the device is open (the enrolment holds it)
-    touch_id enrolled-finger || true
-done
-wait "$enroll" || true
+enroll_finger() { # five scans of the same id, each when the previous stage was reported
+    : > "$FP/enroll.out"
+    fprintd-enroll -f right-index-finger "$USER_FP" > "$FP/enroll.out" 2>&1 &
+    local enroll=$! i
+    for i in 1 2 3 4 5; do
+        wait_for 10 stages_at_least "$((i - 1))" || true
+        if wait_for 10 test -S /run/fpvirt/sock; then sock=yes; fi # the socket exists only while the device is open (the enrolment holds it)
+        touch_id enrolled-finger || true
+    done
+    wait "$enroll" || true
+}
+enroll_finger
 enrolled=no
 if fprintd-list "$USER_FP" 2>&1 | grep -q 'right-index-finger'; then enrolled=yes; fi
+
+# the key the sign case uses: imported now, while the harness's pam_permit file lets the test agent approve the import (the finger is for the signature, not the import)
+mkdir -p "$FP/user"
+chmod 1777 "$FP" "$FP/user"
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$FP/user/k.key" 2> /dev/null
+openssl req -new -x509 -key "$FP/user/k.key" -subj "/CN=custodio e2e fingerprint" -days 30 -out "$FP/user/k.crt"
+openssl pkcs12 -export -inkey "$FP/user/k.key" -in "$FP/user/k.crt" -name "$KEY" -passout pass:e2e-password -out "$FP/user/k.p12"
+rm -f "$FP/user/k.key"
+chmod 644 "$FP/user/k.p12"
+timeout 300 su -l "$USER_FP" -c "WORK=$WORK MODULE=$MODULE bash $here/fingerprint-user.sh $FP/user $KEY $FP/user/k.p12" > "$FP/user/alice.out" 2>&1 || { cat "$FP/user/alice.out" >&2; fail "the test user could not import the key"; }
 
 # the harness's pam_permit file is a foreign file for `enable`: set aside, the real layout used
 mv -f "$PAMF" "$ASIDE"
@@ -158,6 +180,56 @@ cp "$FP/sudo.events.out" "$FP/sudo.text"
 for f in $SUDO_FILES; do mv -f "$SUDO_ASIDE/$(basename "$f")" "$f"; done
 SUDO_FILES=''
 
+# sign: the enrolled finger is the only authentication of a signature by the module (the pkttyagent is registered for the signing process)
+SIGNSH=/tmp/fp-sign.sh
+install -m 755 "$here/fingerprint-sign.sh" "$SIGNSH"
+printf 'the bytes the finger approved\n' > "$FP/sign.data"
+chmod 644 "$FP/sign.data"
+rm -f "$FP/user/sign.sig"
+journalctl --sync
+cur=$(journalctl -n1 --show-cursor | sed -n 's/^-- cursor: //p')
+auth sign '{"prompt-finger":["touch:enrolled-finger"]}' 0 "$SIGNSH" "$MODULE" "$KEY" "$FP/sign.data" "$FP/user/sign.sig"
+journalctl --sync
+journalctl --after-cursor="$cur" _SYSTEMD_UNIT=custodio.service CUSTODIO_OPERATION=sign -o json --no-pager > "$FP/sign.journal"
+cp "$FP/user/sign.sig" "$FP/sign.sig" 2> /dev/null || : > "$FP/sign.sig"
+cp "$FP/user/pub.pem" "$FP/sign.pub"
+echo "$KEY" > "$FP/sign.key"
+id -u "$USER_FP" > "$FP/sign.uid"
+
+# the fallbacks: one thing broken, the password asked at once and accepted, then everything restored and shown up again
+fprintd_back() { # CASE: fprintd is up again, with its device and the finger, before the next case
+    local c=$1 unit=inactive dev=missing
+    systemctl unmask fprintd.service > /dev/null 2>&1 || true
+    systemctl start fprintd.service > /dev/null 2>&1 || true
+    wait_for 20 has_device && dev=listed
+    if [ "$(systemctl is-active fprintd.service)" = active ]; then unit=active; fi
+    fprintd-list "$USER_FP" 2>&1 | grep -q right-index-finger || fail "$c: the enrolled finger is not back"
+    echo "unit=$unit device=$dev" > "$FP/$c.restored"
+}
+fallback() { # NAME: the password prompt first, the right password approves
+    approve "fallback-$1" "{\"prompt-password\":[\"type:$FPPW\"]}" 0
+}
+MODPATH=$(find /usr/lib -name pam_fprintd.so | head -n 1)
+[ -n "$MODPATH" ] || fail "pam_fprintd.so is not found"
+mv -f "$MODPATH" "$MODSAVE"
+fallback module
+mv -f "$MODSAVE" "$MODPATH"
+fprintd_back fallback-module
+systemctl stop fprintd.service
+systemctl mask fprintd.service > /dev/null
+fallback daemon
+fprintd_back fallback-daemon
+rm -rf "$DROPIN_DIR"
+systemctl daemon-reload
+systemctl restart fprintd.service
+fallback reader
+write_dropin
+fprintd_back fallback-reader
+fprintd-delete "$USER_FP" > /dev/null 2>&1 || fail "the enrolled finger could not be deleted"
+fallback finger
+enroll_finger
+fprintd_back fallback-finger
+
 # disabled: the override is gone, polkit shows the password only and consumes no scan
 custodio fingerprint disable > "$FP/disable.out" 2>&1 || fail "custodio fingerprint disable failed: $(head -c 300 "$FP/disable.out")"
 if [ -e "$PAMF" ] && grep -q pam_fprintd "$PAMF"; then echo fprintd > "$FP/disabled.pam"; else echo absent > "$FP/disabled.pam"; fi
@@ -175,7 +247,6 @@ echo "$state" > "$FP/end.state"
 problems=''
 for c in $FP_CASES; do
     n=${c#vm-fingerprint-}
-    case $n in sign | fallback-*) continue ;; esac # not written yet (F200 attempt 1)
     p=$(python3 -I "$here/fingerprint.py" "$n" "$FP" 2>&1) || p="the judge failed for $n"
     if [ -z "$p" ]; then case_run "$c"; else problems="$problems
 $c:
@@ -189,4 +260,3 @@ if [ -n "$problems" ]; then
     { for f in "$FP"/*.events.out; do echo "--- $f"; tail -c 700 "$f"; done; journalctl -u polkit --no-pager -n 12 -o cat | cut -c1-200; journalctl -u fprintd --no-pager -n 10 -o cat | cut -c1-200; } >&2
     fail "fingerprint cases:$problems"
 fi
-fail "vm-fingerprint-sign and the four fallbacks are not written yet"

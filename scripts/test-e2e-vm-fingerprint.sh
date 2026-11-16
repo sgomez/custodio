@@ -49,7 +49,7 @@ printf 'to be signed' > sign.data
 openssl dgst -sha256 -sign k.pem -out sign.sig sign.data
 rm -f k.pem
 echo fp-sign > sign.key; echo 1001 > sign.uid
-printf '{"MESSAGE":"signature made","CUSTODIO_OPERATION":"sign","CUSTODIO_KEY":"fp-sign","CUSTODIO_UID":"1001"}\n' > sign.journal
+printf '{"MESSAGE":"signature made","CUSTODIO_OPERATION":"sign","CUSTODIO_KEY_ID":"fp-sign","CUSTODIO_UID":"1001"}\n' > sign.journal
 for c in module daemon reader finger; do
     printf '0 start\n0.3 prompt-password\n0.6 typed-right\n0.9 approved\n' > fallback-$c.events
     echo 'unit=active device=listed' > fallback-$c.restored
