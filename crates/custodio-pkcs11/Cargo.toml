@@ -22,7 +22,7 @@ test-socket-dir = []
 custodio-client = { path = "../custodio-client", version = "0.8.0" }
 cryptoki-sys = "0.5.0"
 libc = "0.2.191"
-pkcs1 = { version = "=0.8.0-rc.5", default-features = false, features = ["alloc"] }
+pkcs1 = { version = "=0.8.0", default-features = false, features = ["alloc"] }
 sha2 = "0.11.1"
 x509-cert = { version = "0.3.0", default-features = false }
 zbus = { version = "6", default-features = false, features = [
@@ -34,7 +34,7 @@ zbus = { version = "6", default-features = false, features = [
 
 [dev-dependencies]
 cryptoki = "0.12.1"
-libloading = "0.8.9"
+libloading = "0.9.1"
 const-oid = { version = "0.10.2", features = ["db"] }
 der = { version = "0.8.3", features = ["alloc", "oid"] }
 p256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "pkcs8"] }
