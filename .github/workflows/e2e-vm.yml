@@ -51,7 +51,7 @@ jobs:
           add-rust-environment-hash-key: false
           shared-key: package-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: false
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0
       # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
