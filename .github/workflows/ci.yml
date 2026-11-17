@@ -109,7 +109,7 @@ jobs:
           shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           # PR caches would evict main's, and main's are the ones every branch restores.
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0,taplo@0.10.0,zizmor@1.31.1,shellcheck@0.11.0,cargo-deny@0.20.2,cargo-machete@0.9.2
       # install-action does not ship actionlint; pinned release, checksum-verified.
@@ -151,7 +151,7 @@ jobs:
           add-rust-environment-hash-key: false
           shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0,cargo-nextest@0.9.148
       - run: just test
@@ -183,7 +183,7 @@ jobs:
           add-rust-environment-hash-key: false
           shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0,cargo-llvm-cov@0.9.1,cargo-nextest@0.9.148
       - run: rustup component add llvm-tools-preview
@@ -205,7 +205,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends swtpm swtpm-tools tpm2-tools libtss2-dev
       # The socket directory tests run under `unshare -Ur`; Ubuntu's AppArmor refuses that by default.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0,cargo-fuzz@0.13.2
       - id: toolchain
@@ -252,7 +252,7 @@ jobs:
           add-rust-environment-hash-key: false
           shared-key: ${{ github.job }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock', '**/Cargo.toml') }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: just@1.59.0
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends rpm libarchive-tools zstd python3-yaml
