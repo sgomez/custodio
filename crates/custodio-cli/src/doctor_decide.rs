@@ -20,7 +20,7 @@ use crate::journald_conf::Verdict;
 pub enum State {
     Ok,
     NotOk,
-    /// Works, with a risk the person should know: it counts like `NotOk` for the exit status.
+    /// Works, with a risk the person should know: it does not change the exit status.
     Warn,
     CouldNotCheck,
 }
@@ -125,11 +125,12 @@ pub const READER: &str = "reader";
 pub const FINGER: &str = "finger";
 pub const POLKIT: &str = "polkit";
 
-/// The exit status: 0, unless a polkit include is broken or one of the `later` checks (Firefox, journal, storage) is not `ok`.
+/// The exit status: 0, unless a polkit include is broken or one of the `later` checks (Firefox, journal, storage) is
+/// neither `ok` nor `warn`.
 /// Checks 1 to 3 never count, "could not check" among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
 #[must_use]
 pub fn exit_status(broken_include: bool, later: &[State]) -> u8 {
-    u8::from(broken_include || later.iter().any(|s| *s != State::Ok))
+    u8::from(broken_include || later.iter().any(|s| !matches!(s, State::Ok | State::Warn)))
 }
 
 impl Report {
@@ -152,7 +153,7 @@ impl Report {
         for c in self
             .checks
             .iter()
-            .filter(|c| c.later && c.state != State::Ok)
+            .filter(|c| c.later && !matches!(c.state, State::Ok | State::Warn))
         {
             if !names.contains(&c.name) {
                 names.push(c.name);
@@ -162,7 +163,7 @@ impl Report {
     }
 
     /// One line per check under its section's heading; under it, indented, its note, warning and
-    /// fix; last, how many problems there are. `on` colours the words and the headings.
+    /// fix; last, how many problems and warnings there are. `on` colours the words and the headings.
     #[must_use]
     pub fn text(&self, on: bool) -> String {
         let width = self.checks.iter().map(|c| c.name.len()).max().unwrap_or(0);
@@ -194,10 +195,23 @@ impl Report {
         let problems = self
             .checks
             .iter()
-            .filter(|c| c.state != State::Ok || c.warning.is_some())
+            .filter(|c| matches!(c.state, State::NotOk | State::CouldNotCheck))
             .count();
-        if problems > 0 {
-            let _ = writeln!(text, "\n{}.", plural(problems, "problem", "problems"));
+        let warnings = self
+            .checks
+            .iter()
+            .map(|c| usize::from(c.state == State::Warn) + usize::from(c.warning.is_some()))
+            .sum();
+        let parts: Vec<String> = [
+            (problems, "problem", "problems"),
+            (warnings, "warning", "warnings"),
+        ]
+        .into_iter()
+        .filter(|(n, _, _)| *n > 0)
+        .map(|(n, one, many)| plural(n, one, many))
+        .collect();
+        if !parts.is_empty() {
+            let _ = writeln!(text, "\n{}.", parts.join(", "));
         }
         text
     }

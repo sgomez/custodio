@@ -38,6 +38,7 @@ fn the_exit_status_counts_a_broken_include_and_checks_4_to_6_only() {
     assert_eq!(exit_status(false, &[State::Ok, State::Ok]), 0);
     assert_eq!(exit_status(false, &[State::Ok, State::NotOk]), 1);
     assert_eq!(exit_status(false, &[State::CouldNotCheck]), 1);
+    assert_eq!(exit_status(false, &[State::Ok, State::Warn]), 0);
     assert_eq!(exit_status(true, &[State::Ok]), 1);
 }
 
@@ -235,18 +236,35 @@ fn the_report_prints_every_check_once_under_its_heading_with_its_lines_indented_
         let problems = report
             .checks
             .iter()
-            .filter(|c| c.state != State::Ok || c.warning.is_some())
+            .filter(|c| matches!(c.state, State::NotOk | State::CouldNotCheck))
             .count();
+        let warnings: usize = report
+            .checks
+            .iter()
+            .map(|c| usize::from(c.state == State::Warn) + usize::from(c.warning.is_some()))
+            .sum();
         let rest: Vec<&str> = lines[at..]
             .iter()
             .copied()
             .filter(|l| !l.is_empty())
             .collect();
-        if problems == 0 {
+        let want: Vec<usize> = [problems, warnings]
+            .into_iter()
+            .filter(|n| *n > 0)
+            .collect();
+        if want.is_empty() {
             assert!(rest.is_empty(), "{text}");
         } else {
             assert_eq!(rest.len(), 1, "{text}");
-            assert!(rest[0].starts_with(&format!("{problems} ")), "{text}");
+            let numbers: Vec<usize> = rest[0]
+                .split(|c: char| !c.is_ascii_digit())
+                .filter_map(|n| n.parse().ok())
+                .collect();
+            assert_eq!(numbers, want, "{text}");
+            assert!(
+                problems == 0 || warnings == 0 || rest[0].contains(','),
+                "{text}"
+            );
         }
     }
 }

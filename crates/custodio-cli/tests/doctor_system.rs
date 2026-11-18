@@ -525,8 +525,8 @@ fn line(r: &Run) -> Line {
 fn unknown(reason: Option<&'static str>) -> (Run, Line) {
     let r = storage(Some(Svc::answering("unknown", reason)));
     let l = line(&r);
-    assert_eq!(l.state, "not ok", "{l:?}");
-    assert_eq!(r.exit, 1);
+    assert_eq!(l.state, "warn", "{l:?}");
+    assert_eq!(r.exit, 0);
     (r, l)
 }
 
@@ -544,14 +544,14 @@ fn encrypted_is_ok_and_only_the_read_only_methods_are_called_without_the_flag() 
 }
 
 #[test]
-fn not_encrypted_is_a_warning_with_what_it_means_and_the_full_disk_encryption_fix() {
+fn not_encrypted_is_a_warning_exiting_0_with_what_it_means_and_the_full_disk_encryption_fix() {
     let r = storage(Some(Svc::answering("not-encrypted", Some(""))));
     let l = line(&r);
     assert_eq!(l.state, "warn", "{}", r.text);
     assert!(!l.notes.is_empty(), "{l:?}");
     assert!(l.fixes.concat().contains("LUKS"), "{l:?}");
     assert!(!said(&l).contains("README"), "{l:?}");
-    assert_eq!(r.exit, 1);
+    assert_eq!(r.exit, 0);
     assert_eq!(
         r.served.service.lock().unwrap().as_slice(),
         ["StateStorage"]
@@ -606,9 +606,10 @@ fn a_reason_string_it_does_not_know_is_reported_as_no_reason_and_not_repeated() 
 }
 
 #[test]
-fn a_wire_value_the_cli_does_not_know_is_not_ok() {
+fn a_wire_value_the_cli_does_not_know_is_a_warning_as_unknown_is() {
     let r = storage(Some(Svc::answering("quantum", Some(""))));
-    assert_eq!(line(&r).state, "not ok", "{}", r.text);
+    assert_eq!(line(&r).state, "warn", "{}", r.text);
+    assert_ne!(line(&r).state, "ok");
 }
 
 fn could_not_check(r: &Run) -> Line {

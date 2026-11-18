@@ -9,16 +9,16 @@ fprintd.
 
 The checks are grouped under three headings. Each check is one line: its state, its name and what was found. Under a line that is
 not `ok` comes a `Fix:` line with what to do; a few add a line that says what the problem means, or a `Warning:` with its own `Fix:`
-(see [polkit](#polkit)). When something is wrong, the report ends with how many problems it found.
+(see [polkit](#polkit)). When something is wrong, the report ends with how many problems and warnings it found.
 
 | State | Meaning |
 |---|---|
 | `ok` | The check passed. |
 | `FAIL` | The check found a problem; the `Fix:` line says what to do. |
-| `warn` | It works, with a risk you should know of; the `Fix:` line says how to remove it. |
+| `warn` | It works, with a risk you should know of; the `Fix:` line says how to remove it. It does not change the exit status. |
 | `?` | The check could not get an answer (for example, there is no reader to ask). The `Fix:` line says what to do first. |
 
-The exit status is 0 unless a polkit include is broken, or a check under Browsers or System is not `ok` (`warn` included); then it is 1. The
+The exit status is 0 unless a polkit include is broken, or a check under Browsers or System is `FAIL` or `?`; then it is 1. The
 fingerprint is optional, so its checks never change the exit status, `?` included; a broken include stops every polkit dialog, so
 it always does.
 
@@ -160,13 +160,14 @@ systemd-journald. It reads the files itself, so it does not need the service; a 
 ### key storage
 
 Asks the service whether its state directory, `/var/lib/custodio`, where the keys live, is on an encrypted disk. Not encrypted is
-`warn`: whoever takes the machine can use your keys (a tpm key cannot be copied, but it can be used on this machine). The fix is
-full-disk encryption (LUKS), which most installers offer; `cryptsetup` does it on an existing system.
+`warn`, not a failure: Custodio works, but whoever takes the machine can use your keys (a tpm key cannot be copied, but it can be
+used on this machine). The risk is yours to accept, so it does not change the exit status. The fix is full-disk encryption (LUKS),
+which most installers offer; `cryptsetup` does it on an existing system.
 
-When the service cannot tell, the state is `FAIL` too, with the reason it gave in a few words, its code (see [api.md](api.md)) and a fix for that reason. This is
-the other way to exit with status 1:
+When the service cannot tell, the state is `warn` too, with the reason it gave in a few words, its code (see [api.md](api.md)) and
+a fix for that reason:
 
-```console fails=yes fixture=plainstorage
+```console fixture=plainstorage
 $ custodio doctor
 Fingerprint (optional)
   ok    reader       1 reader
@@ -177,15 +178,15 @@ Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  FAIL  key storage  /var/lib/custodio: cannot tell if encrypted, the service gave no reason
+  warn  key storage  /var/lib/custodio: cannot tell if encrypted, the service gave no reason
                      Fix: update the service, or use disk encryption (LUKS)
 
-2 problems.
+1 problem, 1 warning.
 ```
 
 When the service gives a reason, the report says what it means, and the fix changes with it:
 
-```console fails=yes fixture=plainreason
+```console fixture=plainreason
 $ custodio doctor
 Fingerprint (optional)
   ok    reader       1 reader
@@ -196,10 +197,10 @@ Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  FAIL  key storage  /var/lib/custodio: cannot tell if encrypted, not on a single disk (tmpfs, overlay, btrfs or network) (not-block-filesystem)
+  warn  key storage  /var/lib/custodio: cannot tell if encrypted, not on a single disk (tmpfs, overlay, btrfs or network) (not-block-filesystem)
                      Fix: move it to ext4, xfs or similar, or use disk encryption (LUKS)
 
-2 problems.
+1 problem, 1 warning.
 ```
 
 The reasons the service can give are in [api.md](api.md). When the service is not running, or does not answer, the state is `?`

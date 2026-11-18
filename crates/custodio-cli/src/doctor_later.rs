@@ -295,7 +295,7 @@ pub fn storage(f: &Service) -> Check {
             );
             later(
                 SYSTEM_SECTION,
-                State::NotOk,
+                State::Warn,
                 STORAGE,
                 format!("{DIR}: cannot tell if encrypted, {text}"),
                 Some(fix),

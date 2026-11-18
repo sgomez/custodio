@@ -4,8 +4,8 @@
 The guest step (e2e/doctor-run.sh) writes observation files `OBSDIR/<name>`; this reads the ones a case needs and prints one problem per line on stdout
 (exit 1 if any). A run R of `custodio doctor` leaves R.out, R.err, R.rc (and R.pam.before/R.pam.after, manifests of /etc/pam.d around it). The runs: base (no
 override), on (override enabled), broken (override on, the file its include names moved aside), off (disabled again), nofox (~/.mozilla is a file), jflip (the
-journal staged to the other state), nosvc (service stopped). Exit 0 cannot happen in a container (state directory on overlay); the 0 branch is F203's
-(doctor_acceptance). Here the exit code is judged against the printed states, not alone. The report's format is known in parse() only;
+journal staged to the other state), nosvc (service stopped). In a container the state directory is on overlay, so key storage is a warning, which does not change
+the exit code. Here the exit code is judged against the printed states, not alone. The report's format is known in parse() only;
 the rules judge states, sections, the exit code and fix lines, and of the words only the commands and paths a person acts on.
 """
 import os
@@ -18,7 +18,7 @@ READER, FINGER, POLKIT, PROFILES, JOURNAL, STORAGE = "reader", "finger", "polkit
 FINGERPRINT_NAMES = [READER, FINGER, POLKIT]
 SYSTEM_NAMES = [JOURNAL, STORAGE]
 STATES = {"ok": "ok", "FAIL": "not ok", "warn": "warn", "?": "could not check"}
-SUMMARY = re.compile(r"^(\d+) problems?\.$")
+SUMMARY = re.compile(r"^(?:(\d+) problems?)?(?:, )?(?:(\d+) warnings?)?\.$")
 
 
 def parse(out):
@@ -30,8 +30,8 @@ def parse(out):
             continue
         if not ln.startswith(" "):
             m = SUMMARY.match(ln)
-            if m:
-                summary = int(m.group(1))
+            if m and (m.group(1) or m.group(2)):
+                summary = (int(m.group(1) or 0), int(m.group(2) or 0))
             else:
                 section = ln
                 headings.append(ln)
@@ -67,8 +67,8 @@ def broken_include(checks, c):
 
 
 def counting(checks):
-    """The names of the lines the exit status counts: a broken include, and the Browsers and System lines that are not ok."""
-    return [c["name"] for c in checks if broken_include(checks, c) or (c["section"] in (BROWSERS, SYSTEM) and c["word"] != "ok")]
+    """The names of the lines the exit status counts: a broken include, and the Browsers and System lines neither ok nor warn."""
+    return [c["name"] for c in checks if broken_include(checks, c) or (c["section"] in (BROWSERS, SYSTEM) and c["word"] not in ("ok", "warn"))]
 
 
 def later(checks):
@@ -128,8 +128,9 @@ def main(case, d):
             for c in checks:
                 if c["section"] != BROWSERS:
                     need(c["word"] in ("ok", None) or bool(c["fixes"]), f"{r}: '{c['name']}' is {c['word']} and has no fix line")
-            problems_n = sum(1 for c in checks if c["word"] != "ok" or c["warnings"])
-            need(summary == (problems_n or None), f"{r}: the problems line says {summary}, the report has {problems_n}")
+            counts = (sum(1 for c in checks if c["word"] in ("not ok", "could not check", None)),
+                      sum(int(c["word"] == "warn") + len(c["warnings"]) for c in checks))
+            need(summary == (counts if any(counts) else None), f"{r}: the problems line says {summary}, the report has {counts}")
             err = read(f"{r}.err")
             need(not re.search(r"panic|backtrace|RUST_BACKTRACE|Traceback", err + read(f"{r}.out"), re.I), f"{r}: panic or backtrace text")
             need(err.strip() == "", f"{r}: stderr is not empty after a report: {err.strip()!r}")
@@ -200,9 +201,9 @@ def main(case, d):
         if st == "encrypted":
             need(c["word"] == "ok", f"service says encrypted, doctor says '{c['raw']}'")
         elif st == "not-encrypted":
-            need(c["word"] == "warn" and any("LUKS" in x for x in c["fixes"]), f"service says not-encrypted, doctor says '{c['raw']}'")
+            need(c["word"] == "warn" and bool(c["notes"]) and any("LUKS" in x for x in c["fixes"]), f"service says not-encrypted, doctor says '{c['raw']}'")
         elif st == "unknown":
-            need(c["word"] == "not ok" and bool(c["fixes"]), f"service says unknown, doctor says '{c['raw']}'")
+            need(c["word"] == "warn" and bool(c["fixes"]), f"service says unknown, doctor says '{c['raw']}'")
             need(bool(reason) and reason in c["text"], f"the line does not name StateStorageReason {reason!r}: {c['text']!r}")
         else:
             need(False, f"the service's StateStorage is {st!r}")

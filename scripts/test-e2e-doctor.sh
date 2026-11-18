@@ -12,9 +12,13 @@ w() { printf '%s' "$2" > "$1"; }
 c() { local t; t=$(printf '  %-4s  %-11s  %s' "$1" "$2" "$3"); shift 3; for u in "$@"; do t+=$'\n'$(printf '%21s%s' '' "$u"); done; printf '%s' "$t"; }
 # rep FINGERPRINT BROWSERS SYSTEM: a whole report, with its headings and the problems line.
 rep() {
-    local t=$'Fingerprint (optional)\n'"$1"$'\nBrowsers\n'"$2"$'\nSystem\n'"$3" n
-    n=$(printf '%s\n' "$t" | grep -cE '^  (FAIL|warn|\?) |^ +Warning: ' || true)
-    [ "$n" = 0 ] || t+=$'\n\n'"$n problem$([ "$n" = 1 ] || echo s)."
+    local t=$'Fingerprint (optional)\n'"$1"$'\nBrowsers\n'"$2"$'\nSystem\n'"$3" p w
+    p=$(printf '%s\n' "$t" | grep -cE '^  (FAIL|\?) ' || true)
+    w=$(printf '%s\n' "$t" | grep -cE '^  warn |^ +Warning: ' || true)
+    local sum=""
+    [ "$p" = 0 ] || sum="$p problem$([ "$p" = 1 ] || echo s)"
+    [ "$w" = 0 ] || sum+="${sum:+, }$w warning$([ "$w" = 1 ] || echo s)"
+    [ -z "$sum" ] || t+=$'\n\n'"$sum."
     printf '%s' "$t"
 }
 L1=$(c FAIL reader 'fprintd is not installed' 'Fix: install fprintd and libpam-fprintd')
@@ -26,27 +30,26 @@ L4=$(c ok profiles 'none found, nothing to register')
 L4N=$(c '?' profiles 'cannot look for them: x' "Fix: fix or remove that file, then run 'custodio doctor' again")
 L5=$(c ok journal persistent)
 L5N=$(c FAIL journal 'lost at reboot (Storage=volatile at x)' 'Fix: set Storage=persistent at x, then sudo systemctl restart systemd-journald')
-L6=$(c FAIL 'key storage' '/var/lib/custodio: cannot tell if encrypted, x (not-block-filesystem)' 'Fix: x, or use disk encryption (LUKS)')
+L6=$(c warn 'key storage' '/var/lib/custodio: cannot tell if encrypted, x (not-block-filesystem)' 'Fix: x, or use disk encryption (LUKS)')
 L6N=$(c '?' 'key storage' 'cannot ask the Custodio service: x' 'Fix: systemctl status custodio.service')
-L6_OK=$(c ok 'key storage' '/var/lib/custodio is on an encrypted disk')
 SYS="$L5"$'\n'"$L6"
 # run DIR NAME OUT RC ERR
 run() { w "$1/$2.out" "$3"$'\n'; w "$1/$2.rc" "$4"; w "$1/$2.err" "$5"; w "$1/$2.pam.before" 'a'; w "$1/$2.pam.after" 'a'; }
 good() {
     local d=$1
     mkdir -p "$d"
-    run "$d" base "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
-    run "$d" on "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")" 1 ''
-    run "$d" off "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
+    run "$d" base "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 0 ''
+    run "$d" on "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")" 0 ''
+    run "$d" off "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 0 ''
     run "$d" broken "$(rep "$L3_BR"$'\n'"$L1"$'\n'"$L2" "$L4" "$SYS")" 1 ''
     run "$d" nofox "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4N" "$SYS")" 1 ''
     run "$d" jflip "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$L5N"$'\n'"$L6")" 1 ''
     run "$d" nosvc "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$L5"$'\n'"$L6N")" 1 ''
-    run "$d" never_run "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
+    run "$d" never_run "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 0 ''
     w "$d/runs" $'base\njflip\nnever_run\non\nbroken\noff\nnofox\nnosvc'
     w "$d/journal.dir" 1; w "$d/journal.storage" auto; w "$d/jflip.dir" 1; w "$d/jflip.storage" volatile
     w "$d/storage.state" unknown; w "$d/storage.reason" not-block-filesystem
-    w "$d/never.rc" 1; w "$d/never.pk.before" 0; w "$d/never.pk.after" 0; w "$d/never.sig.before" 0; w "$d/never.sig.after" 0; w "$d/never.groups" 'docuser users'
+    w "$d/never.rc" 0; w "$d/never.pk.before" 0; w "$d/never.pk.after" 0; w "$d/never.sig.before" 0; w "$d/never.sig.after" 0; w "$d/never.groups" 'docuser users'
     w "$d/override.present" 1; w "$d/on.include.exists" 1; w "$d/broken.include" /usr/lib/pam.d/polkit-1
     w "$d/home.before" 'h'; w "$d/home.after" 'h'; w "$d/etc.before" 'e'; w "$d/etc.after" 'e'
     w "$d/root.rc" 2; w "$d/root.out" ''; w "$d/root.err" 'custodio doctor: refused to run as root'; w "$d/root.etc.before" 'e'; w "$d/root.etc.after" 'e'
@@ -70,11 +73,11 @@ ctl wrong-section six-checks 'is under Browsers' base.out "$(rep "$FP" "$L4"$'\n
 ctl problems-count six-checks 'the problems line says' base.out "$(rep "$FP" "$L4" "$SYS")"$'\n\n9 problems.'
 ctl stderr six-checks 'stderr' base.err 'thread main panicked'
 ctl stderr-after-report six-checks 'stderr is not empty' base.err 'custodio doctor: did not pass: key storage'
-ctl stderr-on-zero-run exit-status 'exit 0' base.rc 0
+ctl exit0-with-unreachable exit-status 'exit 0' nosvc.rc 0
 ctl check2-notok no-reader 'check 2 is not ok' base.out "$(rep "$L1"$'\n'"$(c FAIL finger none 'Fix: x')"$'\n'"$L3_OFF" "$L4" "$SYS")"
-ctl check1-counted no-reader 'changed the exit status' on.rc 0
-ctl exit1-without-counting exit-status 'without a counting line' off.out "$(rep "$FP" "$L4" "$L5"$'\n'"$L6_OK")"
-ctl exit0-with-notok exit-status 'exit 0' base.rc 0
+ctl check1-counted no-reader 'changed the exit status' on.rc 1
+ctl exit1-without-counting exit-status 'without a counting line' base.rc 1
+ctl exit0-with-notok exit-status 'exit 0' jflip.rc 0
 ctl override-no-file override-active 'not on the system' override.present 0
 ctl override-text override-active "through Custodio's own file" on.out "$(rep "$L1"$'\n'"$L2"$'\n'"$(c ok polkit 'on for the whole system (/etc/pam.d/common-auth), sudo too')" "$L4" "$SYS")"
 ctl override-not-back override-active 'not back' off.out "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")"

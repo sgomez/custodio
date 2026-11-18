@@ -200,12 +200,15 @@ checks:
    persistent directory) is for a finding; the fix names the documented steps.
 6. **The storage of the state directory**, as the service reports it (`StateStorage`, `docs/api.md`):
    `encrypted`, `not-encrypted` (with the full-disk encryption advice) or `unknown` (with the reason
-   when one is known, see Design 4). If the service cannot be reached, that is reported with its fix,
-   and this check is "could not check".
+   when one is known, see Design 4). `not-encrypted` and `unknown` are a warning, not a failure:
+   Custodio works on such a disk, and the risk (whoever takes the machine can use the keys) is the
+   person's to accept. If the service cannot be reached, that is reported with its fix, and this check
+   is "could not check".
 
 - **Exit status.** The fingerprint is optional: checks 1 to 3 are printed with their fix but do not
   count, except a broken include of an override, which does. The exit status is 0 only when that and
-  checks 4 to 6 are satisfied; non-zero otherwise ("could not check" included). The steps of the
+  checks 4 to 6 are satisfied, a warning of check 6 counting as satisfied; non-zero otherwise ("could
+  not check" included). The steps of the
   acceptance end with `custodio doctor` reporting nothing to fix.
 - **Never a prompt.** No check opens a polkit dialog, a password prompt or a browser, and none needs
   root. A check that would need one reports "could not check" instead.
@@ -418,7 +421,8 @@ Automated, on the host (unit, integration, fuzz and package checks):
 6. `doctor` reports each of the six checks in each of its states on fixture systems and homes, names
    the fix for each unsatisfied one, reports a broken include of Custodio's override, says "could not
    check" (never "missing") when `fprintd` refuses to list fingers, exits 0 with checks 1 to 3
-   unsatisfied and the rest satisfied, exits non-zero for a broken include or any of checks 4 to 6,
+   unsatisfied and the rest satisfied, exits 0 when check 6 is only a warning, exits non-zero for a
+   broken include or any other unsatisfied check among 4 to 6,
    refuses to run as root, and writes nothing (the fixture tree is byte-identical afterwards and no
    polkit request is made).
 7. `custodio --help`, `custodio -h` and `custodio <command> --help` for every command print help on

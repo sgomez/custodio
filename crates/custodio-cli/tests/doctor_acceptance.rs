@@ -86,14 +86,25 @@ fn every_report(r: &Run) {
     }
     let problems = checks
         .iter()
-        .filter(|c| c.state != "ok" || !c.warnings.is_empty())
+        .filter(|c| matches!(c.state, "not ok" | "could not check"))
         .count();
+    let warnings: usize = checks
+        .iter()
+        .map(|c| usize::from(c.state == "warn") + c.warnings.len())
+        .sum();
+    let want: Vec<usize> = [problems, warnings]
+        .into_iter()
+        .filter(|n| *n > 0)
+        .collect();
     let last = r.text.lines().last().unwrap_or_default();
-    if problems == 0 {
-        assert!(!last.contains("problem"), "{}", r.text);
+    let numbers: Vec<usize> = if last.starts_with(' ') {
+        Vec::new()
     } else {
-        assert!(last.starts_with(&format!("{problems} ")), "{}", r.text);
-    }
+        last.split(|c: char| !c.is_ascii_digit())
+            .filter_map(|n| n.parse().ok())
+            .collect()
+    };
+    assert_eq!(numbers, want, "{}", r.text);
     assert_eq!(r.stderr, "", "{}", r.text);
 }
 
@@ -376,7 +387,7 @@ fn a_journal_that_cannot_be_judged_alone_is_could_not_check_and_exit_status_1() 
 }
 
 #[test]
-fn storage_not_encrypted_alone_is_a_warning_and_exit_status_1() {
+fn storage_not_encrypted_alone_is_a_warning_and_exit_status_0() {
     let r = run(
         |_| {},
         Fake {
@@ -391,11 +402,11 @@ fn storage_not_encrypted_alone_is_a_warning_and_exit_status_1() {
             (STORAGE, "warn", Fix::Names("LUKS")),
         ],
     );
-    assert_eq!(r.code, 1);
+    assert_eq!(r.code, 0);
 }
 
 #[test]
-fn storage_unknown_alone_is_not_ok_with_the_reason_and_exit_status_1() {
+fn storage_unknown_alone_is_a_warning_with_the_reason_and_exit_status_0() {
     let r = run(
         |_| {},
         Fake {
@@ -403,8 +414,8 @@ fn storage_unknown_alone_is_not_ok_with_the_reason_and_exit_status_1() {
             ..finger()
         },
     );
-    expect(&r, &[(STORAGE, "not ok", Fix::Names("/proc"))]);
-    assert_eq!(r.code, 1);
+    expect(&r, &[(STORAGE, "warn", Fix::Names("/proc"))]);
+    assert_eq!(r.code, 0);
 }
 
 #[test]

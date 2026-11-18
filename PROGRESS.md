@@ -426,11 +426,11 @@ with an empty context.
   `ok`/`FAIL`/`warn`/`?` (coloured on a terminal), short names (reader, finger, polkit, one line per browser profile,
   journal, key storage) and short texts; notes and `Fix:` lines indented under the check; the register fix once, under the
   last profile that needs it; a last line "N problems."; nothing on stderr when the report fails (exit status unchanged).
-  An unencrypted state directory is `warn`, not `FAIL`, and still makes the exit status 1 (SPEC Design 2 exit rule).
+  Key storage `not-encrypted` or `unknown` is `warn`, which does not change the exit status: SPEC Design 2 and
+  acceptance 6 changed by the person on 2026-11-18 (Custodio works on such a disk; the risk is the person's to accept).
 - Tests: every doctor integration test reads the output through one parser (`tests/fprint_fixture/report.rs`); tests
   assert states, sections, order, exit status, where the fix is, and literals only for what the person copies (commands,
   packages, paths). Unit tests check the render by structure, not wording. Docs and e2e judge updated to the format.
 - Known issues: one run of `doctor_firefox::a_snap_profile_with_the_copy_up_to_date_is_ok` failed once (copy read as
-  old) and did not reproduce in 130 runs, alone or six at once. Whether `warn` should leave the exit status at 0 is a
-  SPEC change for the person.
+  old) and did not reproduce in 130 runs, alone or six at once.
 - Next session should: nothing; the person closes F210.
