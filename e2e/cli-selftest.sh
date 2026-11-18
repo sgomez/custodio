@@ -13,28 +13,30 @@ expect_bad() { local n=$1 out; shift; out=$("$@"); [ -n "$out" ] || bad "$n: no 
 w() { printf '%s\n' "${@:2}" > "$tmp/$1"; }
 
 # the list
-w list 'a  rsa2048     encrypted-host  f97-rsa  2026-12-02T10:00:00Z' 'b  ecdsa-p256  encrypted-host  f97-ec   2026-12-17T10:00:00Z' '' 'Note: weaker.'
-expect_ok block cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-rsa 2026-12-02T10:00:00Z
-expect_ok block-ec cli_list_block_problems "$tmp/list" b ecdsa-p256 CN=f97-ec 2026-12-17T10:00:00Z
-expect_bad block-type-of-other-key cli_list_block_problems "$tmp/list" a ecdsa-p256 CN=f97-rsa 2026-12-02T10:00:00Z
-expect_bad block-subject cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-ec 2026-12-02T10:00:00Z
-expect_bad block-end cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-rsa 2026-12-03T10:00:00Z
-expect_bad block-no-id cli_list_block_problems "$tmp/list" c rsa2048 CN=f97-rsa 2026-12-02T10:00:00Z
+w list 'a  rsa2048     encrypted-host  f97-rsa  2026-12-02  expires soon' 'b  ecdsa-p256  encrypted-host  f97-ec   2026-12-17' '' 'Note: weaker.'
+expect_ok block cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-rsa 2026-12-02
+expect_ok block-ec cli_list_block_problems "$tmp/list" b ecdsa-p256 CN=f97-ec 2026-12-17
+expect_bad block-type-of-other-key cli_list_block_problems "$tmp/list" a ecdsa-p256 CN=f97-rsa 2026-12-02
+expect_bad block-subject cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-ec 2026-12-02
+expect_bad block-end cli_list_block_problems "$tmp/list" a rsa2048 CN=f97-rsa 2026-12-03
+expect_bad block-no-id cli_list_block_problems "$tmp/list" c rsa2048 CN=f97-rsa 2026-12-02
 # a hostile subject is escaped by the CLI, so it cannot be a row of its own: "forged" is no key, and the real row still reads right
-w hostile 'a  rsa2048  encrypted-host  CN=x\x0aforged  rsa2048  encrypted-host  y  2030-01-01  2026-12-02T10:00:00Z'
+w hostile 'a  rsa2048  encrypted-host  CN=x\x0aforged  rsa2048  encrypted-host  y  2030-01-01  2026-12-02'
 expect_bad block-forged-row-is-no-key cli_list_block_problems "$tmp/hostile" forged rsa2048 y 2030-01-01
 expect_ok only-hostile cli_list_only_problems "$tmp/hostile" a
 w nosubject 'a  rsa2048  encrypted-host'
-expect_bad block-lacks-subject cli_list_block_problems "$tmp/nosubject" a rsa2048 CN=f97-rsa 2026-12-02T10:00:00Z
+expect_bad block-lacks-subject cli_list_block_problems "$tmp/nosubject" a rsa2048 CN=f97-rsa 2026-12-02
 w noend 'a  rsa2048  encrypted-host  f97-rsa'
-expect_bad block-lacks-end cli_list_block_problems "$tmp/noend" a rsa2048 CN=f97-rsa 2026-12-02T10:00:00Z
+expect_bad block-lacks-end cli_list_block_problems "$tmp/noend" a rsa2048 CN=f97-rsa 2026-12-02
 expect_ok only cli_list_only_problems "$tmp/list" a b
 expect_bad only-foreign cli_list_only_problems "$tmp/list" a
 expect_bad only-missing cli_list_only_problems "$tmp/list" a b c
 w none 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>'
 expect_ok none cli_none_problems "$tmp/none" 0
-w nonewarn 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>' 'Warning: the state directory is not known to be encrypted.'
+w nonewarn 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>' '' 'warn  /var/lib/custodio may not be on an encrypted disk: whoever takes this machine could use your keys.' "      Run 'custodio doctor' for the fix."
 expect_ok none-with-warning cli_none_problems "$tmp/nonewarn" 0
+w nonestray 'You have no keys in the custodio service.' 'Import one with: custodio import <file.p12>' '' 'warn  x' 'ana  rsa2048  tpm  x  2030-01-01'
+expect_bad none-warning-and-a-row cli_none_problems "$tmp/nonestray" 0
 expect_bad none-exit cli_none_problems "$tmp/none" 1
 expect_bad none-with-keys cli_none_problems "$tmp/list" 0
 w nonenothing 'something else'

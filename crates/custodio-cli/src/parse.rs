@@ -25,8 +25,8 @@ pub fn usage() -> String {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Import(ImportArgs),
-    /// `list`, or `list <id>`.
-    List(Option<String>),
+    /// `list [-v] [[--] <id>]`.
+    List(crate::list::ListArgs),
     Delete(String),
     Register(register_native::RegisterArgs),
     Fingerprint(crate::fingerprint_cmd::Action),
@@ -73,11 +73,20 @@ fn parse_known(name: &str, args: Vec<String>) -> Result<Command, ArgError> {
     it.next();
     match name {
         "list" => {
+            let mut args = crate::list::ListArgs::default();
+            while let Some(arg) = it.next_if(|a| a == "-v" || a == "--verbose") {
+                if std::mem::replace(&mut args.verbose, true) {
+                    return Err(ArgError::Usage);
+                }
+                drop(arg);
+            }
             // As for `delete`: `--` ends the options, so an id that starts with `-` can be shown.
-            if it.peek().map(String::as_str) == Some("--") {
-                it.next();
+            if it.next_if(|a| a == "--").is_some() {
                 return match (it.next(), it.next()) {
-                    (Some(id), None) => Ok(Command::List(Some(id))),
+                    (Some(id), None) => Ok(Command::List(crate::list::ListArgs {
+                        id: Some(id),
+                        ..args
+                    })),
                     _ => Err(ArgError::Usage),
                 };
             }
@@ -85,7 +94,7 @@ fn parse_known(name: &str, args: Vec<String>) -> Result<Command, ArgError> {
                 return Err(ArgError::Usage);
             }
             match (it.next(), it.next()) {
-                (id, None) => Ok(Command::List(id)),
+                (id, None) => Ok(Command::List(crate::list::ListArgs { id, ..args })),
                 _ => Err(ArgError::Usage),
             }
         }

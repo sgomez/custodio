@@ -45,5 +45,7 @@ complete -c custodio -n '__fish_seen_subcommand_from register' -l module -r -F -
 complete -c custodio -n '__fish_seen_subcommand_from register' -l remove -d 'Remove the registration'
 complete -c custodio -n '__fish_seen_subcommand_from register' -l refresh-only -d 'Only refresh'
 
+complete -c custodio -n '__fish_seen_subcommand_from list' -s v -l verbose -d 'Show every key in full'
+
 complete -c custodio -n '__custodio_first_arg_of list delete' -a '(__custodio_key_ids)'
 complete -c custodio -n '__custodio_first_arg_of fingerprint' -a 'enable disable'

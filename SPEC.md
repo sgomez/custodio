@@ -229,8 +229,10 @@ Prior art worth copying: `flutter doctor` and `brew doctor` (one line per check,
   options; a test checks that every command and option in the help is in the man page and the other way
   round.
 - **`custodio list`** prints a table with one row per key: id, key type, storage kind, subject, and end
-  of validity. When any key has a weaker storage kind (`encrypted-tpm`, `encrypted-host`), one note at
-  the foot explains what that means and points to the README, instead of a note per key. The existing
+  of validity (the day, marked when the certificate has expired or expires within 30 days). On a
+  terminal a header row comes first; a script gets the rows only. When any key has a weaker storage
+  kind (`encrypted-tpm`, `encrypted-host`), one line at the foot explains what that means, instead of a
+  note per key. `custodio list -v` (`--verbose`) prints every key in full, as `custodio list <id>` does. The existing
   state-directory warning (M6 Design 7) stays. With no keys it says so and how to import one.
 - **`custodio list <id>`** prints that one key in full: everything in the row, plus at least the
   issuer, the serial number, the start of validity and a SHA-256 fingerprint of the certificate. An id

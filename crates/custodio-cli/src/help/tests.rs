@@ -35,6 +35,11 @@ fn every_command_has_its_own_help_with_every_part() {
         );
         for o in c.options {
             assert!(text.contains(o.flag) && text.contains(o.text), "{}", o.flag);
+            assert!(
+                o.short.is_none_or(|short| text.contains(short)),
+                "{}",
+                o.flag
+            );
         }
         assert!(global().contains(c.name) && global().contains(c.summary));
     }
@@ -79,14 +84,16 @@ fn every_example_starts_with_its_command_and_is_accepted_by_the_parser() {
 fn the_parser_accepts_every_option_of_the_table() {
     for c in COMMANDS {
         for o in c.options {
-            let mut line = vec![c.name.to_owned(), o.flag.to_owned()];
-            if o.value.is_some() {
-                line.push("x.p12".to_owned());
+            for form in std::iter::once(o.flag).chain(o.short) {
+                let mut line = vec![c.name.to_owned(), form.to_owned()];
+                if o.value.is_some() {
+                    line.push("x.p12".to_owned());
+                }
+                if c.name == "import" {
+                    line.push("a.p12".to_owned());
+                }
+                assert!(parse_command(line.clone()).is_ok(), "{line:?}");
             }
-            if c.name == "import" {
-                line.push("a.p12".to_owned());
-            }
-            assert!(parse_command(line.clone()).is_ok(), "{line:?}");
         }
     }
 }
@@ -96,9 +103,18 @@ fn the_usage_line_of_each_command_starts_with_it() {
     for c in COMMANDS {
         assert!(c.usage_line().starts_with(&format!("custodio {}", c.name)));
     }
-    assert_eq!(
-        command("list").map(CommandSpec::usage_line),
-        Some("custodio list [[--] <key id>]".to_owned())
-    );
-    assert!(command("delete").is_some_and(|c| c.usage_line() == "custodio delete [--] <key id>"));
+    for c in COMMANDS.iter().filter(|c| c.name != "register") {
+        assert_eq!(
+            c.usage_line(),
+            format!("custodio {} {}", c.name, c.usage).trim_end()
+        );
+        for a in c.args {
+            assert!(
+                c.usage.contains(a.0),
+                "{}: {} not in the usage",
+                c.name,
+                a.0
+            );
+        }
+    }
 }

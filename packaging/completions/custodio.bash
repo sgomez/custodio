@@ -47,7 +47,8 @@ _custodio() {
         case $cmd in
             import) _custodio_words "--id -h --help" "$cur" ;;
             register) _custodio_words "--module --remove --refresh-only -h --help" "$cur" ;;
-            list | delete | fingerprint | doctor) _custodio_words "-h --help" "$cur" ;;
+            list) _custodio_words "-v --verbose -h --help" "$cur" ;;
+            delete | fingerprint | doctor) _custodio_words "-h --help" "$cur" ;;
         esac
         return
     fi
@@ -58,9 +59,13 @@ _custodio() {
             [[ $prev == --id ]] || _custodio_files "$cur"
             ;;
         list | delete)
-            if ((COMP_CWORD == 2)) || { ((COMP_CWORD == 3)) && [[ $prev == -- ]]; }; then
-                _custodio_key_ids "$cur"
-            fi
+            # One key id, after the options (`-v` for list) and an optional `--`.
+            local i word
+            for ((i = 2; i < COMP_CWORD; i++)); do
+                word=${COMP_WORDS[i]}
+                [[ $word == -- || ($cmd == list && ($word == -v || $word == --verbose)) ]] || return
+            done
+            _custodio_key_ids "$cur"
             ;;
         register)
             [[ $prev == --module ]] && _custodio_files "$cur"

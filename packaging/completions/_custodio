@@ -29,7 +29,8 @@ _custodio() {
         case $cmd in
             import) compadd -- --id -h --help ;;
             register) compadd -- --module --remove --refresh-only -h --help ;;
-            list | delete | fingerprint | doctor) compadd -- -h --help ;;
+            list) compadd -- -v --verbose -h --help ;;
+            delete | fingerprint | doctor) compadd -- -h --help ;;
         esac
         return
     fi
@@ -40,9 +41,13 @@ _custodio() {
             [[ $prev == --id ]] || _files
             ;;
         list | delete)
-            if ((CURRENT == 3)) || { ((CURRENT == 4)) && [[ $prev == -- ]]; }; then
-                _custodio_key_ids
-            fi
+            # One key id, after the options (`-v` for list) and an optional `--`.
+            local i word
+            for ((i = 3; i < CURRENT; i++)); do
+                word=$words[i]
+                [[ $word == -- || ($cmd == list && ($word == -v || $word == --verbose)) ]] || return
+            done
+            _custodio_key_ids
             ;;
         register)
             [[ $prev == --module ]] && _files

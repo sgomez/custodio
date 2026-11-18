@@ -3,10 +3,10 @@
 use std::io;
 use std::path::PathBuf;
 
-use custodio_cli::storage::{README_ANCHOR, StateStorage, StorageReader, warning};
+use custodio_cli::storage::{StateStorage, StorageReader, warning};
 use custodio_cli::{
-    CliError, ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, PasswordPrompt,
-    ServiceFailure, finish, import_command, list_command,
+    CliError, ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, ListArgs, Look,
+    PasswordPrompt, ServiceFailure, finish, import_command, list_command,
 };
 use custodio_client::Kind;
 use secrecy::SecretString;
@@ -86,7 +86,9 @@ fn run_import(svc: &Svc) -> Run {
 
 fn run_list(svc: &Svc) -> Run {
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let result = list_command(svc, svc, &mut out, &mut err).map_err(CliError::List);
+    let look = Look::plain(std::time::SystemTime::now());
+    let result = list_command(svc, svc, &ListArgs::default(), look, &mut out, &mut err)
+        .map_err(CliError::List);
     finish_run(&result, &out, err)
 }
 
@@ -110,22 +112,21 @@ type Command = fn(&Svc) -> Run;
 const COMMANDS: [(&str, Command); 2] = [("import", run_import), ("list", run_list)];
 
 #[test]
-fn not_encrypted_and_unknown_warn_and_point_to_the_readme() {
+fn not_encrypted_and_unknown_warn_on_stderr_and_point_to_doctor() {
     for (name, run) in COMMANDS {
         for storage in [StateStorage::NotEncrypted, StateStorage::Unknown] {
             let r = run(&svc(Some(storage)));
-            assert!(r.err.contains("Warning"), "{name} {storage:?}: {}", r.err);
-            assert!(
-                r.err
-                    .contains("whoever takes this machine can use your keys"),
-                "{}",
+            let text = warning(storage).expect("a warning");
+            assert_eq!(
+                r.err.matches(&text).count(),
+                1,
+                "{name} {storage:?}: {}",
                 r.err
             );
-            assert!(r.err.contains("cannot copy a tpm key"), "{}", r.err);
+            assert!(text.contains("custodio doctor"), "{text}");
             assert!(
-                r.err.contains(&format!("README.md#{README_ANCHOR}")),
-                "{}",
-                r.err
+                !r.out.contains(&text),
+                "{name}: the warning is not on standard output"
             );
             assert_eq!(r.status, 0, "{name} {storage:?}");
         }
@@ -154,8 +155,9 @@ fn the_data_and_the_status_are_the_same_with_and_without_the_warning() {
             let warned = run(&svc(Some(storage)));
             assert_eq!(warned.out, plain.out, "{name}: standard output");
             assert_eq!(warned.status, plain.status, "{name}: status");
+            let text = warning(storage).expect("a warning");
             assert!(
-                !warned.out.contains("Warning"),
+                !warned.out.contains(&text),
                 "{name}: the warning is not data"
             );
         }
@@ -171,7 +173,8 @@ fn a_failed_command_prints_no_warning() {
             fail: true,
         });
         assert_eq!(r.status, 1, "{name}");
-        assert!(!r.err.contains("Warning"), "{name}: {}", r.err);
+        let text = warning(StateStorage::NotEncrypted).expect("a warning");
+        assert!(!r.err.contains(&text), "{name}: {}", r.err);
     }
 }
 
@@ -195,27 +198,6 @@ fn a_value_the_cli_does_not_know_is_never_encrypted() {
         assert!(warning(StateStorage::from_wire(odd)).is_some());
     }
     assert!(warning(StateStorage::Encrypted).is_none());
-}
-
-#[test]
-fn warning_anchor_exists_in_readme() {
-    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
-        .expect("README.md");
-    // GitHub's anchor of a heading: lower case, spaces to '-', punctuation dropped.
-    let anchors: Vec<String> = readme
-        .lines()
-        .filter(|l| l.starts_with('#'))
-        .map(|l| {
-            l.trim_start_matches('#')
-                .trim()
-                .to_lowercase()
-                .chars()
-                .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
-                .map(|c| if c == ' ' { '-' } else { c })
-                .collect()
-        })
-        .collect();
-    assert!(anchors.iter().any(|a| a == README_ANCHOR), "{anchors:?}");
 }
 
 #[test]

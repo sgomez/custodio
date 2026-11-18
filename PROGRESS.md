@@ -434,3 +434,13 @@ with an empty context.
 - Known issues: one run of `doctor_firefox::a_snap_profile_with_the_copy_up_to_date_is_ok` failed once (copy read as
   old) and did not reproduce in 130 runs, alone or six at once.
 - Next session should: nothing; the person closes F210.
+
+### 2026-11-18 — F210 — list output redesign (with the person)
+- Done: `custodio list` shows the day of expiry with `expired` / `expires soon` (30 days), a header row on a terminal
+  only (e2e scripts read every line as a key), the one-line weaker note without README; `list -v` / `--verbose` and
+  `list <id>` show each key in full (id as title, whole subject and issuer, not before / not after on their own lines,
+  SHA-256). The storage warning of import and list is two lines naming `custodio doctor` instead of README.md. Help
+  options carry their short form (`-v, --verbose`). SPEC Design 3 changed by the person for all of this.
+- Tests: list tests compare cells with `cert_text::fields()` of the same certificate, expiry at its boundaries with an
+  injected now, header and colour by structure; e2e list judges take the day; completions offer `-v`.
+- Next session should: nothing; the person closes F210.

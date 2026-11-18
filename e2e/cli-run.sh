@@ -53,7 +53,7 @@ mkkey() { # NAME CN DAYS: NAME.pem, NAME.p12 and the expectations NAME.type NAME
     openssl pkcs12 -export -inkey "$CLI/$1.key" -in "$CLI/$1.pem" -name "$1" -passout pass:e2e-password -out "$CLI/$1.p12"
     key_type "$CLI/$1.key" > "$CLI/$1.type"
     openssl x509 -in "$CLI/$1.pem" -noout -subject -nameopt RFC2253 | sed 's/^subject=//' > "$CLI/$1.subject"
-    date -u -d "$(openssl x509 -in "$CLI/$1.pem" -noout -enddate | sed 's/^notAfter=//')" +%Y-%m-%dT%H:%M:%SZ > "$CLI/$1.end"
+    date -u -d "$(openssl x509 -in "$CLI/$1.pem" -noout -enddate | sed 's/^notAfter=//')" +%Y-%m-%d > "$CLI/$1.end"
 }
 mkkey rsa f97-rsa 30
 mkkey ec f97-ec 45

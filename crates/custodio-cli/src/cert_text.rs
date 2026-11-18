@@ -37,6 +37,8 @@ pub struct CertFields {
     pub not_before: String,
     /// `YYYY-MM-DDThh:mm:ssZ`.
     pub not_after: String,
+    /// The end of validity as a time, to judge expiry; `None` when unreadable.
+    pub expires: Option<std::time::SystemTime>,
     /// SHA-256 of the DER, as OpenSSL prints it: uppercase hexadecimal pairs joined by `:`.
     pub fingerprint: String,
 }
@@ -51,6 +53,7 @@ impl CertFields {
             serial: u(),
             not_before: u(),
             not_after: u(),
+            expires: None,
             fingerprint: u(),
         }
     }
@@ -148,6 +151,9 @@ pub fn fields(der: &[u8]) -> CertFields {
         serial: hex(tbs.serial_number().as_bytes(), ""),
         not_before: escape(&tbs.validity().not_before.to_string()),
         not_after: escape(&tbs.validity().not_after.to_string()),
+        expires: Some(
+            std::time::UNIX_EPOCH + tbs.validity().not_after.to_date_time().unix_duration(),
+        ),
         fingerprint: hex(&Sha256::digest(der), ":"),
     }
 }

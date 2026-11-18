@@ -1203,9 +1203,9 @@ Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: 
 
 ```console
 $ custodio list
-ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03T16:05:48Z
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03
 
-Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it is a file that root can use while the machine runs. See README.md#storage-kinds.
+Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
 ```
 
 ```console

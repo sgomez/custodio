@@ -7,7 +7,8 @@ custodio \- import, list and delete keys of the custodio signing service
 .I file.p12
 .br
 .B custodio list
-[\fIkey id\fR]
+[\fB\-v\fR | \fB\-\-verbose\fR]
+[[\fB\-\-\fR] \fIkey id\fR]
 .br
 .B custodio delete
 .I key id
@@ -44,22 +45,27 @@ the
 the
 .I type
 (\fBrsa2048\fR or \fBecdsa\-p256\fR),
-the storage
-.I kind
+the
+.I storage
+kind
 (\fBtpm\fR, \fBencrypted\-tpm\fR or \fBencrypted\-host\fR),
 the
 .I subject
-of its certificate, and the end of its validity
-(the certificate's notAfter, in UTC).
+of its certificate, and the day its certificate expires
+(the certificate's notAfter, in UTC, as YYYY\-MM\-DD).
+After the day, \fBexpired\fR marks a certificate past its end of validity, and \fBexpires soon\fR
+one that ends within 30 days.
 The subject is shown as the common name of the certificate, or as the whole subject (RFC 4514) if it has no
 readable common name.
+On a terminal a header row (ID, TYPE, STORAGE, SUBJECT, EXPIRES) comes first;
+when standard output is not a terminal only the rows are printed, so a script reads one key per line.
 If any key is
 .B encrypted\-tpm
 or
 .BR encrypted\-host ,
-one note at the foot says that these kinds are weaker than
-.B tpm
-and points to the README.
+one line at the foot says that these kinds are files that root can use while the machine runs,
+which makes them weaker than
+.BR tpm .
 If a certificate cannot be read, the key is still listed, its subject and end of validity
 are shown as "certificate unreadable", and the exit status is 1.
 Control characters and other characters that could change the screen in any of these texts
@@ -70,8 +76,17 @@ If you have none, it prints a sentence saying so and how to import one, and exit
 .B list
 with a
 .I key id
-shows that key in full instead: the same fields, and also the whole subject, the issuer, the serial number,
-the start of the validity and the SHA\-256 fingerprint of the certificate.
+shows that key in full instead: the key id as a title, then its type, storage kind, the whole subject,
+the issuer, the serial number, the start and the end of its validity (with the same marks) and the SHA\-256
+fingerprint of the certificate.
+With
+.B \-v
+or
+.BR \-\-verbose ,
+it shows every key in full this way, one after the other.
+Write
+.B \-\-
+before a key id that starts with a dash.
 If you have no key with that id, it says so, names
 .BR "custodio list" ,
 and exits with status 1.
@@ -84,10 +99,10 @@ or
 .BR list ,
 the tool asks the service whether its state directory is on an encrypted device.
 If the service reports that it is not, or that it could not tell, a warning is printed on standard error:
-without full\-disk encryption, whoever takes the machine can use your keys, though they cannot copy a
-.B tpm
-key.
-It points to the section "Full\-disk encryption" of the README.
+whoever takes the machine can use your keys.
+It names
+.B custodio doctor
+for the fix.
 The warning blocks nothing and does not change what is printed on standard output or the exit status;
 nothing is printed when the state directory is encrypted or when the service is too old to say.
 .PP

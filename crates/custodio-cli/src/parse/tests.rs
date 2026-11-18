@@ -60,7 +60,10 @@ fn a_bad_line_of_a_known_command_names_the_command() {
 
 #[test]
 fn the_commands_parse_as_before() {
-    assert_eq!(args(&["list"]), Ok(Command::List(None)));
+    assert_eq!(
+        args(&["list"]),
+        Ok(Command::List(crate::list::ListArgs::default()))
+    );
     assert_eq!(
         args(&["delete", "--", "-k"]),
         Ok(Command::Delete("-k".into()))

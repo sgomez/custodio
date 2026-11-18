@@ -111,6 +111,7 @@ fn check_commands_and_options(setup: &Setup) -> Result<(), String> {
     for c in COMMANDS {
         let mut want = set_of(["--help", "-h"]);
         want.extend(c.options.iter().map(|o| o.flag.to_owned()));
+        want.extend(c.options.iter().filter_map(|o| o.short.map(str::to_owned)));
         let got = setup
             .offer(&["custodio", c.name, "-"])
             .map_err(|e| e.to_string())?;

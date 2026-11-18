@@ -3,6 +3,7 @@
 
 use std::sync::atomic::Ordering;
 
+use custodio_cli::cert_text::fields;
 use custodio_cli::list::{NO_KEYS, NONE_HINT, WEAKER_NOTE};
 use custodio_cli::{CliError, ListFailure, ServiceFailure};
 use custodio_client::{BUS_NAME, OBJECT_PATH};
@@ -10,11 +11,26 @@ use custodio_client::{BUS_NAME, OBJECT_PATH};
 mod list_rig;
 use list_rig::{
     P256_OTHER_P12, P256_P12, P256_RECERT, RSA2048_P12, Rig, TestResult, UID_A, UID_B, UID_C,
+    expected_row, rows,
 };
 
 /// The rig has no TPM, so every key it imports is `encrypted-host`: the rows are followed by the one note.
-fn with_note(rows: &str) -> String {
-    format!("{rows}\n{WEAKER_NOTE}\n")
+fn ends_with_note(stdout: &str) -> bool {
+    stdout.ends_with(&format!("\n\n{WEAKER_NOTE}\n"))
+}
+
+/// The ids and the (type, kind) of each row.
+fn ids_types_kinds(stdout: &str) -> Vec<(String, String, String)> {
+    rows(stdout)
+        .into_iter()
+        .map(|r| (r[0].clone(), r[1].clone(), r[2].clone()))
+        .collect()
+}
+
+fn owned(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+    rows.iter()
+        .map(|(a, b, c)| ((*a).to_owned(), (*b).to_owned(), (*c).to_owned()))
+        .collect()
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -41,12 +57,20 @@ fn several_keys_show_their_own_id_type_subject_and_end_of_validity() -> TestResu
     assert_eq!(listed.stderr, "");
     // Sorted by id; each key keeps its own subject and end of validity.
     assert_eq!(
-        listed.stdout,
-        with_note(
-            "ec   ecdsa-p256  encrypted-host  custodio test p256-recert  2126-10-08T20:52:07Z\n\
-             rsa  rsa2048     encrypted-host  custodio test rsa2048      2126-10-03T16:05:48Z\n"
-        )
+        ids_types_kinds(&listed.stdout),
+        owned(&[
+            ("ec", "ecdsa-p256", "encrypted-host"),
+            ("rsa", "rsa2048", "encrypted-host")
+        ])
     );
+    let recert = fields(P256_RECERT);
+    let ec = &rows(&listed.stdout)[0];
+    assert_eq!(ec[3], recert.subject_short, "the new certificate's subject");
+    assert!(
+        recert.not_after.starts_with(&ec[4]),
+        "the new certificate's end"
+    );
+    assert!(ends_with_note(&listed.stdout), "{}", listed.stdout);
     assert!(!listed.stdout.contains(NO_KEYS));
     // Certificate bytes are read, never shown.
     assert!(!listed.stdout.contains(&hex(P256_RECERT)));
@@ -128,24 +152,34 @@ fn two_uids_see_only_their_own_keys_even_with_the_same_id() -> TestResult {
 
     rig.as_uid(UID_A);
     let a = rig.list();
-    assert_eq!(
-        a.stdout,
-        with_note(
-            "only-a  rsa2048     encrypted-host  custodio test rsa2048  2126-10-03T16:05:48Z\n\
-             shared  ecdsa-p256  encrypted-host  custodio test p256     2126-10-03T16:05:48Z\n"
-        )
-    );
     rig.as_uid(UID_B);
     let b = rig.list();
     assert_eq!(
-        b.stdout,
-        with_note(
-            "shared  ecdsa-p256  encrypted-host  custodio test p256-other  2126-10-03T16:05:48Z\n"
-        )
+        ids_types_kinds(&a.stdout),
+        owned(&[
+            ("only-a", "rsa2048", "encrypted-host"),
+            ("shared", "ecdsa-p256", "encrypted-host")
+        ])
     );
-    assert!(!b.stdout.contains("only-a") && !b.stdout.contains("rsa2048"));
-    assert!(!b.stdout.contains("test p256  "));
-    assert!(!a.stdout.contains("p256-other"));
+    assert_eq!(
+        ids_types_kinds(&b.stdout),
+        owned(&[("shared", "ecdsa-p256", "encrypted-host")])
+    );
+    assert!(ends_with_note(&a.stdout) && ends_with_note(&b.stdout));
+    // The same id, two people: each row is the certificate of that person's own key.
+    assert_ne!(rows(&a.stdout)[1][3], rows(&b.stdout)[0][3]);
+    let asked_before_truth = rig.polkit_calls();
+    rig.as_uid(UID_A);
+    assert_eq!(
+        rows(&a.stdout),
+        rig.keys().iter().map(expected_row).collect::<Vec<_>>()
+    );
+    rig.as_uid(UID_B);
+    assert_eq!(
+        rows(&b.stdout),
+        rig.keys().iter().map(expected_row).collect::<Vec<_>>()
+    );
+    assert_eq!(rig.polkit_calls(), asked_before_truth);
     rig.as_uid(UID_C);
     let c = rig.list();
     assert_eq!(c.stdout, format!("{NO_KEYS}\n{NONE_HINT}\n"));

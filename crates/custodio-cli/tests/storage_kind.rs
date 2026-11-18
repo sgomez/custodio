@@ -145,7 +145,8 @@ fn entry(id: &str, kind: Kind) -> KeyEntry {
 
 fn list(keys: Vec<KeyEntry>) -> String {
     let mut out = Vec::new();
-    run_list(&Keys(keys), &mut out).expect("list");
+    let look = custodio_cli::Look::plain(std::time::SystemTime::now());
+    run_list(&Keys(keys), &mut out, look, false).expect("list");
     String::from_utf8_lossy(&out).into_owned()
 }
 

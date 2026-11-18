@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use help::{COMMANDS, CommandSpec, OptionSpec};
-pub use list::{KeyEntry, KeyLister, ListFailure, run_list, run_show};
+pub use list::{KeyEntry, KeyLister, ListArgs, ListFailure, Look, run_list, run_show};
 pub use parse::{ArgError, Command, ImportArgs, fuzz_cli_args, parse_args, parse_command, usage};
 pub use storage::{StateStorage, StorageReader};
 
@@ -169,33 +169,23 @@ pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write
     Ok(())
 }
 
-/// `custodio list`: [`run_list`], then the storage warning on `err` when the list was shown without error.
+/// `custodio list`: [`run_show`] for a key id, [`run_list`] otherwise, then the storage warning on `err`
+/// when the keys were shown without error.
 ///
 /// # Errors
 /// See [`ListFailure`]; the warning never adds one.
 pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
     lister: &L,
     storage: &S,
+    args: &ListArgs,
+    look: Look,
     out: &mut W,
     err: &mut E,
 ) -> Result<(), ListFailure> {
-    run_list(lister, out)?;
-    storage::warn(storage, err);
-    Ok(())
-}
-
-/// `custodio list <id>`: [`run_show`], then the storage warning like [`list_command`].
-///
-/// # Errors
-/// See [`ListFailure`]; the warning never adds one.
-pub fn show_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
-    lister: &L,
-    storage: &S,
-    id: &str,
-    out: &mut W,
-    err: &mut E,
-) -> Result<(), ListFailure> {
-    run_show(lister, id, out)?;
+    match &args.id {
+        Some(id) => run_show(lister, id, out, look)?,
+        None => run_list(lister, out, look, args.verbose)?,
+    }
     storage::warn(storage, err);
     Ok(())
 }

@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use custodio_cli::bus::DbusImporter;
 use custodio_cli::{
-    CliError, ImportArgs, PasswordPrompt, exit_status, finish, run_import, run_list, run_show,
+    CliError, ImportArgs, KeyEntry, KeyLister, Look, PasswordPrompt, exit_status, finish,
+    run_import, run_list, run_show,
 };
 use custodio_client::{BUS_NAME, OBJECT_PATH};
 use custodiod::audit::Caller;
@@ -275,7 +276,7 @@ impl Rig {
     /// What the person sees of `custodio list <id>`: `run_show` and the diagnostic and status `main` derives from it.
     pub fn show(&self, id: &str) -> Listed {
         let mut stdout = Vec::new();
-        let result = run_show(&self.client, id, &mut stdout).map_err(CliError::List);
+        let result = run_show(&self.client, id, &mut stdout, look()).map_err(CliError::List);
         let mut stderr = Vec::new();
         let status = finish(&result, &mut stderr, false);
         assert_eq!(status, exit_status(&result));
@@ -289,8 +290,17 @@ impl Rig {
 
     /// What the person sees: `run_list` and the diagnostic and status `main` derives from it.
     pub fn list(&self) -> Listed {
+        self.list_as(false)
+    }
+
+    /// `custodio list -v`.
+    pub fn list_verbose(&self) -> Listed {
+        self.list_as(true)
+    }
+
+    fn list_as(&self, verbose: bool) -> Listed {
         let mut stdout = Vec::new();
-        let result = run_list(&self.client, &mut stdout).map_err(CliError::List);
+        let result = run_list(&self.client, &mut stdout, look(), verbose).map_err(CliError::List);
         let mut stderr = Vec::new();
         let status = finish(&result, &mut stderr, false);
         assert_eq!(status, exit_status(&result));
@@ -301,6 +311,71 @@ impl Rig {
             status,
         }
     }
+
+    /// The keys the service holds for the current uid, sorted by id: the truth the output is judged against.
+    pub fn keys(&self) -> Vec<KeyEntry> {
+        let mut keys = self.client.list_keys().expect("ListKeys");
+        keys.sort_by(|a, b| a.id.cmp(&b.id));
+        keys
+    }
+}
+
+/// What a script sees: no header, no colour.
+fn look() -> Look {
+    Look::plain(std::time::SystemTime::now())
+}
+
+/// The cells of a row of the table: the text between runs of two or more spaces.
+#[must_use]
+pub fn cells(row: &str) -> Vec<String> {
+    let mut cells = Vec::new();
+    let mut rest = row;
+    while let Some(at) = rest.find("  ") {
+        cells.push(rest[..at].to_owned());
+        rest = rest[at..].trim_start_matches(' ');
+    }
+    if !rest.is_empty() {
+        cells.push(rest.to_owned());
+    }
+    cells
+}
+
+/// The rows of the table, each as its cells; the note under it is not a row.
+#[must_use]
+pub fn rows(stdout: &str) -> Vec<Vec<String>> {
+    stdout
+        .lines()
+        .take_while(|l| !l.is_empty())
+        .map(cells)
+        .collect()
+}
+
+/// The row a key must have: id, type, kind, short subject and the day of its end of validity.
+#[must_use]
+pub fn expected_row(k: &KeyEntry) -> Vec<String> {
+    use custodio_cli::cert_text::{escape, fields};
+    let f = fields(&k.certificate);
+    vec![
+        escape(&k.id),
+        escape(&k.key_type),
+        escape(k.kind.wire()),
+        f.subject_short,
+        f.not_after.split('T').next().unwrap_or_default().to_owned(),
+    ]
+}
+
+/// A key in full: its title line, then the value of each indented line, in order.
+#[must_use]
+pub fn view_values(block: &str) -> (String, Vec<String>) {
+    let mut lines = block.lines();
+    let title = lines.next().unwrap_or_default().to_owned();
+    let values = lines
+        .map(|l| {
+            assert!(l.starts_with("  ") && !l.starts_with("   "), "{l:?}");
+            cells(l.trim_start())[1..].join("  ")
+        })
+        .collect();
+    (title, values)
 }
 
 pub struct Typed;

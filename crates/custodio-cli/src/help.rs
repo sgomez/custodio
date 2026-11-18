@@ -10,6 +10,8 @@ use std::fmt::Write as _;
 pub struct OptionSpec {
     /// The long form, for example `--id`.
     pub flag: &'static str,
+    /// The short form, for example `-v`, if there is one.
+    pub short: Option<&'static str>,
     /// The name of its value, if it takes one.
     pub value: Option<&'static str>,
     pub text: &'static str,
@@ -49,6 +51,7 @@ After a successful import it says that Firefox and any other running program tha
         )],
         options: &[OptionSpec {
             flag: "--id",
+            short: None,
             value: Some("<key id>"),
             text: "name the stored key: 1 to 64 letters, digits, _ or - (default: the file name without its extension)",
         }],
@@ -57,15 +60,21 @@ After a successful import it says that Firefox and any other running program tha
     CommandSpec {
         name: "list",
         summary: "show your keys, or one key in full",
-        usage: "[[--] <key id>]",
-        description: "Shows one row for each of your keys, in order of key id: key id, key type, storage kind, subject and end of \
-validity. The subject is the common name of the certificate, or the whole subject if it has none. A note at the foot \
-explains the kinds encrypted-tpm and encrypted-host, which are weaker than tpm.\n\
-With a key id it shows that key in full: the whole subject, the issuer, the serial number, the start and end of \
-validity and the SHA-256 fingerprint. Write -- before a key id that starts with a dash. Text from a certificate is shown with its control characters escaped (\\x1b). \
-It asks for no authorization.",
+        usage: "[-v] [[--] <key id>]",
+        description: "Shows one row for each of your keys, in order of key id: key id, key type, storage kind, subject and the day \
+its certificate expires, marked expired, or expires soon within 30 days. The subject is the common name of the certificate, or the \
+whole subject if it has none. On a terminal a header row comes first. A note at the foot explains the kinds encrypted-tpm and \
+encrypted-host, which are weaker than tpm.\n\
+With a key id, or with -v for every key, it shows each key in full: the whole subject and issuer, the serial number, the start \
+and end of validity and the SHA-256 fingerprint. Write -- before a key id that starts with a dash. Text from a certificate is \
+shown with its control characters escaped (\\x1b). It asks for no authorization.",
         args: &[("<key id>", "show this key in full, not as a row")],
-        options: &[],
+        options: &[OptionSpec {
+            flag: "--verbose",
+            short: Some("-v"),
+            value: None,
+            text: "show every key in full",
+        }],
         example: "custodio list work",
     },
     CommandSpec {
@@ -91,16 +100,19 @@ It refuses to run as root, needs no authorization and does not use the service."
         options: &[
             OptionSpec {
                 flag: "--module",
+                short: None,
                 value: Some("<path>"),
                 text: "register this library instead of the installed one",
             },
             OptionSpec {
                 flag: "--remove",
+                short: None,
                 value: None,
                 text: "remove the entries of every Custodio module file",
             },
             OptionSpec {
                 flag: "--refresh-only",
+                short: None,
                 value: None,
                 text: "only update the copy of the module that the Firefox snap loads, if it differs",
             },
@@ -204,9 +216,12 @@ pub fn for_command(name: &str) -> Option<String> {
     }
     text.push_str("\nOptions:\n");
     for o in c.options {
-        let flag = o
+        let long = o
             .value
             .map_or_else(|| o.flag.to_owned(), |v| format!("{} {v}", o.flag));
+        let flag = o
+            .short
+            .map_or(long.clone(), |short| format!("{short}, {long}"));
         let _ = writeln!(text, "  {flag:<22}{}", o.text);
     }
     let _ = writeln!(text, "  {:<22}show this help", "-h, --help");

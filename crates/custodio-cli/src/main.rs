@@ -19,7 +19,6 @@ use custodio_cli::register_native::{
 use custodio_cli::tty::Terminal;
 use custodio_cli::{
     CliError, Command, finish, import_command, list_command, parse_command, run_delete,
-    show_command,
 };
 
 /// `register` edits files only: it needs no bus.
@@ -100,11 +99,22 @@ fn run() -> Result<(), CliError> {
         | Command::KeyIds => {
             unreachable!("handled before the bus is opened")
         }
-        Command::List(None) => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
-            .map_err(CliError::List),
-        Command::List(Some(id)) => {
-            show_command(&bus, &storage, &id, &mut io::stdout(), &mut io::stderr())
-                .map_err(CliError::List)
+        Command::List(args) => {
+            let terminal = rustix::termios::isatty(io::stdout());
+            let look = custodio_cli::Look {
+                terminal,
+                colour: colour_on(terminal),
+                now: std::time::SystemTime::now(),
+            };
+            list_command(
+                &bus,
+                &storage,
+                &args,
+                look,
+                &mut io::stdout(),
+                &mut io::stderr(),
+            )
+            .map_err(CliError::List)
         }
     }
 }

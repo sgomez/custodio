@@ -63,15 +63,17 @@ lose the key in Custodio, only the original `.p12` brings it back; Custodio cann
 
 ```console
 $ custodio list
-ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03T16:05:48Z
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03
 
-Note: a key of kind encrypted-tpm or encrypted-host is weaker than a tpm key: it is a file that root can use while the machine runs. See README.md#storage-kinds.
+Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
 ```
 
-Each row is a key: its id, key type, storage kind, the common name of its certificate and the end of its validity. Text
-from a certificate is shown with its control characters escaped, so it cannot change your screen. `custodio list ana`
-shows that one key in full: the whole subject, the issuer, the serial number, the start of the validity and the SHA-256
-fingerprint of the certificate.
+Each row is a key: its id, key type, storage kind, the common name of its certificate and the day its certificate expires,
+followed by `expired` once it has, or `expires soon` within 30 days. On a terminal a header row (ID, TYPE, STORAGE,
+SUBJECT, EXPIRES) comes first; a script gets the rows only. Text from a certificate is shown with its control characters
+escaped, so it cannot change your screen. `custodio list ana` shows that one key in full, and `custodio list -v` every
+key: the whole subject, the issuer, the serial number, the start and end of the validity and the SHA-256 fingerprint of
+the certificate.
 
 `custodio delete <key id>` asks you to type `yes` and then polkit. You only see and sign with your own keys. Over SSH or on
 a console without a graphical polkit agent, `import` and `delete` ask for the password on the terminal. Details in
@@ -154,7 +156,8 @@ When it starts, the service checks, with no external tool, whether the block dev
 dm-crypt, and journals the result (`CUSTODIO_STATE_STORAGE`, see [docs/audit.md](docs/audit.md)). `custodio import` and
 `custodio list` print a warning on standard error when the result is `not-encrypted`, or `unknown` (a chain the service
 cannot read, RAID or dm-integrity it does not classify, a network, overlay or in-memory filesystem, a filesystem's own
-encryption such as fscrypt or ZFS native encryption, btrfs). The warning blocks nothing. Encrypt the disk that holds
+encryption such as fscrypt or ZFS native encryption, btrfs). The warning blocks nothing and names `custodio doctor`,
+whose key storage check says what to do. Encrypt the disk that holds
 `/var/lib/custodio` with your distribution's installer or `cryptsetup`; `unknown` on an encrypted disk the service
 cannot classify is a reason to look, not proof of a problem. The rules are in `docs/findings/F180.md`.
 

@@ -2,10 +2,14 @@
 //! private `dbus-daemon` (the rig of `list.rs`): the weaker-storage note, the full view, the unknown id, and a
 //! certificate whose subject and issuer are hostile text.
 
+use custodio_cli::cert_text::fields;
 use custodio_cli::list::WEAKER_NOTE;
 
 mod list_rig;
-use list_rig::{P256_HOSTILE, P256_OTHER_P12, P256_P12, RSA2048_P12, Rig, TestResult};
+use list_rig::{
+    P256_HOSTILE, P256_OTHER_P12, P256_P12, RSA2048_P12, Rig, TestResult, expected_row, rows,
+    view_values,
+};
 
 /// True if no byte of `text` is below 0x20 but a line end, and none is DEL.
 fn only_layout_bytes(text: &str) -> bool {
@@ -26,14 +30,11 @@ fn the_weaker_storage_note_is_printed_exactly_once_at_the_foot() -> TestResult {
         listed.stdout
     );
     assert!(listed.stdout.ends_with(&format!("\n\n{WEAKER_NOTE}\n")));
-    // The note says where to read more, and the rows above it are the two keys.
-    assert!(WEAKER_NOTE.contains("README.md#storage-kinds"));
-    assert_eq!(
-        listed.stdout.lines().take_while(|l| !l.is_empty()).count(),
-        2
-    );
-    // `list <id>` is not the table: no note.
-    assert!(!rig.show("one").stdout.contains("Note:"));
+    // The rows above it are the two keys.
+    assert_eq!(rows(&listed.stdout).len(), 2);
+    // `list <id>` and `list -v` are not the table: no note.
+    assert!(!rig.show("one").stdout.contains(WEAKER_NOTE));
+    assert!(!rig.list_verbose().stdout.contains(WEAKER_NOTE));
     Ok(())
 }
 
@@ -47,18 +48,27 @@ fn a_key_in_full_has_the_values_openssl_prints_for_its_certificate() -> TestResu
     assert_eq!(shown.status, 0);
     assert_eq!(shown.stderr, "");
     // `openssl x509 -noout -serial -fingerprint -sha256 -subject -issuer -startdate -enddate` of the same certificate.
+    let (title, values) = view_values(&shown.stdout);
+    assert_eq!(title, "work");
+    let want = [
+        "ecdsa-p256",
+        "encrypted-host",
+        "CN=custodio test p256-other",
+        "CN=custodio test p256-other",
+        "1A0DA9C946F9D0B76E0B1925A0550BE816DF3D21",
+    ];
+    assert_eq!(values[..5], want, "{}", shown.stdout);
+    for (value, (day, time)) in values[5..7]
+        .iter()
+        .zip([("2026-10-27", "16:05:48"), ("2126-10-03", "16:05:48")])
+    {
+        assert!(value.contains(day) && value.contains(time), "{value}");
+    }
     assert_eq!(
-        shown.stdout,
-        "id          work\n\
-         type        ecdsa-p256\n\
-         kind        encrypted-host\n\
-         subject     CN=custodio test p256-other\n\
-         issuer      CN=custodio test p256-other\n\
-         serial      1A0DA9C946F9D0B76E0B1925A0550BE816DF3D21\n\
-         valid from  2026-10-27T16:05:48Z\n\
-         valid until 2126-10-03T16:05:48Z\n\
-         SHA-256     51:30:3C:19:FF:27:E3:D4:BC:4D:9A:80:56:59:DD:A6:AF:75:47:E3:C1:80:27:64:B8:58:3F:BD:0E:70:D6:42\n"
+        values[7],
+        "51:30:3C:19:FF:27:E3:D4:BC:4D:9A:80:56:59:DD:A6:AF:75:47:E3:C1:80:27:64:B8:58:3F:BD:0E:70:D6:42"
     );
+    assert_eq!(values.len(), 8, "{}", shown.stdout);
     assert!(!shown.stdout.contains("rsa2048"), "only the asked key");
     assert_eq!(rig.polkit_calls(), asked, "list never asks polkit");
     Ok(())
@@ -102,50 +112,53 @@ fn a_hostile_certificate_is_listed_escaped_with_one_row_per_key() -> TestResult 
     let listed = rig.list();
     assert_eq!(listed.status, 0, "{}", listed.stderr);
     assert!(only_layout_bytes(&listed.stdout) && only_layout_bytes(&listed.stderr));
-    let rows: Vec<&str> = listed
+    let lines: Vec<&str> = listed
         .stdout
         .lines()
         .take_while(|l| !l.is_empty())
         .collect();
-    assert_eq!(rows.len(), 2, "as many rows as keys: {}", listed.stdout);
-    assert!(
-        rows[0].starts_with("evil  ecdsa-p256  encrypted-host  a\\x1b[31mb\\x0ac\\x7fd  "),
-        "{}",
-        rows[0]
+    assert_eq!(lines.len(), 2, "as many rows as keys: {}", listed.stdout);
+    let table = rows(&listed.stdout);
+    let hostile = fields(P256_HOSTILE);
+    assert_eq!(
+        table[0][..4],
+        [
+            "evil",
+            "ecdsa-p256",
+            "encrypted-host",
+            hostile.subject_short.as_str()
+        ]
     );
-    assert!(rows[1].starts_with("good  rsa2048"), "{}", rows[1]);
-
+    assert_eq!(table[1][0], "good");
+    assert_eq!(
+        table,
+        rig.keys().iter().map(expected_row).collect::<Vec<_>>()
+    );
     let shown = rig.show("evil");
     assert_eq!(shown.status, 0, "{}", shown.stderr);
     assert!(only_layout_bytes(&shown.stdout) && only_layout_bytes(&shown.stderr));
-    assert_eq!(shown.stdout.lines().count(), 9, "{}", shown.stdout);
-    let line = |label: &str| {
-        shown
-            .stdout
-            .lines()
-            .find(|l| l.starts_with(label))
-            .map(str::to_owned)
-            .unwrap_or_default()
-    };
-    assert!(
-        line("subject").ends_with("O=x\\01y,CN=a\\1b[31mb\\0ac\\7fd"),
-        "{}",
-        line("subject")
-    );
-    assert!(
-        line("issuer").contains("CN=ca\\1b]0\\;pwn\\07\\0a\\7fCA"),
-        "{}",
-        line("issuer")
-    );
-    assert!(
-        line("issuer").contains("\\x85ssuer\\u{202e}"),
-        "{}",
-        line("issuer")
-    );
-    assert!(
-        line("serial").ends_with("  1095") || line("serial").ends_with(" 1095"),
-        "{}",
-        line("serial")
-    );
+    let (title, values) = view_values(&shown.stdout);
+    assert_eq!(title, "evil");
+    assert_eq!(values.len(), 8, "{}", shown.stdout);
+    // The whole subject and issuer, escaped as the parser escapes them, each on its own line.
+    assert_eq!(values[2], hostile.subject);
+    assert_eq!(values[3], hostile.issuer);
+    assert_eq!(values[4], hostile.serial);
+    Ok(())
+}
+
+#[test]
+fn verbose_shows_every_key_in_full_as_list_with_its_id_does() -> TestResult {
+    let rig = Rig::start(true)?;
+    rig.import("work", P256_OTHER_P12)?;
+    rig.import("other", RSA2048_P12)?;
+    let all = rig.list_verbose();
+    assert_eq!(all.status, 0, "{}", all.stderr);
+    let blocks: Vec<&str> = all.stdout.split("\n\n").collect();
+    assert_eq!(blocks.len(), 2, "{}", all.stdout);
+    for (block, id) in blocks.iter().zip(["other", "work"]) {
+        assert_eq!(view_values(block).0, id);
+        assert_eq!(format!("{}\n", block.trim_end()), rig.show(id).stdout);
+    }
     Ok(())
 }
