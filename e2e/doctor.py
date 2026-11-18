@@ -18,6 +18,7 @@ READER, FINGER, POLKIT, PROFILES, JOURNAL, STORAGE = "reader", "finger", "polkit
 FINGERPRINT_NAMES = [READER, FINGER, POLKIT]
 SYSTEM_NAMES = [JOURNAL, STORAGE]
 STATES = {"ok": "ok", "FAIL": "not ok", "warn": "warn", "?": "could not check"}
+UNDER = 8  # a note or fix starts under the name: margin 2, state word 4, two spaces
 SUMMARY = re.compile(r"^(?:(\d+) problems?)?(?:, )?(?:(\d+) warnings?)?\.$")
 
 
@@ -48,6 +49,7 @@ def parse(out):
             continue
         c = checks[-1]
         c["raw"] += "\n" + ln
+        c["misplaced"] = c.get("misplaced") or len(ln) - len(body) != UNDER
         if body.startswith("Fix: "):
             c["fixes"].append(body[5:])
         elif body.startswith("Warning: "):
@@ -123,6 +125,7 @@ def main(case, d):
             for c in checks:
                 need(c["word"] is not None, f"{r}: '{c['raw']}' does not start with ok, FAIL, warn or ?")
                 need(c["word"] is None or c["section"] == section_of(c["name"]), f"{r}: '{c['name']}' is under {c['section']}")
+                need(not c.get("misplaced"), f"{r}: a line under '{c['name']}' is not under its name")
             for c in browsers:
                 need(c["word"] == "ok" or any(b["fixes"] for b in browsers), f"{r}: the browser line '{c['name']}' is {c['word']} and the section has no fix line")
             for c in checks:
@@ -202,9 +205,10 @@ def main(case, d):
             need(c["word"] == "ok", f"service says encrypted, doctor says '{c['raw']}'")
         elif st == "not-encrypted":
             need(c["word"] == "warn" and bool(c["notes"]) and any("LUKS" in x for x in c["fixes"]), f"service says not-encrypted, doctor says '{c['raw']}'")
+            need(not reason or not any(reason in n for n in c["notes"]), f"service says not-encrypted, doctor names the unknown reason {reason!r}: '{c['raw']}'")
         elif st == "unknown":
             need(c["word"] == "warn" and bool(c["fixes"]), f"service says unknown, doctor says '{c['raw']}'")
-            need(bool(reason) and reason in c["text"], f"the line does not name StateStorageReason {reason!r}: {c['text']!r}")
+            need(bool(reason) and any(reason in n for n in c["notes"]), f"the note does not name StateStorageReason {reason!r}: {c['notes']!r}")
         else:
             need(False, f"the service's StateStorage is {st!r}")
         s = line(run("nosvc"), STORAGE)

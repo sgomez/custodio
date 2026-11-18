@@ -20,9 +20,8 @@ pub fn report(text: &str) -> Vec<Line> {
     let mut checks: Vec<Line> = Vec::new();
     let mut section = String::new();
     for raw in text.lines() {
-        if raw.is_empty()
-            || (raw.ends_with(" problem.") || raw.ends_with(" problems.")) && !raw.starts_with(' ')
-        {
+        // The summary at the foot ("2 problems, 1 warning.") is the only line that starts with a digit.
+        if raw.is_empty() || raw.starts_with(|c: char| c.is_ascii_digit()) {
             continue;
         }
         if !raw.starts_with(' ') {
@@ -53,6 +52,8 @@ pub fn report(text: &str) -> Vec<Line> {
             });
             continue;
         }
+        // Under the name: past the margin (2), the state word (4) and two spaces.
+        assert_eq!(indent, 8, "not under the name: {raw:?}");
         let last = checks
             .last_mut()
             .unwrap_or_else(|| panic!("indented line first: {raw:?}"));

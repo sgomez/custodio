@@ -212,6 +212,7 @@ fn the_report_prints_every_check_once_under_its_heading_with_its_lines_indented_
                 column,
                 "not aligned:\n{text}"
             );
+            let name_column = line.find(c.name).unwrap_or_default();
             at += 1;
             let under: Vec<&String> = c
                 .note
@@ -225,9 +226,10 @@ fn the_report_prints_every_check_once_under_its_heading_with_its_lines_indented_
                     "{part:?} not under {}:\n{text}",
                     c.name
                 );
-                assert!(
-                    lines[at].starts_with(&" ".repeat(column)),
-                    "{:?}",
+                assert_eq!(
+                    lines[at].len() - lines[at].trim_start().len(),
+                    name_column,
+                    "not under the name: {:?}",
                     lines[at]
                 );
                 at += 1;

@@ -18,7 +18,7 @@ use custodio_cli::register_native::{
 };
 use custodio_cli::tty::Terminal;
 use custodio_cli::{
-    CliError, Command, finish, import_command, list_command, parse_command, run_delete,
+    CliError, Command, delete_command, finish, import_command, list_command, parse_command,
 };
 
 /// `register` edits files only: it needs no bus.
@@ -33,6 +33,7 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
     };
     let euid = rustix::process::geteuid().as_raw();
     let var = |name: &str| std::env::var_os(name);
+    let on = colour_on(rustix::termios::isatty(io::stdout()));
     if args.refresh_only {
         return refresh_only_command(
             args,
@@ -42,11 +43,11 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
             Path::new(default_journal_socket()),
             &mut io::stdout(),
             &mut io::stderr(),
+            on,
         )
         .map_err(CliError::Register);
     }
-    register_command(args, &env, euid, var, &mut io::stdout(), &mut io::stderr())
-        .map_err(CliError::Register)
+    register_command(args, &env, euid, var, &mut io::stdout(), on).map_err(CliError::Register)
 }
 
 fn run() -> Result<(), CliError> {
@@ -55,8 +56,14 @@ fn run() -> Result<(), CliError> {
         return run_register(args);
     }
     if let Command::Fingerprint(action) = &command {
-        return custodio_cli::fingerprint_cmd::run(*action, &mut io::stdout(), &mut io::stderr())
-            .map_err(CliError::Fingerprint);
+        let on = colour_on(rustix::termios::isatty(io::stdout()));
+        return custodio_cli::fingerprint_cmd::run(
+            *action,
+            &mut io::stdout(),
+            &mut io::stderr(),
+            on,
+        )
+        .map_err(CliError::Fingerprint);
     }
     if matches!(command, Command::Doctor) {
         let on = colour_on(rustix::termios::isatty(io::stdout()));
@@ -91,8 +98,14 @@ fn run() -> Result<(), CliError> {
             colour_on(rustix::termios::isatty(io::stdout())),
         )
         .map_err(CliError::Import),
-        Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
-            .map_err(CliError::Delete),
+        Command::Delete(id) => delete_command(
+            &id,
+            &mut Terminal,
+            &with_agent(bus),
+            &mut io::stdout(),
+            colour_on(rustix::termios::isatty(io::stdout())),
+        )
+        .map_err(CliError::Delete),
         Command::Register(_)
         | Command::Help(_)
         | Command::Fingerprint(_)

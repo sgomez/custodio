@@ -13,11 +13,12 @@ tk() { python3 -I "$here/tpmkind.py" "$@"; }
 expect_ok() { local n=$1 out; shift; out=$("$@"); [ -z "$out" ] || bad "$n: problems on good evidence: $out"; }
 expect_bad() { local n=$1 out; shift; out=$("$@"); [ -n "$out" ] || bad "$n: no problem on bad evidence"; }
 
-NEXT=$'Next:\n  shred -u x.p12    the file still holds your private key\n  restart Firefox   and any other program that loaded Custodio, to see the key'
+NEXT=$'      Delete the original: shred -u x.p12
+      Restart Firefox, and any program using Custodio, to see the key.'
 # imp WORD KIND [NOTE]: the output of `custodio import --id k1` of an rsa2048 key, laid out as the CLI does
-imp() { { printf '%-4s  k1  rsa2048  %s\n' "$1" "$2"; [ -z "${3:-}" ] || printf '      %s\n' "$3"; printf '\n%s\n' "$NEXT"; } > "$tmp/imp"; }
+imp() { { printf '%-4s  k1  rsa2048  %s\n' "$1" "$2"; [ -z "${3:-}" ] || printf '      %s\n' "$3"; printf '%s\n' "$NEXT"; } > "$tmp/imp"; }
 imp ok tpm; expect_ok import tk import "$tmp/imp" k1 rsa2048
-printf 'Password for x: \r\nok    k1  rsa2048  tpm\r\n\r\nNext:\r\n' > "$tmp/imp-crlf"; expect_ok import-crlf tk import "$tmp/imp-crlf" k1 rsa2048
+printf 'Password for x: \r\nok    k1  rsa2048  tpm\r\n      Delete the original: shred -u x.p12\r\n' > "$tmp/imp-crlf"; expect_ok import-crlf tk import "$tmp/imp-crlf" k1 rsa2048
 imp warn encrypted-tpm 'root can use this key while the machine runs.'; expect_bad import-encrypted-tpm tk import "$tmp/imp" k1 rsa2048
 imp warn encrypted-host 'root, and anyone with a copy of /var/lib, can use this key.'; expect_bad import-encrypted-host tk import "$tmp/imp" k1 rsa2048
 imp ok tpm-x; expect_bad import-prefix tk import "$tmp/imp" k1 rsa2048

@@ -1,6 +1,8 @@
 //! The Firefox snap half of `custodio register` (F183): the copy, its refresh, removal and refresh-only mode.
 
 mod fixture;
+#[path = "lines/mod.rs"]
+mod lines;
 #[path = "register_snap/refresh_only.rs"]
 mod refresh_only;
 
@@ -8,10 +10,13 @@ use std::fs;
 use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 
+use custodio_cli::register_cli::refresh_line;
+use custodio_cli::register_discover::SNAP_NAME;
 use custodio_cli::register_native::{
-    Outcome, RegisterArgs, RegisterError, refresh_only_command, register_command,
+    Outcome, RegisterArgs, RegisterError, Report, refresh_only_command, register_command,
 };
-use custodio_cli::register_snap::{COPY_REL, TEMP_NAME};
+use custodio_cli::register_snap::{COPY_REL, Refresh, TEMP_NAME};
+use custodio_cli::report::State;
 use fixture::{Fixture, add_by_hand, entries, listed, modutil_list, write_entry};
 use refresh_only::Journal;
 
@@ -47,12 +52,17 @@ fn plant(path: &Path, bytes: &[u8]) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
 }
 
-fn text(r: &custodio_cli::register_native::Report) -> String {
-    r.lines
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
+/// The outcome of each line of a run.
+fn outcomes(r: &Report) -> Vec<&Outcome> {
+    r.lines.iter().map(|l| &l.outcome).collect()
+}
+
+/// The rows of `out` that ask to close a browser and run the command again, by their fix.
+fn held_rows(out: &str) -> Vec<lines::Row> {
+    lines::rows(out)
+        .into_iter()
+        .filter(|r| r.fixes().iter().any(|f| f.contains("'custodio register")))
+        .collect()
 }
 
 fn modules_of(profile: &Path) -> Vec<String> {
@@ -79,9 +89,18 @@ fn command(
 ) -> (Result<(), RegisterError>, String, String) {
     let (mut out, mut err) = (Vec::new(), Vec::new());
     let result = if a.refresh_only {
-        refresh_only_command(a, &s.f.env(), 1000, |_| None, journal, &mut out, &mut err)
+        refresh_only_command(
+            a,
+            &s.f.env(),
+            1000,
+            |_| None,
+            journal,
+            &mut out,
+            &mut err,
+            false,
+        )
     } else {
-        register_command(a, &s.f.env(), 1000, |_| None, &mut out, &mut err)
+        register_command(a, &s.f.env(), 1000, |_| None, &mut out, false)
     };
     (
         result,
@@ -111,12 +130,18 @@ fn a_snap_profile_gets_the_copy_and_one_entry() {
         "{}",
         modutil_list(&s.profile)
     );
-    let t = text(&report);
-    assert!(
-        t.contains("Firefox (snap)") && t.contains("s.default: registered"),
-        "{t}"
+    let snap: Vec<_> = report
+        .lines
+        .iter()
+        .map(|l| (l.browser, l.path.clone(), &l.outcome))
+        .collect();
+    assert_eq!(
+        snap,
+        [
+            (SNAP_NAME, s.copy.clone(), &Outcome::CopyPlaced),
+            (SNAP_NAME, s.profile.clone(), &Outcome::Registered)
+        ]
     );
-    assert!(t.contains("copy placed"), "{t}");
     // a second run leaves the home as it was
     let after = s.f.snapshot();
     s.f.run(&s.module, false);
@@ -170,14 +195,18 @@ fn the_copy_is_written_by_rename() {
     plant(&s.copy, b"old bytes");
     fs::create_dir(&tmp).unwrap();
     let before = s.f.snapshot();
-    let (result, _, err) = command(
+    let (result, out, _) = command(
         &s,
         &args(&s.module, false, false),
         Path::new("/nonexistent"),
     );
     assert!(result.is_err());
-    assert!(err.contains(tmp.to_str().unwrap()), "{err}");
-    assert!(err.contains("is a directory"), "{err}");
+    let failed: Vec<_> = lines::rows(&out)
+        .into_iter()
+        .filter(|r| r.state == State::NotOk)
+        .collect();
+    assert_eq!(failed.len(), 1, "{out}");
+    assert!(failed[0].text.contains(tmp.to_str().unwrap()), "{out}");
     assert!(tmp.is_dir());
     assert_eq!(s.f.snapshot(), before);
     fs::remove_dir(&tmp).unwrap();
@@ -238,9 +267,11 @@ fn a_snap_entry_at_the_installed_path_is_kept() {
     let report = s.f.run(&s.module, false);
     assert_eq!(modules_of(&s.profile), before, "entry kept line for line");
     assert!(
-        text(&report).contains("already registered"),
-        "{}",
-        text(&report)
+        outcomes(&report).iter().any(|o| matches!(
+            o,
+            Outcome::AlreadyRegistered(_) | Outcome::AlreadyRegisteredElsewhere(_)
+        )),
+        "{report:?}"
     );
     assert_eq!(
         fs::read(&s.copy).unwrap(),
@@ -267,7 +298,10 @@ fn a_stale_copy_is_replaced_in_place() {
     plant(&s.copy, b"stale");
     let report = s.f.run(&s.module, false);
     assert_eq!(fs::read(&s.copy).unwrap(), module_bytes(&s));
-    assert!(text(&report).contains("refreshed"), "{}", text(&report));
+    assert!(
+        outcomes(&report).contains(&&Outcome::CopyRefreshed),
+        "{report:?}"
+    );
     assert_eq!(modules_of(&s.profile), entry);
     // up to date: untouched (inode and mtime)
     let meta = fs::metadata(&s.copy).unwrap();
@@ -277,18 +311,21 @@ fn a_stale_copy_is_replaced_in_place() {
         (meta.ino(), meta.mtime_nsec()),
         (again.ino(), again.mtime_nsec())
     );
-    assert!(text(&report).contains("up to date"), "{}", text(&report));
-    assert!(!text(&report).contains("refreshed"));
+    assert!(
+        outcomes(&report).contains(&&Outcome::CopyUpToDate),
+        "{report:?}"
+    );
+    assert!(!outcomes(&report).contains(&&Outcome::CopyRefreshed));
     // a held snap profile does not stop the refresh
     plant(&s.copy, b"stale");
     hold(&s.profile);
-    let (_, _, err) = command(
+    let (_, out, _) = command(
         &s,
         &args(&s.module, false, false),
         Path::new("/nonexistent"),
     );
     assert_eq!(fs::read(&s.copy).unwrap(), module_bytes(&s));
-    assert!(err.contains("close the browser"), "{err}");
+    assert_eq!(held_rows(&out).len(), 1, "{out}");
 }
 
 #[test]
@@ -296,17 +333,15 @@ fn a_held_snap_profile_gets_no_new_copy() {
     let s = snap();
     hold(&s.profile);
     let before = s.f.snapshot();
-    let (result, out, err) = command(
+    let (result, out, _) = command(
         &s,
         &args(&s.module, false, false),
         Path::new("/nonexistent"),
     );
     assert!(result.is_err());
-    let shown = format!("{out}{err}");
-    assert!(
-        shown.contains("s.default") && shown.matches("close the browser").count() == 1,
-        "{shown}"
-    );
+    let held = held_rows(&out);
+    assert_eq!(held.len(), 1, "{out}");
+    assert!(held[0].text.starts_with("s.default: "), "{out}");
     assert_eq!(
         s.f.snapshot(),
         before,
@@ -325,7 +360,13 @@ fn a_refresh_never_creates_a_copy() {
     let sock = Journal::new(&s);
     let (result, out, _) = command(&s, &args(&s.module, false, true), &sock.path);
     assert!(result.is_ok());
-    assert!(out.contains("no copy"), "{out}");
+    assert_eq!(
+        out,
+        custodio_cli::report::render(
+            &[refresh_line(&Refresh::NoCopy, &s.copy, &s.f.home())],
+            false
+        )
+    );
     assert_eq!(s.f.snapshot(), before);
     assert!(sock.recv().contains("no copy"));
     assert_eq!(listed(&native.join("a.default"), &s.module), 1);
@@ -417,7 +458,10 @@ fn removal_deletes_the_copy_and_the_entry() {
             .collect::<Vec<_>>(),
         foreign
     );
-    assert!(text(&report).contains("copy removed"), "{}", text(&report));
+    assert!(
+        outcomes(&report).contains(&&Outcome::CopyRemoved),
+        "{report:?}"
+    );
     let after = s.f.snapshot();
     s.f.run(&s.module, true);
     assert_eq!(s.f.snapshot(), after, "a second removal changes nothing");
@@ -431,9 +475,13 @@ fn removal_deletes_the_copy_and_the_entry() {
     );
     let entry = modules_of(&s.profile);
     hold(&s.profile);
-    let (result, out, err) = command(&s, &args(&s.module, true, false), Path::new("/nonexistent"));
+    let (result, out, _) = command(&s, &args(&s.module, true, false), Path::new("/nonexistent"));
     assert!(result.is_err());
-    assert!(format!("{out}{err}").contains("close the browser"));
+    assert_eq!(held_rows(&out).len(), 1, "{out}");
+    assert!(
+        held_rows(&out)[0].fixes()[0].contains("custodio register --remove"),
+        "{out}"
+    );
     assert_eq!(fs::read(&s.copy).unwrap(), bytes);
     assert_eq!(
         fs::metadata(&s.copy).unwrap().ino(),

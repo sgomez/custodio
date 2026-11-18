@@ -3,6 +3,8 @@
 //! Nothing here reads a file, asks the bus or prints: the command gathers an [`Observed`] and
 //! applies the decision, so every state is tested without a file system.
 
+use crate::doctor_decide::{NO_READER, NO_READER_FIX, POLKIT, READER};
+use crate::report::{Line, State};
 use std::fmt;
 
 /// The path of the override, as every reader sees it.
@@ -232,13 +234,53 @@ impl DisableDecision {
     }
 }
 
-/// What `enable` says when there is no reader.
-pub const NO_READER_WARNING: &str = "warning: fprintd reports no fingerprint reader. Polkit will keep asking for the password until there is a reader and an enrolled finger.\n\
-Run 'custodio doctor' as the person who will use it to see what is missing.";
+/// What a successful `enable` or `disable` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Done {
+    /// Wrote the file; `lock_note`: the lock-screen note applies.
+    Enabled {
+        lock_note: bool,
+    },
+    AlreadyOn,
+    Disabled,
+    AlreadyOff,
+}
+
+const UNDO_ENABLE: &str = "Undo: sudo custodio fingerprint disable";
+
+/// The line `enable` or `disable` prints on success, under the name doctor uses for this check.
+#[must_use]
+pub fn done_line(done: Done) -> Line {
+    let line = |text: &str| Line::new(State::Ok, POLKIT, text);
+    match done {
+        Done::Enabled { lock_note } => {
+            let mut l = line("finger on for every polkit dialog")
+                .with("A wrong finger, or 10 s without a touch, falls back to the password.")
+                .with("sudo and the login are unchanged.");
+            if lock_note {
+                l = l.with(LOCK_NOTE);
+            }
+            l.with(UNDO_ENABLE)
+        }
+        Done::AlreadyOn => line("already on, nothing changed").with(UNDO_ENABLE),
+        Done::Disabled => line("off, polkit asks for the password only")
+            .with("Undo: sudo custodio fingerprint enable"),
+        Done::AlreadyOff => line("already off, nothing changed"),
+    }
+}
+
+/// What `enable` says on standard error when fprintd lists no reader: doctor's reader line, as a
+/// warning, since the file is written anyway.
+#[must_use]
+pub fn no_reader_line() -> Line {
+    Line::new(State::Warn, READER, NO_READER)
+        .with("Polkit asks for the password until there is a reader and an enrolled finger.")
+        .fix(NO_READER_FIX)
+}
 
 /// The lock-screen note of the threat model ("Not guaranteed").
-pub const LOCK_NOTE: &str = "note: on GNOME, enrolling a finger also lets it unlock the lock screen unless \
-org.gnome.login-screen enable-fingerprint-authentication is false. Custodio does not change that setting.";
+pub const LOCK_NOTE: &str = "On GNOME the finger may also unlock the lock screen \
+(org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.";
 
 /// Whether the lock-screen note applies: GNOME's login-screen schema is installed, nothing sets
 /// the key to false, and the family is not Fedora's (authselect locks the key off there). An

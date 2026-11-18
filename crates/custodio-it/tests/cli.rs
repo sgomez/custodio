@@ -17,6 +17,11 @@ use custodiod::audit::MemorySink;
 
 #[path = "../../custodio-cli/tests/import_view/mod.rs"]
 mod import_view;
+
+/// The home directory the import shortens paths with.
+fn home() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(std::path::PathBuf::from)
+}
 use custodiod::credentials::BusCredentials;
 use custodiod::dbus::Custodio;
 use custodiod::polkit::{AuthError, Authorizer};
@@ -154,12 +159,8 @@ fn success_tells_the_person_to_delete_the_original() -> TestResult {
         &mut out,
     )?;
     let text = String::from_utf8(out)?;
-    let delete = &next_steps(&file)[0];
-    assert_eq!(
-        import_view::parse(&text).next[0],
-        (delete.0.clone(), delete.1.to_owned()),
-        "{text}"
-    );
+    let steps = next_steps(&file, home().as_deref());
+    assert!(import_view::parse(&text).under.ends_with(&steps), "{text}");
     assert!(!text.contains("Zq9!secret-pass"), "{text}");
     // The tool must not delete it itself.
     assert!(file.exists());
@@ -333,10 +334,8 @@ fn imports_through_the_service_and_reports_wrong_password() -> TestResult {
 
     run_import(&a, &mut FixedPrompt(Some(PASSWORD)), &importer, &mut out)?;
     let text = String::from_utf8(out)?;
-    assert_eq!(
-        import_view::parse(&text).next[0].0,
-        next_steps(&a.file)[0].0
-    );
+    let steps = next_steps(&a.file, home().as_deref());
+    assert!(import_view::parse(&text).under.ends_with(&steps), "{text}");
     assert!(store.list(owner()?)?.contains(&"k".to_owned()));
     Ok(())
 }

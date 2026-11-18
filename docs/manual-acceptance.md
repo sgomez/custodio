@@ -1001,8 +1001,8 @@ as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The co
    custodio register
    ```
 
-   Expected: a line `registered` for the snap profile and a line `copy placed` for the module copy, as in the README. A line
-   that says the profile is held by a running browser means Firefox was not closed: close it and run again.
+   Expected: `ok` lines for the snap profile (`registered`) and for the module copy (`placed`), as in the README. A `FAIL`
+   line that says a browser has the profile open means Firefox was not closed: close it and run again.
 
 3. Make the test material in an empty directory: a test CA, a server certificate for `localhost`, and an RSA 2048 and a
    P-256 client certificate, each with a `.p12` (the same commands as section 1, with a server certificate added):
@@ -1109,7 +1109,7 @@ as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The co
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
 | 1 | `snap list firefox` | the Firefox snap, its revision written down | |
-| 2 | `custodio register` | the snap profile registered, the copy placed | |
+| 2 | `custodio register` | the snap profile registered, the module copy placed | |
 | 3 | `openssl pkey -text` on both client keys | RSA 2048 and `prime256v1` | |
 | 4 | `s_client` against the server | both certificates accepted, none refused | |
 | 5 | Firefox with the RSA 2048 key | the page loads, a polkit dialog for each signature | |
@@ -1147,14 +1147,14 @@ Fingerprint (optional)
   ok    reader          1 reader
   ok    finger          1 finger enrolled
   FAIL  polkit          off
-                        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   FAIL  Firefox         abcd1234.default-release: not registered
   FAIL  Firefox (snap)  efgh5678.default: the snap's copy of the module is missing
-                        Fix: custodio register, then restart the browsers
+        Fix: custodio register, then restart the browsers
 System
   ok    journal         persistent
-  ok    key storage     /var/lib/custodio is on an encrypted disk
+  ok    key storage     on an encrypted disk
 
 3 problems.
 ```
@@ -1163,10 +1163,11 @@ System
 
 ```console
 $ sudo custodio fingerprint enable
-Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
-A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
-To undo it: sudo custodio fingerprint disable
-note: on GNOME, enrolling a finger also lets it unlock the lock screen unless org.gnome.login-screen enable-fingerprint-authentication is false. Custodio does not change that setting.
+ok    polkit  finger on for every polkit dialog
+      A wrong finger, or 10 s without a touch, falls back to the password.
+      sudo and the login are unchanged.
+      On GNOME the finger may also unlock the lock screen (org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.
+      Undo: sudo custodio fingerprint disable
 ```
 
    Then run `pkexec true` in a terminal: the dialog must take your finger. Run `sudo true`: it must still ask for your password. Both
@@ -1178,23 +1179,22 @@ note: on GNOME, enrolling a finger also lets it unlock the lock screen unless or
 ```console
 $ custodio import --id ana ana.p12
 warn  ana  ecdsa-p256  encrypted-host
-      root, and anyone with a copy of /var/lib, can use this key.
-
-Next:
-  shred -u ana.p12  the file still holds your private key
-  restart Firefox   and any other program that loaded Custodio, to see the key
+      Root, and anyone with a copy of /var/lib, can use this key.
+      Delete the original: shred -u ana.p12
+      Restart Firefox, and any program using Custodio, to see the key.
 ```
 
-   On your machine the first line may differ (a TPM key says `ok` and `tpm`, with no line under it); write what you see.
+   On your machine the first line may differ (a TPM key says `ok` and `tpm`, with only the two steps under it); write what you see.
 
 5. Register the module, restart Firefox completely, and sign in with your finger at a real site that requires a client certificate
    (a person's):
 
 ```console
 $ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 6. List the keys and try the completion:
@@ -1222,21 +1222,22 @@ list
 
 ```console
 $ custodio delete ana
-Deleted key 'ana'.
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+ok    ana  deleted
+      Restart Firefox, and any program using Custodio, to see the change.
 ```
 
 ```console
 $ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 ```console
 $ sudo custodio fingerprint disable
-Removed /etc/pam.d/polkit-1. Polkit dialogs ask for the password only.
-To turn it on again: sudo custodio fingerprint enable
+ok    polkit  off, polkit asks for the password only
+      Undo: sudo custodio fingerprint enable
 ```
 
 ```console

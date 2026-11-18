@@ -13,10 +13,11 @@ E=$ROOT/e2e
 ids="tpm-kind-import-rsa tpm-kind-import-ec tpm-kind-api-list tpm-kind-cli-list tpm-kind-journal"
 
 # ---- evidence per mode
-NEXT=$'Next:\n  shred -u k.p12    the file still holds your private key\n  restart Firefox   and any other program that loaded Custodio, to see the key'
-ETPM_NOTE='root can use this key while the machine runs.'
+NEXT=$'      Delete the original: shred -u k.p12
+      Restart Firefox, and any program using Custodio, to see the key.'
+ETPM_NOTE='Root can use this key while the machine runs.'
 # imp ID TYPE WORD KIND [NOTE]: the output of `custodio import`, laid out as the CLI does
-imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '\n%s\n' "$NEXT"; }
+imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '%s\n' "$NEXT"; }
 # kimp ID TYPE KIND: the output for a key stored as KIND, with the word and note the CLI gives that kind
 kimp() { if [ "$3" = tpm ]; then imp "$1" "$2" ok tpm; else imp "$1" "$2" warn "$3" "$ETPM_NOTE"; fi; }
 # mkset DIR KIND: a complete set of the step's files, every key of KIND

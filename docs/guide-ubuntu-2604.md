@@ -26,14 +26,14 @@ Fingerprint (optional)
   ok    reader          1 reader
   ok    finger          1 finger enrolled
   FAIL  polkit          off
-                        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   FAIL  Firefox         abcd1234.default-release: not registered
   FAIL  Firefox (snap)  efgh5678.default: the snap's copy of the module is missing
-                        Fix: custodio register, then restart the browsers
+        Fix: custodio register, then restart the browsers
 System
   ok    journal         persistent
-  ok    key storage     /var/lib/custodio is on an encrypted disk
+  ok    key storage     on an encrypted disk
 
 3 problems.
 ```
@@ -46,13 +46,14 @@ The reader and the finger are your desktop's to set up: in GNOME Settings, Users
 
 ```console
 $ sudo custodio fingerprint enable
-Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
-A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
-To undo it: sudo custodio fingerprint disable
-note: on GNOME, enrolling a finger also lets it unlock the lock screen unless org.gnome.login-screen enable-fingerprint-authentication is false. Custodio does not change that setting.
+ok    polkit  finger on for every polkit dialog
+      A wrong finger, or 10 s without a touch, falls back to the password.
+      sudo and the login are unchanged.
+      On GNOME the finger may also unlock the lock screen (org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.
+      Undo: sudo custodio fingerprint disable
 ```
 
-The last line is about GNOME's lock screen, which this command does not change;
+The "On GNOME" line is about the lock screen, which this command does not change;
 [fingerprint.md](fingerprint.md#the-gnome-lock-screen-on-ubuntu) says how to turn the finger off there. What this changes and what
 it does not guarantee is in [fingerprint.md](fingerprint.md). Skip this step if you prefer the password.
 
@@ -64,11 +65,9 @@ choose Backup. Save it as `ana.p12` in the directory you are in and choose a pas
 ```console
 $ custodio import --id ana ana.p12
 warn  ana  ecdsa-p256  encrypted-host
-      root, and anyone with a copy of /var/lib, can use this key.
-
-Next:
-  shred -u ana.p12  the file still holds your private key
-  restart Firefox   and any other program that loaded Custodio, to see the key
+      Root, and anyone with a copy of /var/lib, can use this key.
+      Delete the original: shred -u ana.p12
+      Restart Firefox, and any program using Custodio, to see the key.
 ```
 
 Delete the original file as the message says. Close Firefox completely and open it again: a running Firefox sees the new key only after it restarts.
@@ -77,9 +76,10 @@ Delete the original file as the message says. Close Firefox completely and open 
 
 ```console
 $ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 Restart Firefox, and sign in to the site that asks for your certificate; the polkit dialog asks for your password (or your finger,
@@ -109,21 +109,22 @@ Delete the key (it asks you to confirm), undo the registration and the fingerpri
 
 ```console
 $ custodio delete ana
-Deleted key 'ana'.
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+ok    ana  deleted
+      Restart Firefox, and any program using Custodio, to see the change.
 ```
 
 ```console
 $ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 ```console
 $ sudo custodio fingerprint disable
-Removed /etc/pam.d/polkit-1. Polkit dialogs ask for the password only.
-To turn it on again: sudo custodio fingerprint enable
+ok    polkit  off, polkit asks for the password only
+      Undo: sudo custodio fingerprint enable
 ```
 
 ```console

@@ -1,6 +1,7 @@
 //! Acceptance 10 as one scenario, through the real binary on one fixture home (F183).
 
 mod fixture;
+mod lines;
 
 use std::fs;
 use std::io::Read;
@@ -154,16 +155,13 @@ fn acceptance_10_registration_on_one_home() {
     let browser = Browser::open(&s.xdg);
     let locked = s.run(&[]);
     assert_eq!(locked.status.code(), Some(1), "{}", shown(&locked));
-    let text = shown(&locked);
-    assert!(
-        text.contains("x.default") && text.contains("close the browser"),
-        "{text}"
-    );
-    assert_eq!(
-        text.matches("close the browser").count(),
-        1,
-        "said once: {text}"
-    );
+    let text = String::from_utf8_lossy(&locked.stdout);
+    let held: Vec<_> = lines::rows(&text)
+        .into_iter()
+        .filter(|r| !r.fixes().is_empty())
+        .collect();
+    assert_eq!(held.len(), 1, "said once: {text}");
+    assert!(held[0].text.starts_with("x.default: "), "{text}");
     assert_eq!(exactly_one_in_each(&[&s.legacy, &s.snap]), Ok(()));
     assert!(
         exactly_one_in_each(&[&s.xdg]).is_err(),
@@ -219,7 +217,16 @@ fn acceptance_10_removal_on_one_home() {
     let browser = Browser::open(&s.xdg);
     let removal = s.run(&["--remove"]);
     assert_eq!(removal.status.code(), Some(1), "{}", shown(&removal));
-    assert!(shown(&removal).contains("x.default"));
+    let held: Vec<_> = lines::rows(&String::from_utf8_lossy(&removal.stdout))
+        .into_iter()
+        .filter(|r| !r.fixes().is_empty())
+        .collect();
+    assert_eq!(held.len(), 1, "{}", shown(&removal));
+    assert!(
+        held[0].text.starts_with("x.default: "),
+        "{}",
+        shown(&removal)
+    );
     assert_eq!(exactly_one_in_each(&[&s.xdg]), Ok(()));
     assert!(exactly_one_in_each(&[&s.legacy]).is_err() && exactly_one_in_each(&[&s.snap]).is_err());
     browser.close();

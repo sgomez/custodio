@@ -58,11 +58,8 @@ fn confirming_asks_before_the_service_and_deletes_after_the_answer() -> TestResu
     let done = run.finish()?;
     assert_eq!(done.status.code(), Some(0), "{}", done.stderr);
     assert_eq!(
-        done.stdout,
-        format!(
-            "Deleted key 'old-key'.\n{}\n",
-            custodio_cli::delete::RESTART_NOTE
-        )
+        custodio_cli::colour::strip(&done.stdout),
+        custodio_cli::report::render(&[custodio_cli::delete::deleted_line("old-key")], false)
     );
     assert_eq!(done.stderr, "");
     assert_eq!(rig.polkit_asked(), [DELETE_ACTION_ID.to_owned()]);

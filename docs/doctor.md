@@ -34,7 +34,7 @@ Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 ```
 
 ## The checks
@@ -50,16 +50,16 @@ answers for it on the bus, or the bus cannot be asked, the state is `?` and the 
 $ custodio doctor
 Fingerprint (optional)
   FAIL  reader       none found
-                     Fix: plug it in or enable it in the firmware; libfprint must support it
+        Fix: plug it in or enable it in the firmware; libfprint must support it
   ?     finger       no reader to ask
-                     Fix: fix the reader first
+        Fix: fix the reader first
   FAIL  polkit       off
-                     Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 
 3 problems.
 ```
@@ -75,14 +75,14 @@ $ custodio doctor
 Fingerprint (optional)
   ok    reader       1 reader
   FAIL  finger       none enrolled
-                     Fix: Settings > Users > Fingerprint Login, or fprintd-enroll
+        Fix: Settings > Users > Fingerprint Login, or fprintd-enroll
   FAIL  polkit       off
-                     Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 
 2 problems.
 ```
@@ -103,12 +103,12 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off, and /etc/pam.d/polkit-1 is not Custodio's
-                     Fix: remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio fingerprint enable
+        Fix: remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 
 1 problem.
 ```
@@ -125,15 +125,15 @@ System
 $ custodio doctor
 Fingerprint (optional)
   FAIL  polkit       /etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing
-                     No polkit dialog works, not even with the password.
-                     Fix: reinstall polkit, or: sudo custodio fingerprint disable
+        No polkit dialog works, not even with the password.
+        Fix: reinstall polkit, or: sudo custodio fingerprint disable
   ok    reader       1 reader
   ok    finger       1 finger enrolled
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 
 1 problem.
 ```
@@ -164,8 +164,8 @@ Asks the service whether its state directory, `/var/lib/custodio`, where the key
 used on this machine). The risk is yours to accept, so it does not change the exit status. The fix is full-disk encryption (LUKS),
 which most installers offer; `cryptsetup` does it on an existing system.
 
-When the service cannot tell, the state is `warn` too, with the reason it gave in a few words, its code (see [api.md](api.md)) and
-a fix for that reason:
+When the service cannot tell, the state is `warn` too, with the reason it gave in a few words and its code (see [api.md](api.md))
+under it, and a fix for that reason:
 
 ```console fixture=plainstorage
 $ custodio doctor
@@ -173,13 +173,14 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off
-                     Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  warn  key storage  /var/lib/custodio: cannot tell if encrypted, the service gave no reason
-                     Fix: update the service, or use disk encryption (LUKS)
+  warn  key storage  cannot tell if encrypted
+        The service gave no reason.
+        Fix: update the service, or use disk encryption (LUKS)
 
 1 problem, 1 warning.
 ```
@@ -192,13 +193,14 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off
-                     Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  warn  key storage  /var/lib/custodio: cannot tell if encrypted, not on a single disk (tmpfs, overlay, btrfs or network) (not-block-filesystem)
-                     Fix: move it to ext4, xfs or similar, or use disk encryption (LUKS)
+  warn  key storage  cannot tell if encrypted
+        Not on a single disk (tmpfs, overlay, btrfs or network) (not-block-filesystem).
+        Fix: move it to ext4, xfs or similar, or use disk encryption (LUKS)
 
 1 problem, 1 warning.
 ```

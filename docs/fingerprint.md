@@ -11,9 +11,10 @@ Then:
 
 ```console
 $ sudo custodio fingerprint enable
-Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
-A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
-To undo it: sudo custodio fingerprint disable
+ok    polkit  finger on for every polkit dialog
+      A wrong finger, or 10 s without a touch, falls back to the password.
+      sudo and the login are unchanged.
+      Undo: sudo custodio fingerprint disable
 ```
 
 ## What it changes
@@ -37,7 +38,7 @@ to its own actions: PAM has one service for polkit. It does not touch `sudo`, wh
 and lock screens, which have their own settings ([below](#the-gnome-lock-screen-on-ubuntu)). A wrong finger, or ten seconds
 without a touch, falls back to the password prompt of the same dialog. Running `enable` again changes nothing.
 
-On GNOME, `enable` adds a `note:` line about the lock screen; with no reader it still writes the file and warns that polkit keeps
+On GNOME, `enable` adds a line about the lock screen; with no reader it still writes the file and warns, with `doctor`'s reader line, that polkit keeps
 asking for the password until there is a reader and an enrolled finger.
 
 Run `sudo custodio fingerprint disable` before removing the package.
@@ -46,8 +47,8 @@ Run `sudo custodio fingerprint disable` before removing the package.
 
 ```console
 $ sudo custodio fingerprint disable
-Removed /etc/pam.d/polkit-1. Polkit dialogs ask for the password only.
-To turn it on again: sudo custodio fingerprint enable
+ok    polkit  off, polkit asks for the password only
+      Undo: sudo custodio fingerprint enable
 ```
 
 It removes the file only if it is Custodio's. After it the system is as it was before `enable`.

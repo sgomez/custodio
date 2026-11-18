@@ -60,7 +60,9 @@ def key_lines(text):
             if not nxt.startswith("      ") or not nxt.strip():
                 break
             notes.append(nxt.strip())
-        found.append({"word": m[1], "id": m[2], "type": m[3], "kind": m[4], "notes": notes})
+        # The next steps close the lines under the key, from the one that says "shred -u": they are not notes.
+        steps = next((j for j, n in enumerate(notes) if "shred -u " in n), len(notes))
+        found.append({"word": m[1], "id": m[2], "type": m[3], "kind": m[4], "notes": notes[:steps], "steps": notes[steps:]})
     return found
 
 

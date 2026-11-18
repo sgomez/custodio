@@ -8,19 +8,21 @@ use std::io::{self, Write};
 
 use crate::cert_text::escape;
 use crate::failure::ServiceFailure;
+use crate::report::{self, Line, State};
 
 /// The answers that confirm, exactly as typed (the line ending removed). Everything else, an
 /// empty line and the end of input included, declines.
 pub const ACCEPTED: [&str; 2] = ["y", "yes"];
 
-/// What `delete` prints once the service has deleted the key.
+/// What `delete` prints once the service has deleted the key: the key, and [`RESTART_NOTE`] under it.
 #[must_use]
-pub fn deleted_line(id: &str) -> String {
-    format!("Deleted key '{}'.", escape(id))
+pub fn deleted_line(id: &str) -> Line {
+    Line::new(State::Ok, escape(id), "deleted").with(RESTART_NOTE)
 }
 
-/// Said after a key was imported or deleted: a running program keeps the keys it listed when it loaded the module.
-pub const RESTART_NOTE: &str = "Firefox and any other running program that loaded the Custodio module see this change only after they restart.";
+/// Said after a key was deleted: a running program keeps the keys it listed when it loaded the module.
+pub const RESTART_NOTE: &str =
+    "Restart Firefox, and any program using Custodio, to see the change.";
 
 /// The question: names the key and says that it cannot come back.
 #[must_use]
@@ -92,6 +94,20 @@ pub fn run_delete<C: Confirmation, D: KeyDeleter, W: Write>(
     deleter: &D,
     out: &mut W,
 ) -> Result<(), DeleteFailure> {
+    delete_command(id, confirmation, deleter, out, false)
+}
+
+/// `custodio delete`: [`run_delete`], its line coloured when `colour`.
+///
+/// # Errors
+/// See [`DeleteFailure`].
+pub fn delete_command<C: Confirmation, D: KeyDeleter, W: Write>(
+    id: &str,
+    confirmation: &mut C,
+    deleter: &D,
+    out: &mut W,
+    colour: bool,
+) -> Result<(), DeleteFailure> {
     let answer = confirmation
         .answer(&question(id))
         .map_err(|_| DeleteFailure::NoTerminal)?;
@@ -99,8 +115,8 @@ pub fn run_delete<C: Confirmation, D: KeyDeleter, W: Write>(
         return Err(DeleteFailure::Declined);
     }
     deleter.delete_key(id).map_err(DeleteFailure::Service)?;
-    writeln!(out, "{}", deleted_line(id)).map_err(DeleteFailure::Output)?;
-    writeln!(out, "{RESTART_NOTE}").map_err(DeleteFailure::Output)
+    out.write_all(report::render(&[deleted_line(id)], colour).as_bytes())
+        .map_err(DeleteFailure::Output)
 }
 
 #[cfg(test)]

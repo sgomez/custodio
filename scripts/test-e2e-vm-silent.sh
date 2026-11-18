@@ -17,7 +17,7 @@ source "$LIB"
 
 # ---- the judgements
 # the key line of `custodio import` for an encrypted-tpm key, and its note
-ETPM_TEXT="warn  $ID  rsa2048  encrypted-tpm\n      root can use this key while the machine runs."
+ETPM_TEXT="warn  $ID  rsa2048  encrypted-tpm\n      Root can use this key while the machine runs.\n      Delete the original: shred -u x.p12\n      Restart Firefox, and any program using Custodio, to see the key."
 jline() { # CAUSE: one import entry of the key
     printf '{"_SYSTEMD_UNIT":"custodio.service","CUSTODIO_OPERATION":"import","CUSTODIO_KEY_ID":"%s","CUSTODIO_OUTCOME":"storage_failure","CUSTODIO_CAUSE":"%s"}\n' "$ID" "$1"
 }

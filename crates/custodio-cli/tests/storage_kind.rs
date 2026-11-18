@@ -11,7 +11,7 @@ use custodio_client::Kind;
 use secrecy::SecretString;
 
 mod import_view;
-use import_view::{Imported, parse};
+use import_view::{Imported, parse, shred_target};
 
 const KEY_TYPES: [&str; 2] = ["rsa2048", "ecdsa-p256"];
 const CERT: &[u8] = include_bytes!("../../custodio-it/tests/fixtures/cert-p256-other.der");
@@ -58,12 +58,17 @@ fn import(result: Result<(String, Kind), ServiceFailure>) -> (Result<(), ImportF
     (r, out)
 }
 
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
 /// The output of a successful import of `key_type` stored as `kind`, after the checks that hold for
-/// every kind: the key's cells, then the next steps of the product.
+/// every kind: the key's cells, and the product's next steps last under it. Returns the line with
+/// those steps taken off, so `under` holds only what the kind adds.
 fn imported(key_type: &str, kind: &Kind) -> Imported {
     let (r, out, file) = import_file("k.p12", Ok((key_type.into(), kind.clone())));
     assert!(r.is_ok());
-    let view = parse(&out);
+    let mut view = parse(&out);
     assert_eq!(
         view.cells,
         [
@@ -73,20 +78,23 @@ fn imported(key_type: &str, kind: &Kind) -> Imported {
         ],
         "{out}"
     );
-    let expected: Vec<(String, String)> = next_steps(&file)
-        .into_iter()
-        .map(|(c, w)| (c, w.to_owned()))
-        .collect();
-    assert_eq!(view.next, expected, "{out}");
+    let steps = next_steps(&file, home().as_deref());
+    let kept = view
+        .under
+        .len()
+        .checked_sub(steps.len())
+        .expect("the steps");
+    assert_eq!(view.under[kept..], steps, "{out}");
+    view.under.truncate(kept);
     view
 }
 
 #[test]
-fn a_tpm_key_is_ok_with_nothing_under_it() {
+fn a_tpm_key_is_ok_with_nothing_under_it_but_the_steps() {
     for t in KEY_TYPES {
         let view = imported(t, &Kind::Tpm);
         assert_eq!(view.word, "ok");
-        assert!(view.notes.is_empty(), "{view:?}");
+        assert!(view.under.is_empty(), "{view:?}");
     }
 }
 
@@ -102,8 +110,8 @@ fn any_other_kind_is_a_warning_with_one_note_of_its_own() {
         for kind in &kinds {
             let view = imported(t, kind);
             assert_eq!(view.word, "warn", "{kind:?}");
-            assert_eq!(view.notes.len(), 1, "{kind:?}");
-            notes.push(view.notes[0].clone());
+            assert_eq!(view.under.len(), 1, "{kind:?}");
+            notes.push(view.under[0].clone());
         }
     }
     notes.sort();
@@ -126,22 +134,19 @@ fn the_delete_step_is_a_command_the_shell_reads_back_as_the_file() {
     for name in ["k.p12", "my cert.p12", "it's.p12", "~k.p12"] {
         let (r, out, file) = import_file(name, Ok(("rsa2048".into(), Kind::Tpm)));
         assert!(r.is_ok());
-        let command = &parse(&out).next[0].0;
-        let echoed = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "printf %s {}",
-                command.trim_start_matches("shred -u ")
-            ))
-            .output()
-            .expect("sh");
-        assert!(command.starts_with("shred -u "), "{command}");
-        assert_eq!(
-            String::from_utf8_lossy(&echoed.stdout),
-            file.display().to_string(),
-            "{command}"
-        );
+        let target = shred_target(&parse(&out)).unwrap_or_else(|| panic!("no shred: {out}"));
+        assert_eq!(read_back(&target), file.display().to_string(), "{target}");
     }
+}
+
+/// What `sh` makes of `word`, with `HOME` as this process has it.
+fn read_back(word: &str) -> String {
+    let echoed = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("printf %s {word}"))
+        .output()
+        .expect("sh");
+    String::from_utf8_lossy(&echoed.stdout).into_owned()
 }
 
 #[test]

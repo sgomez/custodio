@@ -50,7 +50,8 @@ upgrade, `custodio register` brings the copy of the module the snap runs up to d
 
 ```console
 $ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```

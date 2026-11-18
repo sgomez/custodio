@@ -8,7 +8,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::fixture::{self, Fixture, entries, listed};
+use custodio_cli::register_discover::SNAP_NAME;
 use custodio_cli::register_native::Outcome;
+use custodio_cli::report::State;
 
 fn fixture_file() -> &'static str {
     custodio_cli::register_native::MODULE_FILE
@@ -178,19 +180,16 @@ fn command_result(f: &Fixture, m: &Path) -> (Result<(), String>, String) {
         remove: false,
         refresh_only: false,
     };
-    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let mut out = Vec::new();
     let r = custodio_cli::register_native::register_command(
         &args,
         &f.env(),
         1000,
         |_| None,
         &mut out,
-        &mut err,
+        false,
     )
     .map_err(|e| e.to_string());
-    assert!(err.is_empty() || r.is_err());
-    // What the person sees: standard output, then standard error.
-    out.extend(err);
     (r, String::from_utf8(out).unwrap())
 }
 
@@ -233,17 +232,24 @@ fn a_held_profile_is_skipped_named_and_fails_the_exit() {
     let (result, out) = command_result(&f, &m);
     let err = result.unwrap_err();
     assert!(err.contains("2 profile"), "{err}");
-    assert_eq!(
-        out.lines()
-            .filter(|l| l.contains("close the browser"))
-            .count(),
-        2,
+    let rows = crate::lines::rows(&out);
+    let held: Vec<_> = rows.iter().filter(|r| !r.fixes().is_empty()).collect();
+    assert_eq!(held.len(), 2, "{out}");
+    for (row, profile) in held.iter().zip(["held.default", "locked.default"]) {
+        assert_eq!(
+            (row.state, row.name.as_str()),
+            (State::NotOk, "Firefox"),
+            "{out}"
+        );
+        assert!(row.text.starts_with(&format!("{profile}: ")), "{out}");
+        assert!(row.fixes()[0].contains("'custodio register'"), "{out}");
+    }
+    let (_, registered) = Outcome::Registered.state_text();
+    assert!(
+        rows.iter()
+            .any(|r| r.state == State::Ok && r.text == format!("a.default: {registered}")),
         "{out}"
     );
-    assert!(
-        out.contains("held.default") && out.contains("locked.default") && out.contains("Firefox")
-    );
-    assert!(out.contains("a.default: registered"));
     assert_eq!(
         (
             fs::read(live.join("pkcs11.txt")).unwrap(),
@@ -268,7 +274,7 @@ fn skip_reasons_decide_the_exit_code() {
     let f = Fixture::new();
     let m = f.module("a");
     let native = f.root(".mozilla/firefox", &["a.default"]).join("a.default");
-    let snap = f.root("snap/firefox/common/.mozilla/firefox", &["s.default"]);
+    f.root("snap/firefox/common/.mozilla/firefox", &["s.default"]);
     let stub = f.stub(
         "proxy",
         &format!("{RECORD}\n[ \"$3\" = -list ] && echo '  2. p11-kit-proxy'\nexit 0"),
@@ -289,16 +295,19 @@ fn skip_reasons_decide_the_exit_code() {
     );
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let stdout = String::from_utf8_lossy(&out.stdout);
+    let rows = crate::lines::rows(&stdout);
+    let (_, p11_kit) = Outcome::ThroughP11Kit.state_text();
+    let (_, registered) = Outcome::Registered.state_text();
     assert!(
-        stdout.contains(&format!(
-            "Firefox {}: skipped, the system NSS loads the p11-kit proxy (modutil lists p11-kit-proxy in a new \
-             database), which already shows Custodio",
-            native.display()
-        )),
+        rows.iter().any(|r| r.state == State::Ok
+            && r.name == "Firefox"
+            && r.text == format!("a.default: {p11_kit}")),
         "{stdout}"
     );
     assert!(
-        stdout.contains(&format!("{}: registered", snap.join("s.default").display())),
+        rows.iter().any(|r| r.state == State::Ok
+            && r.name == SNAP_NAME
+            && r.text == format!("s.default: {registered}")),
         "{stdout}"
     );
     assert_eq!(outside_snap(&f), before);
@@ -324,12 +333,17 @@ fn skip_reasons_decide_the_exit_code() {
     let (result, out) = command_result(&f, &m);
     fs::set_permissions(&p, fs::Permissions::from_mode(0o700)).unwrap();
     assert!(result.is_err());
-    assert!(out.contains("not writable"), "{out}");
+    let rows = crate::lines::rows(&out);
+    assert_eq!(rows.len(), 1, "{out}");
+    assert_eq!(rows[0].state, State::NotOk, "{out}");
+    assert!(rows[0].text.starts_with("a.default: "), "{out}");
     // nothing at all
     let f = Fixture::new();
     let (result, out) = command_result(&f, &f.module("a"));
     assert!(result.is_ok());
-    assert!(out.contains("No native browser profiles"), "{out}");
+    let rows = crate::lines::rows(&out);
+    assert_eq!(rows.len(), 1, "{out}");
+    assert_eq!(rows[0].state, State::Ok, "{out}");
 }
 
 #[test]

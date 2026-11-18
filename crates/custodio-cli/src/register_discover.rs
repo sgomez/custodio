@@ -62,6 +62,17 @@ pub const SNAP_ROOT: &str = "snap/firefox/common/.mozilla/firefox";
 /// The name the snap's profiles are listed under.
 pub const SNAP_NAME: &str = "Firefox (snap)";
 
+/// How `register` and `doctor` name a profile: its directory, escaped.
+#[must_use]
+pub fn profile_label(path: &Path) -> String {
+    crate::cert_text::escape(
+        &path
+            .file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy(),
+    )
+}
+
 /// What discovery reads from outside: passed in, never taken from the process.
 #[derive(Debug, Clone)]
 pub struct Environment {

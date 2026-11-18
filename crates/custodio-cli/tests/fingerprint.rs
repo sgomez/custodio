@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::time::Duration;
 
-use custodio_cli::fingerprint_decide::file_bytes;
+use custodio_cli::fingerprint_decide::{Done, done_line, file_bytes, no_reader_line};
+use custodio_cli::report::render;
 
 mod fprint_fixture;
 
@@ -36,7 +37,15 @@ fn assert_refused(fx: &Fx, args: &[&str], before: &Tree, what: &str) -> String {
     e
 }
 
-const WARNING: &str = "no fingerprint reader";
+/// What a successful run prints, from the product's own line.
+fn said(done: Done) -> String {
+    render(&[done_line(done)], false)
+}
+
+/// The warning `enable` prints with no reader.
+fn no_reader() -> String {
+    render(&[no_reader_line()], false)
+}
 
 // ---- acceptance 1 ----
 
@@ -62,7 +71,7 @@ fn enable_writes_the_exact_file_and_a_second_run_changes_nothing() {
     };
     let first = run(&fx);
     assert_eq!(first.status.code(), Some(0), "{}", err(&first));
-    assert!(!err(&first).contains(WARNING), "{}", err(&first));
+    assert!(!err(&first).contains(&no_reader()), "{}", err(&first));
     assert_eq!(fs::read(fx.path(POLKIT)).unwrap(), file_bytes());
     assert_eq!(
         fs::metadata(fx.path(POLKIT)).unwrap().permissions().mode() & 0o7777,
@@ -74,24 +83,11 @@ fn enable_writes_the_exact_file_and_a_second_run_changes_nothing() {
         ("file".into(), file_bytes().to_vec(), 0o100_644),
     );
     assert_eq!(fx.tree(), expected, "only the override was added");
-    let text = out(&first);
-    for part in [
-        "Every polkit dialog",
-        "accepts a finger",
-        "A wrong finger, or 10 s without a touch, falls back to the password",
-        "sudo and the login are unchanged",
-        "sudo custodio fingerprint disable",
-    ] {
-        assert!(text.contains(part), "{part}: {text}");
-    }
+    assert_eq!(out(&first), said(Done::Enabled { lock_note: false }));
     let after_first = fx.tree();
     let second = run(&fx);
     assert_eq!(second.status.code(), Some(0));
-    assert!(
-        out(&second).contains("nothing was changed"),
-        "{}",
-        out(&second)
-    );
+    assert_eq!(out(&second), said(Done::AlreadyOn));
     assert_eq!(fx.tree(), after_first);
     assert_eq!(
         calls.lock().unwrap().as_slice(),
@@ -111,11 +107,7 @@ fn enable_on(address: &str) -> (Fx, Output) {
 fn assert_written_with_warning(fx: &Fx, o: &Output) {
     assert_eq!(o.status.code(), Some(0), "{}", err(o));
     assert_eq!(fs::read(fx.path(POLKIT)).unwrap(), file_bytes());
-    let e = err(o);
-    assert!(
-        e.contains(WARNING) && e.contains("custodio doctor") && e.contains("password"),
-        "{e}"
-    );
+    assert_eq!(err(o), no_reader());
 }
 
 #[test]
@@ -165,7 +157,7 @@ fn the_lock_screen_note_is_shown_on_gnome_and_changes_no_setting() {
     let mut expected = fx.tree();
     let o = fx.run(&["enable"]);
     assert_eq!(o.status.code(), Some(0), "{}", err(&o));
-    assert!(out(&o).contains("lock screen"), "{}", out(&o));
+    assert_eq!(out(&o), said(Done::Enabled { lock_note: true }));
     expected.insert(
         POLKIT.into(),
         ("file".into(), file_bytes().to_vec(), 0o100_644),
@@ -187,7 +179,7 @@ fn the_lock_screen_note_is_not_shown_when_the_key_is_set_false() {
     );
     let o = fx.run(&["enable"]);
     assert_eq!(o.status.code(), Some(0), "{}", err(&o));
-    assert!(!out(&o).contains("lock screen"), "{}", out(&o));
+    assert_eq!(out(&o), said(Done::Enabled { lock_note: false }));
 }
 
 // ---- atomic write ----
@@ -416,7 +408,7 @@ fn disable_removes_only_custodios_file() {
     fs::write(fx.path(POLKIT), file_bytes()).unwrap();
     let o = fx.run(&["disable"]);
     assert_eq!(o.status.code(), Some(0), "{}", err(&o));
-    assert!(out(&o).contains("Removed"), "{}", out(&o));
+    assert_eq!(out(&o), said(Done::Disabled));
     assert_eq!(fx.tree(), before);
 }
 
@@ -426,7 +418,7 @@ fn disable_with_no_file_says_so_and_changes_nothing() {
     let before = fx.tree();
     let o = fx.run(&["disable"]);
     assert_eq!(o.status.code(), Some(0));
-    assert!(out(&o).contains("nothing to disable"), "{}", out(&o));
+    assert_eq!(out(&o), said(Done::AlreadyOff));
     assert_eq!(fx.tree(), before);
 }
 

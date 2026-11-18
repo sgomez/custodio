@@ -11,13 +11,14 @@ fail=0
 bad() { echo "test-e2e-fallback: $*" >&2; fail=1; }
 J="python3 -I $ROOT/e2e/fallback.py"
 
-NEXT=$'Next:\n  shred -u /tmp/k.p12  the file still holds your private key\n  restart Firefox      and any other program that loaded Custodio, to see the key'
+NEXT=$'      Delete the original: shred -u /tmp/k.p12
+      Restart Firefox, and any program using Custodio, to see the key.'
 # imp ID TYPE WORD KIND [NOTE]: the output of `custodio import`, laid out as the CLI does
-imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '\n%s\n' "$NEXT"; }
+imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '%s\n' "$NEXT"; }
 # kimp ID TYPE KIND: the output for a key stored as KIND, with the word and note the CLI gives that kind
 kimp() { case $3 in tpm) imp "$1" "$2" ok tpm ;; encrypted-tpm) imp "$1" "$2" warn "$3" "$ETPM_NOTE" ;; *) imp "$1" "$2" warn "$3" "$HOST_NOTE" ;; esac; }
-HOST_NOTE='root, and anyone with a copy of /var/lib, can use this key.'
-ETPM_NOTE='root can use this key while the machine runs.'
+HOST_NOTE='Root, and anyone with a copy of /var/lib, can use this key.'
+ETPM_NOTE='Root can use this key while the machine runs.'
 kimp fb-rsa rsa2048 encrypted-host > "$tmp/good-import"
 printf 'fb-rsa\trsa2048\tencrypted-host\nfb-ec\tecdsa-p256\tencrypted-host\n' > "$tmp/good-api"
 printf 'fb-rsa  rsa2048  encrypted-host  CN=a  2030-01-01\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' > "$tmp/good-cli"

@@ -530,6 +530,21 @@ fn unknown(reason: Option<&'static str>) -> (Run, Line) {
     (r, l)
 }
 
+/// doctor's line says what `import` and `list` say: the same summary, which they follow with a
+/// pointer to doctor.
+#[test]
+fn the_storage_line_has_the_words_of_the_import_and_list_warning() {
+    use custodio_cli::storage::{StateStorage, summary, warning};
+    for wire in ["encrypted", "not-encrypted", "unknown"] {
+        let l = line(&storage(Some(Svc::answering(wire, Some("no-mount")))));
+        let storage = StateStorage::from_wire(wire);
+        assert_eq!(l.text, summary(storage).1, "{l:?}");
+        if let Some(w) = warning(storage) {
+            assert!(w.text.starts_with(&l.text), "{w:?} {l:?}");
+        }
+    }
+}
+
 #[test]
 fn encrypted_is_ok_and_only_the_read_only_methods_are_called_without_the_flag() {
     let r = storage(Some(Svc::answering("encrypted", Some(""))));
@@ -570,14 +585,14 @@ const REASONS: [&str; 7] = [
 
 #[test]
 fn each_known_reason_of_unknown_has_its_own_text_and_fix_and_asks_for_the_reason() {
-    let mut seen: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen: Vec<(Vec<String>, Vec<String>)> = Vec::new();
     for reason in REASONS {
         let (r, l) = unknown(Some(reason));
         assert_eq!(
             r.served.service.lock().unwrap().as_slice(),
             ["StateStorage", "StateStorageReason"]
         );
-        let said = (l.text.clone(), l.fixes.clone());
+        let said = (l.notes.clone(), l.fixes.clone());
         assert!(
             seen.iter().all(|(t, f)| *t != said.0 && *f != said.1),
             "{reason} says what another reason says: {l:?}"
@@ -586,7 +601,7 @@ fn each_known_reason_of_unknown_has_its_own_text_and_fix_and_asks_for_the_reason
     }
     let (_, none) = unknown(None);
     assert!(
-        seen.iter().all(|(t, _)| *t != none.text),
+        seen.iter().all(|(t, _)| *t != none.notes),
         "a known reason reads like no reason: {none:?}"
     );
 }

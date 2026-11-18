@@ -58,7 +58,7 @@ place)
     sha256sum < /usr/lib/custodio/libcustodio_pkcs11.so | cut -d' ' -f1 > "$SN/module.sha"
     { sha256sum < "$MOD" 2> /dev/null || echo missing; } | cut -d' ' -f1 > "$SN/copy.sha"
     [ "$rc" -eq 0 ] || { cat "$SN/register.out" "$SN/register.err" >&2; fail "custodio register failed as $user (exit $rc)"; }
-    grep -q '^Firefox (snap) .*: registered' "$SN/register.out" || { cat "$SN/register.out" >&2; fail "custodio register did not report the snap profile registered"; }
+    grep -E '^ok +Firefox \(snap\)  +' "$SN/register.out" | grep -qv '  module copy: ' || { cat "$SN/register.out" >&2; fail "custodio register did not report the snap profile registered"; }
     install -m 755 /e2e/vm/snap-client.py "$CL"
     cmp /usr/lib/custodio/libcustodio_pkcs11.so "$MOD" || fail "the module copy differs from the installed module"
     ;;

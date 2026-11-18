@@ -80,7 +80,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
         names+=("$name")
     }
     control "register command altered" sed '0,/^\$ custodio register$/s//$ custodio regster/'
-    control "an output line altered" sed '0,/: copy placed$/s//: copy kept/'
+    control "an output line altered" sed '0,/module copy: placed$/s//module copy: kept/'
     control "remove replaced by refresh-only" sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'
     control "the -libfile path of the fallback altered" sed '0,/^modutil .* -add .*libcustodio_pkcs11\.so$/s//&.old/'
     control "the fallback -add block removed" sed '/^modutil .* -add /d'

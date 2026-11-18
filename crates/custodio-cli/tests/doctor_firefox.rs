@@ -2,6 +2,7 @@
 //! arguments. Every run leaves the fixture tree (root and home) byte-identical and runs `modutil` on no profile.
 
 mod fprint_fixture;
+mod lines;
 
 use std::fmt::Write as _;
 use std::fs;
@@ -227,13 +228,9 @@ fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_
         .output()
         .unwrap();
     let registered = out(&reg);
-    let mut from_register: Vec<String> = registered
-        .lines()
-        .filter_map(|l| l.split_whitespace().find(|w| w.starts_with('/')))
-        .map(|w| {
-            let path = Path::new(w.trim_end_matches(':'));
-            path.file_name().unwrap().to_string_lossy().into_owned()
-        })
+    let mut from_register: Vec<String> = lines::rows(&registered)
+        .iter()
+        .filter_map(|r| r.text.split_once(": ").map(|(dir, _)| dir.to_owned()))
         .collect();
     from_register.sort();
     let mut from_doctor: Vec<String> = lines.iter().map(dir_of).collect();

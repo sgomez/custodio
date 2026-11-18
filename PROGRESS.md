@@ -455,3 +455,15 @@ with an empty context.
   (`tests/import_view`, shared with custodio-it by `#[path]`) and compared with `next_steps()`; the shred command is
   checked by having `sh` read it back as the file. e2e judges of the import output read it by layout.
 - Next session should: nothing; the person closes F210.
+
+### 2026-11-18 — F210 — one line format for every command (with the person)
+- Done: `report.rs` holds the line every command prints: state word (`ok`/`FAIL`/`warn`/`?`), name, short text, and
+  the lines under it indented under the name (so a long text never pushes them right). `doctor`, `import`, `delete`,
+  `register` (one line per profile, `Firefox (snap)  module copy: …`, the restart note once), `fingerprint enable|disable`
+  and the storage warning of `import`/`list` all render through it. The key storage words live once in
+  `storage::summary`; doctor adds the note and the fix, import/list point to `custodio doctor`. The no-reader warning of
+  `fingerprint enable` is doctor's reader line. Paths under home print as `~/…`; `shred -u` takes a shell-safe word.
+- Tests: one generic parser of the line format per test crate (`tests/lines`, `tests/import_view`); expected text
+  comes from the product (`storage::summary`, `imported_line`, `next_steps`, `deleted_line`, `done_line`,
+  `Outcome::state_text`). e2e judges (doctor, fallback, tpmkind, tpmfail, vm snap) read by layout.
+- Next session should: nothing; the person closes F210.

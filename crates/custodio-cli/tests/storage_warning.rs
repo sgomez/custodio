@@ -3,7 +3,8 @@
 use std::io;
 use std::path::PathBuf;
 
-use custodio_cli::storage::{StateStorage, StorageReader, warning};
+use custodio_cli::report::render;
+use custodio_cli::storage::{NAME, StateStorage, StorageReader, summary, warning};
 use custodio_cli::{
     CliError, ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, ListArgs, Look,
     PasswordPrompt, ServiceFailure, finish, import_command, list_command,
@@ -112,6 +113,11 @@ fn svc(storage: Option<StateStorage>) -> Svc {
     }
 }
 
+/// The warning as the commands print it, without colour.
+fn rendered(storage: StateStorage) -> String {
+    render(&[warning(storage).expect("a warning")], false)
+}
+
 type Command = fn(&Svc) -> Run;
 const COMMANDS: [(&str, Command); 2] = [("import", run_import), ("list", run_list)];
 
@@ -120,14 +126,18 @@ fn not_encrypted_and_unknown_warn_on_stderr_and_point_to_doctor() {
     for (name, run) in COMMANDS {
         for storage in [StateStorage::NotEncrypted, StateStorage::Unknown] {
             let r = run(&svc(Some(storage)));
-            let text = warning(storage).expect("a warning");
+            let text = rendered(storage);
             assert_eq!(
                 r.err.matches(&text).count(),
                 1,
                 "{name} {storage:?}: {}",
                 r.err
             );
-            assert!(text.contains("custodio doctor"), "{text}");
+            let line = warning(storage).expect("a warning");
+            let (state, words) = summary(storage);
+            assert_eq!((line.state, line.name.as_str()), (state, NAME));
+            assert!(line.text.starts_with(words), "{line:?}");
+            assert!(line.text.contains("custodio doctor"), "{line:?}");
             assert!(
                 !r.out.contains(&text),
                 "{name}: the warning is not on standard output"
@@ -159,7 +169,7 @@ fn the_data_and_the_status_are_the_same_with_and_without_the_warning() {
             let warned = run(&svc(Some(storage)));
             assert_eq!(warned.out, plain.out, "{name}: standard output");
             assert_eq!(warned.status, plain.status, "{name}: status");
-            let text = warning(storage).expect("a warning");
+            let text = rendered(storage);
             assert!(
                 !warned.out.contains(&text),
                 "{name}: the warning is not data"
@@ -177,7 +187,7 @@ fn a_failed_command_prints_no_warning() {
             fail: true,
         });
         assert_eq!(r.status, 1, "{name}");
-        let text = warning(StateStorage::NotEncrypted).expect("a warning");
+        let text = rendered(StateStorage::NotEncrypted);
         assert!(!r.err.contains(&text), "{name}: {}", r.err);
     }
 }

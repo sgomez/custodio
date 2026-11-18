@@ -16,10 +16,11 @@ use std::time::Duration;
 use zbus::{Connection, block_on};
 
 use crate::fingerprint_decide::{
-    DisableDecision, EnableDecision, FileState, LOCK_NOTE, NO_READER_WARNING, Observed,
-    POLKIT_FILE, Refusal, VendorState, dconf_disables_fingerprint, decide_disable, decide_enable,
-    family_from_os_release, file_bytes,
+    DisableDecision, Done, EnableDecision, FileState, Observed, Refusal, VendorState,
+    dconf_disables_fingerprint, decide_disable, decide_enable, done_line, family_from_os_release,
+    file_bytes, no_reader_line,
 };
+use crate::report;
 
 /// What the person asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,25 +220,32 @@ pub(crate) fn observe(env: &Env) -> Observed {
     }
 }
 
-/// Run the command, writing what it did to `out` and warnings to `err`.
+/// Run the command, writing what it did to `out` and warnings to `err`, coloured when `on`.
 ///
 /// # Errors
 /// A [`Failure`]: a refusal, or a step that failed.
-pub fn run<W: Write, E: Write>(action: Action, out: &mut W, err: &mut E) -> Result<(), Failure> {
-    let env = env();
-    let mut observed = observe(&env);
-    match action {
-        Action::Enable => enable(&env, &mut observed, out, err),
-        Action::Disable => disable(&env, &observed, out),
-    }
-}
-
-fn enable<W: Write, E: Write>(
-    env: &Env,
-    observed: &mut Observed,
+pub fn run<W: Write, E: Write>(
+    action: Action,
     out: &mut W,
     err: &mut E,
+    on: bool,
 ) -> Result<(), Failure> {
+    let env = env();
+    let mut observed = observe(&env);
+    let done = match action {
+        Action::Enable => enable(&env, &mut observed, err, on)?,
+        Action::Disable => disable(&env, &observed)?,
+    };
+    let _ = write!(out, "{}", report::render(&[done_line(done)], on));
+    Ok(())
+}
+
+fn enable<E: Write>(
+    env: &Env,
+    observed: &mut Observed,
+    err: &mut E,
+    on: bool,
+) -> Result<Done, Failure> {
     let mut decision = decide_enable(observed);
     if matches!(decision, EnableDecision::Write { .. }) && !reader_present() {
         observed.reader_present = false;
@@ -245,47 +253,24 @@ fn enable<W: Write, E: Write>(
     }
     match decision {
         EnableDecision::Refuse(r) => Err(Failure::Refused(r)),
-        EnableDecision::AlreadyEnabled => {
-            let _ = writeln!(
-                out,
-                "{POLKIT_FILE} is already Custodio's file: nothing was changed.\n\
-To undo it: sudo custodio fingerprint disable"
-            );
-            Ok(())
-        }
+        EnableDecision::AlreadyEnabled => Ok(Done::AlreadyOn),
         EnableDecision::Write {
             warn_no_reader,
             lock_note,
         } => {
             write_file(env)?;
-            let _ = writeln!(
-                out,
-                "Wrote {POLKIT_FILE}. Every polkit dialog (the ones that ask for your password, Custodio's among them) \
-now accepts a finger.\n\
-A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.\n\
-To undo it: sudo custodio fingerprint disable"
-            );
-            if lock_note {
-                let _ = writeln!(out, "{LOCK_NOTE}");
-            }
             if warn_no_reader {
-                let _ = writeln!(err, "{NO_READER_WARNING}");
+                let _ = write!(err, "{}", report::render(&[no_reader_line()], on));
             }
-            Ok(())
+            Ok(Done::Enabled { lock_note })
         }
     }
 }
 
-fn disable<W: Write>(env: &Env, observed: &Observed, out: &mut W) -> Result<(), Failure> {
+fn disable(env: &Env, observed: &Observed) -> Result<Done, Failure> {
     match decide_disable(observed) {
         DisableDecision::Refuse(r) => Err(Failure::Refused(r)),
-        DisableDecision::NothingToDisable => {
-            let _ = writeln!(
-                out,
-                "{POLKIT_FILE} does not exist: nothing to disable, nothing was changed."
-            );
-            Ok(())
-        }
+        DisableDecision::NothingToDisable => Ok(Done::AlreadyOff),
         DisableDecision::Remove => {
             fs::remove_file(env.root.join(PAM_DIR).join(POLKIT_NAME)).map_err(|error| {
                 Failure::Io {
@@ -293,12 +278,7 @@ fn disable<W: Write>(env: &Env, observed: &Observed, out: &mut W) -> Result<(), 
                     error,
                 }
             })?;
-            let _ = writeln!(
-                out,
-                "Removed {POLKIT_FILE}. Polkit dialogs ask for the password only.\n\
-To turn it on again: sudo custodio fingerprint enable"
-            );
-            Ok(())
+            Ok(Done::Disabled)
         }
     }
 }

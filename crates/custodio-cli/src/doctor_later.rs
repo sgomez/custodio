@@ -8,7 +8,7 @@ use crate::storage::StateStorage;
 
 pub const FIREFOX: &str = "profiles";
 pub const JOURNAL: &str = "journal";
-pub const STORAGE: &str = "key storage";
+pub const STORAGE: &str = crate::storage::NAME;
 
 /// What the entries of one profile's `pkcs11.txt` say about the module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,7 +140,7 @@ pub fn firefox(f: &Firefox) -> Vec<Check> {
     let mut fixes: Vec<(usize, &str)> = Vec::new();
     for p in list {
         let (state, what, fix) = profile_state(p);
-        let name = escape(p.path.rsplit('/').next().unwrap_or(&p.path));
+        let name = crate::register_discover::profile_label(std::path::Path::new(&p.path));
         let text = if what.is_empty() {
             name
         } else {
@@ -255,7 +255,10 @@ fn reason_fix(reason: &str) -> Option<(&'static str, &'static str)> {
 
 #[must_use]
 pub fn storage(f: &Service) -> Check {
-    const DIR: &str = "/var/lib/custodio";
+    let answered = |storage: StateStorage, fix: Option<&str>| {
+        let (state, text) = crate::storage::summary(storage);
+        later(SYSTEM_SECTION, state, STORAGE, text, fix)
+    };
     match f {
         Service::Unreachable(why) => later(
             SYSTEM_SECTION,
@@ -264,42 +267,35 @@ pub fn storage(f: &Service) -> Check {
             format!("cannot ask the Custodio service: {}", escape(why)),
             Some("systemctl status custodio.service"),
         ),
-        Service::Answered(StateStorage::Encrypted, _) => later(
-            SYSTEM_SECTION,
-            State::Ok,
-            STORAGE,
-            format!("{DIR} is on an encrypted disk"),
-            None,
-        ),
+        Service::Answered(StateStorage::Encrypted, _) => answered(StateStorage::Encrypted, None),
         Service::Answered(StateStorage::NotEncrypted, _) => Check {
             note: Some("Whoever takes this machine can use your keys.".to_owned()),
-            ..later(
-                SYSTEM_SECTION,
-                State::Warn,
-                STORAGE,
-                format!("{DIR} is not on an encrypted disk"),
-                Some(LUKS),
-            )
+            ..answered(StateStorage::NotEncrypted, Some(LUKS))
         },
         Service::Answered(StateStorage::Unknown, reason) => {
             let reason = reason.as_deref().unwrap_or("");
             // Only a reason it knows is printed: anything else came from outside and means nothing here.
-            let (text, fix) = reason_fix(reason).map_or_else(
+            let (note, fix) = reason_fix(reason).map_or_else(
                 || {
                     (
-                        "the service gave no reason".to_owned(),
+                        "The service gave no reason.".to_owned(),
                         "update the service, or use disk encryption (LUKS)",
                     )
                 },
-                |(what, fix)| (format!("{what} ({reason})"), fix),
+                |(what, fix)| (format!("{} ({reason}).", capitalised(what)), fix),
             );
-            later(
-                SYSTEM_SECTION,
-                State::Warn,
-                STORAGE,
-                format!("{DIR}: cannot tell if encrypted, {text}"),
-                Some(fix),
-            )
+            Check {
+                note: Some(note),
+                ..answered(StateStorage::Unknown, Some(fix))
+            }
         }
     }
+}
+
+fn capitalised(text: &str) -> String {
+    let mut text = text.to_owned();
+    if let Some(first) = text.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    text
 }

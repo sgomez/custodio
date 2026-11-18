@@ -113,9 +113,10 @@ per system:
 
 ```console for=fingerprint
 $ sudo custodio fingerprint enable
-Wrote /etc/pam.d/polkit-1. Every polkit dialog (the ones that ask for your password, Custodio's among them) now accepts a finger.
-A wrong finger, or 10 s without a touch, falls back to the password. sudo and the login are unchanged.
-To undo it: sudo custodio fingerprint disable
+ok    polkit  finger on for every polkit dialog
+      A wrong finger, or 10 s without a touch, falls back to the password.
+      sudo and the login are unchanged.
+      Undo: sudo custodio fingerprint disable
 ```
 
 What it changes, what it does not guarantee, the refusals and the GNOME lock screen are in [fingerprint.md](fingerprint.md);
@@ -137,7 +138,7 @@ Browsers
   ok    profiles     none found, nothing to register
 System
   ok    journal      persistent
-  ok    key storage  /var/lib/custodio is on an encrypted disk
+  ok    key storage  on an encrypted disk
 ```
 
 ## TPM2 Software Stack
@@ -164,15 +165,16 @@ as yourself (not as root and not with `sudo`: the command writes into your home)
 
 ```console
 $ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 It finds the profiles of Firefox, of its derivatives and of the Firefox snap, and prints what it did in each. The snap
 cannot read `/usr/lib`, so the command places a copy of the module in the snap's own directory and registers the copy.
 Run it again whenever you like: what is already registered stays as it is. A profile that a running browser holds is
-skipped and the command exits with an error that names it. Do this once for each user, and again for a new profile.
+skipped: its line is `FAIL`, with the fix under it, and the command exits with an error. Do this once for each user, and again for a new profile.
 The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio register --remove` before
 you uninstall the package ([Removing and purging](#removing-and-purging)).
 
@@ -262,9 +264,10 @@ cannot reach:
 
 ```console
 $ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 Then remove the package, with the tool of your system:

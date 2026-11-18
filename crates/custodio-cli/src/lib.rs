@@ -10,7 +10,7 @@ use custodio_client::{Kind, MAX_P12_LEN};
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
-pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
+pub use delete::{Confirmation, DeleteFailure, KeyDeleter, delete_command, run_delete};
 pub use failure::ServiceFailure;
 pub use help::{COMMANDS, CommandSpec, OptionSpec};
 pub use list::{KeyEntry, KeyLister, ListArgs, ListFailure, Look, run_list, run_show};
@@ -42,6 +42,7 @@ pub mod register_discover;
 mod register_modutil;
 pub mod register_native;
 pub mod register_snap;
+pub mod report;
 pub mod storage;
 pub mod tty;
 
@@ -104,73 +105,51 @@ fn read_limited(path: &Path) -> Result<Zeroizing<Vec<u8>>, ImportFailure> {
 fn kind_note(kind: &Kind) -> Option<&'static str> {
     match kind {
         Kind::Tpm => None,
-        Kind::EncryptedTpm => Some("root can use this key while the machine runs."),
-        Kind::EncryptedHost => Some("root, and anyone with a copy of /var/lib, can use this key."),
-        Kind::Unknown(_) => Some("this CLI does not know this storage kind."),
+        Kind::EncryptedTpm => Some("Root can use this key while the machine runs."),
+        Kind::EncryptedHost => Some("Root, and anyone with a copy of /var/lib, can use this key."),
+        Kind::Unknown(_) => Some("This CLI does not know this storage kind."),
     }
 }
 
-/// The key the service stored, then the next steps: delete the original, restart Firefox. The
-/// first line has the columns of `custodio list`, after `ok` (`tpm`) or `warn` (any other kind).
-fn write_imported<W: Write>(
-    out: &mut W,
-    args: &ImportArgs,
+/// The line of an imported key: `ok` (`tpm`) or `warn` (any other kind), the key id, then type
+/// and kind as `list` shows them; under it the kind's note and [`next_steps`].
+#[must_use]
+pub fn imported_line(
+    id: &str,
     key_type: &str,
     kind: &Kind,
-    colour: bool,
-) -> std::io::Result<()> {
+    file: &Path,
+    home: Option<&Path>,
+) -> report::Line {
     let note = kind_note(kind);
-    let word = if note.is_some() {
-        colour::paint("warn", colour::Paint::Yellow, colour)
+    let state = if note.is_some() {
+        report::State::Warn
     } else {
-        colour::paint("ok  ", colour::Paint::Green, colour)
+        report::State::Ok
     };
-    writeln!(
-        out,
-        "{word}  {}  {}  {}",
-        args.id,
-        cert_text::escape(key_type),
-        cert_text::escape(kind.wire())
-    )?;
-    if let Some(note) = note {
-        writeln!(out, "      {note}")?;
-    }
-    let steps = next_steps(&args.file);
-    let width = steps.iter().map(|(c, _)| c.len()).max().unwrap_or(0);
-    writeln!(out, "\nNext:")?;
-    for (command, why) in steps {
-        writeln!(out, "  {command:<width$}  {why}")?;
-    }
-    Ok(())
+    let mut line = report::Line::new(
+        state,
+        cert_text::escape(id),
+        format!(
+            "{}  {}",
+            cert_text::escape(key_type),
+            cert_text::escape(kind.wire())
+        ),
+    );
+    line.under.extend(note.map(str::to_owned));
+    line.under.extend(next_steps(file, home));
+    line
 }
 
-/// `word` as the shell reads it back: bare when it is plain, else in single quotes. Control
-/// characters are escaped first, so the line cannot drive the terminal.
-fn shell_word(word: &str) -> String {
-    let word = cert_text::escape(word);
-    let plain = !word.is_empty()
-        && word
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "._/+-,:@%".contains(c));
-    if plain {
-        word
-    } else {
-        format!("'{}'", word.replace('\'', r"'\''"))
-    }
-}
-
-/// What to do after an import, and why: delete the original, restart Firefox.
+/// What to do after an import: delete the original, restart Firefox.
 #[must_use]
-pub fn next_steps(file: &Path) -> [(String, &'static str); 2] {
+pub fn next_steps(file: &Path, home: Option<&Path>) -> [String; 2] {
     [
-        (
-            format!("shred -u {}", shell_word(&file.display().to_string())),
-            "the file still holds your private key",
+        format!(
+            "Delete the original: shred -u {}",
+            report::shell_path(file, home)
         ),
-        (
-            "restart Firefox".to_owned(),
-            "and any other program that loaded Custodio, to see the key",
-        ),
+        "Restart Firefox, and any program using Custodio, to see the key.".to_owned(),
     ]
 }
 
@@ -203,7 +182,9 @@ fn import_painted<P: PasswordPrompt, I: Importer, W: Write>(
         .import_p12(&args.id, &data, &password)
         .map_err(ImportFailure::Service)?;
     // Output errors must not hide the fact that the import happened.
-    let _ = write_imported(out, args, &key_type, &kind, colour);
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let line = imported_line(&args.id, &key_type, &kind, &args.file, home.as_deref());
+    let _ = write!(out, "{}", report::render(&[line], colour));
     Ok(())
 }
 
@@ -222,7 +203,7 @@ pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write
     colour: bool,
 ) -> Result<(), ImportFailure> {
     import_painted(args, prompt, importer, out, colour)?;
-    storage::warn(storage, err);
+    storage::warn(storage, err, colour);
     Ok(())
 }
 
@@ -243,7 +224,7 @@ pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
         Some(id) => run_show(lister, id, out, look)?,
         None => run_list(lister, out, look, args.verbose)?,
     }
-    storage::warn(storage, err);
+    storage::warn(storage, err, look.colour);
     Ok(())
 }
 

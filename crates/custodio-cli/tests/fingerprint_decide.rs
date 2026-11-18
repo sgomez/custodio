@@ -190,8 +190,44 @@ fn no_reader_is_a_warning() {
             lock_note: false
         }
     );
-    let w = custodio_cli::fingerprint_decide::NO_READER_WARNING;
-    assert!(w.contains("custodio doctor") && w.contains("password"));
+}
+
+/// What a successful run says, by structure: the check doctor names `polkit`, `ok`, and the
+/// command to undo it where something changed; the lock note only when it applies.
+#[test]
+fn each_outcome_is_one_ok_polkit_line_with_the_undo_command_under_it() {
+    use custodio_cli::doctor_decide::{POLKIT, READER};
+    use custodio_cli::fingerprint_decide::{Done, done_line, no_reader_line};
+    use custodio_cli::report::State;
+    let undo = |l: &custodio_cli::report::Line| l.under.last().cloned().unwrap_or_default();
+    let on = done_line(Done::Enabled { lock_note: false });
+    let noted = done_line(Done::Enabled { lock_note: true });
+    let off = done_line(Done::Disabled);
+    for l in [
+        &on,
+        &noted,
+        &off,
+        &done_line(Done::AlreadyOn),
+        &done_line(Done::AlreadyOff),
+    ] {
+        assert_eq!((l.state, l.name.as_str()), (State::Ok, POLKIT), "{l:?}");
+    }
+    assert!(
+        undo(&on).ends_with("sudo custodio fingerprint disable"),
+        "{on:?}"
+    );
+    assert!(
+        undo(&off).ends_with("sudo custodio fingerprint enable"),
+        "{off:?}"
+    );
+    assert_eq!(noted.under.len(), on.under.len() + 1);
+    assert_eq!(done_line(Done::AlreadyOff).under, Vec::<String>::new());
+    let w = no_reader_line();
+    assert_eq!((w.state, w.name.as_str()), (State::Warn, READER));
+    assert!(
+        w.under.last().is_some_and(|f| f.starts_with("Fix: ")),
+        "{w:?}"
+    );
 }
 
 #[test]

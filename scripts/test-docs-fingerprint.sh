@@ -69,7 +69,7 @@ case \$1 in
         [ "\$(fp_tree $d/root)" = "\$(cat \$d/tree.fixture)" ] || { echo "a refused enable changed the tree" >&2; exit 1; }
         echo refused >> "\$d/checked" ;;
     "custodio doctor"*)
-        custodio doctor 2> /dev/null | sed -E -n 's/^  (ok|FAIL|\?) +([^ ]+( [^ ]+)*)  .*/\2/p' >> "\$d/names" ;;
+        custodio doctor 2> /dev/null | sed -E -n 's/^  (ok|FAIL|warn|\?) +([^ ]+( [^ ]+)*)  .*/\2/p' >> "\$d/names" ;;
     "gsettings set org.gnome.login-screen enable-fingerprint-authentication false")
         # The argv is fixed here (SPEC Design 5), not read from the page.
         [ "\$(cat \$d/gs.log)" = "set org.gnome.login-screen enable-fingerprint-authentication false" ] || { echo "gsettings was called with other arguments" >&2; exit 1; }
@@ -156,7 +156,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
         names+=("$name")
     }
     control "shown file differs by one character" run sed 's/max-tries=1 timeout=10$/max-tries=2 timeout=10/'
-    control "output line changed" run sed '0,/^To undo it: sudo custodio fingerprint disable$/s//To undo it: sudo custodio fingerprint off/'
+    control "output line changed" run sed '0,/^      Undo: sudo custodio fingerprint disable$/s//      Undo: sudo custodio fingerprint off/'
     control "Debian package name under the Fedora heading" run sed '0,/^Install fprintd-pam and fprintd/s//Install libpam-fprintd and fprintd/'
     control "gsettings key changed" run sed 's/^\$ gsettings set org.gnome.login-screen enable-fingerprint-authentication false$/$ gsettings set org.gnome.login-screen enable-fingerprint false/'
     control "a refusal block removed" run python3 -I -c '

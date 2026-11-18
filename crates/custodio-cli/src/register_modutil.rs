@@ -52,9 +52,6 @@ pub(crate) fn modutil(program: &OsStr, dir: &Path, args: &[&OsStr]) -> Result<Ve
 }
 
 /// Why native profiles are skipped when the system NSS loads the p11-kit proxy.
-const P11_KIT: &str = "the system NSS loads the p11-kit proxy (modutil lists p11-kit-proxy in a new database), which \
-                       already shows Custodio";
-
 /// A new private directory under the temporary directory, removed on drop.
 struct ScratchDb(PathBuf);
 
@@ -104,7 +101,7 @@ pub(crate) fn nss_loads_p11_kit(program: &OsStr) -> Result<bool, String> {
 /// What every native profile gets instead of registration, if anything.
 pub(crate) fn instead_of_registering(options: &Options) -> Option<Outcome> {
     match nss_loads_p11_kit(&options.modutil) {
-        Ok(true) => Some(Outcome::Skipped(P11_KIT.to_owned())),
+        Ok(true) => Some(Outcome::ThroughP11Kit),
         Ok(false) => None,
         Err(why) => Some(Outcome::Failed(format!(
             "cannot tell whether the system NSS loads the p11-kit proxy: {why}"

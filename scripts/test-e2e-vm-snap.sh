@@ -54,7 +54,7 @@ Name     Version  Rev   Tracking       Publisher  Notes
 firefox  160.0-1  9181  latest/stable  mozilla**  -
 EOF2
 echo 0 > register.rc
-printf 'Firefox (snap) /home/alice/snap/firefox/common/libcustodio_pkcs11.so: copy placed\nFirefox (snap) /home/alice/snap/firefox/common/.mozilla/firefox/s.default: registered\n' > register.out
+printf 'ok    Firefox (snap)  module copy: placed\nok    Firefox (snap)  s.default: registered\n      Restart the browsers to see the change.\n' > register.out
 echo 5d41402abc4b2a76b9719d911017c592 > module.sha; cp module.sha copy.sha
 printf 'type: snap-revision\nauthority-id: canonical\nsnap-revision: 9181\ndeveloper-id: mozilla\n' > snap-known.out
 echo 'directory|root|root|755|/run/snap.firefox' > dir.stat
@@ -94,6 +94,8 @@ ctl() {
 }
 # one control per case
 ctl rec-dangerous snap-record "sed -i 's/ -\$/ dangerous/' snap-list.out"
+MSG='snap profile was registered' ctl reg-no-profile snap-record "sed -i '/s.default/d' register.out"
+MSG='not ok' ctl reg-failed snap-record "printf 'FAIL  Firefox         a.default: a browser has it open\n' >> register.out"
 ctl dir-775 snap-socket-dir "echo 'directory|root|root|775|/run/snap.firefox' > dir.stat"
 ctl keys-foreign snap-list-keys "printf 'token\tbob-key\n' >> list.out"
 ctl sig-flipped snap-sign-rsa "python3 -I -c \"d=bytearray(open('sign-rsa.sig','rb').read()); d[5]^=1; open('sign-rsa.sig','wb').write(d)\""
@@ -119,7 +121,7 @@ reg() { # HOME: the real command on it, as the place phase runs it, with the mod
 mkdir -p "$tmp/home"
 snap_make_profile "$tmp/home/snap/firefox/common/.mozilla/firefox" || bad "snap_make_profile failed on a temporary home"
 out=$(reg "$tmp/home") || bad "custodio register failed on the home the function made: $out"
-grep -q '^Firefox (snap) .*s.default: registered' <<< "$out" || bad "the command did not report the snap profile registered: $out"
+grep -qE '^ok +Firefox \(snap\)  +s\.default: ' <<< "$out" || bad "the command did not report the snap profile registered: $out"
 cmp -s "$tmp/mod/libcustodio_pkcs11.so" "$tmp/home/snap/firefox/common/libcustodio_pkcs11.so" || bad "the copy is not the module"
 modutil -dbdir "sql:$tmp/home/snap/firefox/common/.mozilla/firefox/s.default" -list < /dev/null | grep -q 'common/libcustodio_pkcs11.so' || bad "the profile does not list the copy"
 # the judge accepts that report and the copy's hash as the place phase records them

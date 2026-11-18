@@ -8,8 +8,8 @@ trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-doctor: $*" >&2; fail=1; }
 w() { printf '%s' "$2" > "$1"; }
-# c WORD NAME TEXT [UNDER...]: one check line of the report and the lines under it, as doctor aligns them (the longest name is "key storage").
-c() { local t; t=$(printf '  %-4s  %-11s  %s' "$1" "$2" "$3"); shift 3; for u in "$@"; do t+=$'\n'$(printf '%21s%s' '' "$u"); done; printf '%s' "$t"; }
+# c WORD NAME TEXT [UNDER...]: one check line of the report and the lines under its name, as doctor aligns them (the longest name is "key storage").
+c() { local t; t=$(printf '  %-4s  %-11s  %s' "$1" "$2" "$3"); shift 3; for u in "$@"; do t+=$'\n'$(printf '%8s%s' '' "$u"); done; printf '%s' "$t"; }
 # rep FINGERPRINT BROWSERS SYSTEM: a whole report, with its headings and the problems line.
 rep() {
     local t=$'Fingerprint (optional)\n'"$1"$'\nBrowsers\n'"$2"$'\nSystem\n'"$3" p w
@@ -30,7 +30,7 @@ L4=$(c ok profiles 'none found, nothing to register')
 L4N=$(c '?' profiles 'cannot look for them: x' "Fix: fix or remove that file, then run 'custodio doctor' again")
 L5=$(c ok journal persistent)
 L5N=$(c FAIL journal 'lost at reboot (Storage=volatile at x)' 'Fix: set Storage=persistent at x, then sudo systemctl restart systemd-journald')
-L6=$(c warn 'key storage' '/var/lib/custodio: cannot tell if encrypted, x (not-block-filesystem)' 'Fix: x, or use disk encryption (LUKS)')
+L6=$(c warn 'key storage' 'cannot tell if encrypted' 'Not on a single disk (not-block-filesystem).' 'Fix: x, or use disk encryption (LUKS)')
 L6N=$(c '?' 'key storage' 'cannot ask the Custodio service: x' 'Fix: systemctl status custodio.service')
 SYS="$L5"$'\n'"$L6"
 # run DIR NAME OUT RC ERR
@@ -70,6 +70,7 @@ ctl missing-check six-checks 'not the checks in order' base.out "$(rep "$L1"$'\n
 ctl no-word six-checks 'does not start with' base.out "$(rep "$FP"$'\n''  bad   reader       x' "$L4" "$SYS")"
 ctl no-fix six-checks 'no fix line' base.out "$(rep "$FP" "$L4" "$L5"$'\n'"$(c FAIL 'key storage' x)")"
 ctl wrong-section six-checks 'is under Browsers' base.out "$(rep "$FP" "$L4"$'\n'"$L5" "$L6")"
+ctl misplaced-under six-checks 'not under its name' base.out "$(rep "$FP" "$L4" "$L5"$'\n'"$(c warn 'key storage' 'cannot tell if encrypted' "             Fix: x")")"
 ctl problems-count six-checks 'the problems line says' base.out "$(rep "$FP" "$L4" "$SYS")"$'\n\n9 problems.'
 ctl stderr six-checks 'stderr' base.err 'thread main panicked'
 ctl stderr-after-report six-checks 'stderr is not empty' base.err 'custodio doctor: did not pass: key storage'

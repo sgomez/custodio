@@ -1,23 +1,26 @@
-//! What a successful `custodio import` printed, read back by its layout, not by its wording.
-//! Shared with custodio-it by `#[path]`.
+//! What a command printed in the shared line format (`report.rs`), read back by its layout, not
+//! by its wording: a line that starts at the margin with a state word, then the indented lines
+//! under it. Shared with custodio-it by `#[path]`.
 
 #![allow(
     dead_code,
     reason = "each test crate that includes this uses only part of it"
 )]
 
-/// The parts of the output.
-#[derive(Debug)]
+/// One line and what is under it.
+#[derive(Debug, Clone)]
 pub struct Imported {
-    /// `ok` or `warn`.
+    /// `ok`, `FAIL`, `warn` or `?`.
     pub word: String,
-    /// Key id, key type, storage kind.
+    /// The name, then each cell of the text.
     pub cells: Vec<String>,
-    /// The lines under the first one, before the next steps.
-    pub notes: Vec<String>,
-    /// Each next step: the command, and why.
-    pub next: Vec<(String, String)>,
+    /// The lines under it, in order.
+    pub under: Vec<String>,
 }
+
+const WORDS: [&str; 4] = ["ok", "FAIL", "warn", "?"];
+/// Under-lines start below the name: the word column (4) and two spaces.
+const UNDER: &str = "      ";
 
 fn cells(line: &str) -> Vec<String> {
     line.split("  ")
@@ -27,48 +30,56 @@ fn cells(line: &str) -> Vec<String> {
         .collect()
 }
 
-/// Panics, naming the output, if it does not have the layout: the key line, indented notes, a
-/// blank line, a heading, then two-column rows whose second columns line up.
+/// Every line of `out`. Panics, naming the output, on a line that is neither a state line at the
+/// margin, nor under one at the name column, nor blank.
+#[must_use]
+pub fn parse_all(out: &str) -> Vec<Imported> {
+    let mut all: Vec<Imported> = Vec::new();
+    for line in out.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix(UNDER) {
+            assert!(!rest.starts_with(' '), "not at the name column: {out}");
+            let last = all
+                .last_mut()
+                .unwrap_or_else(|| panic!("an indented line first: {out}"));
+            last.under.push(rest.to_owned());
+            continue;
+        }
+        let mut c = cells(line);
+        let word = c.remove(0);
+        assert!(
+            WORDS.contains(&word.as_str()),
+            "no state word: {line:?} in {out}"
+        );
+        let after = &line[word.len()..];
+        assert_eq!(
+            word.len() + after.len() - after.trim_start().len(),
+            UNDER.len(),
+            "the name is not at its column: {out}"
+        );
+        all.push(Imported {
+            word,
+            cells: c,
+            under: Vec::new(),
+        });
+    }
+    all
+}
+
+/// The one line `out` holds.
 #[must_use]
 pub fn parse(out: &str) -> Imported {
-    let mut lines = out.lines();
-    let mut first = cells(lines.next().unwrap_or_else(|| panic!("empty: {out:?}")));
-    assert!(!first.is_empty(), "{out}");
-    let word = first.remove(0);
-    let mut notes = Vec::new();
-    for line in lines.by_ref() {
-        if line.is_empty() {
-            break;
-        }
-        assert!(
-            line.starts_with("      "),
-            "a note not under the key: {out}"
-        );
-        notes.push(line.trim().to_owned());
-    }
-    let heading = lines
-        .next()
-        .unwrap_or_else(|| panic!("no next steps: {out}"));
-    assert!(!heading.starts_with(' ') && heading.ends_with(':'), "{out}");
-    let mut next = Vec::new();
-    let mut column = None;
-    for line in lines {
-        assert!(line.starts_with("  "), "a step not indented: {out}");
-        let (command, why) = line[2..]
-            .split_once("  ")
-            .unwrap_or_else(|| panic!("one column: {out}"));
-        let at = line.len() - why.trim_start().len();
-        assert_eq!(
-            *column.get_or_insert(at),
-            at,
-            "the reasons do not line up: {out}"
-        );
-        next.push((command.to_owned(), why.trim().to_owned()));
-    }
-    Imported {
-        word,
-        cells: first,
-        notes,
-        next,
-    }
+    let mut all = parse_all(out);
+    assert_eq!(all.len(), 1, "not one line: {out}");
+    all.remove(0)
+}
+
+/// The command after `shred -u ` in an under-line, if there is one.
+#[must_use]
+pub fn shred_target(line: &Imported) -> Option<String> {
+    line.under
+        .iter()
+        .find_map(|u| u.split_once("shred -u ").map(|(_, t)| t.to_owned()))
 }

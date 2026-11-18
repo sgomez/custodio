@@ -152,18 +152,13 @@ fn a_successful_import_and_delete_say_that_programs_must_restart() -> TestResult
     assert_eq!(imported.status, 0, "{}", imported.stderr);
     let view = import_view::parse(&imported.stdout);
     assert_eq!(view.cells[0], "k", "{}", imported.stdout);
-    let restart = &next_steps(std::path::Path::new(""))[1];
-    assert_eq!(
-        view.next.last(),
-        Some(&(restart.0.clone(), restart.1.to_owned())),
-        "{}",
-        imported.stdout
-    );
+    let restart = &next_steps(std::path::Path::new(""), None)[1];
+    assert_eq!(view.under.last(), Some(restart), "{}", imported.stdout);
     let deleted = delete(&rig, "k", Some("yes\n"));
     assert_eq!(deleted.status, 0, "{}", deleted.stderr);
     assert_eq!(
         deleted.stdout,
-        format!("Deleted key 'k'.\n{RESTART_NOTE}\n")
+        custodio_cli::report::render(&[custodio_cli::delete::deleted_line("k")], false)
     );
     Ok(())
 }
@@ -181,6 +176,6 @@ fn a_refused_or_failed_delete_does_not_say_it() -> TestResult {
     let got = delete(&rig, "absent", Some("yes\n"));
     assert_eq!(got.status, 1);
     assert_eq!(got.stdout, "");
-    assert!(!got.stderr.contains("restart"));
+    assert!(!got.stderr.contains(RESTART_NOTE));
     Ok(())
 }

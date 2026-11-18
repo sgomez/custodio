@@ -7,47 +7,16 @@
 use std::fmt::Write as _;
 
 use crate::cert_text::escape;
-use crate::colour::{self, Paint};
+use crate::colour;
 use crate::doctor_later::{firefox, journal, storage};
 use crate::fingerprint_decide::{
     FileState, GlobalVia, Observed, POLKIT_FILE, VENDOR_FILE, VendorState, first_fprintd_auth_line,
     global_via, is_custodios, packages, pam_has_fprintd,
 };
 use crate::journald_conf::Verdict;
+use crate::report;
 
-/// The state of one check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum State {
-    Ok,
-    NotOk,
-    /// Works, with a risk the person should know: it does not change the exit status.
-    Warn,
-    CouldNotCheck,
-}
-
-impl State {
-    /// The word the line starts with.
-    #[must_use]
-    pub const fn word(self) -> &'static str {
-        match self {
-            Self::Ok => "ok",
-            Self::NotOk => "FAIL",
-            Self::Warn => "warn",
-            Self::CouldNotCheck => "?",
-        }
-    }
-
-    /// [`Self::word`], coloured when `on`, padded to the width of the longest.
-    fn painted(self, on: bool) -> String {
-        let paint = match self {
-            Self::Ok => Paint::Green,
-            Self::NotOk => Paint::Red,
-            Self::Warn | Self::CouldNotCheck => Paint::Yellow,
-        };
-        let pad = " ".repeat(4 - self.word().len());
-        format!("{}{pad}", colour::paint(self.word(), paint, on))
-    }
-}
+pub use crate::report::State;
 
 /// What `fprintd` said to `GetDevices`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +94,11 @@ pub const READER: &str = "reader";
 pub const FINGER: &str = "finger";
 pub const POLKIT: &str = "polkit";
 
+/// The reader check when fprintd lists no device: its text and fix, shared with `fingerprint enable`.
+pub const NO_READER: &str = "none found";
+pub const NO_READER_FIX: &str =
+    "plug it in or enable it in the firmware; libfprint must support it";
+
 /// The exit status: 0, unless a polkit include is broken or one of the `later` checks (Firefox, journal, storage) is
 /// neither `ok` nor `warn`.
 /// Checks 1 to 3 never count, "could not check" among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
@@ -166,31 +140,16 @@ impl Report {
     /// fix; last, how many problems and warnings there are. `on` colours the words and the headings.
     #[must_use]
     pub fn text(&self, on: bool) -> String {
-        let width = self.checks.iter().map(|c| c.name.len()).max().unwrap_or(0);
-        let indent = " ".repeat(width + 10);
+        let lines: Vec<report::Line> = self.checks.iter().map(Check::line).collect();
+        let width = report::width(&lines);
         let mut text = String::new();
         let mut section = None;
-        for c in &self.checks {
+        for (c, line) in self.checks.iter().zip(&lines) {
             if section != Some(c.section) {
                 let _ = writeln!(text, "{}", colour::bold(c.section, on));
                 section = Some(c.section);
             }
-            let _ = writeln!(
-                text,
-                "  {}  {:<width$}  {}",
-                c.state.painted(on),
-                c.name,
-                c.text
-            );
-            if let Some(note) = &c.note {
-                let _ = writeln!(text, "{indent}{note}");
-            }
-            if let Some(w) = &c.warning {
-                let _ = writeln!(text, "{indent}Warning: {}\n{indent}Fix: {}", w.text, w.fix);
-            }
-            if let Some(fix) = &c.fix {
-                let _ = writeln!(text, "{indent}Fix: {fix}");
-            }
+            report::write(&mut text, line, width, "  ", on);
         }
         let problems = self
             .checks
@@ -214,6 +173,21 @@ impl Report {
             let _ = writeln!(text, "\n{}.", parts.join(", "));
         }
         text
+    }
+}
+
+impl Check {
+    /// The line of the report: the note, the warning and the fix under the name.
+    fn line(&self) -> report::Line {
+        let mut line = report::Line::new(self.state, self.name, self.text.clone());
+        line.under.extend(self.note.clone());
+        if let Some(w) = &self.warning {
+            line = line.with(format!("Warning: {}", w.text)).fix(&w.fix);
+        }
+        if let Some(fix) = &self.fix {
+            line = line.fix(fix);
+        }
+        line
     }
 }
 
@@ -245,12 +219,7 @@ pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
 
 fn reader(f: &Facts) -> Check {
     match &f.reader {
-        Reader::Devices(0) => check(
-            State::NotOk,
-            READER,
-            "none found",
-            Some("plug it in or enable it in the firmware; libfprint must support it"),
-        ),
+        Reader::Devices(0) => check(State::NotOk, READER, NO_READER, Some(NO_READER_FIX)),
         Reader::Devices(n) => check(State::Ok, READER, plural(*n, "reader", "readers"), None),
         // Not installed: no service file and the bus says the name has no owner. Any other sign (a
         // name that is there and does not answer, an error, a service file with no owner) is "could not check".

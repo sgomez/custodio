@@ -198,18 +198,10 @@ fn profile_fact(
     }
     ProfileFact {
         browser: profile.browser,
-        path: tilde(&profile.path, &env.home),
+        path: crate::report::tilde(&profile.path, Some(&env.home)),
         copy: profile.snap.then(|| copy_state(&copy_file, installed)),
         entry,
     }
-}
-
-/// The path with the home directory written as `~`.
-fn tilde(path: &Path, home: &Path) -> String {
-    path.strip_prefix(home).map_or_else(
-        |_| path.display().to_string(),
-        |rest| format!("~/{}", rest.display()),
-    )
 }
 
 fn entry_of(profile: &Profile, module: &Path) -> Entry {

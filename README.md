@@ -39,11 +39,9 @@ Import a `.p12` file. The command asks for the file's password on the terminal, 
 ```console
 $ custodio import --id ana ana.p12
 warn  ana  ecdsa-p256  encrypted-host
-      root, and anyone with a copy of /var/lib, can use this key.
-
-Next:
-  shred -u ana.p12  the file still holds your private key
-  restart Firefox   and any other program that loaded Custodio, to see the key
+      Root, and anyone with a copy of /var/lib, can use this key.
+      Delete the original: shred -u ana.p12
+      Restart Firefox, and any program using Custodio, to see the key.
 ```
 
 If the import fails, the error says what to do. "wrong password for the .p12 file": retype the password. "the .p12
@@ -82,8 +80,8 @@ a console without a graphical polkit agent, `import` and `delete` ask for the pa
 
 ```console
 $ custodio delete ana
-Deleted key 'ana'.
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+ok    ana  deleted
+      Restart Firefox, and any program using Custodio, to see the change.
 $ custodio list
 You have no keys in the custodio service.
 Import one with: custodio import <file.p12>
@@ -112,22 +110,24 @@ and not with `sudo`: it writes into your home):
 
 ```console
 $ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 It finds the profiles of Firefox, its derivatives and the Firefox snap, and prints what it did in each. Run it again
-whenever you like: what is already registered stays as it is. A profile that a running browser holds is skipped and the
-command exits with an error that names it; close the browser and run it again.
+whenever you like: what is already registered stays as it is. A profile that a running browser holds is skipped: its
+line is `FAIL`, with the fix under it, and the command exits with an error.
 
 To remove the registration, run this before you uninstall the package:
 
 ```console
 $ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 Always use these two commands. Do not load the module through Firefox's "Browse" button in the device manager: the
