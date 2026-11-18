@@ -25,11 +25,12 @@ fn samples() -> Vec<CliError> {
     let mut all = Vec::new();
     for a in [
         ArgError::Usage,
-        ArgError::CommandUsage("list"),
+        ArgError::Bare("import"),
+        ArgError::CommandUsage("list", crate::Wrong::Unexpected(ESC.into())),
         ArgError::BadId,
     ] {
         match &a {
-            ArgError::Usage | ArgError::CommandUsage(_) | ArgError::BadId => {}
+            ArgError::Usage | ArgError::Bare(_) | ArgError::CommandUsage(..) | ArgError::BadId => {}
         }
         all.push(CliError::Args(a));
     }
@@ -179,8 +180,12 @@ fn services() -> Vec<ServiceFailure> {
 fn check(text: &str) {
     let lines: Vec<&str> = text.lines().collect();
     assert!(lines.len() >= 2, "one line only: {text:?}");
-    assert!(!lines[1].trim().is_empty(), "empty next step: {text:?}");
-    assert_ne!(lines[0], lines[1], "{text:?}");
+    // The short help of a bare command has blank lines between its parts.
+    let next = lines[1..].iter().find(|l| !l.trim().is_empty());
+    assert!(
+        next.is_some_and(|n| *n != lines[0]),
+        "no next step: {text:?}"
+    );
     assert!(
         !text.chars().any(|c| c.is_control() && c != '\n'),
         "control character: {text:?}"

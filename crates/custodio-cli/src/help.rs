@@ -216,17 +216,44 @@ pub fn for_command(name: &str) -> Option<String> {
     }
     text.push_str("\nOptions:\n");
     for o in c.options {
-        let long = o
-            .value
-            .map_or_else(|| o.flag.to_owned(), |v| format!("{} {v}", o.flag));
-        let flag = o
-            .short
-            .map_or(long.clone(), |short| format!("{short}, {long}"));
-        let _ = writeln!(text, "  {flag:<22}{}", o.text);
+        let _ = writeln!(text, "  {:<22}{}", flag(o), o.text);
     }
     let _ = writeln!(text, "  {:<22}show this help", "-h, --help");
     let _ = write!(text, "\nExample:\n  {}\n", c.example);
     Some(text)
+}
+
+/// The short help of one command, for when it is run without the arguments it needs: usage,
+/// summary, one row per argument and option, the example, and where the full help is.
+#[must_use]
+pub fn short(name: &str) -> Option<String> {
+    let c = command(name)?;
+    let mut rows: Vec<(String, &str)> = c.args.iter().map(|(a, t)| ((*a).to_owned(), *t)).collect();
+    rows.extend(c.options.iter().map(|o| (flag(o), o.text)));
+    let width = rows.iter().map(|(r, _)| r.len()).max().unwrap_or(0);
+    let mut summary = c.summary.to_owned();
+    if let Some(first) = summary.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    let mut text = format!("Usage: {}\n\n{summary}.\n\n", c.usage_line());
+    for (row, what) in rows {
+        let _ = writeln!(text, "  {row:<width$}  {what}");
+    }
+    let _ = write!(
+        text,
+        "\nExample:\n  {}\n\nRun 'custodio {name} --help' for more.",
+        c.example
+    );
+    Some(text)
+}
+
+/// How an option is written in the help: `-v, --verbose`, `--id <key id>`.
+fn flag(o: &OptionSpec) -> String {
+    let long = o
+        .value
+        .map_or_else(|| o.flag.to_owned(), |v| format!("{} {v}", o.flag));
+    o.short
+        .map_or(long.clone(), |short| format!("{short}, {long}"))
 }
 
 /// The help for a topic: a command, or the whole tool for `None`.

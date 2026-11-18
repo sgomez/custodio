@@ -5,6 +5,7 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::parse::Wrong;
 use crate::register_discover::{Environment, SNAP_NAME};
 use crate::register_native::{INSTALLED_MODULE, MODUTIL, Options, RunError, run};
 use crate::register_snap::{
@@ -60,27 +61,32 @@ pub struct RegisterArgs {
 /// Parse the arguments after `register`: `[--module PATH] [--remove | --refresh-only]`, each at most once.
 ///
 /// # Errors
-/// `None` for anything else (the caller prints the usage text).
-#[must_use]
-pub fn parse_register_args<I: IntoIterator<Item = String>>(args: I) -> Option<RegisterArgs> {
+/// What is wrong with the line.
+pub fn parse_register_args<I: IntoIterator<Item = String>>(args: I) -> Result<RegisterArgs, Wrong> {
     let mut it = args.into_iter();
     let mut parsed = RegisterArgs::default();
-    let mut module_seen = false;
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--module" => {
-                let path = it.next().filter(|p| !p.is_empty())?;
-                if std::mem::replace(&mut module_seen, true) {
-                    return None;
+                let path = it
+                    .next()
+                    .filter(|p| !p.is_empty())
+                    .ok_or(Wrong::NoValue("--module"))?;
+                if parsed.module.replace(PathBuf::from(path)).is_some() {
+                    return Err(Wrong::Twice("--module"));
                 }
-                parsed.module = Some(PathBuf::from(path));
             }
-            "--remove" if !parsed.remove => parsed.remove = true,
-            "--refresh-only" if !parsed.refresh_only => parsed.refresh_only = true,
-            _ => return None,
+            "--remove" if parsed.remove => return Err(Wrong::Twice("--remove")),
+            "--remove" => parsed.remove = true,
+            "--refresh-only" if parsed.refresh_only => return Err(Wrong::Twice("--refresh-only")),
+            "--refresh-only" => parsed.refresh_only = true,
+            _ => return Err(Wrong::extra(arg)),
         }
     }
-    (!(parsed.remove && parsed.refresh_only)).then_some(parsed)
+    if parsed.remove && parsed.refresh_only {
+        return Err(Wrong::Conflict("--remove", "--refresh-only"));
+    }
+    Ok(parsed)
 }
 
 /// Why `custodio register` ends without success.

@@ -444,3 +444,14 @@ with an empty context.
 - Tests: list tests compare cells with `cert_text::fields()` of the same certificate, expiry at its boundaries with an
   injected now, header and colour by structure; e2e list judges take the day; completions offer `-v`.
 - Next session should: nothing; the person closes F210.
+
+### 2026-11-18 — F210 — import output and usage errors (with the person)
+- Done: a successful `custodio import` prints `ok`/`warn`, the key id, type and kind (the columns of `list`), one note
+  under a weaker or unknown kind, then `Next:` with `shred -u <file>` (shell-quoted) and the Firefox restart. Bare
+  `import`, `delete` and `fingerprint` print their short help (`help::short`) on stderr, exit 2. Every other usage error
+  of a known command names what is wrong (`parse::Wrong`: unknown option, unexpected argument, missing, no value,
+  twice, conflict) and where the help is. No SPEC change: usage errors still go to stderr, exit 2, and point to help.
+- Tests: parser tests compare `Wrong` values, not text; the import output is read by layout
+  (`tests/import_view`, shared with custodio-it by `#[path]`) and compared with `next_steps()`; the shred command is
+  checked by having `sh` read it back as the file. e2e judges of the import output read it by layout.
+- Next session should: nothing; the person closes F210.

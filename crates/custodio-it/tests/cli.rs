@@ -9,11 +9,14 @@ use std::sync::Arc;
 
 use custodio_cli::bus::DbusImporter;
 use custodio_cli::{
-    ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, ServiceFailure, parse_args,
-    read_secret_line, run_import,
+    ArgError, ImportArgs, ImportFailure, Importer, PasswordPrompt, ServiceFailure, next_steps,
+    parse_args, read_secret_line, run_import,
 };
 use custodio_client::{BUS_NAME, Kind, MAX_P12_LEN, OBJECT_PATH};
 use custodiod::audit::MemorySink;
+
+#[path = "../../custodio-cli/tests/import_view/mod.rs"]
+mod import_view;
 use custodiod::credentials::BusCredentials;
 use custodiod::dbus::Custodio;
 use custodiod::polkit::{AuthError, Authorizer};
@@ -105,7 +108,13 @@ fn no_way_to_pass_a_password_on_the_command_line() {
         &["export", "a.p12"],
         &[],
     ] {
-        assert_eq!(args(bad), Err(ArgError::Usage), "{bad:?}");
+        assert!(
+            matches!(
+                args(bad),
+                Err(ArgError::Usage | ArgError::CommandUsage("import", _))
+            ),
+            "{bad:?}"
+        );
     }
 }
 
@@ -145,8 +154,12 @@ fn success_tells_the_person_to_delete_the_original() -> TestResult {
         &mut out,
     )?;
     let text = String::from_utf8(out)?;
-    assert!(text.contains("delete the original"), "{text}");
-    assert!(text.contains(file.to_str().ok_or("path")?), "{text}");
+    let delete = &next_steps(&file)[0];
+    assert_eq!(
+        import_view::parse(&text).next[0],
+        (delete.0.clone(), delete.1.to_owned()),
+        "{text}"
+    );
     assert!(!text.contains("Zq9!secret-pass"), "{text}");
     // The tool must not delete it itself.
     assert!(file.exists());
@@ -319,7 +332,11 @@ fn imports_through_the_service_and_reports_wrong_password() -> TestResult {
     assert_eq!(store.list(owner()?)?, Vec::<String>::new());
 
     run_import(&a, &mut FixedPrompt(Some(PASSWORD)), &importer, &mut out)?;
-    assert!(String::from_utf8(out)?.contains("delete the original"));
+    let text = String::from_utf8(out)?;
+    assert_eq!(
+        import_view::parse(&text).next[0].0,
+        next_steps(&a.file)[0].0
+    );
     assert!(store.list(owner()?)?.contains(&"k".to_owned()));
     Ok(())
 }

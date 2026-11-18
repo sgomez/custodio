@@ -14,7 +14,9 @@ pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
 pub use failure::ServiceFailure;
 pub use help::{COMMANDS, CommandSpec, OptionSpec};
 pub use list::{KeyEntry, KeyLister, ListArgs, ListFailure, Look, run_list, run_show};
-pub use parse::{ArgError, Command, ImportArgs, fuzz_cli_args, parse_args, parse_command, usage};
+pub use parse::{
+    ArgError, Command, ImportArgs, Wrong, fuzz_cli_args, parse_args, parse_command, usage,
+};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
@@ -98,27 +100,82 @@ fn read_limited(path: &Path) -> Result<Zeroizing<Vec<u8>>, ImportFailure> {
     Ok(data)
 }
 
-/// What the person is told about where the key now lives. The reason of a weaker kind comes from
-/// the kind alone: the import result names no missing capability.
-fn kind_text(kind: &Kind) -> String {
+/// The note under a weaker or unknown storage kind; `None` for `tpm`.
+fn kind_note(kind: &Kind) -> Option<&'static str> {
     match kind {
-        Kind::Tpm => "Storage: tpm. The key is in the TPM and cannot be copied out of it.".to_owned(),
-        Kind::EncryptedHost => "Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is \
-a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it."
-            .to_owned(),
-        Kind::EncryptedTpm => "Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability \
-the key type needs, so the key is a file encrypted with a key bound to this TPM. Root can use it while the machine runs.\n\
-See \"TPM capabilities\" in docs/api.md for what each key type needs."
-            .to_owned(),
-        Kind::Unknown(text) => format!(
-            "Storage: {}. This CLI does not know this kind, so it cannot say what the key is protected against.",
-            cert_text::escape(text)
-        ),
+        Kind::Tpm => None,
+        Kind::EncryptedTpm => Some("root can use this key while the machine runs."),
+        Kind::EncryptedHost => Some("root, and anyone with a copy of /var/lib, can use this key."),
+        Kind::Unknown(_) => Some("this CLI does not know this storage kind."),
     }
 }
 
-/// Read the file, ask for the password, send both to the service, then tell the person to delete
-/// the original. The reminder is printed only after the service accepted the import.
+/// The key the service stored, then the next steps: delete the original, restart Firefox. The
+/// first line has the columns of `custodio list`, after `ok` (`tpm`) or `warn` (any other kind).
+fn write_imported<W: Write>(
+    out: &mut W,
+    args: &ImportArgs,
+    key_type: &str,
+    kind: &Kind,
+    colour: bool,
+) -> std::io::Result<()> {
+    let note = kind_note(kind);
+    let word = if note.is_some() {
+        colour::paint("warn", colour::Paint::Yellow, colour)
+    } else {
+        colour::paint("ok  ", colour::Paint::Green, colour)
+    };
+    writeln!(
+        out,
+        "{word}  {}  {}  {}",
+        args.id,
+        cert_text::escape(key_type),
+        cert_text::escape(kind.wire())
+    )?;
+    if let Some(note) = note {
+        writeln!(out, "      {note}")?;
+    }
+    let steps = next_steps(&args.file);
+    let width = steps.iter().map(|(c, _)| c.len()).max().unwrap_or(0);
+    writeln!(out, "\nNext:")?;
+    for (command, why) in steps {
+        writeln!(out, "  {command:<width$}  {why}")?;
+    }
+    Ok(())
+}
+
+/// `word` as the shell reads it back: bare when it is plain, else in single quotes. Control
+/// characters are escaped first, so the line cannot drive the terminal.
+fn shell_word(word: &str) -> String {
+    let word = cert_text::escape(word);
+    let plain = !word.is_empty()
+        && word
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "._/+-,:@%".contains(c));
+    if plain {
+        word
+    } else {
+        format!("'{}'", word.replace('\'', r"'\''"))
+    }
+}
+
+/// What to do after an import, and why: delete the original, restart Firefox.
+#[must_use]
+pub fn next_steps(file: &Path) -> [(String, &'static str); 2] {
+    [
+        (
+            format!("shred -u {}", shell_word(&file.display().to_string())),
+            "the file still holds your private key",
+        ),
+        (
+            "restart Firefox".to_owned(),
+            "and any other program that loaded Custodio, to see the key",
+        ),
+    ]
+}
+
+/// Read the file, ask for the password, send both to the service, then show the key and the next
+/// steps. Those are printed only after the service accepted the import.
 ///
 /// # Errors
 /// See [`ImportFailure`].
@@ -128,6 +185,16 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
     importer: &I,
     out: &mut W,
 ) -> Result<(), ImportFailure> {
+    import_painted(args, prompt, importer, out, false)
+}
+
+fn import_painted<P: PasswordPrompt, I: Importer, W: Write>(
+    args: &ImportArgs,
+    prompt: &mut P,
+    importer: &I,
+    out: &mut W,
+    colour: bool,
+) -> Result<(), ImportFailure> {
     let data = read_limited(&args.file)?;
     let password = prompt
         .password(&format!("Password for {}: ", args.file.display()))
@@ -136,23 +203,12 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         .import_p12(&args.id, &data, &password)
         .map_err(ImportFailure::Service)?;
     // Output errors must not hide the fact that the import happened.
-    let _ = writeln!(
-        out,
-        "Imported key '{}' ({}).",
-        args.id,
-        cert_text::escape(&key_type)
-    );
-    let _ = writeln!(out, "{}", kind_text(&kind));
-    let _ = writeln!(
-        out,
-        "Now delete the original file: it still holds your private key.\n  shred -u {}   (or remove it with your file manager and empty the trash)",
-        args.file.display()
-    );
-    let _ = writeln!(out, "{}", delete::RESTART_NOTE);
+    let _ = write_imported(out, args, &key_type, &kind, colour);
     Ok(())
 }
 
-/// `custodio import`: [`run_import`], then the storage warning on `err` when the import succeeded.
+/// `custodio import`: [`run_import`], in colour if `colour`, then the storage warning on `err`
+/// when the import succeeded.
 ///
 /// # Errors
 /// See [`ImportFailure`]; the warning never adds one.
@@ -163,8 +219,9 @@ pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write
     storage: &S,
     out: &mut W,
     err: &mut E,
+    colour: bool,
 ) -> Result<(), ImportFailure> {
-    run_import(args, prompt, importer, out)?;
+    import_painted(args, prompt, importer, out, colour)?;
     storage::warn(storage, err);
     Ok(())
 }

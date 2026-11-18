@@ -234,13 +234,13 @@ fn options_are_usage_errors_before_any_question() -> TestResult {
             .clone();
         assert_eq!(done.status.code(), Some(2), "{args:?}");
         assert_eq!(done.stdout, "");
-        assert_eq!(
-            done.stderr.trim_end(),
-            format!(
-                "custodio: wrong arguments for 'delete'\n{}",
-                custodio_cli::ArgError::CommandUsage("delete")
-            )
+        let parsed = custodio_cli::parse_command(args.iter().map(|a| (*a).to_owned()));
+        let expected = parsed.map_or_else(
+            |e| custodio_cli::error::render(&custodio_cli::CliError::Args(e)),
+            |_| String::new(),
         );
+        assert!(!expected.is_empty(), "{args:?} parsed");
+        assert_eq!(done.stderr.trim_end(), expected);
         assert!(shown.is_empty(), "{shown:?}");
     }
     assert_eq!(rig.service_calls(), []);

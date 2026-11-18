@@ -162,7 +162,7 @@ fn refresh_only_touches_nothing_but_the_copy() {
 #[test]
 fn the_refresh_only_command_line() {
     use custodio_cli::register_native::parse_register_args;
-    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned()));
+    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned())).ok();
     assert_eq!(
         a(&["--refresh-only"]),
         Some(RegisterArgs {

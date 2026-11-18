@@ -6,10 +6,13 @@ use std::io;
 
 use custodio_cli::delete::RESTART_NOTE;
 use custodio_cli::{
-    CliError, Confirmation, ImportArgs, PasswordPrompt, exit_status, finish, run_delete, run_import,
+    CliError, Confirmation, ImportArgs, PasswordPrompt, exit_status, finish, next_steps,
+    run_delete, run_import,
 };
 use secrecy::SecretString;
 
+#[path = "../../custodio-cli/tests/import_view/mod.rs"]
+mod import_view;
 mod list_rig;
 use list_rig::{Rig, TestResult};
 
@@ -147,17 +150,15 @@ fn a_successful_import_and_delete_say_that_programs_must_restart() -> TestResult
     let rig = Rig::start(true)?;
     let imported = import(&rig, "p256.p12", RIGHT)?;
     assert_eq!(imported.status, 0, "{}", imported.stderr);
-    assert!(
-        imported.stdout.starts_with("Imported key 'k'"),
+    let view = import_view::parse(&imported.stdout);
+    assert_eq!(view.cells[0], "k", "{}", imported.stdout);
+    let restart = &next_steps(std::path::Path::new(""))[1];
+    assert_eq!(
+        view.next.last(),
+        Some(&(restart.0.clone(), restart.1.to_owned())),
         "{}",
         imported.stdout
     );
-    assert!(
-        imported.stdout.ends_with(&format!("{RESTART_NOTE}\n")),
-        "{}",
-        imported.stdout
-    );
-    assert_eq!(imported.stdout.matches(RESTART_NOTE).count(), 1);
     let deleted = delete(&rig, "k", Some("yes\n"));
     assert_eq!(deleted.status, 0, "{}", deleted.stderr);
     assert_eq!(

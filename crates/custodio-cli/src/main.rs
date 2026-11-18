@@ -88,6 +88,7 @@ fn run() -> Result<(), CliError> {
             &storage,
             &mut io::stdout(),
             &mut io::stderr(),
+            colour_on(rustix::termios::isatty(io::stdout())),
         )
         .map_err(CliError::Import),
         Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())

@@ -135,9 +135,9 @@ fn delete_takes_exactly_one_id() {
         parse(&["delete", "my-key"]),
         Ok(crate::Command::Delete("my-key".into()))
     );
+    assert_eq!(parse(&["delete"]), Err(crate::ArgError::Bare("delete")));
     for args in [
-        &["delete"][..],
-        &["delete", "a", "b"],
+        &["delete", "a", "b"][..],
         &["delete", "--yes", "a"],
         &["delete", "-y", "a"],
         &["delete", "--force", "a"],
@@ -147,9 +147,8 @@ fn delete_takes_exactly_one_id() {
         &["delete", "--", "a", "b"],
         &["delete", "--", "--", "--yes"],
     ] {
-        assert_eq!(
-            parse(args),
-            Err(crate::ArgError::CommandUsage("delete")),
+        assert!(
+            matches!(parse(args), Err(crate::ArgError::CommandUsage("delete", _))),
             "{args:?}"
         );
     }
@@ -167,7 +166,10 @@ fn a_double_dash_lets_an_id_start_with_a_dash() {
     // Without it, the same words are options and stay usage errors.
     assert_eq!(
         parse(&["delete", "-k"]),
-        Err(crate::ArgError::CommandUsage("delete"))
+        Err(crate::ArgError::CommandUsage(
+            "delete",
+            crate::Wrong::UnknownOption("-k".into())
+        ))
     );
 }
 

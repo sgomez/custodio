@@ -108,7 +108,7 @@ import sys
 t = sys.stdin.read()
 sys.stdout.write(t.replace("```console\n$ custodio list\n", "```bash\n$ custodio list\n", 1))'
     control "a custodio command with a wrong flag" run sed '0,/^\$ custodio import --id ana ana.p12$/s//$ custodio import --idd ana ana.p12/'
-    control "an output line changed" run sed '0,/^Imported key /s//Imported key X/'
+    control "an output line changed" run sed '0,/^warn  ana  /s//warn  anx  /'
     control "an extra console command whose output then differs" run python3 -I -c '
 import re, sys
 t = sys.stdin.read()

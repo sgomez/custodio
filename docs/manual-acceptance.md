@@ -712,11 +712,8 @@ them again there. Nothing on this page was run on a hardware TPM, a `fwupd`, a r
    custodio list
    ```
 
-   Expected: each import prints the storage line below, and `custodio list` shows `kind: tpm` for both keys.
-
-   ```text
-   Storage: tpm. The key is in the TPM and cannot be copied out of it.
-   ```
+   Expected: each import starts with `ok` and ends its first line with the kind `tpm`, with no note under it, and
+   `custodio list` shows `tpm` for both keys.
 
 2. As root, with the repository as the current directory, check the stored record of each key (the state directory is
    `/var/lib/private/custodio`, the real directory behind `/var/lib/custodio`, see `docs/install.md`):
@@ -760,7 +757,7 @@ them again there. Nothing on this page was run on a hardware TPM, a `fwupd`, a r
    After the `dbx` update or the substitute, PCR 7 must differ from the value read before; if it does not,
    the event proved nothing: write that down and do not tick the rows of this event. After a reboot or an upgrade a changed value is
    noted, not required.
-4. After each of the three events: `custodio list` still shows both keys with `kind: tpm`, and Firefox and LibreOffice sign
+4. After each of the three events: `custodio list` still shows both keys with the kind `tpm`, and Firefox and LibreOffice sign
    with both keys after the polkit dialog:
    - Firefox: follow the Firefox steps of `## 11. fedora44, SELinux enforcing (acceptance 12)` (the registration and TLS
      client authentication) once with `rsa2048` and once with `p256`.
@@ -768,18 +765,18 @@ them again there. Nothing on this page was run on a hardware TPM, a `fwupd`, a r
 
 | Event | Check | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
-| import | `custodio list`, both keys | `kind: tpm` | |
+| import | `custodio list`, both keys | the kind `tpm` | |
 | import | helper, both keys | `authPolicy: empty`, `TPM_RC_POLICY_FAIL`, exit 0 | |
 | reboot | PCR 7 before and after | both values written down | |
-| reboot | `custodio list` | both keys, `kind: tpm` | |
+| reboot | `custodio list` | both keys, the kind `tpm` | |
 | reboot | Firefox, both keys | dialog, then signed | |
 | reboot | LibreOffice, both keys | dialog, then valid signature | |
 | upgrade | PCR 7 before and after | both values written down | |
-| upgrade | `custodio list` | both keys, `kind: tpm` | |
+| upgrade | `custodio list` | both keys, the kind `tpm` | |
 | upgrade | Firefox, both keys | dialog, then signed | |
 | upgrade | LibreOffice, both keys | dialog, then valid signature | |
 | dbx or substitute | PCR 7 before and after | the value differs | |
-| dbx or substitute | `custodio list` | both keys, `kind: tpm` | |
+| dbx or substitute | `custodio list` | both keys, the kind `tpm` | |
 | dbx or substitute | Firefox, both keys | dialog, then signed | |
 | dbx or substitute | LibreOffice, both keys | dialog, then valid signature | |
 
@@ -795,30 +792,30 @@ Nothing on this page was run in such a VM (**unverified**).
    custodio list
    ```
 
-2. Expected: the import prints the notice below, word for word (the text of `kind_text` in `crates/custodio-cli/src/lib.rs`):
+2. Expected: the import prints the two lines below first, word for word (`kind_note` in `crates/custodio-cli/src/lib.rs`):
 
    ```text
-   Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+   warn  rsa2048  rsa2048  encrypted-host
+         root, and anyone with a copy of /var/lib, can use this key.
    ```
 
-3. Expected: `custodio list` shows the two lines below for the key: the kind, then the same reason as the import notice
-   (the `note:` line, `crates/custodio-cli/src/list.rs`). SPEC.md acceptance 14 asks that `custodio list` says the key is
-   encrypted with the host key and weaker.
+3. Expected: `custodio list` shows the key's row with the kind `encrypted-host`, and at the foot the note below
+   (`WEAKER_NOTE` in `crates/custodio-cli/src/list.rs`). SPEC.md acceptance 14 asks that `custodio list` says the key is
+   encrypted and weaker.
 
    ```text
-   kind: encrypted-host
-   note: This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
+   Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
    ```
 
-4. Reboot (`sudo systemctl reboot`), then `custodio list` again: the key is still listed with `kind: encrypted-host`.
+4. Reboot (`sudo systemctl reboot`), then `custodio list` again: the key is still listed with `encrypted-host`.
 5. After the reboot, sign from Firefox (`## 11. fedora44, SELinux enforcing (acceptance 12)`) or from LibreOffice
    (`## 6. LibreOffice run`) with the key: a polkit dialog, then a signature.
 
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
 | 1 | Import output | the notice of step 2, word for word | |
-| 2 | `custodio list` | `kind: encrypted-host` and the `note:` line of step 3 | |
-| 3 | After the reboot: `custodio list` | the key, `kind: encrypted-host` | |
+| 2 | `custodio list` | `encrypted-host` and the note of step 3 | |
+| 3 | After the reboot: `custodio list` | the key, `encrypted-host` | |
 | 4 | After the reboot: sign from Firefox or LibreOffice | dialog, then signed | |
 
 ## 22. M4 acceptance 15: a copy of the state directory
@@ -1180,14 +1177,15 @@ note: on GNOME, enrolling a finger also lets it unlock the lock screen unless or
 
 ```console
 $ custodio import --id ana ana.p12
-Imported key 'ana' (ecdsa-p256).
-Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-Now delete the original file: it still holds your private key.
-  shred -u ana.p12   (or remove it with your file manager and empty the trash)
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+warn  ana  ecdsa-p256  encrypted-host
+      root, and anyone with a copy of /var/lib, can use this key.
+
+Next:
+  shred -u ana.p12  the file still holds your private key
+  restart Firefox   and any other program that loaded Custodio, to see the key
 ```
 
-   On your machine the storage line may differ (a TPM key says `tpm`); write what you see.
+   On your machine the first line may differ (a TPM key says `ok` and `tpm`, with no line under it); write what you see.
 
 5. Register the module, restart Firefox completely, and sign in with your finger at a real site that requires a client certificate
    (a person's):

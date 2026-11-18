@@ -118,3 +118,28 @@ fn the_usage_line_of_each_command_starts_with_it() {
         }
     }
 }
+
+#[test]
+fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_the_rest_is() {
+    for c in COMMANDS {
+        let text = short(c.name).unwrap_or_default();
+        let mut parts = vec![c.usage_line(), c.example.to_owned()];
+        parts.push(format!("custodio {} --help", c.name));
+        parts.extend(
+            c.args
+                .iter()
+                .flat_map(|(a, t)| [(*a).to_owned(), (*t).to_owned()]),
+        );
+        parts.extend(
+            c.options
+                .iter()
+                .flat_map(|o| [o.flag.to_owned(), o.text.to_owned()]),
+        );
+        parts.extend(c.options.iter().filter_map(|o| o.short.map(str::to_owned)));
+        for part in parts {
+            assert!(text.contains(&part), "{}: no {part:?}", c.name);
+        }
+        assert!(!text.contains(c.description), "{}", c.name);
+    }
+    assert_eq!(short("nosuch"), None);
+}

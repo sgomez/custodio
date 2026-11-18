@@ -63,14 +63,15 @@ choose Backup. Save it as `ana.p12` in the directory you are in and choose a pas
 
 ```console
 $ custodio import --id ana ana.p12
-Imported key 'ana' (ecdsa-p256).
-Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-Now delete the original file: it still holds your private key.
-  shred -u ana.p12   (or remove it with your file manager and empty the trash)
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+warn  ana  ecdsa-p256  encrypted-host
+      root, and anyone with a copy of /var/lib, can use this key.
+
+Next:
+  shred -u ana.p12  the file still holds your private key
+  restart Firefox   and any other program that loaded Custodio, to see the key
 ```
 
-Delete the original file as the message says. Close Firefox completely and open it again: a running Firefox sees the change only after it restarts.
+Delete the original file as the message says. Close Firefox completely and open it again: a running Firefox sees the new key only after it restarts.
 
 ## 5. Register the module and sign in
 

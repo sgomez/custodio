@@ -44,8 +44,9 @@ fn is_help(arg: &str) -> bool {
 /// Parse the arguments after the program name.
 ///
 /// # Errors
-/// [`ArgError::CommandUsage`] for a wrong command line of a known command, [`ArgError::Usage`] for
-/// anything else, and [`ArgError::BadId`] for an `import` without a derivable key id.
+/// [`ArgError::Bare`] for a command that needs arguments and got none, [`ArgError::CommandUsage`]
+/// with what is wrong for any other bad line of a known command, [`ArgError::Usage`] for an unknown
+/// command, and [`ArgError::BadId`] for an `import` without a derivable key id.
 pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command, ArgError> {
     let args: Vec<String> = args.into_iter().collect();
     let known = args.first().and_then(|a| help::command(a));
@@ -54,9 +55,11 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
         if help_only {
             return Ok(Command::Help(Some(spec.name)));
         }
+        let bare = args.len() == 1;
         return parse_known(spec.name, args).map_err(|e| match e {
-            ArgError::Usage => ArgError::CommandUsage(spec.name),
-            other => other,
+            Bad::Wrong(Wrong::Missing(_)) if bare => ArgError::Bare(spec.name),
+            Bad::Wrong(w) => ArgError::CommandUsage(spec.name, w),
+            Bad::BadId => ArgError::BadId,
         });
     }
     if args.len() == 1 && args[0] == "__key-ids" {
@@ -68,60 +71,119 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
     Err(ArgError::Usage)
 }
 
-fn parse_known(name: &str, args: Vec<String>) -> Result<Command, ArgError> {
+/// What is wrong with the command line of a known command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Wrong {
+    /// An option the command does not take.
+    UnknownOption(String),
+    /// An argument the command does not take, or one too many.
+    Unexpected(String),
+    /// A required argument, named as in the help.
+    Missing(&'static str),
+    /// An option without its value.
+    NoValue(&'static str),
+    /// An option given twice.
+    Twice(&'static str),
+    /// Two options that exclude each other.
+    Conflict(&'static str, &'static str),
+}
+
+impl Wrong {
+    /// An argument that is not taken here: an option if it starts with `-`.
+    #[must_use]
+    pub fn extra(arg: String) -> Self {
+        if arg.starts_with('-') {
+            Self::UnknownOption(arg)
+        } else {
+            Self::Unexpected(arg)
+        }
+    }
+}
+
+impl fmt::Display for Wrong {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use crate::cert_text::escape;
+        match self {
+            Self::UnknownOption(o) => write!(f, "unknown option {}", escape(o)),
+            Self::Unexpected(a) => write!(f, "unexpected argument {}", escape(a)),
+            Self::Missing(a) => write!(f, "missing {a}"),
+            Self::NoValue(o) => write!(f, "{o} needs a value"),
+            Self::Twice(o) => write!(f, "{o} given twice"),
+            Self::Conflict(a, b) => write!(f, "{a} and {b} cannot go together"),
+        }
+    }
+}
+
+/// Why `parse_known` failed, before the command's name is attached.
+enum Bad {
+    Wrong(Wrong),
+    BadId,
+}
+
+impl From<Wrong> for Bad {
+    fn from(w: Wrong) -> Self {
+        Self::Wrong(w)
+    }
+}
+
+/// No more arguments, or the first one left over is wrong.
+fn end<I: Iterator<Item = String>>(mut it: I) -> Result<(), Wrong> {
+    it.next().map_or(Ok(()), |a| Err(Wrong::extra(a)))
+}
+
+const KEY_ID: &str = "<key id>";
+
+fn parse_known(name: &str, args: Vec<String>) -> Result<Command, Bad> {
     let mut it = args.into_iter().peekable();
     it.next();
     match name {
         "list" => {
             let mut args = crate::list::ListArgs::default();
-            while let Some(arg) = it.next_if(|a| a == "-v" || a == "--verbose") {
+            while it.next_if(|a| a == "-v" || a == "--verbose").is_some() {
                 if std::mem::replace(&mut args.verbose, true) {
-                    return Err(ArgError::Usage);
+                    return Err(Wrong::Twice("-v").into());
                 }
-                drop(arg);
             }
             // As for `delete`: `--` ends the options, so an id that starts with `-` can be shown.
-            if it.next_if(|a| a == "--").is_some() {
-                return match (it.next(), it.next()) {
-                    (Some(id), None) => Ok(Command::List(crate::list::ListArgs {
-                        id: Some(id),
-                        ..args
-                    })),
-                    _ => Err(ArgError::Usage),
-                };
+            let dashes = it.next_if(|a| a == "--").is_some();
+            if !dashes && it.peek().is_some_and(|id| id.starts_with('-')) {
+                return Err(Wrong::extra(it.next().unwrap_or_default()).into());
             }
-            if it.peek().is_some_and(|id| id.starts_with('-')) {
-                return Err(ArgError::Usage);
+            let id = it.next();
+            if dashes && id.is_none() {
+                return Err(Wrong::Missing(KEY_ID).into());
             }
-            match (it.next(), it.next()) {
-                (id, None) => Ok(Command::List(crate::list::ListArgs { id, ..args })),
-                _ => Err(ArgError::Usage),
-            }
+            end(it)?;
+            Ok(Command::List(crate::list::ListArgs { id, ..args }))
         }
-        "fingerprint" => match (it.next().as_deref(), it.next()) {
-            (Some("enable"), None) => Ok(Command::Fingerprint(Action::Enable)),
-            (Some("disable"), None) => Ok(Command::Fingerprint(Action::Disable)),
-            _ => Err(ArgError::Usage),
-        },
-        "doctor" => match it.next() {
-            None => Ok(Command::Doctor),
-            Some(_) => Err(ArgError::Usage),
-        },
+        "fingerprint" => {
+            let action = match it.next().as_deref() {
+                Some("enable") => Action::Enable,
+                Some("disable") => Action::Disable,
+                Some(other) => return Err(Wrong::extra(other.to_owned()).into()),
+                None => return Err(Wrong::Missing("enable or disable").into()),
+            };
+            end(it)?;
+            Ok(Command::Fingerprint(action))
+        }
+        "doctor" => {
+            end(it)?;
+            Ok(Command::Doctor)
+        }
         "register" => register_native::parse_register_args(it)
             .map(Command::Register)
-            .ok_or(ArgError::Usage),
+            .map_err(Bad::Wrong),
         "delete" => {
             // `--` ends the options, so an id that starts with `-` can still be deleted. It is the
             // only option accepted, and it is not a bypass of the confirmation.
-            if it.peek().map(String::as_str) == Some("--") {
-                it.next();
-            } else if it.peek().is_some_and(|id| id.starts_with('-')) {
-                return Err(ArgError::Usage);
+            if it.next_if(|a| a == "--").is_none()
+                && it.peek().is_some_and(|id| id.starts_with('-'))
+            {
+                return Err(Wrong::extra(it.next().unwrap_or_default()).into());
             }
-            match (it.next(), it.next()) {
-                (Some(id), None) => Ok(Command::Delete(id)),
-                _ => Err(ArgError::Usage),
-            }
+            let id = it.next().ok_or(Wrong::Missing(KEY_ID))?;
+            end(it)?;
+            Ok(Command::Delete(id))
         }
         _ => parse_import(it).map(Command::Import),
     }
@@ -136,9 +198,12 @@ pub struct ImportArgs {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ArgError {
+    /// An unknown command, or a line that is not a command at all.
     Usage,
-    /// The command line of this known command is wrong.
-    CommandUsage(&'static str),
+    /// A command that needs arguments was given none: its short help is the answer.
+    Bare(&'static str),
+    /// The command line of this known command is wrong, and how.
+    CommandUsage(&'static str, Wrong),
     BadId,
 }
 
@@ -146,14 +211,11 @@ impl fmt::Display for ArgError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Usage => f.write_str(&usage()),
-            Self::CommandUsage(name) => match help::command(name) {
-                Some(c) => write!(
-                    f,
-                    "usage: {}\nRun 'custodio {name} --help' for help.",
-                    c.usage_line()
-                ),
-                None => f.write_str(&usage()),
-            },
+            Self::Bare(name) => f.write_str(&help::short(name).unwrap_or_else(usage)),
+            Self::CommandUsage(name, wrong) => write!(
+                f,
+                "custodio {name}: {wrong}\nRun 'custodio {name} --help' for help."
+            ),
             Self::BadId => f.write_str("cannot derive a key id from the file name; use --id"),
         }
     }
@@ -165,31 +227,38 @@ impl std::error::Error for ArgError {}
 /// `--password`) is a usage error: secrets must not travel through argv.
 ///
 /// # Errors
-/// [`ArgError::Usage`] for anything unexpected, [`ArgError::BadId`] if no id can be derived.
+/// [`ArgError::Usage`] if the command is not `import`, [`ArgError::CommandUsage`] for anything
+/// unexpected after it, [`ArgError::BadId`] if no id can be derived.
 pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<ImportArgs, ArgError> {
     let mut it = args.into_iter();
     if it.next().as_deref() != Some("import") {
         return Err(ArgError::Usage);
     }
-    parse_import(it)
+    parse_import(it).map_err(|e| match e {
+        Bad::Wrong(w) => ArgError::CommandUsage("import", w),
+        Bad::BadId => ArgError::BadId,
+    })
 }
 
-fn parse_import<I: Iterator<Item = String>>(mut it: I) -> Result<ImportArgs, ArgError> {
+fn parse_import<I: Iterator<Item = String>>(mut it: I) -> Result<ImportArgs, Bad> {
     let mut file = None;
     let mut id = None;
     while let Some(arg) = it.next() {
         if arg == "--id" {
-            if id.replace(it.next().ok_or(ArgError::Usage)?).is_some() {
-                return Err(ArgError::Usage);
+            let value = it.next().ok_or(Wrong::NoValue("--id"))?;
+            if id.replace(value).is_some() {
+                return Err(Wrong::Twice("--id").into());
             }
-        } else if arg.starts_with('-') || file.replace(PathBuf::from(arg)).is_some() {
-            return Err(ArgError::Usage);
+        } else if arg.starts_with('-') || file.is_some() {
+            return Err(Wrong::extra(arg).into());
+        } else {
+            file = Some(PathBuf::from(arg));
         }
     }
-    let file = file.ok_or(ArgError::Usage)?;
+    let file = file.ok_or(Wrong::Missing("<file.p12>"))?;
     let id = match id {
         Some(id) => id,
-        None => default_id(&file).ok_or(ArgError::BadId)?,
+        None => default_id(&file).ok_or(Bad::BadId)?,
     };
     Ok(ImportArgs { file, id })
 }

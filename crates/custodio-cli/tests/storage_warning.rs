@@ -68,6 +68,10 @@ struct Run {
 }
 
 fn run_import(svc: &Svc) -> Run {
+    import_painted(svc, false)
+}
+
+fn import_painted(svc: &Svc, colour: bool) -> Run {
     let dir = tempfile::tempdir().expect("tempdir");
     let file: PathBuf = dir.path().join("k.p12");
     std::fs::write(&file, b"p12").expect("write");
@@ -76,8 +80,8 @@ fn run_import(svc: &Svc) -> Run {
         id: "mykey".into(),
     };
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let result =
-        import_command(&args, &mut Prompt, svc, svc, &mut out, &mut err).map_err(CliError::Import);
+    let result = import_command(&args, &mut Prompt, svc, svc, &mut out, &mut err, colour)
+        .map_err(CliError::Import);
     // The reminder names the temporary file: compare outputs with the directory name taken out.
     let mut run = finish_run(&result, &out, err);
     run.out = run.out.replace(&dir.path().display().to_string(), "<dir>");
@@ -215,6 +219,16 @@ fn import_failure_type_is_unchanged() {
             s,
             &mut o,
             &mut e,
+            false,
         )
     };
+}
+
+#[test]
+fn import_in_colour_is_the_same_text_once_the_colour_is_taken_out() {
+    let s = svc(Some(StateStorage::Encrypted));
+    let plain = run_import(&s);
+    let painted = import_painted(&s, true);
+    assert_ne!(painted.out, plain.out);
+    assert_eq!(custodio_cli::colour::strip(&painted.out), plain.out);
 }

@@ -13,18 +13,25 @@ tk() { python3 -I "$here/tpmkind.py" "$@"; }
 expect_ok() { local n=$1 out; shift; out=$("$@"); [ -z "$out" ] || bad "$n: problems on good evidence: $out"; }
 expect_bad() { local n=$1 out; shift; out=$("$@"); [ -n "$out" ] || bad "$n: no problem on bad evidence"; }
 
-STORAGE='Storage: tpm. The key is in the TPM and cannot be copied out of it.'
-imp() { printf "Imported key 'k1' (rsa2048).\n%s\nsomething else\n" "$1" > "$tmp/imp"; }
-imp "$STORAGE"; expect_ok import tk import "$tmp/imp" k1 rsa2048
-printf "Password for x: \r\nImported key 'k1' (rsa2048).\r\n%s\r\n" "$STORAGE" > "$tmp/imp-crlf"; expect_ok import-crlf tk import "$tmp/imp-crlf" k1 rsa2048
-imp 'Storage: encrypted-tpm. This key is weaker than a TPM key: x'; expect_bad import-encrypted-tpm tk import "$tmp/imp" k1 rsa2048
-imp 'Storage: encrypted-host. This key is weaker than a TPM key: x'; expect_bad import-encrypted-host tk import "$tmp/imp" k1 rsa2048
-imp 'Storage: tpm-x. The key is in the TPM and cannot be copied out of it.'; expect_bad import-prefix tk import "$tmp/imp" k1 rsa2048
-imp "$STORAGE"; expect_bad import-wrong-type tk import "$tmp/imp" k1 ecdsa-p256
+NEXT=$'Next:\n  shred -u x.p12    the file still holds your private key\n  restart Firefox   and any other program that loaded Custodio, to see the key'
+# imp WORD KIND [NOTE]: the output of `custodio import --id k1` of an rsa2048 key, laid out as the CLI does
+imp() { { printf '%-4s  k1  rsa2048  %s\n' "$1" "$2"; [ -z "${3:-}" ] || printf '      %s\n' "$3"; printf '\n%s\n' "$NEXT"; } > "$tmp/imp"; }
+imp ok tpm; expect_ok import tk import "$tmp/imp" k1 rsa2048
+printf 'Password for x: \r\nok    k1  rsa2048  tpm\r\n\r\nNext:\r\n' > "$tmp/imp-crlf"; expect_ok import-crlf tk import "$tmp/imp-crlf" k1 rsa2048
+imp warn encrypted-tpm 'root can use this key while the machine runs.'; expect_bad import-encrypted-tpm tk import "$tmp/imp" k1 rsa2048
+imp warn encrypted-host 'root, and anyone with a copy of /var/lib, can use this key.'; expect_bad import-encrypted-host tk import "$tmp/imp" k1 rsa2048
+imp ok tpm-x; expect_bad import-prefix tk import "$tmp/imp" k1 rsa2048
+imp ok tpm; expect_bad import-wrong-type tk import "$tmp/imp" k1 ecdsa-p256
 expect_bad import-wrong-id tk import "$tmp/imp" k2 rsa2048
-printf "Imported key 'k1' (rsa2048).\n" > "$tmp/imp0"; expect_bad import-no-storage tk import "$tmp/imp0" k1 rsa2048
-printf "Imported key 'k1' (rsa2048).\n%s\n%s\n" "$STORAGE" "$STORAGE" > "$tmp/imp2"; expect_bad import-two-storage tk import "$tmp/imp2" k1 rsa2048
-printf "Imported key 'k1' (rsa2048).\n%s\nThis key is weaker\n" "$STORAGE" > "$tmp/imp3"; expect_bad import-weaker tk import "$tmp/imp3" k1 rsa2048
+printf 'ok    k1  rsa2048\n' > "$tmp/imp0"; expect_bad import-no-kind tk import "$tmp/imp0" k1 rsa2048
+printf 'ok    k1  rsa2048  tpm\nok    k1  rsa2048  tpm\n' > "$tmp/imp2"; expect_bad import-two-keys tk import "$tmp/imp2" k1 rsa2048
+imp ok tpm 'root can use this key while the machine runs.'; expect_bad import-weaker-note tk import "$tmp/imp" k1 rsa2048
+imp warn tpm; expect_bad import-warn tk import "$tmp/imp" k1 rsa2048
+# lacking: encrypted-tpm, a warning with its note
+imp warn encrypted-tpm 'root can use this key while the machine runs.'; expect_ok lacking tk --mode lacking import "$tmp/imp" k1 rsa2048
+imp warn encrypted-tpm; expect_bad lacking-no-note tk --mode lacking import "$tmp/imp" k1 rsa2048
+imp ok encrypted-tpm 'root can use this key while the machine runs.'; expect_bad lacking-ok tk --mode lacking import "$tmp/imp" k1 rsa2048
+imp ok tpm; expect_bad lacking-tpm tk --mode lacking import "$tmp/imp" k1 rsa2048
 
 printf 'k1\trsa2048\ttpm\nk2\tecdsa-p256\ttpm\nother\trsa2048\tencrypted-host\n' > "$tmp/api"
 expect_ok api tk api "$tmp/api" k1:rsa2048 k2:ecdsa-p256

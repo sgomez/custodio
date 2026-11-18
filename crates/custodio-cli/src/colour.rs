@@ -67,11 +67,19 @@ pub fn headings(help: &str, on: bool) -> String {
     out
 }
 
-/// `text` with a leading `custodio:` in bold when `on`.
+/// `text` with a leading `custodio:` or `custodio <command>:` in bold when `on`.
 #[must_use]
 pub fn prefix(text: &str, on: bool) -> String {
-    match text.strip_prefix("custodio:") {
-        Some(rest) if on => format!("{}{rest}", bold("custodio:", true)),
+    let head = text.split_once(':').map(|(h, _)| h).filter(|h| {
+        h.strip_prefix("custodio")
+            .is_some_and(|c| c.is_empty() || (c.starts_with(' ') && !c[1..].contains(' ')))
+    });
+    match head {
+        Some(head) if on => format!(
+            "{}{}",
+            bold(&text[..=head.len()], true),
+            &text[head.len() + 1..]
+        ),
         _ => text.to_owned(),
     }
 }

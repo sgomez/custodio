@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F161: container-free checks of the kind cases of a VM run: the judgements per mode (full: tpm for RSA 2048 and P-256; lacking: encrypted-tpm for both, with the weaker-and-why text),
+# F161: container-free checks of the kind cases of a VM run: the judgements per mode (full: tpm for RSA 2048 and P-256; lacking: encrypted-tpm for both, a warning with its note),
 # the case accounting of a VM run, tpmkind_judge on files with the right and the wrong mode, and the reader of the stored credential (e2e/vm/cred-lib.sh) on synthetic records.
 # NOT checked here: a real guest (F168).
 # shellcheck disable=SC2086,SC2013,SC2015,SC2016 # the ids are words; the greps read the scripts for their calls (single quotes keep the $)
@@ -13,16 +13,18 @@ E=$ROOT/e2e
 ids="tpm-kind-import-rsa tpm-kind-import-ec tpm-kind-api-list tpm-kind-cli-list tpm-kind-journal"
 
 # ---- evidence per mode
-TPM_TEXT="Storage: tpm. The key is in the TPM and cannot be copied out of it."
-ETPM_TEXT="Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability the key type needs, so the key is a file encrypted with a key bound to this TPM. Root can use it while the machine runs."
-REMIND="Now delete the original file: it still holds your private key."
-imp() { printf "Imported key '%s' (%s).\n%s\n%s\n" "$1" "$2" "$3" "$REMIND"; }
-# mkset DIR KIND TEXT: a complete set of the step's files, every key of KIND
+NEXT=$'Next:\n  shred -u k.p12    the file still holds your private key\n  restart Firefox   and any other program that loaded Custodio, to see the key'
+ETPM_NOTE='root can use this key while the machine runs.'
+# imp ID TYPE WORD KIND [NOTE]: the output of `custodio import`, laid out as the CLI does
+imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '\n%s\n' "$NEXT"; }
+# kimp ID TYPE KIND: the output for a key stored as KIND, with the word and note the CLI gives that kind
+kimp() { if [ "$3" = tpm ]; then imp "$1" "$2" ok tpm; else imp "$1" "$2" warn "$3" "$ETPM_NOTE"; fi; }
+# mkset DIR KIND: a complete set of the step's files, every key of KIND
 mkset() {
-    local d=$1 k=$2 t=$3
+    local d=$1 k=$2
     mkdir -p "$d"
-    imp tk-rsa rsa2048 "$t" > "$d/import-rsa.out"
-    imp tk-ec ecdsa-p256 "$t" > "$d/import-ec.out"
+    kimp tk-rsa rsa2048 "$k" > "$d/import-rsa.out"
+    kimp tk-ec ecdsa-p256 "$k" > "$d/import-ec.out"
     printf 'tk-rsa\trsa2048\t%s\ntk-ec\tecdsa-p256\t%s\n' "$k" "$k" > "$d/api.out"
     printf 'tk-rsa  rsa2048  %s  CN=a  2030-01-01\ntk-ec  ecdsa-p256  %s  CN=b  2030-01-01\n' "$k" "$k" > "$d/cli.out"
     : > "$d/api-after.out"
@@ -43,8 +45,8 @@ judge_all() { # MODE DIR: every judgement of the step; prints the problems
     J --mode "$m" cli "$d/cli.out" tk-rsa:rsa2048 tk-ec:ecdsa-p256
     J --mode "$m" journal "$d/journal.json" tk-rsa tk-ec
 }
-mkset "$tmp/full" tpm "$TPM_TEXT"
-mkset "$tmp/lack" encrypted-tpm "$ETPM_TEXT"
+mkset "$tmp/full" tpm
+mkset "$tmp/lack" encrypted-tpm
 [ -z "$(judge_all full "$tmp/full")" ] || bad "full: good evidence rejected: $(judge_all full "$tmp/full")"
 [ -z "$(judge_all lacking "$tmp/lack")" ] || bad "lacking: good evidence rejected: $(judge_all lacking "$tmp/lack")"
 [ -n "$(judge_all lacking "$tmp/full")" ] || bad "lacking accepts the full evidence"
@@ -59,10 +61,8 @@ control_kinds() {
         sub=$tmp/c-$m-$key-$wrong
         cp -r "$good" "$sub"
         local id=tk-$key
-        # the import text of one key with the wrong kind line
-        local wtext=$TPM_TEXT
-        [ "$wrong" != tpm ] && wtext="Storage: $wrong. This key is weaker than a TPM key: x."
-        case $key in rsa) imp tk-rsa rsa2048 "$wtext" > "$sub/import-rsa.out" ;; ec) imp tk-ec ecdsa-p256 "$wtext" > "$sub/import-ec.out" ;; esac
+        # the import text of one key with the wrong kind
+        case $key in rsa) kimp tk-rsa rsa2048 "$wrong" > "$sub/import-rsa.out" ;; ec) kimp tk-ec ecdsa-p256 "$wrong" > "$sub/import-ec.out" ;; esac
         [ -n "$(J --mode "$m" import "$sub/import-$key.out" "$id" "$([ $key = rsa ] && echo rsa2048 || echo ecdsa-p256)")" ] || bad "$m: import text of $id with kind $wrong accepted"
         cp -r "$good" "$sub-api"
         sed -i "s/^$id\(.*\)\t[a-z-]*\$/$id\1\t$wrong/" "$sub-api/api.out"
@@ -77,17 +77,19 @@ control_kinds() {
 }
 for w in encrypted-tpm encrypted-host ''; do control_kinds full "$tmp/full" "$w"; done
 for w in tpm encrypted-host ''; do control_kinds lacking "$tmp/lack" "$w"; done
-# the weaker-and-why text (lacking): none, no reason, a text of another kind, weaker spoken in full mode
+# the warning and its note (lacking): ok instead of warn, no note, two notes; a note or warn in full mode
 for k in rsa ec; do
     t=$([ $k = rsa ] && echo rsa2048 || echo ecdsa-p256)
-    imp tk-$k $t "Storage: encrypted-tpm. The key is in a file." > "$tmp/w1"
-    imp tk-$k $t "Storage: encrypted-tpm. This key is weaker than a TPM key: it is a file." > "$tmp/w2"
-    imp tk-$k $t "Storage: encrypted-tpm." > "$tmp/w3"
+    imp tk-$k $t ok encrypted-tpm "$ETPM_NOTE" > "$tmp/w1"
+    imp tk-$k $t warn encrypted-tpm > "$tmp/w2"
+    imp tk-$k $t warn encrypted-tpm "$ETPM_NOTE"$'\n      '"$ETPM_NOTE" > "$tmp/w3"
     for w in w1 w2 w3; do
-        [ -n "$(J --mode lacking import "$tmp/$w" tk-$k $t)" ] || bad "lacking: $k text $w (no weaker, or no reason) accepted"
+        [ -n "$(J --mode lacking import "$tmp/$w" tk-$k $t)" ] || bad "lacking: $k text $w (not a warning with one note) accepted"
     done
-    printf "Imported key 'tk-%s' (%s).\nStorage: tpm. The key is in the TPM and cannot be copied out of it.\nThis key is weaker\n" $k $t > "$tmp/w4"
-    [ -n "$(J --mode full import "$tmp/w4" tk-$k $t)" ] || bad "full: $k with a weaker line accepted"
+    imp tk-$k $t ok tpm "$ETPM_NOTE" > "$tmp/w4"
+    [ -n "$(J --mode full import "$tmp/w4" tk-$k $t)" ] || bad "full: $k with a note accepted"
+    imp tk-$k $t warn tpm > "$tmp/w5"
+    [ -n "$(J --mode full import "$tmp/w5" tk-$k $t)" ] || bad "full: $k with warn accepted"
 done
 # journal of another id or outcome (lacking)
 cp -r "$tmp/lack" "$tmp/jo"; sed -i 's/"tk-rsa"/"other"/' "$tmp/jo/journal.json"

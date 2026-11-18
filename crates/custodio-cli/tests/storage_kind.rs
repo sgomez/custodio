@@ -5,10 +5,13 @@ use std::path::PathBuf;
 
 use custodio_cli::{
     ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, PasswordPrompt, ServiceFailure,
-    run_import, run_list,
+    next_steps, run_import, run_list,
 };
 use custodio_client::Kind;
 use secrecy::SecretString;
+
+mod import_view;
+use import_view::{Imported, parse};
 
 const KEY_TYPES: [&str; 2] = ["rsa2048", "ecdsa-p256"];
 const CERT: &[u8] = include_bytes!("../../custodio-it/tests/fixtures/cert-p256-other.der");
@@ -34,87 +37,110 @@ impl Importer for Fake {
     }
 }
 
-fn import(result: Result<(String, Kind), ServiceFailure>) -> (Result<(), ImportFailure>, String) {
+fn import_file(
+    name: &str,
+    result: Result<(String, Kind), ServiceFailure>,
+) -> (Result<(), ImportFailure>, String, PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let file: PathBuf = dir.path().join("k.p12");
+    let file: PathBuf = dir.path().join(name);
     std::fs::write(&file, b"p12").expect("write");
     let args = ImportArgs {
-        file,
+        file: file.clone(),
         id: "mykey".into(),
     };
     let mut out = Vec::new();
     let r = run_import(&args, &mut Prompt, &Fake(result), &mut out);
-    (r, String::from_utf8_lossy(&out).into_owned())
+    (r, String::from_utf8_lossy(&out).into_owned(), file)
 }
 
-fn imported(key_type: &str, kind: Kind) -> String {
-    let (r, out) = import(Ok((key_type.into(), kind)));
+fn import(result: Result<(String, Kind), ServiceFailure>) -> (Result<(), ImportFailure>, String) {
+    let (r, out, _) = import_file("k.p12", result);
+    (r, out)
+}
+
+/// The output of a successful import of `key_type` stored as `kind`, after the checks that hold for
+/// every kind: the key's cells, then the next steps of the product.
+fn imported(key_type: &str, kind: &Kind) -> Imported {
+    let (r, out, file) = import_file("k.p12", Ok((key_type.into(), kind.clone())));
     assert!(r.is_ok());
-    assert!(out.contains(key_type), "{out}");
-    assert!(out.contains("Now delete the original file"), "{out}");
-    out
+    let view = parse(&out);
+    assert_eq!(
+        view.cells,
+        [
+            "mykey",
+            key_type,
+            &custodio_cli::cert_text::escape(kind.wire())
+        ],
+        "{out}"
+    );
+    let expected: Vec<(String, String)> = next_steps(&file)
+        .into_iter()
+        .map(|(c, w)| (c, w.to_owned()))
+        .collect();
+    assert_eq!(view.next, expected, "{out}");
+    view
 }
 
 #[test]
-fn import_tpm() {
+fn a_tpm_key_is_ok_with_nothing_under_it() {
     for t in KEY_TYPES {
-        let out = imported(t, Kind::Tpm);
-        assert!(out.contains("tpm"), "{out}");
-        assert!(out.contains("cannot be copied"), "{out}");
-        assert!(!out.contains("weaker"), "{out}");
-        assert!(!out.contains("capability"), "{out}");
-        assert!(!out.contains("no TPM"), "{out}");
+        let view = imported(t, &Kind::Tpm);
+        assert_eq!(view.word, "ok");
+        assert!(view.notes.is_empty(), "{view:?}");
     }
 }
 
 #[test]
-fn import_encrypted_host() {
+fn any_other_kind_is_a_warning_with_one_note_of_its_own() {
+    let kinds = [
+        Kind::EncryptedHost,
+        Kind::EncryptedTpm,
+        Kind::Unknown("future".into()),
+    ];
+    let mut notes = Vec::new();
     for t in KEY_TYPES {
-        let out = imported(t, Kind::EncryptedHost);
-        assert!(out.contains("encrypted-host"), "{out}");
-        assert!(out.contains("weaker"), "{out}");
-        assert!(out.contains("no TPM"), "{out}");
-        assert!(out.contains("Root"), "{out}");
-        assert!(out.contains("/var/lib"), "{out}");
-        assert!(!out.contains("capability"), "{out}");
+        for kind in &kinds {
+            let view = imported(t, kind);
+            assert_eq!(view.word, "warn", "{kind:?}");
+            assert_eq!(view.notes.len(), 1, "{kind:?}");
+            notes.push(view.notes[0].clone());
+        }
     }
+    notes.sort();
+    notes.dedup();
+    assert_eq!(
+        notes.len(),
+        kinds.len(),
+        "each kind has its own note: {notes:?}"
+    );
 }
 
 #[test]
-fn import_encrypted_tpm() {
-    for t in KEY_TYPES {
-        let out = imported(t, Kind::EncryptedTpm);
-        assert!(out.contains("encrypted-tpm"), "{out}");
-        assert!(out.contains("weaker"), "{out}");
-        assert!(out.contains("lacks a capability"), "{out}");
-        assert!(!out.contains("no TPM"), "{out}");
-        assert!(out.contains("Root"), "{out}");
-        assert!(out.contains("while the machine runs"), "{out}");
-        assert!(out.contains("docs/api.md"), "{out}");
-        assert!(out.contains("TPM capabilities"), "{out}");
-        assert!(!out.contains("journal"), "{out}");
-    }
+fn an_unknown_kind_is_shown_escaped() {
+    let view = imported("rsa2048", &Kind::Unknown("odd\x1b[2Jkind".into()));
+    assert!(view.cells.iter().all(|c| !c.contains('\x1b')), "{view:?}");
 }
 
 #[test]
-fn weaker_reasons_differ() {
-    let host = imported("rsa2048", Kind::EncryptedHost);
-    let tpm = imported("rsa2048", Kind::EncryptedTpm);
-    assert_ne!(host, tpm);
-    assert!(!host.contains("lacks a capability"));
-    assert!(!tpm.contains("/var/lib"));
-}
-
-#[test]
-fn import_unknown_kind() {
-    for t in KEY_TYPES {
-        let out = imported(t, Kind::Unknown("odd\x1b[2Jkind".into()));
-        assert!(out.contains("odd\\x1b[2Jkind"), "{out}");
-        assert!(!out.contains('\x1b'), "{out}");
-        assert!(out.contains("does not know"), "{out}");
-        assert!(!out.contains("weaker"), "{out}");
-        assert!(!out.contains("stronger"), "{out}");
-        assert!(!out.contains("in the TPM"), "{out}");
+fn the_delete_step_is_a_command_the_shell_reads_back_as_the_file() {
+    for name in ["k.p12", "my cert.p12", "it's.p12", "~k.p12"] {
+        let (r, out, file) = import_file(name, Ok(("rsa2048".into(), Kind::Tpm)));
+        assert!(r.is_ok());
+        let command = &parse(&out).next[0].0;
+        let echoed = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "printf %s {}",
+                command.trim_start_matches("shred -u ")
+            ))
+            .output()
+            .expect("sh");
+        assert!(command.starts_with("shred -u "), "{command}");
+        assert_eq!(
+            String::from_utf8_lossy(&echoed.stdout),
+            file.display().to_string(),
+            "{command}"
+        );
     }
 }
 

@@ -502,7 +502,10 @@ fn list_takes_a_verbose_flag_then_one_optional_key_id() {
         &["list", "work", "-v"],
         &["list", "-V"],
     ] {
-        assert_eq!(args(bad), Err(ArgError::CommandUsage("list")), "{bad:?}");
+        assert!(
+            matches!(args(bad), Err(ArgError::CommandUsage("list", _))),
+            "{bad:?}"
+        );
     }
     assert_eq!(args(&["List"]), Err(ArgError::Usage));
 }
@@ -516,7 +519,7 @@ fn import_still_parses_through_the_dispatcher() {
             id: "k".into()
         }))
     );
-    assert_eq!(args(&["import"]), Err(ArgError::CommandUsage("import")));
+    assert_eq!(args(&["import"]), Err(ArgError::Bare("import")));
 }
 
 #[test]

@@ -11,10 +11,14 @@ fail=0
 bad() { echo "test-e2e-fallback: $*" >&2; fail=1; }
 J="python3 -I $ROOT/e2e/fallback.py"
 
-HOST_TEXT="Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it."
-REMIND=$'Now delete the original file: it still holds your private key.\n  shred -u /tmp/k.p12   (or remove it with your file manager and empty the trash)'
-imp() { printf "Imported key '%s' (%s).\n%s\n%s\n" "$1" "$2" "$3" "$REMIND"; }
-imp fb-rsa rsa2048 "$HOST_TEXT" > "$tmp/good-import"
+NEXT=$'Next:\n  shred -u /tmp/k.p12  the file still holds your private key\n  restart Firefox      and any other program that loaded Custodio, to see the key'
+# imp ID TYPE WORD KIND [NOTE]: the output of `custodio import`, laid out as the CLI does
+imp() { printf '%-4s  %s  %s  %s\n' "$3" "$1" "$2" "$4"; [ -z "${5:-}" ] || printf '      %s\n' "$5"; printf '\n%s\n' "$NEXT"; }
+# kimp ID TYPE KIND: the output for a key stored as KIND, with the word and note the CLI gives that kind
+kimp() { case $3 in tpm) imp "$1" "$2" ok tpm ;; encrypted-tpm) imp "$1" "$2" warn "$3" "$ETPM_NOTE" ;; *) imp "$1" "$2" warn "$3" "$HOST_NOTE" ;; esac; }
+HOST_NOTE='root, and anyone with a copy of /var/lib, can use this key.'
+ETPM_NOTE='root can use this key while the machine runs.'
+kimp fb-rsa rsa2048 encrypted-host > "$tmp/good-import"
 printf 'fb-rsa\trsa2048\tencrypted-host\nfb-ec\tecdsa-p256\tencrypted-host\n' > "$tmp/good-api"
 printf 'fb-rsa  rsa2048  encrypted-host  CN=a  2030-01-01\nfb-ec  ecdsa-p256  encrypted-host  CN=b  2030-01-01\n' > "$tmp/good-cli"
 
@@ -29,17 +33,15 @@ accepts why "$tmp/good-import"
 accepts api "$tmp/good-api" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 accepts cli "$tmp/good-cli" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 
-TPM_TEXT="Storage: tpm. The key is in the TPM and cannot be copied out of it."
-ETPM_TEXT="Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability the key type needs, so the key is a file encrypted with a key bound to this TPM."
-imp fb-rsa rsa2048 "$TPM_TEXT" > "$tmp/b-tpm"
-imp fb-rsa rsa2048 "$ETPM_TEXT" > "$tmp/b-etpm"
-printf "Imported key 'fb-rsa' (rsa2048).\n%s\n" "$REMIND" > "$tmp/b-nostorage"
-imp fb-rsa rsa2048 "$HOST_TEXT"$'\n'"$HOST_TEXT" > "$tmp/b-two"
-imp fb-rsa rsa2048 "Storage: encrypted-host. This machine has no TPM, so the key is a file encrypted with the host key." > "$tmp/b-noweaker"
-imp fb-rsa rsa2048 "Storage: encrypted-host. This key is weaker than a TPM key: it is a file encrypted with the host key." > "$tmp/b-noreason"
-imp fb-rsa rsa2048 "Storage: encrypted-host-x. This key is weaker than a TPM key: this machine has no TPM." > "$tmp/b-prefix"
-imp fb-other rsa2048 "$HOST_TEXT" > "$tmp/b-wrongid"
-imp fb-rsa rsa2048 "$HOST_TEXT" | sed 's/^Imported.*/Imported key '"'fb-rsa'"' (ecdsa-p256)./' > "$tmp/b-wrongtype"
+kimp fb-rsa rsa2048 tpm > "$tmp/b-tpm"
+kimp fb-rsa rsa2048 encrypted-tpm > "$tmp/b-etpm"
+printf 'warn  fb-rsa  rsa2048\n\n%s\n' "$NEXT" > "$tmp/b-nostorage"
+{ printf 'warn  fb-rsa  rsa2048  encrypted-host\n      %s\n' "$HOST_NOTE"; kimp fb-rsa rsa2048 encrypted-host; } > "$tmp/b-two"
+imp fb-rsa rsa2048 ok encrypted-host > "$tmp/b-noweaker"
+imp fb-rsa rsa2048 warn encrypted-host > "$tmp/b-noreason"
+kimp fb-rsa rsa2048 encrypted-host-x > "$tmp/b-prefix"
+kimp fb-other rsa2048 encrypted-host > "$tmp/b-wrongid"
+kimp fb-rsa ecdsa-p256 encrypted-host > "$tmp/b-wrongtype"
 rejects kind-tpm import "$tmp/b-tpm" fb-rsa rsa2048
 rejects kind-encrypted-tpm import "$tmp/b-etpm" fb-rsa rsa2048
 rejects no-storage-line import "$tmp/b-nostorage" fb-rsa rsa2048
@@ -81,12 +83,11 @@ rejects cli-forged-row cli "$tmp/b-cli-forged" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 
 # ---- F161: a VM run (fallback.py --mode, fallback-run.sh with E2E_VM=1): the tpmbound cases run in both modes and are judged
 VJ() { python3 -I "$ROOT/e2e/fallback.py" "$@"; }
-VETPM="Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability the key type needs, so the key is a file encrypted with a key bound to this TPM."
-vmset() { # DIR KIND TEXT [RSA-KIND]: the files of the step; the RSA key has RSA-KIND (default KIND)
+vmset() { # DIR KIND IMPORT-KIND [RSA-KIND]: the files of the step; the imports print IMPORT-KIND, the RSA key is listed as RSA-KIND (default KIND)
     local d=$1 k=$2 t=$3 rk=${4:-$2}
     mkdir -p "$d"
-    imp fb-rsa rsa2048 "$t" > "$d/import-rsa.out"
-    imp fb-ec ecdsa-p256 "$t" > "$d/import-ec.out"
+    kimp fb-rsa rsa2048 "$t" > "$d/import-rsa.out"
+    kimp fb-ec ecdsa-p256 "$t" > "$d/import-ec.out"
     printf 'fb-rsa\trsa2048\t%s\nfb-ec\tecdsa-p256\t%s\n' "$rk" "$k" > "$d/api.out"
     printf 'fb-rsa  rsa2048  %s  CN=a  2030-01-01\nfb-ec  ecdsa-p256  %s  CN=b  2030-01-01\n' "$rk" "$k" > "$d/cli.out"
     : > "$d/api-after.out"
@@ -98,8 +99,8 @@ vmjudge() { # MODE DIR: all four judgements; prints the problems
     VJ --mode "$1" why "$2/import-rsa.out" "$2/import-ec.out"
     VJ --mode "$1" cli "$2/cli.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256
 }
-vmset "$tmp/vl" encrypted-tpm "$VETPM"
-vmset "$tmp/vf" tpm "$TPM_TEXT"
+vmset "$tmp/vl" encrypted-tpm encrypted-tpm
+vmset "$tmp/vf" tpm tpm
 [ -z "$(vmjudge lacking "$tmp/vl")" ] || bad "lacking: good evidence rejected: $(vmjudge lacking "$tmp/vl")"
 [ -z "$(vmjudge full "$tmp/vf")" ] || bad "full: good evidence rejected: $(vmjudge full "$tmp/vf")"
 [ -n "$(vmjudge lacking "$tmp/vf")" ] || bad "lacking accepts the full evidence"
@@ -107,19 +108,20 @@ vmset "$tmp/vf" tpm "$TPM_TEXT"
 [ -z "$(VJ import "$tmp/good-import" fb-rsa rsa2048)" ] || bad "the container judgement changed"
 # lacking: each wrong place is rejected, for the RSA key and for P-256 apart
 for w in tpm encrypted-host; do
-    vmset "$tmp/x1" encrypted-tpm "$VETPM" "$w"; [ -n "$(VJ --mode lacking api "$tmp/x1/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: RSA $w in the API accepted"
+    vmset "$tmp/x1" encrypted-tpm encrypted-tpm "$w"; [ -n "$(VJ --mode lacking api "$tmp/x1/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: RSA $w in the API accepted"
     [ -n "$(VJ --mode lacking cli "$tmp/x1/cli.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: RSA $w in the CLI list accepted"
-    vmset "$tmp/x2" "$w" "$VETPM" encrypted-tpm; [ -n "$(VJ --mode lacking api "$tmp/x2/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: P-256 $w in the API accepted"
+    vmset "$tmp/x2" "$w" encrypted-tpm encrypted-tpm; [ -n "$(VJ --mode lacking api "$tmp/x2/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: P-256 $w in the API accepted"
     [ -n "$(VJ --mode lacking cli "$tmp/x2/cli.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "lacking: P-256 $w in the CLI list accepted"
 done
-imp fb-rsa rsa2048 "$TPM_TEXT" > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-rsa rsa2048)" ] || bad "lacking: RSA tpm in the import text accepted"
-imp fb-ec ecdsa-p256 "$TPM_TEXT" > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-ec ecdsa-p256)" ] || bad "lacking: P-256 tpm in the import text accepted"
-imp fb-rsa rsa2048 "$HOST_TEXT" > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-rsa rsa2048)" ] || bad "lacking: RSA encrypted-host in the import text accepted"
-imp fb-rsa rsa2048 "Storage: encrypted-tpm. The key is in a file." > "$tmp/x4"; [ -n "$(VJ --mode lacking why "$tmp/x4")" ] || bad "lacking: a text without weaker accepted"
-imp fb-rsa rsa2048 "Storage: encrypted-tpm. This key is weaker than a TPM key: it is a file." > "$tmp/x4"; [ -n "$(VJ --mode lacking why "$tmp/x4")" ] || bad "lacking: a text without the reason accepted"
+kimp fb-rsa rsa2048 tpm > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-rsa rsa2048)" ] || bad "lacking: RSA tpm in the import text accepted"
+kimp fb-ec ecdsa-p256 tpm > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-ec ecdsa-p256)" ] || bad "lacking: P-256 tpm in the import text accepted"
+kimp fb-rsa rsa2048 encrypted-host > "$tmp/x3"; [ -n "$(VJ --mode lacking import "$tmp/x3" fb-rsa rsa2048)" ] || bad "lacking: RSA encrypted-host in the import text accepted"
+imp fb-rsa rsa2048 ok encrypted-tpm "$ETPM_NOTE" > "$tmp/x4"; [ -n "$(VJ --mode lacking why "$tmp/x4")" ] || bad "lacking: ok, not warn, accepted"
+imp fb-rsa rsa2048 warn encrypted-tpm > "$tmp/x4"; [ -n "$(VJ --mode lacking why "$tmp/x4")" ] || bad "lacking: a warning without its note accepted"
 # full: either key encrypted-tpm, or a weaker line
-vmset "$tmp/x5" tpm "$TPM_TEXT" encrypted-tpm; [ -n "$(VJ --mode full api "$tmp/x5/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "full: RSA encrypted-tpm accepted"
-vmset "$tmp/x5" encrypted-tpm "$TPM_TEXT" tpm; [ -n "$(VJ --mode full api "$tmp/x5/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "full: P-256 encrypted-tpm accepted"
-imp fb-rsa rsa2048 "$TPM_TEXT"$'\nThis key is weaker than a TPM key.' > "$tmp/x6"; [ -n "$(VJ --mode full why "$tmp/x6")" ] || bad "full: a weaker line accepted"
+vmset "$tmp/x5" tpm tpm encrypted-tpm; [ -n "$(VJ --mode full api "$tmp/x5/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "full: RSA encrypted-tpm accepted"
+vmset "$tmp/x5" encrypted-tpm tpm tpm; [ -n "$(VJ --mode full api "$tmp/x5/api.out" fb-rsa:rsa2048 fb-ec:ecdsa-p256)" ] || bad "full: P-256 encrypted-tpm accepted"
+imp fb-rsa rsa2048 ok tpm "$HOST_NOTE" > "$tmp/x6"; [ -n "$(VJ --mode full why "$tmp/x6")" ] || bad "full: a note under a tpm key accepted"
+imp fb-rsa rsa2048 warn tpm > "$tmp/x6"; [ -n "$(VJ --mode full why "$tmp/x6")" ] || bad "full: warn on a tpm key accepted"
 
 exit "$fail"

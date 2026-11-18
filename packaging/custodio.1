@@ -35,7 +35,14 @@ asks you to export it again (the README shows how from Firefox);
 a file without an integrity check that does not decrypt could be either, and the error says both.
 After a successful import
 .B custodio
-says that Firefox and any other running program that loaded the module see the new key only after they restart.
+prints the key's id, key type and storage kind after
+.B ok
+(tpm) or
+.B warn
+(any other kind, with a line on who can use the key),
+then the next steps: delete the original file with
+.BR shred ,
+and restart Firefox: it and any other running program that loaded the module see the new key only after they restart.
 .PP
 .B list
 shows one row for each of your keys, in order of key id, with these columns:
@@ -268,7 +275,12 @@ The command failed: the service or the system bus could not be reached, the serv
 or there is no terminal to confirm it on.
 .TP
 .B 2
-The command line is wrong.
+The command line is wrong: the error says what is wrong.
+.BR import ,
+.B delete
+and
+.B fingerprint
+without arguments print their short help.
 .SH OPTIONS
 .TP
 .BI \-\-id " key id"

@@ -221,7 +221,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "command moved into a bash block" static sed '0,/^```console$/s//```bash/'
     control "command in a text block" static sed '0,/^## 1\. Install the package$/s//```text\n$ rm -rf \/etc\n```\n\n&/'
     control "an extra command" run sed '0,/^\$ custodio list$/s//$ custodio frobnicate\n$ custodio list/'
-    control "output altered" run sed '0,/^Imported key /s//Imported key X/'
+    control "output altered" run sed '0,/^warn  ana  /s//warn  anx  /'
     control "install notice altered" run sed '0,/^custodio: to check the setup at any time, run: custodio doctor$/s//custodio: to check the setup, run: custodio doctor/'
     control "deb name changed" run sed 's/custodio_0\.9\.0-1_amd64\.deb/custodio_0.9.1-1_amd64.deb/'
     control "register --remove after the removal" run python3 -I -c '

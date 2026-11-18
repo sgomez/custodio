@@ -16,7 +16,8 @@ CASES="vm-silent-import-fails vm-silent-journal-cause vm-silent-nothing-stored v
 source "$LIB"
 
 # ---- the judgements
-ETPM_TEXT="Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability the key type needs, so the key is a file encrypted with a key bound to this TPM."
+# the key line of `custodio import` for an encrypted-tpm key, and its note
+ETPM_TEXT="warn  $ID  rsa2048  encrypted-tpm\n      root can use this key while the machine runs."
 jline() { # CAUSE: one import entry of the key
     printf '{"_SYSTEMD_UNIT":"custodio.service","CUSTODIO_OPERATION":"import","CUSTODIO_KEY_ID":"%s","CUSTODIO_OUTCOME":"storage_failure","CUSTODIO_CAUSE":"%s"}\n' "$ID" "$1"
 }
@@ -31,7 +32,7 @@ mkgood() { # DIR
     printf 'other  rsa2048  encrypted-tpm  CN=o  2030-01-01\n' > "$h/cli-list.out"
     jline binding_mismatch > "$h/journal.json"
     echo yes > "$r/has2.out"; echo 0 > "$r/has2.rc"
-    printf "Imported key '%s' (rsa2048).\n%s\n" "$ID" "$ETPM_TEXT" > "$r/import.out"
+    printf '%b\n' "$ETPM_TEXT" > "$r/import.out"
     printf 'other\trsa2048\tencrypted-tpm\n%s\trsa2048\tencrypted-tpm\n' "$ID" > "$r/list.out"
     echo "reader: key $ID: ok" > "$r/reader.out"; echo 0 > "$r/reader.rc"
     : > "$r/restore.problems"
@@ -47,7 +48,7 @@ ctl() {
     out=$(vs_problems "$c" "$d" "$ID")
     [ -n "$out" ] || bad "control $n: the case $c accepts bad evidence"
 }
-ctl succeeds vm-silent-import-fails "printf \"Imported key '$ID' (rsa2048).\n$ETPM_TEXT\n\" > hidden/import.out; echo 0 > hidden/import.rc"
+ctl succeeds vm-silent-import-fails "printf '%b\n' '$ETPM_TEXT' > hidden/import.out; echo 0 > hidden/import.rc"
 ctl exit0 vm-silent-import-fails 'echo 0 > hidden/import.rc'
 ctl othererr vm-silent-import-fails 'echo "custodio: the TPM failed or cannot be used; nothing was stored" > hidden/import.out'
 ctl hidden-yes vm-silent-import-fails 'echo yes > hidden/has2.out; echo 0 > hidden/has2.rc'
@@ -68,7 +69,7 @@ for k in tpm encrypted-host encrypted-tpm; do
     ctl "left-api-$k" vm-silent-no-key "printf '$ID\trsa2048\t$k\n' >> hidden/list.out"
     ctl "left-cli-$k" vm-silent-no-key "printf '$ID  rsa2048  $k  CN=o  2030-01-01\n' >> hidden/cli-list.out"
 done
-ctl weaker-in-text vm-silent-no-key 'echo "Storage: encrypted-host." >> hidden/import.out'
+ctl weaker-in-text vm-silent-no-key 'echo "warn  vs-key  rsa2048  encrypted-host" >> hidden/import.out'
 ctl lists-empty vm-silent-no-key ': > hidden/list.out; : > hidden/cli-list.out'
 ctl restored-fails vm-silent-restored-imports 'echo "custodio: the credential service is unavailable; nothing was stored" > restored/import.out'
 for k in tpm encrypted-host; do

@@ -488,7 +488,7 @@ fn only_handled_profiles_change() {
 #[test]
 fn the_register_command_line() {
     use custodio_cli::register_native::{RegisterArgs, parse_register_args};
-    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned()));
+    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned())).ok();
     assert_eq!(a(&[]), Some(RegisterArgs::default()));
     assert_eq!(
         a(&["--remove"]),

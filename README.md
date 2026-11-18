@@ -38,11 +38,12 @@ Import a `.p12` file. The command asks for the file's password on the terminal, 
 
 ```console
 $ custodio import --id ana ana.p12
-Imported key 'ana' (ecdsa-p256).
-Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-Now delete the original file: it still holds your private key.
-  shred -u ana.p12   (or remove it with your file manager and empty the trash)
-Firefox and any other running program that loaded the Custodio module see this change only after they restart.
+warn  ana  ecdsa-p256  encrypted-host
+      root, and anyone with a copy of /var/lib, can use this key.
+
+Next:
+  shred -u ana.p12  the file still holds your private key
+  restart Firefox   and any other program that loaded Custodio, to see the key
 ```
 
 If the import fails, the error says what to do. "wrong password for the .p12 file": retype the password. "the .p12

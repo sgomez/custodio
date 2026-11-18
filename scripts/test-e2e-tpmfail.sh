@@ -16,8 +16,8 @@ expect_bad() { local out; out=$("$@" 2>&1) || true; [ -n "$out" ] || bad "bad ev
 # (a) the import failed with the documented error
 printf 'Password for x.p12: \ncustodio: the TPM failed or cannot be used; nothing was stored\n' > "$tmp/out-ok"
 printf 'Password for x.p12: \ncustodio: the credential service is unavailable; nothing was stored\n' > "$tmp/out-cred"
-printf "Password for x.p12: \nImported key 'k' (rsa2048).\nStorage: tpm. The key is in the TPM.\n" > "$tmp/out-success"
-printf "custodio: the TPM failed or cannot be used; nothing was stored\nImported key 'k' (rsa2048).\n" > "$tmp/out-both"
+printf 'Password for x.p12: \nok    k  rsa2048  tpm\n' > "$tmp/out-success"
+printf 'custodio: the TPM failed or cannot be used; nothing was stored\nok    k  rsa2048  tpm\n' > "$tmp/out-both"
 printf 'custodio: internal error\n' > "$tmp/out-other"
 echo 1 > "$tmp/rc1"; echo 0 > "$tmp/rc0"; echo x > "$tmp/rcx"
 expect_ok tf failed "$tmp/out-ok" "$tmp/rc1" TpmFailed
@@ -78,14 +78,14 @@ expect_bad tf journal "$tmp/missing" k tpm_device e2e-password
 expect_ok tf noweaker "$tmp/out-ok" "$tmp/list-ok" "$tmp/j-ok" k
 printf 'rsa1\trsa2048\tencrypted-host\n' > "$tmp/list-other-weak"
 expect_ok tf noweaker "$tmp/out-ok" "$tmp/list-other-weak" "$tmp/j-ok" k # another key's kind is not this attempt's
-printf "Imported key 'k' (rsa2048).\nStorage: encrypted-host. This key is weaker than a TPM key.\n" > "$tmp/out-weak"
-printf "Imported key 'k' (rsa2048).\nStorage: encrypted-tpm. This key is weaker.\n" > "$tmp/out-weak2"
+printf 'warn  k  rsa2048  encrypted-host\n      root, and anyone with a copy of /var/lib, can use this key.\n' > "$tmp/out-weak"
+printf 'warn  k  rsa2048  encrypted-tpm\n      root can use this key while the machine runs.\n' > "$tmp/out-weak2"
 expect_bad tf noweaker "$tmp/out-weak" "$tmp/list-ok" "$tmp/j-ok" k
 expect_bad tf noweaker "$tmp/out-weak2" "$tmp/list-ok" "$tmp/j-ok" k
 expect_bad tf noweaker "$tmp/out-ok" "$tmp/list-kweak" "$tmp/j-ok" k
 expect_bad tf noweaker "$tmp/out-ok" "$tmp/list-ok" "$tmp/j-kind" k
-printf "Password for x.p12: \nImported key 'k' (rsa2048).\nStorage: tpm. The key is in the TPM and cannot be copied out of it.\n" > "$tmp/out-tpm"
-printf "Imported key 'k' (rsa2048).\nStorage: encrypted-tpm. The key is in a credential.\n" > "$tmp/out-etpm"
+printf 'Password for x.p12: \nok    k  rsa2048  tpm\n\nNext:\n  shred -u x.p12   the file still holds your private key\n' > "$tmp/out-tpm"
+printf 'warn  k  rsa2048  encrypted-tpm\n      root can use this key while the machine runs.\n' > "$tmp/out-etpm"
 expect_ok tf kind "$tmp/out-tpm" "$tmp/list-k" k tpm
 expect_ok tf kind "$tmp/out-weak" "$tmp/list-kweak" k encrypted-host
 expect_bad tf kind "$tmp/out-tpm" "$tmp/list-kweak" k tpm              # listed with another kind
