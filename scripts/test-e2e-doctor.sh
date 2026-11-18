@@ -8,40 +8,41 @@ trap 'rm -rf "$tmp"' EXIT
 fail=0
 bad() { echo "test-e2e-doctor: $*" >&2; fail=1; }
 w() { printf '%s' "$2" > "$1"; }
-L1='not ok          fingerprint reader: fprintd is not installed
-                fix: Install fprintd and libpam-fprintd.'
-L2='could not check enrolled finger: there is no reader to ask (see the line above)
-                fix: Fix the reader first, then run '"'"'custodio doctor'"'"' again.'
-L2=${L2/could not check enrolled/could not check enrolled}
-L3_OFF='not ok          fingerprint for polkit: fingerprint is not active for polkit
-                fix: Run: sudo custodio fingerprint enable'
-L3_ON="ok              fingerprint for polkit: active through Custodio's override /etc/pam.d/polkit-1"
-L3_BR='not ok          fingerprint for polkit: Custodio'"'"'s override /etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing: no polkit dialog can authenticate
-                fix: Reinstall polkit (it ships that file), or remove the override: sudo custodio fingerprint disable'
-L4='ok              module in browsers: no browser profile was found, so there is nothing to register'
-L4N='could not check module in browsers: could not look for browser profiles: x
-                fix: Fix or remove that file, then run '"'"'custodio doctor'"'"' again.'
-L5='ok              persistent journal: the journal is persistent (/var/log/journal exists)'
-L5N='not ok          persistent journal: Storage=volatile: the journal is kept in memory
-                fix: As root: remove or change the line at x, then restart systemd-journald.'
-L6='not ok          state directory storage: the service'"'"'s state directory is not known to be on an encrypted device (reason not-block-filesystem: x)
-                fix: x Or use full-disk encryption on the disk that holds /var/lib/custodio (LUKS: x).'
-L6N='could not check state directory storage: could not ask the Custodio service: x
-                fix: Start it.'
-ERR1='custodio doctor: did not pass: state directory storage'
+# c WORD NAME TEXT [UNDER...]: one check line of the report and the lines under it, as doctor aligns them (the longest name is "key storage").
+c() { local t; t=$(printf '  %-4s  %-11s  %s' "$1" "$2" "$3"); shift 3; for u in "$@"; do t+=$'\n'$(printf '%21s%s' '' "$u"); done; printf '%s' "$t"; }
+# rep FINGERPRINT BROWSERS SYSTEM: a whole report, with its headings and the problems line.
+rep() {
+    local t=$'Fingerprint (optional)\n'"$1"$'\nBrowsers\n'"$2"$'\nSystem\n'"$3" n
+    n=$(printf '%s\n' "$t" | grep -cE '^  (FAIL|warn|\?) |^ +Warning: ' || true)
+    [ "$n" = 0 ] || t+=$'\n\n'"$n problem$([ "$n" = 1 ] || echo s)."
+    printf '%s' "$t"
+}
+L1=$(c FAIL reader 'fprintd is not installed' 'Fix: install fprintd and libpam-fprintd')
+L2=$(c '?' finger 'no reader to ask' 'Fix: fix the reader first')
+L3_OFF=$(c FAIL polkit off 'Fix: sudo custodio fingerprint enable')
+L3_ON=$(c ok polkit on)
+L3_BR=$(c FAIL polkit '/etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing' 'No polkit dialog works, not even with the password.' 'Fix: reinstall polkit, or: sudo custodio fingerprint disable')
+L4=$(c ok profiles 'none found, nothing to register')
+L4N=$(c '?' profiles 'cannot look for them: x' "Fix: fix or remove that file, then run 'custodio doctor' again")
+L5=$(c ok journal persistent)
+L5N=$(c FAIL journal 'lost at reboot (Storage=volatile at x)' 'Fix: set Storage=persistent at x, then sudo systemctl restart systemd-journald')
+L6=$(c FAIL 'key storage' '/var/lib/custodio: cannot tell if encrypted, x (not-block-filesystem)' 'Fix: x, or use disk encryption (LUKS)')
+L6N=$(c '?' 'key storage' 'cannot ask the Custodio service: x' 'Fix: systemctl status custodio.service')
+L6_OK=$(c ok 'key storage' '/var/lib/custodio is on an encrypted disk')
+SYS="$L5"$'\n'"$L6"
 # run DIR NAME OUT RC ERR
 run() { w "$1/$2.out" "$3"$'\n'; w "$1/$2.rc" "$4"; w "$1/$2.err" "$5"; w "$1/$2.pam.before" 'a'; w "$1/$2.pam.after" 'a'; }
 good() {
     local d=$1
     mkdir -p "$d"
-    run "$d" base "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"
-    run "$d" on "$L1"$'\n'"$L2"$'\n'"$L3_ON"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"
-    run "$d" off "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"
-    run "$d" broken "$L3_BR"$'\n'"$L1"$'\n'"$L2"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"$'\ncustodio doctor: a polkit include is broken'
-    run "$d" nofox "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4N"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"
-    run "$d" jflip "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5N"$'\n'"$L6" 1 "$ERR1"
-    run "$d" nosvc "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6N" 1 "$ERR1"
-    run "$d" never_run "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6" 1 "$ERR1"
+    run "$d" base "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
+    run "$d" on "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")" 1 ''
+    run "$d" off "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
+    run "$d" broken "$(rep "$L3_BR"$'\n'"$L1"$'\n'"$L2" "$L4" "$SYS")" 1 ''
+    run "$d" nofox "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4N" "$SYS")" 1 ''
+    run "$d" jflip "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$L5N"$'\n'"$L6")" 1 ''
+    run "$d" nosvc "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$L5"$'\n'"$L6N")" 1 ''
+    run "$d" never_run "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_OFF" "$L4" "$SYS")" 1 ''
     w "$d/runs" $'base\njflip\nnever_run\non\nbroken\noff\nnofox\nnosvc'
     w "$d/journal.dir" 1; w "$d/journal.storage" auto; w "$d/jflip.dir" 1; w "$d/jflip.storage" volatile
     w "$d/storage.state" unknown; w "$d/storage.reason" not-block-filesystem
@@ -61,28 +62,34 @@ ctl() {
     printf '%s' "$5" > "$d/$4"
     if J "$2" "$d" > "$tmp/out" 2>&1; then bad "$1: accepted"; elif ! grep -qF -- "$3" "$tmp/out"; then bad "$1: rejected without '$3': $(cat "$tmp/out")"; fi
 }
-ctl missing-check six-checks 'not the six checks' base.out "$L1"$'\n'"$L3_OFF"$'\n'
-ctl no-word six-checks 'does not start with' base.out "fingerprint reader: x"$'\n'
-ctl no-fix six-checks 'no fix line' base.out "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n''not ok          state directory storage: x'$'\n'
+FP="$L1"$'\n'"$L2"$'\n'"$L3_OFF"
+ctl missing-check six-checks 'not the checks in order' base.out "$(rep "$L1"$'\n'"$L3_OFF" "$L4" "$SYS")"
+ctl no-word six-checks 'does not start with' base.out "$(rep "$FP"$'\n''  bad   reader       x' "$L4" "$SYS")"
+ctl no-fix six-checks 'no fix line' base.out "$(rep "$FP" "$L4" "$L5"$'\n'"$(c FAIL 'key storage' x)")"
+ctl wrong-section six-checks 'is under Browsers' base.out "$(rep "$FP" "$L4"$'\n'"$L5" "$L6")"
+ctl problems-count six-checks 'the problems line says' base.out "$(rep "$FP" "$L4" "$SYS")"$'\n\n9 problems.'
 ctl stderr six-checks 'stderr' base.err 'thread main panicked'
+ctl stderr-after-report six-checks 'stderr is not empty' base.err 'custodio doctor: did not pass: key storage'
 ctl stderr-on-zero-run exit-status 'exit 0' base.rc 0
-ctl check2-notok no-reader 'check 2 is not ok' base.out "$L1"$'\n''not ok          enrolled finger: none'$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
+ctl check2-notok no-reader 'check 2 is not ok' base.out "$(rep "$L1"$'\n'"$(c FAIL finger none 'Fix: x')"$'\n'"$L3_OFF" "$L4" "$SYS")"
 ctl check1-counted no-reader 'changed the exit status' on.rc 0
-ctl exit1-without-counting exit-status 'without a counting line' off.out "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"ok              state directory storage: the service's state directory is on an encrypted device"$'\n'
+ctl exit1-without-counting exit-status 'without a counting line' off.out "$(rep "$FP" "$L4" "$L5"$'\n'"$L6_OK")"
 ctl exit0-with-notok exit-status 'exit 0' base.rc 0
 ctl override-no-file override-active 'not on the system' override.present 0
-ctl override-text override-active 'not ok with' on.out "$L1"$'\n'"$L2"$'\n'"ok              fingerprint for polkit: active for the whole system"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
-ctl override-not-back override-active 'not back' off.out "$L1"$'\n'"$L2"$'\n'"$L3_ON"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
-ctl broken-ignored broken-include 'not ok' broken.out "$L1"$'\n'"$L2"$'\n'"$L3_ON"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
-ctl broken-no-fix broken-include 'the fix is not' broken.out "${L3_BR%%$'\n'*}"$'\n''                fix: x'$'\n'"$L1"$'\n'"$L2"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
-ctl broken-first-notok broken-include 'not the first line' broken.out "$L1"$'\n'"$L2"$'\n'"$L3_BR"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
-ctl fox-notok no-firefox-profile 'is not ok with' base.out "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4N"$'\n'"$L5"$'\n'"$L6"$'\n'
+ctl override-text override-active "through Custodio's own file" on.out "$(rep "$L1"$'\n'"$L2"$'\n'"$(c ok polkit 'on for the whole system (/etc/pam.d/common-auth), sudo too')" "$L4" "$SYS")"
+ctl override-not-back override-active 'not back' off.out "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")"
+ctl broken-ignored broken-include "not 'not ok'" broken.out "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_ON" "$L4" "$SYS")"
+ctl broken-no-fix broken-include 'the fix is not' broken.out "$(rep "$(c FAIL polkit '/etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing' 'No polkit dialog works.' 'Fix: x')"$'\n'"$L1"$'\n'"$L2" "$L4" "$SYS")"
+ctl broken-first-notok broken-include 'not the first line' broken.out "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_BR" "$L4" "$SYS")"
+ctl fox-notok no-firefox-profile 'is not ok' base.out "$(rep "$FP" "$L4N" "$SYS")"
+ctl fox-profile-line no-firefox-profile "not the one 'profiles' line" base.out "$(rep "$FP" "$(c FAIL Firefox 'a.default: not registered' 'Fix: custodio register, then restart the browsers')" "$SYS")"
 ctl fox-home no-firefox-profile 'home is not as before' home.after 'changed'
 ctl journal-ok-no-dir journal 'says not ok' journal.dir 0
-ctl journal-no-flip journal 'did not flip' jflip.out "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
+ctl journal-no-flip journal 'did not flip' jflip.out "$(rep "$FP" "$L4" "$SYS")"
 ctl storage-reason state-storage 'StateStorageReason' storage.reason 'no-mount'
 ctl storage-ok state-storage 'service says encrypted' storage.state encrypted
-ctl storage-nosvc state-storage 'nosvc' nosvc.out "$L1"$'\n'"$L2"$'\n'"$L3_OFF"$'\n'"$L4"$'\n'"$L5"$'\n'"$L6"$'\n'
+ctl storage-warn state-storage 'service says not-encrypted' storage.state not-encrypted
+ctl storage-nosvc state-storage 'nosvc' nosvc.out "$(rep "$FP" "$L4" "$SYS")"
 ctl never-limit never-prompts 'time limit' never.rc 124
 ctl never-pk never-prompts 'polkit request' never.pk.after 1
 ctl never-sig never-prompts 'signature entry' never.sig.after 1

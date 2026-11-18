@@ -9,9 +9,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-use fprint_fixture::{Bus, Fake, Fingers, Fx, err, out, serve_all, state};
+use custodio_cli::doctor_decide::FIREFOX;
+use fprint_fixture::{Bus, Fake, Fingers, Fx, Line, err, out, report, serve_all};
 
-const CHECK: &str = "module in browsers";
 const MODULE_REL: &str = "usr/lib/custodio/libcustodio_pkcs11.so";
 
 /// The fixture system, with the installed module, and a directory outside it for the `modutil` stub and its record.
@@ -96,32 +96,42 @@ impl Case {
     }
 }
 
-fn check4(text: &str) -> String {
-    let mut found = Vec::new();
-    let mut in_check = false;
-    for l in text.lines() {
-        if l.contains(&format!(" {CHECK}: ")) {
-            in_check = true;
-        } else if !l.starts_with(' ') {
-            in_check = false;
-        }
-        if in_check {
-            found.push(l);
-        }
-    }
-    found.join("\n")
+/// The check lines of the Browsers section, one per profile (or one for none or a failed discovery).
+fn browsers(text: &str) -> Vec<Line> {
+    report(text)
+        .into_iter()
+        .filter(|l| l.section == "Browsers")
+        .collect()
+}
+
+/// The only browser line: one profile in the fixture.
+fn only(text: &str) -> Line {
+    let lines = browsers(text);
+    assert_eq!(lines.len(), 1, "{text}");
+    lines.into_iter().next().unwrap()
+}
+
+/// The profile directory a browser line names.
+fn dir_of(line: &Line) -> String {
+    line.text.split(':').next().unwrap().to_owned()
+}
+
+fn fixed_by_register(line: &Line) {
+    assert_eq!(line.state, "not ok", "{line:?}");
+    assert_eq!(line.fixes.len(), 1, "{line:?}");
+    assert!(line.fixes[0].contains("custodio register"), "{line:?}");
 }
 
 #[test]
 fn a_profile_with_the_module_in_pkcs11_txt_is_ok_and_named() {
     let c = Case::new(false);
     let e = Case::entry("Custodio", &c.module());
-    let root = c.root(".mozilla/firefox", &["a.default"], &e);
+    c.root(".mozilla/firefox", &["a.default"], &e);
     let (_, text, runs) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("ok"), "{text}");
-    assert!(s.contains(root.join("a.default").to_str().unwrap()), "{s}");
-    assert!(!s.contains("fix:"), "{s}");
+    let l = only(&text);
+    assert_eq!((l.state, l.name.as_str()), ("ok", "Firefox"), "{text}");
+    assert_eq!(dir_of(&l), "a.default", "{text}");
+    assert!(l.fixes.is_empty(), "{text}");
     assert_eq!(runs.len(), 0, "nothing needs the p11-kit probe: {runs:?}");
 }
 
@@ -130,18 +140,15 @@ fn a_profile_without_the_module_is_not_ok_and_the_fix_names_register() {
     let c = Case::new(false);
     c.root(".mozilla/firefox", &["a.default"], "");
     let (_, text, runs) = c.doctor();
-    let s = check4(&text);
-    assert!(
-        s.starts_with("not ok") && s.contains("not registered"),
-        "{s}"
-    );
-    assert!(s.contains("fix: Run: custodio register"), "{s}");
+    let l = only(&text);
+    fixed_by_register(&l);
+    assert_eq!(dir_of(&l), "a.default", "{text}");
     // the probe of register's p11-kit decision runs in a scratch database only
     assert_eq!(runs.len(), 2, "{runs:?}");
 }
 
 #[test]
-fn an_entry_whose_file_is_gone_is_stale_with_the_same_fix() {
+fn an_entry_whose_file_is_gone_is_told_apart_from_a_missing_one_with_the_same_fix() {
     let c = Case::new(false);
     let gone = c.fx.path("usr/lib/old/libcustodio_pkcs11.so");
     c.root(
@@ -150,9 +157,12 @@ fn an_entry_whose_file_is_gone_is_stale_with_the_same_fix() {
         &Case::entry("Custodio", &gone),
     );
     let (_, text, _) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("not ok") && s.contains("stale"), "{s}");
-    assert!(s.contains("custodio register"), "{s}");
+    let stale = only(&text);
+    fixed_by_register(&stale);
+    let m = Case::new(false);
+    m.root(".mozilla/firefox", &["a.default"], "");
+    let missing = only(&m.doctor().1);
+    assert_ne!(stale.text, missing.text, "the two states read the same");
 }
 
 #[test]
@@ -165,7 +175,7 @@ fn another_module_with_the_name_is_not_taken_for_ours() {
         &Case::entry("Custodio", &other),
     );
     let (_, text, _) = c.doctor();
-    assert!(check4(&text).starts_with("not ok"), "{text}");
+    fixed_by_register(&only(&text));
 }
 
 #[test]
@@ -179,7 +189,7 @@ fn a_custodio_module_at_another_path_that_exists_is_ok() {
         &Case::entry("Custodio", &at),
     );
     let (_, text, _) = c.doctor();
-    assert!(check4(&text).starts_with("ok"), "{text}");
+    assert_eq!(only(&text).state, "ok", "{text}");
 }
 
 #[test]
@@ -191,23 +201,19 @@ fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_
     c.root(".thunderbird", &["t.default"], "");
     c.root(".config/librewolf/librewolf", &["l.default"], &e);
     let (_, text, _) = c.doctor();
-    let doctor_lines: Vec<String> = text
-        .lines()
-        .filter(|l| l.contains(&format!(" {CHECK}: ")))
-        .map(str::to_owned)
-        .collect();
-    assert_eq!(doctor_lines.len(), 4, "{text}");
+    let lines = browsers(&text);
+    assert_eq!(lines.len(), 4, "{text}");
+    let states: Vec<&str> = lines.iter().map(|l| l.state).collect();
+    assert_eq!(states.iter().filter(|s| **s == "ok").count(), 3, "{text}");
+    let bad: Vec<&Line> = lines.iter().filter(|l| l.state == "not ok").collect();
+    assert_eq!(bad.len(), 1, "{text}");
+    assert_eq!(dir_of(bad[0]), "t.default", "{text}");
     assert_eq!(
-        doctor_lines.iter().filter(|l| l.starts_with("ok")).count(),
-        3
+        lines.iter().map(|l| l.fixes.len()).sum::<usize>(),
+        1,
+        "one fix for the whole section: {text}"
     );
-    assert_eq!(
-        doctor_lines
-            .iter()
-            .filter(|l| l.starts_with("not ok"))
-            .count(),
-        1
-    );
+    fixed_by_register(bad[0]);
     // `register` runs after doctor's comparison, on the same fixture: it names the same profiles.
     let reg = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
         .args(["register", "--module"])
@@ -221,34 +227,22 @@ fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_
         .output()
         .unwrap();
     let registered = out(&reg);
-    let named = |s: &str| {
-        let mut v: Vec<String> = s
-            .lines()
-            .filter_map(|l| l.split_once(" profile "))
-            .map(|(_, rest)| rest.split(':').next().unwrap().to_owned())
-            .collect();
-        v.sort();
-        v
-    };
-    let from_register = |s: &str| {
-        let mut v: Vec<String> = s
-            .lines()
-            .filter_map(|l| l.split_whitespace().find(|w| w.starts_with('/')))
-            .map(|w| w.trim_end_matches(':').to_owned())
-            .collect();
-        v.sort();
-        v
-    };
+    let mut from_register: Vec<String> = registered
+        .lines()
+        .filter_map(|l| l.split_whitespace().find(|w| w.starts_with('/')))
+        .map(|w| {
+            let path = Path::new(w.trim_end_matches(':'));
+            path.file_name().unwrap().to_string_lossy().into_owned()
+        })
+        .collect();
+    from_register.sort();
+    let mut from_doctor: Vec<String> = lines.iter().map(dir_of).collect();
+    from_doctor.sort();
     assert_eq!(
-        named(&doctor_lines.join("\n")).len(),
-        from_register(&registered).len(),
+        from_doctor,
+        from_register,
         "{text}\n{registered}\n{}",
         err(&reg)
-    );
-    assert_eq!(
-        named(&doctor_lines.join("\n")),
-        from_register(&registered),
-        "{registered}"
     );
 }
 
@@ -268,45 +262,40 @@ fn snap(c: &Case, copy: Option<&str>) -> PathBuf {
     copy_path
 }
 
+/// The browser line of a snap profile whose copy of the module holds `copy`.
+fn snap_line(copy: Option<&str>) -> Line {
+    let c = Case::new(false);
+    snap(&c, copy);
+    only(&c.doctor().1)
+}
+
 #[test]
 fn a_snap_profile_with_the_copy_missing_is_not_ok() {
-    let c = Case::new(false);
-    snap(&c, None);
-    let (_, text, _) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("not ok") && s.contains("copy"), "{s}");
-    assert!(
-        s.contains("custodio register") && s.contains("restart Firefox"),
-        "{s}"
-    );
+    fixed_by_register(&snap_line(None));
 }
 
 #[test]
 fn a_snap_profile_with_the_copy_up_to_date_is_ok() {
-    let c = Case::new(false);
-    snap(&c, Some("the module, version 1"));
-    let (_, text, _) = c.doctor();
-    assert!(check4(&text).starts_with("ok"), "{text}");
+    let l = snap_line(Some("the module, version 1"));
+    assert_eq!(l.state, "ok", "{l:?}");
+    assert!(l.fixes.is_empty(), "{l:?}");
 }
 
 #[test]
-fn a_stale_snap_copy_is_not_ok_and_called_stale() {
-    let c = Case::new(false);
-    snap(&c, Some("the module, version 0"));
-    let (_, text, _) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("not ok") && s.contains("stale"), "{s}");
-    assert!(s.contains("restart Firefox"), "{s}");
+fn a_stale_snap_copy_is_not_ok_and_told_apart_from_a_missing_one() {
+    let stale = snap_line(Some("the module, version 0"));
+    fixed_by_register(&stale);
+    assert_ne!(stale.text, snap_line(None).text);
 }
 
 #[test]
-fn a_p11_kit_system_is_ok_with_the_reason_and_no_register_fix() {
+fn a_p11_kit_system_is_ok_with_no_register_fix() {
     let c = Case::new(true);
     c.root(".mozilla/firefox", &["a.default"], "");
     let (_, text, runs) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("ok") && s.contains("p11-kit"), "{s}");
-    assert!(!s.contains("fix:"), "{s}");
+    let l = only(&text);
+    assert_eq!(l.state, "ok", "{text}");
+    assert!(l.fixes.is_empty(), "{text}");
     assert_eq!(runs.len(), 2, "{runs:?}");
 }
 
@@ -320,14 +309,14 @@ fn a_stale_entry_on_a_p11_kit_system_is_ok_because_register_skips_it() {
         &Case::entry("Custodio", &gone),
     );
     let (_, text, runs) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("ok") && s.contains("p11-kit"), "{s}");
-    assert!(!s.contains("fix:"), "{s}");
+    let l = only(&text);
+    assert_eq!(l.state, "ok", "{text}");
+    assert!(l.fixes.is_empty(), "{text}");
     assert_eq!(runs.len(), 2, "{runs:?}");
 }
 
 #[test]
-fn no_profile_at_all_is_ok_says_so_and_the_exit_status_is_unaffected() {
+fn no_profile_at_all_is_ok_and_the_exit_status_is_unaffected() {
     let c = Case::new(false);
     let bus = Bus::new();
     serve_all(
@@ -338,12 +327,9 @@ fn no_profile_at_all_is_ok_says_so_and_the_exit_status_is_unaffected() {
         },
     );
     let (o, text, runs) = c.run(&bus.address);
-    let s = check4(&text);
-    assert!(
-        s.starts_with("ok") && s.contains("no browser profile"),
-        "{s}"
-    );
-    assert_eq!(state(&text, CHECK), "ok");
+    let l = only(&text);
+    assert_eq!((l.state, l.name.as_str()), ("ok", FIREFOX), "{text}");
+    assert!(l.fixes.is_empty(), "{text}");
     assert_eq!(o.status.code(), Some(0), "{text}{}", err(&o));
     assert_eq!(runs.len(), 0, "{runs:?}");
 }
@@ -354,10 +340,16 @@ fn a_malformed_profiles_ini_is_could_not_check_naming_the_file() {
     let root = c.fx.home().join(".mozilla/firefox");
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("profiles.ini"), "[Profile0\nPath\n\u{0}").unwrap();
-    let (_, text, runs) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("could not check"), "{s}");
-    assert!(s.contains("profiles.ini"), "{s}");
+    let (o, text, runs) = c.doctor();
+    let l = only(&text);
+    assert_eq!(
+        (l.state, l.name.as_str()),
+        ("could not check", FIREFOX),
+        "{text}"
+    );
+    assert!(l.text.contains("profiles.ini"), "{text}");
+    assert_eq!(l.fixes.len(), 1, "{text}");
+    assert_eq!(o.status.code(), Some(1), "{text}");
     assert_eq!(runs.len(), 0, "{runs:?}");
 }
 
@@ -369,11 +361,10 @@ fn an_unreadable_pkcs11_txt_is_could_not_check_naming_the_file() {
     fs::remove_file(&file).unwrap();
     fs::create_dir(&file).unwrap();
     let (_, text, _) = c.doctor();
-    let s = check4(&text);
-    assert!(
-        s.starts_with("could not check") && s.contains("pkcs11.txt"),
-        "{s}"
-    );
+    let l = only(&text);
+    assert_eq!(l.state, "could not check", "{text}");
+    assert!(l.text.contains("pkcs11.txt"), "{text}");
+    assert_eq!(l.fixes.len(), 1, "{text}");
 }
 
 #[test]
@@ -382,7 +373,7 @@ fn a_snap_copy_that_is_a_link_is_stale_even_when_it_points_to_the_same_bytes() {
     let copy = snap(&c, None);
     fs::create_dir_all(copy.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(c.module(), &copy).unwrap();
-    let (_, text, _) = c.doctor();
-    let s = check4(&text);
-    assert!(s.starts_with("not ok") && s.contains("stale"), "{s}");
+    let link = only(&c.doctor().1);
+    fixed_by_register(&link);
+    assert_eq!(link.text, snap_line(Some("the module, version 0")).text);
 }

@@ -80,6 +80,23 @@ fn finish_writes_the_diagnostic_of_a_failure_only() {
     assert!(text.trim_end().ends_with(&custodio_cli::usage()), "{text}");
 }
 
+#[test]
+fn a_doctor_report_that_fails_adds_nothing_on_standard_error() {
+    use custodio_cli::doctor_cmd::Failure;
+    for (failure, status, quiet) in [
+        (Failure::BrokenInclude, 1, true),
+        (Failure::Unsatisfied(vec!["journal"]), 1, true),
+        (Failure::Root, 2, false),
+    ] {
+        let mut err = Vec::new();
+        assert_eq!(
+            finish(&Err(CliError::Doctor(failure)), &mut err, false),
+            status
+        );
+        assert_eq!(err.is_empty(), quiet, "{}", String::from_utf8_lossy(&err));
+    }
+}
+
 fn run(args: &[&str]) -> io::Result<Output> {
     Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
         .args(args)

@@ -2,14 +2,13 @@
 //! storage, from observed values only. Split from [`crate::doctor_decide`], which owns the report and the exit status.
 
 use crate::cert_text::escape;
-use crate::delete::RESTART_NOTE;
-use crate::doctor_decide::{Check, State, check};
+use crate::doctor_decide::{BROWSERS_SECTION, Check, SYSTEM_SECTION, State, check};
 use crate::journald_conf::{Cause, Source, Verdict};
 use crate::storage::StateStorage;
 
-pub const FIREFOX: &str = "module in browsers";
-pub const JOURNAL: &str = "persistent journal";
-pub const STORAGE: &str = "state directory storage";
+pub const FIREFOX: &str = "profiles";
+pub const JOURNAL: &str = "journal";
+pub const STORAGE: &str = "key storage";
 
 /// What the entries of one profile's `pkcs11.txt` say about the module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,199 +65,189 @@ pub enum Service {
     Unreachable(String),
 }
 
-fn later(state: State, name: &'static str, text: impl Into<String>, fix: Option<String>) -> Check {
+fn later(
+    section: &'static str,
+    state: State,
+    name: &'static str,
+    text: impl Into<String>,
+    fix: Option<&str>,
+) -> Check {
     Check {
+        section,
         later: true,
         ..check(state, name, text, fix)
     }
 }
 
-const REGISTER: &str = "Run: custodio register";
+const AGAIN: &str = "fix what is named, then run 'custodio doctor' again";
 
-fn profile_line(p: &ProfileFact) -> Check {
-    let who = format!("{} profile {}", p.browser, escape(&p.path));
-    let register = |text: String, fix: &str| {
-        later(
-            State::NotOk,
-            FIREFOX,
-            format!("{who}: {text}"),
-            Some(fix.to_owned()),
-        )
-    };
-    let snap_fix = format!("{REGISTER}; then restart Firefox. {RESTART_NOTE}");
-    let fix = if p.copy.is_some() {
-        snap_fix.as_str()
-    } else {
-        REGISTER
-    };
-    match &p.copy {
-        Some(Copy::CouldNot(why)) => {
-            return later(
-                State::CouldNotCheck,
-                FIREFOX,
-                format!(
-                    "{who}: cannot compare the snap's copy of the module: {}",
-                    escape(why)
-                ),
-                Some("Fix what is named, then run 'custodio doctor' again.".to_owned()),
-            );
-        }
-        Some(Copy::Missing) => {
-            return register("the snap's copy of the module is missing".to_owned(), fix);
-        }
-        Some(Copy::Stale) => {
-            return register(
-                "the snap's copy of the module is stale (it differs from the installed module)"
-                    .to_owned(),
-                fix,
-            );
-        }
-        Some(Copy::UpToDate) | None => {}
-    }
-    match &p.entry {
-        Entry::CouldNot(why) => later(
+/// The state of one profile, what it says and what to do.
+fn profile_state(p: &ProfileFact) -> (State, String, Option<&'static str>) {
+    let register = Some("custodio register, then restart the browsers");
+    match (&p.copy, &p.entry) {
+        (Some(Copy::CouldNot(why)), _) => (
             State::CouldNotCheck,
-            FIREFOX,
-            format!("{who}: {}", escape(why)),
-            Some("Fix what is named, then run 'custodio doctor' again.".to_owned()),
+            format!("cannot read the snap's copy of the module: {}", escape(why)),
+            Some(AGAIN),
         ),
-        Entry::Present(name) => later(
-            State::Ok,
-            FIREFOX,
-            format!("{who}: the module is registered as \"{}\"", escape(name)),
-            None,
+        (Some(Copy::Missing), _) => (
+            State::NotOk,
+            "the snap's copy of the module is missing".to_owned(),
+            register,
         ),
-        Entry::PresentElsewhere(name) => later(
-            State::Ok,
-            FIREFOX,
-            format!(
-                "{who}: the module is registered as \"{}\", from another path that still exists",
-                escape(name)
-            ),
-            None,
+        (Some(Copy::Stale), _) => (
+            State::NotOk,
+            "the snap's copy of the module is old".to_owned(),
+            register,
         ),
-        Entry::P11Kit => later(
-            State::Ok,
-            FIREFOX,
-            format!(
-                "{who}: the system NSS loads the p11-kit proxy, so Firefox sees the module without registration"
-            ),
-            None,
+        (_, Entry::CouldNot(why)) => (State::CouldNotCheck, escape(why), Some(AGAIN)),
+        (_, Entry::Present(_) | Entry::PresentElsewhere(_)) => (State::Ok, String::new(), None),
+        (_, Entry::P11Kit) => (State::Ok, "through p11-kit".to_owned(), None),
+        (_, Entry::Stale) => (
+            State::NotOk,
+            "registered at a path that is gone".to_owned(),
+            register,
         ),
-        Entry::Stale => register(
-            "the module is registered at a path that no longer exists (stale)".to_owned(),
-            fix,
-        ),
-        Entry::Missing => register("the module is not registered".to_owned(), fix),
+        (_, Entry::Missing) => (State::NotOk, "not registered".to_owned(), register),
     }
 }
 
+/// Check 4: one line per profile; the fix once, under the last profile that needs it.
 #[must_use]
 pub fn firefox(f: &Firefox) -> Vec<Check> {
-    match f {
-        Firefox::NoProfile => vec![later(
-            State::Ok,
-            FIREFOX,
-            "no browser profile was found, so there is nothing to register",
-            None,
-        )],
-        Firefox::CouldNot(why) => vec![later(
-            State::CouldNotCheck,
-            FIREFOX,
-            format!("could not look for browser profiles: {}", escape(why)),
-            Some("Fix or remove that file, then run 'custodio doctor' again.".to_owned()),
-        )],
-        Firefox::Profiles(list) => list.iter().map(profile_line).collect(),
+    let list = match f {
+        Firefox::NoProfile => {
+            return vec![later(
+                BROWSERS_SECTION,
+                State::Ok,
+                FIREFOX,
+                "none found, nothing to register",
+                None,
+            )];
+        }
+        Firefox::CouldNot(why) => {
+            return vec![later(
+                BROWSERS_SECTION,
+                State::CouldNotCheck,
+                FIREFOX,
+                format!("cannot look for them: {}", escape(why)),
+                Some("fix or remove that file, then run 'custodio doctor' again"),
+            )];
+        }
+        Firefox::Profiles(list) => list,
+    };
+    let mut checks: Vec<Check> = Vec::new();
+    let mut fixes: Vec<(usize, &str)> = Vec::new();
+    for p in list {
+        let (state, what, fix) = profile_state(p);
+        let name = escape(p.path.rsplit('/').next().unwrap_or(&p.path));
+        let text = if what.is_empty() {
+            name
+        } else {
+            format!("{name}: {what}")
+        };
+        if let Some(fix) = fix {
+            fixes.retain(|(_, f)| *f != fix);
+            fixes.push((checks.len(), fix));
+        }
+        checks.push(later(BROWSERS_SECTION, state, p.browser, text, None));
     }
+    for (at, fix) in fixes {
+        checks[at].fix = Some(fix.to_owned());
+    }
+    checks
 }
 
-const DROP_IN: &str = "or create /etc/systemd/journald.conf.d/50-persistent.conf with the lines [Journal] and Storage=persistent, then restart systemd-journald";
+const RESTART: &str = "sudo systemctl restart systemd-journald";
 
 #[must_use]
 pub fn journal(f: &Verdict) -> Check {
     let (state, text, fix) = match f {
-        Verdict::Persistent(why) => (State::Ok, format!("the journal is persistent ({why})"), None),
+        Verdict::Persistent(_) => (State::Ok, "persistent".to_owned(), None),
         Verdict::CouldNot(why) => (
             State::CouldNotCheck,
-            format!("could not tell whether the journal is persistent: {}", escape(why)),
-            Some("Fix what is named, or look at 'journalctl --header' and 'systemd-analyze cat-config systemd/journald.conf', then run 'custodio doctor' again.".to_owned()),
+            format!("cannot tell whether it is persistent: {}", escape(why)),
+            Some(AGAIN.to_owned()),
         ),
-        Verdict::NotPersistent(Cause::AutoWithoutDirectory(source)) => {
-            let at = source
-                .as_ref()
-                .map_or_else(String::new, |s| format!(" (set at {s})"));
-            (
-                State::NotOk,
-                format!("Storage=auto{at} and /var/log/journal does not exist: the journal is kept in memory and is lost at reboot"),
-                Some(format!("As root: mkdir -p /var/log/journal && systemd-tmpfiles --create --prefix /var/log/journal, then journalctl --flush or reboot; {DROP_IN}")),
-            )
-        }
+        Verdict::NotPersistent(Cause::AutoWithoutDirectory(source)) => (
+            State::NotOk,
+            format!(
+                "lost at reboot (Storage=auto{} and no /var/log/journal)",
+                source
+                    .as_ref()
+                    .map_or_else(String::new, |s| format!(" at {s}"))
+            ),
+            Some(format!("sudo mkdir -p /var/log/journal, then {RESTART}")),
+        ),
         Verdict::NotPersistent(Cause::Volatile { source, by_default }) => (
             State::NotOk,
-            format!("Storage=volatile{}: the journal is kept in memory and is lost at reboot", set_by(source, *by_default)),
+            format!(
+                "lost at reboot (Storage=volatile{})",
+                at(source, *by_default)
+            ),
             Some(edit_fix(source, *by_default)),
         ),
         Verdict::NotPersistent(Cause::None { source, by_default }) => (
             State::NotOk,
-            format!("Storage=none{}: nothing is stored, every journal entry is lost now, the audit entries of the signatures included", set_by(source, *by_default)),
+            format!("not kept at all (Storage=none{})", at(source, *by_default)),
             Some(edit_fix(source, *by_default)),
         ),
     };
-    later(state, JOURNAL, text, fix)
+    later(SYSTEM_SECTION, state, JOURNAL, text, fix.as_deref())
 }
 
-fn set_by(source: &Source, by_default: bool) -> String {
+fn at(source: &Source, by_default: bool) -> String {
     if by_default {
-        format!(" (the default, shown by {source})")
+        format!(" by default, see {source}")
     } else {
-        format!(" (set at {source})")
+        format!(" at {source}")
     }
 }
 
 fn edit_fix(source: &Source, by_default: bool) -> String {
     if by_default {
-        format!("As root: {DROP_IN}.")
+        format!(
+            "put Storage=persistent under [Journal] in /etc/systemd/journald.conf.d/50-persistent.conf, then {RESTART}"
+        )
     } else if source.file.starts_with("/usr/") {
         format!(
-            "As root: remove or change that line; {} is shipped by the system, so put a copy with the same name in /etc/systemd/ and edit the copy; then restart systemd-journald.",
+            "copy {} to /etc/systemd/ and set Storage=persistent in the copy, then {RESTART}",
             source.file
         )
     } else {
-        format!("As root: remove or change the line at {source}, then restart systemd-journald.")
+        format!("set Storage=persistent at {source}, then {RESTART}")
     }
 }
 
-const FDE: &str = "full-disk encryption on the disk that holds /var/lib/custodio (LUKS: your installer's encryption option, or cryptsetup)";
+const LUKS: &str = "disk encryption (LUKS), usually chosen when installing the system";
 
+/// What an `unknown` reason means and what to do, in a few words.
 fn reason_fix(reason: &str) -> Option<(&'static str, &'static str)> {
     Some(match reason {
         "no-mount" => (
-            "no mount covers the state directory, or the mount table cannot be read",
-            "Check that the service runs with its unit and that /proc is available to it.",
+            "no mount covers it",
+            "check that the service runs with its unit and can read /proc",
         ),
         "not-block-filesystem" => (
-            "the state directory is on a filesystem that is not on one block device (tmpfs, overlay, a network filesystem, btrfs or an anonymous device)",
-            "Keep the state directory on a local ext4, xfs or similar filesystem.",
+            "not on a single disk (tmpfs, overlay, btrfs or network)",
+            "move it to ext4, xfs or similar, or use disk encryption (LUKS)",
         ),
         "sysfs-incomplete" => (
-            "the device tree under /sys/dev/block is missing or unreadable for this device",
-            "Restart the service and run 'custodio doctor' again; a device that is still being set up shows this.",
+            "its device is not fully in /sys",
+            "restart the service and run 'custodio doctor' again",
         ),
         "layer-not-classified" => (
-            "a layer the service does not classify is in the chain (RAID that is not all encrypted, a device-mapper device that is neither LVM nor dm-crypt, a disk with no hardware link)",
-            "Put the state directory on a plain dm-crypt (LUKS) device, or on a disk without stacked devices.",
+            "a storage layer the service does not know",
+            "use plain LUKS, or a disk without stacked devices",
         ),
         "members-disagree" => (
-            "the members of an LVM or RAID layer are not all alike (some encrypted, some not)",
-            "Encrypt every member, or move the state directory to an encrypted device.",
+            "some LVM or RAID members are not encrypted",
+            "encrypt every member",
         ),
-        "fscrypt-not-excluded" => (
-            "the filesystem may encrypt the directory itself (fscrypt), or the check could not be made",
-            "Use dm-crypt (LUKS) under the filesystem; the service cannot tell what fscrypt covers.",
-        ),
+        "fscrypt-not-excluded" => ("it may use fscrypt", "use LUKS under the filesystem"),
         "state-dir-unresolved" => (
-            "the state directory itself cannot be resolved (the directory is not there)",
-            "Check that the service's state directory exists and that its unit started.",
+            "the directory is not there",
+            "check that the service started",
         ),
         _ => return None,
     })
@@ -266,37 +255,51 @@ fn reason_fix(reason: &str) -> Option<(&'static str, &'static str)> {
 
 #[must_use]
 pub fn storage(f: &Service) -> Check {
-    let (state, text, fix) = match f {
-        Service::Unreachable(why) => (
+    const DIR: &str = "/var/lib/custodio";
+    match f {
+        Service::Unreachable(why) => later(
+            SYSTEM_SECTION,
             State::CouldNotCheck,
-            format!("could not ask the Custodio service: {}", escape(why)),
-            Some("Check that the package is installed and the service runs: systemctl status custodio.service (the package is custodio), then run 'custodio doctor' again.".to_owned()),
+            STORAGE,
+            format!("cannot ask the Custodio service: {}", escape(why)),
+            Some("systemctl status custodio.service"),
         ),
-        Service::Answered(StateStorage::Encrypted, _) => (
+        Service::Answered(StateStorage::Encrypted, _) => later(
+            SYSTEM_SECTION,
             State::Ok,
-            "the service's state directory is on an encrypted device".to_owned(),
+            STORAGE,
+            format!("{DIR} is on an encrypted disk"),
             None,
         ),
-        Service::Answered(StateStorage::NotEncrypted, _) => (
-            State::NotOk,
-            "the service's state directory is not on an encrypted device".to_owned(),
-            Some(format!("Use {FDE}: without it whoever takes this machine can use your keys, though they cannot copy a tpm key.")),
-        ),
+        Service::Answered(StateStorage::NotEncrypted, _) => Check {
+            note: Some("Whoever takes this machine can use your keys.".to_owned()),
+            ..later(
+                SYSTEM_SECTION,
+                State::Warn,
+                STORAGE,
+                format!("{DIR} is not on an encrypted disk"),
+                Some(LUKS),
+            )
+        },
         Service::Answered(StateStorage::Unknown, reason) => {
             let reason = reason.as_deref().unwrap_or("");
-            match reason_fix(reason) {
-                Some((what, todo)) => (
-                    State::NotOk,
-                    format!("the service's state directory is not known to be on an encrypted device (reason {reason}: {what})"),
-                    Some(format!("{todo} Or use {FDE}.")),
-                ),
-                None => (
-                    State::NotOk,
-                    "the service's state directory is not known to be on an encrypted device (the service gave no reason it knows)".to_owned(),
-                    Some(format!("Update the service if it is old, or use {FDE}.")),
-                ),
-            }
+            // Only a reason it knows is printed: anything else came from outside and means nothing here.
+            let (text, fix) = reason_fix(reason).map_or_else(
+                || {
+                    (
+                        "the service gave no reason".to_owned(),
+                        "update the service, or use disk encryption (LUKS)",
+                    )
+                },
+                |(what, fix)| (format!("{what} ({reason})"), fix),
+            );
+            later(
+                SYSTEM_SECTION,
+                State::NotOk,
+                STORAGE,
+                format!("{DIR}: cannot tell if encrypted, {text}"),
+                Some(fix),
+            )
         }
-    };
-    later(state, STORAGE, text, fix)
+    }
 }

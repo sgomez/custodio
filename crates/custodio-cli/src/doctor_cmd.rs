@@ -198,10 +198,18 @@ fn profile_fact(
     }
     ProfileFact {
         browser: profile.browser,
-        path: profile.path.display().to_string(),
+        path: tilde(&profile.path, &env.home),
         copy: profile.snap.then(|| copy_state(&copy_file, installed)),
         entry,
     }
+}
+
+/// The path with the home directory written as `~`.
+fn tilde(path: &Path, home: &Path) -> String {
+    path.strip_prefix(home).map_or_else(
+        |_| path.display().to_string(),
+        |rest| format!("~/{}", rest.display()),
+    )
 }
 
 fn entry_of(profile: &Profile, module: &Path) -> Entry {
@@ -308,11 +316,11 @@ fn ask_service() -> Service {
     Service::Answered(storage, reason)
 }
 
-/// Run the command, writing the report to `out`.
+/// Run the command, writing the report to `out`; `coloured` colours its marks and headings.
 ///
 /// # Errors
 /// [`Failure::Root`] when run as root; [`Failure::BrokenInclude`] or [`Failure::Unsatisfied`] after the report.
-pub fn run<W: Write>(out: &mut W) -> Result<(), Failure> {
+pub fn run<W: Write>(out: &mut W, coloured: bool) -> Result<(), Failure> {
     let env = env();
     if env.euid == 0 {
         return Err(Failure::Root);
@@ -332,7 +340,7 @@ pub fn run<W: Write>(out: &mut W) -> Result<(), Failure> {
         journal: observe_journal(&env.root),
         service,
     });
-    let _ = out.write_all(report.text().as_bytes());
+    let _ = out.write_all(report.text(coloured).as_bytes());
     match (report.exit_status(), report.broken_include) {
         (0, _) => Ok(()),
         (_, true) => Err(Failure::BrokenInclude),

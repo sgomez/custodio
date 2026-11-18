@@ -7,14 +7,27 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::{Duration, Instant};
 
-use fprint_fixture::{Bus, Fake, Fx, NO_BUS, Svc, err, out, section, serve_all, state};
+use custodio_cli::doctor_decide::{JOURNAL, STORAGE, SYSTEM_SECTION};
+use fprint_fixture::{Bus, Fake, Fx, Line, NO_BUS, Svc, check, err, out, serve_all};
 
-const JOURNAL: &str = "persistent journal";
-const STORAGE: &str = "state directory storage";
+/// Everything the report says about a check: its text, notes, warnings and fixes.
+fn said(l: &Line) -> String {
+    let mut all = vec![l.text.clone()];
+    all.extend(l.notes.iter().chain(&l.warnings).chain(&l.fixes).cloned());
+    all.join("\n")
+}
+
+/// Check 5 of a report: in the System section, and with a fix whenever it is not `ok`.
+fn journal_line(text: &str) -> Line {
+    let l = check(text, JOURNAL);
+    assert_eq!(l.section, SYSTEM_SECTION, "{text}");
+    assert_eq!(l.state != "ok", !l.fixes.is_empty(), "{text}");
+    l
+}
 
 /// Doctor on a fixture whose journald files are `files` (the default main file is removed) and whose
-/// `/var/log/journal` is `dir`; the section of check 5.
-fn journal(files: &[(&str, &str)], dir: Dir) -> (String, String) {
+/// `/var/log/journal` is `dir`; check 5.
+fn journal(files: &[(&str, &str)], dir: Dir) -> Line {
     let fx = Fx::new();
     fx.remove("etc/systemd/journald.conf");
     for (path, text) in files {
@@ -28,8 +41,7 @@ fn journal(files: &[(&str, &str)], dir: Dir) -> (String, String) {
     let before = fx.tree();
     let o = fx.doctor(NO_BUS);
     assert_eq!(fx.tree(), before, "doctor changed the tree");
-    let text = out(&o);
-    (state(&text, JOURNAL), section(&text, JOURNAL).join("\n"))
+    journal_line(&out(&o))
 }
 
 #[derive(Clone, Copy)]
@@ -43,45 +55,40 @@ const ETC: &str = "etc/systemd/journald.conf";
 const USR: &str = "usr/lib/systemd/journald.conf";
 
 macro_rules! journal_case {
-    ($name:ident, $files:expr, $dir:expr, $state:expr, $($needle:expr),*) => {
+    ($name:ident, $files:expr, $dir:expr, $state:expr $(, $needle:expr)*) => {
         #[test]
         fn $name() {
-            let (state, section) = journal(&$files, $dir);
-            assert_eq!(state, $state, "{section}");
-            $(assert!(section.contains($needle), "{} not in {section}", $needle);)*
+            let l = journal(&$files, $dir);
+            assert_eq!(l.state, $state, "{l:?}");
+            $(assert!(said(&l).contains($needle), "{} not in {l:?}", $needle);)*
         }
     };
 }
 
-const FIX1: &str = "mkdir -p /var/log/journal";
-const TMPFILES: &str = "systemd-tmpfiles --create --prefix /var/log/journal";
-const DROP: &str = "50-persistent.conf";
+const MKDIR: &str = "sudo mkdir -p /var/log/journal";
+const RESTART: &str = "sudo systemctl restart systemd-journald";
+const DROP: &str = "/etc/systemd/journald.conf.d/50-persistent.conf";
 
 // states of the table
 journal_case!(
     persistent_with_no_directory_is_ok,
     [(ETC, "[Journal]\nStorage=persistent\n")],
     Dir::Absent,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     auto_with_a_directory_is_ok,
     [(ETC, "[Journal]\nStorage=auto\n")],
     Dir::Present,
-    "ok",
-    "exists"
+    "ok"
 );
 journal_case!(
     auto_without_the_directory_is_not_ok_with_the_fix,
     [(ETC, "[Journal]\nStorage=auto\n")],
     Dir::Absent,
     "not ok",
-    FIX1,
-    TMPFILES,
-    DROP,
-    "journalctl --flush",
-    "/etc/systemd/journald.conf:2"
+    MKDIR,
+    RESTART
 );
 journal_case!(
     volatile_with_a_directory_names_the_line,
@@ -89,14 +96,15 @@ journal_case!(
     Dir::Present,
     "not ok",
     "/etc/systemd/journald.conf:3",
-    "volatile"
+    "Storage=volatile",
+    RESTART
 );
 journal_case!(
     volatile_without_a_directory_is_not_ok,
     [(ETC, "[Journal]\nStorage=volatile\n")],
     Dir::Absent,
     "not ok",
-    "volatile"
+    "Storage=volatile"
 );
 journal_case!(
     volatile_under_usr_lib_says_to_copy_it_to_etc,
@@ -104,43 +112,41 @@ journal_case!(
     Dir::Present,
     "not ok",
     "/usr/lib/systemd/journald.conf:2",
-    "same name in /etc"
+    "/etc/systemd/"
 );
 journal_case!(
-    none_says_the_entries_are_lost_now,
+    none_is_not_ok_and_named,
     [(ETC, "[Journal]\nStorage=none\n")],
     Dir::Present,
     "not ok",
-    "every journal entry is lost now",
+    "Storage=none",
     "/etc/systemd/journald.conf:2"
 );
 journal_case!(
     unset_with_a_persistent_comment_is_ok,
     [(USR, "[Journal]\n#Storage=persistent\n")],
     Dir::Absent,
-    "ok",
-    "default"
+    "ok"
 );
 journal_case!(
     unset_with_an_auto_comment_and_a_directory_is_ok,
     [(USR, "[Journal]\n#Storage=auto\n")],
     Dir::Present,
-    "ok",
-    "exists"
+    "ok"
 );
 journal_case!(
     unset_with_an_auto_comment_and_no_directory_is_not_ok,
     [(USR, "[Journal]\n#Storage=auto\n")],
     Dir::Absent,
     "not ok",
-    FIX1
+    MKDIR
 );
 journal_case!(
     unset_with_a_volatile_comment_is_not_ok_by_default,
     [(USR, "[Journal]\n#Storage=volatile\n")],
     Dir::Present,
     "not ok",
-    "the default",
+    "Storage=volatile",
     DROP
 );
 journal_case!(
@@ -148,7 +154,8 @@ journal_case!(
     [(USR, "[Journal]\n#Storage=none\n")],
     Dir::Present,
     "not ok",
-    "the default"
+    "Storage=none",
+    DROP
 );
 
 // precedence
@@ -169,8 +176,7 @@ journal_case!(
         (USR, "[Journal]\nStorage=none\n")
     ],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     main_files_are_not_merged,
@@ -179,8 +185,7 @@ journal_case!(
         (USR, "[Journal]\nStorage=volatile\n")
     ],
     Dir::Present,
-    "ok",
-    "exists"
+    "ok"
 );
 journal_case!(
     the_run_main_file_comes_before_usr_local_and_usr_lib,
@@ -222,8 +227,7 @@ journal_case!(
         )
     ],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     drop_ins_sort_by_name_across_the_dirs_the_other_way,
@@ -280,15 +284,13 @@ journal_case!(
     the_last_valid_assignment_wins,
     [(ETC, "[Journal]\nStorage=volatile\nStorage=persistent\n")],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     a_key_before_any_section_has_no_effect,
     [(ETC, "Storage=volatile\n[Journal]\n#Storage=persistent\n")],
     Dir::Present,
-    "ok",
-    "default"
+    "ok"
 );
 journal_case!(
     another_section_has_no_effect,
@@ -297,15 +299,13 @@ journal_case!(
         "[Journal]\nStorage=persistent\n[Other]\nStorage=volatile\n"
     )],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     a_lower_case_key_has_no_effect,
     [(ETC, "[Journal]\nStorage=persistent\nstorage=volatile\n")],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     spaces_around_the_equals_sign_work,
@@ -321,8 +321,7 @@ journal_case!(
         "[Journal]\n;Storage=volatile\n#Storage=volatile\nStorage=persistent\n"
     )],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     the_run_journal_directory_changes_nothing,
@@ -332,7 +331,7 @@ journal_case!(
     ],
     Dir::Absent,
     "not ok",
-    FIX1
+    MKDIR
 );
 
 // could not check
@@ -343,16 +342,14 @@ journal_case!(
         "[Journal]\nForwardToSyslog=yes\n"
     )],
     Dir::Present,
-    "could not check",
-    "257",
-    "259"
+    "could not check"
 );
 journal_case!(
     unset_with_no_comment_line_is_could_not_check,
     [(ETC, "[Journal]\nForwardToSyslog=yes\n")],
     Dir::Present,
     "could not check",
-    "#Storage="
+    "/etc/systemd/journald.conf"
 );
 journal_case!(
     an_empty_value_is_could_not_check,
@@ -373,21 +370,21 @@ journal_case!(
     [(ETC, "[Journal]\nForwardToSyslog=yes \\\nStorage=volatile\n")],
     Dir::Present,
     "could not check",
-    "backslash"
+    "/etc/systemd/journald.conf:2"
 );
 journal_case!(
     a_journal_directory_that_is_a_file_is_could_not_check,
     [(ETC, "[Journal]\nStorage=auto\n")],
     Dir::File,
     "could not check",
-    "not a directory"
+    "/var/log/journal"
 );
 journal_case!(
     a_backslash_outside_journal_is_could_not_check,
     [(ETC, "[Other]\nx=y \\\n[Journal]\nStorage=persistent\n")],
     Dir::Present,
     "could not check",
-    "backslash"
+    "/etc/systemd/journald.conf:2"
 );
 
 /// A main file of exactly `len` bytes: valid content, padded by a comment.
@@ -398,21 +395,21 @@ fn padded(len: usize) -> String {
 
 #[test]
 fn a_file_of_exactly_1_mib_is_read() {
-    let (s, section) = journal(&[(ETC, &padded(1024 * 1024))], Dir::Present);
-    assert_eq!(s, "ok", "{section}");
+    let l = journal(&[(ETC, &padded(1024 * 1024))], Dir::Present);
+    assert_eq!(l.state, "ok", "{l:?}");
 }
 
 #[test]
 fn a_file_of_100_kib_is_read() {
-    let (s, section) = journal(&[(ETC, &padded(100 * 1024))], Dir::Present);
-    assert_eq!(s, "ok", "{section}");
+    let l = journal(&[(ETC, &padded(100 * 1024))], Dir::Present);
+    assert_eq!(l.state, "ok", "{l:?}");
 }
 
 #[test]
 fn a_file_one_byte_over_1_mib_is_could_not_check() {
-    let (s, section) = journal(&[(ETC, &padded(1024 * 1024 + 1))], Dir::Present);
-    assert_eq!(s, "could not check", "{section}");
-    assert!(section.contains("longer than"), "{section}");
+    let l = journal(&[(ETC, &padded(1024 * 1024 + 1))], Dir::Present);
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(said(&l).contains("/etc/systemd/journald.conf"), "{l:?}");
 }
 
 journal_case!(
@@ -422,8 +419,7 @@ journal_case!(
         "[Journal]\n# a note \\\n;another \\\nStorage=persistent\n"
     )],
     Dir::Present,
-    "ok",
-    "persistent"
+    "ok"
 );
 journal_case!(
     the_default_names_the_line_of_the_comment,
@@ -441,24 +437,18 @@ fn a_drop_in_directory_that_cannot_be_read_is_could_not_check() {
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.doctor(NO_BUS);
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
-    let text = out(&o);
-    assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
-    assert!(
-        section(&text, JOURNAL).join("").contains("journald.conf.d"),
-        "{text}"
-    );
+    let l = journal_line(&out(&o));
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(said(&l).contains("/etc/systemd/journald.conf.d"), "{l:?}");
 }
 
 #[test]
 fn a_file_that_is_not_utf_8_is_could_not_check() {
     let fx = Fx::new();
     fs::write(fx.path(ETC), b"[Journal]\nStorage=persistent\n\xff\xfe\n").unwrap();
-    let text = out(&fx.doctor(NO_BUS));
-    assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
-    assert!(
-        section(&text, JOURNAL).join("").contains("not UTF-8"),
-        "{text}"
-    );
+    let l = journal_line(&out(&fx.doctor(NO_BUS)));
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(said(&l).contains("/etc/systemd/journald.conf"), "{l:?}");
 }
 
 #[test]
@@ -469,14 +459,9 @@ fn an_unreadable_file_is_could_not_check_naming_it() {
     fs::set_permissions(&target, fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.doctor(NO_BUS);
     fs::set_permissions(&target, original).unwrap();
-    let text = out(&o);
-    assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
-    assert!(
-        section(&text, JOURNAL)
-            .join("")
-            .contains("/etc/systemd/journald.conf"),
-        "{text}"
-    );
+    let l = journal_line(&out(&o));
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(said(&l).contains("/etc/systemd/journald.conf"), "{l:?}");
 }
 
 #[test]
@@ -489,12 +474,9 @@ fn a_journal_directory_that_cannot_be_stat_ed_is_could_not_check() {
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o000)).unwrap();
     let o = fx.doctor(NO_BUS);
     fs::set_permissions(&parent, fs::Permissions::from_mode(0o755)).unwrap();
-    let text = out(&o);
-    assert_eq!(state(&text, JOURNAL), "could not check", "{text}");
-    assert!(
-        section(&text, JOURNAL).join("").contains("cannot stat"),
-        "{text}"
-    );
+    let l = journal_line(&out(&o));
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(said(&l).contains("/var/log/journal"), "{l:?}");
 }
 
 // ---- check 6 ----
@@ -531,15 +513,27 @@ fn storage(service: Option<Svc>) -> Run {
     }
 }
 
-fn line(r: &Run) -> String {
-    section(&r.text, STORAGE).join("\n")
+/// Check 6 of the run: in the System section, with a fix whenever it is not `ok`.
+fn line(r: &Run) -> Line {
+    let l = check(&r.text, STORAGE);
+    assert_eq!(l.section, SYSTEM_SECTION, "{}", r.text);
+    assert_eq!(l.state != "ok", !l.fixes.is_empty(), "{}", r.text);
+    l
+}
+
+/// Check 6 when the service answers `unknown` with this reason (`None`: no reason method).
+fn unknown(reason: Option<&'static str>) -> (Run, Line) {
+    let r = storage(Some(Svc::answering("unknown", reason)));
+    let l = line(&r);
+    assert_eq!(l.state, "not ok", "{l:?}");
+    assert_eq!(r.exit, 1);
+    (r, l)
 }
 
 #[test]
 fn encrypted_is_ok_and_only_the_read_only_methods_are_called_without_the_flag() {
     let r = storage(Some(Svc::answering("encrypted", Some(""))));
-    assert_eq!(state(&r.text, STORAGE), "ok", "{}", r.text);
-    assert!(!line(&r).contains("fix:"), "{}", line(&r));
+    assert_eq!(line(&r).state, "ok", "{}", r.text);
     assert_eq!(r.exit, 0, "{}{}", r.text, r.err);
     // the reason is asked only when the answer is `unknown`; no call sets the interactive flag
     assert_eq!(
@@ -550,14 +544,13 @@ fn encrypted_is_ok_and_only_the_read_only_methods_are_called_without_the_flag() 
 }
 
 #[test]
-fn not_encrypted_is_not_ok_with_the_full_disk_encryption_advice() {
+fn not_encrypted_is_a_warning_with_what_it_means_and_the_full_disk_encryption_fix() {
     let r = storage(Some(Svc::answering("not-encrypted", Some(""))));
-    assert_eq!(state(&r.text, STORAGE), "not ok", "{}", r.text);
-    assert!(
-        line(&r).contains("cryptsetup") && !line(&r).contains("README"),
-        "{}",
-        line(&r)
-    );
+    let l = line(&r);
+    assert_eq!(l.state, "warn", "{}", r.text);
+    assert!(!l.notes.is_empty(), "{l:?}");
+    assert!(l.fixes.concat().contains("LUKS"), "{l:?}");
+    assert!(!said(&l).contains("README"), "{l:?}");
     assert_eq!(r.exit, 1);
     assert_eq!(
         r.served.service.lock().unwrap().as_slice(),
@@ -565,92 +558,71 @@ fn not_encrypted_is_not_ok_with_the_full_disk_encryption_advice() {
     );
 }
 
-macro_rules! reason_case {
-    ($name:ident, $reason:expr, $todo:expr) => {
-        #[test]
-        fn $name() {
-            let r = storage(Some(Svc::answering("unknown", Some($reason))));
-            let l = line(&r);
-            assert_eq!(state(&r.text, STORAGE), "not ok", "{l}");
-            assert!(l.contains("not known to be on an encrypted device"), "{l}");
-            assert!(l.contains(concat!("reason ", $reason)), "{l}");
-            assert!(l.contains($todo), "{l}");
-            assert_eq!(r.exit, 1);
-            assert_eq!(
-                r.served.service.lock().unwrap().as_slice(),
-                ["StateStorage", "StateStorageReason"]
-            );
-        }
-    };
-}
-
-reason_case!(unknown_no_mount, "no-mount", "/proc is available");
-reason_case!(
-    unknown_not_block_filesystem,
+const REASONS: [&str; 7] = [
+    "no-mount",
     "not-block-filesystem",
-    "local ext4, xfs"
-);
-reason_case!(
-    unknown_sysfs_incomplete,
     "sysfs-incomplete",
-    "Restart the service"
-);
-reason_case!(
-    unknown_layer_not_classified,
     "layer-not-classified",
-    "plain dm-crypt"
-);
-reason_case!(
-    unknown_members_disagree,
     "members-disagree",
-    "Encrypt every member"
-);
-reason_case!(
-    unknown_fscrypt_not_excluded,
     "fscrypt-not-excluded",
-    "dm-crypt (LUKS) under the filesystem"
-);
-reason_case!(
-    unknown_state_dir_unresolved,
     "state-dir-unresolved",
-    "state directory exists"
-);
+];
 
 #[test]
-fn unknown_with_no_reason_method_invents_no_reason() {
-    let r = storage(Some(Svc::answering("unknown", None)));
-    let l = line(&r);
-    assert_eq!(state(&r.text, STORAGE), "not ok", "{l}");
-    assert!(!l.contains("(reason "), "{l}");
-    assert!(l.contains("not known to be on an encrypted device"), "{l}");
+fn each_known_reason_of_unknown_has_its_own_text_and_fix_and_asks_for_the_reason() {
+    let mut seen: Vec<(String, Vec<String>)> = Vec::new();
+    for reason in REASONS {
+        let (r, l) = unknown(Some(reason));
+        assert_eq!(
+            r.served.service.lock().unwrap().as_slice(),
+            ["StateStorage", "StateStorageReason"]
+        );
+        let said = (l.text.clone(), l.fixes.clone());
+        assert!(
+            seen.iter().all(|(t, f)| *t != said.0 && *f != said.1),
+            "{reason} says what another reason says: {l:?}"
+        );
+        seen.push(said);
+    }
+    let (_, none) = unknown(None);
+    assert!(
+        seen.iter().all(|(t, _)| *t != none.text),
+        "a known reason reads like no reason: {none:?}"
+    );
 }
 
 #[test]
-fn unknown_with_a_reason_string_it_does_not_know_is_not_ok_and_not_repeated_as_a_cause() {
-    let r = storage(Some(Svc::answering("unknown", Some("from-the-future"))));
-    let l = line(&r);
-    assert_eq!(state(&r.text, STORAGE), "not ok", "{l}");
-    assert!(!l.contains("from-the-future"), "{l}");
+fn unknown_no_mount_points_at_proc() {
+    let (_, l) = unknown(Some("no-mount"));
+    assert!(l.fixes.concat().contains("/proc"), "{l:?}");
+}
+
+#[test]
+fn a_reason_string_it_does_not_know_is_reported_as_no_reason_and_not_repeated() {
+    let (_, none) = unknown(None);
+    let (_, future) = unknown(Some("from-the-future"));
+    assert!(!said(&future).contains("from-the-future"), "{future:?}");
+    assert_eq!(future, none);
 }
 
 #[test]
 fn a_wire_value_the_cli_does_not_know_is_not_ok() {
     let r = storage(Some(Svc::answering("quantum", Some(""))));
-    assert_eq!(state(&r.text, STORAGE), "not ok", "{}", line(&r));
+    assert_eq!(line(&r).state, "not ok", "{}", r.text);
 }
 
-fn could_not_check(r: &Run) {
+fn could_not_check(r: &Run) -> Line {
     let l = line(r);
-    assert_eq!(state(&r.text, STORAGE), "could not check", "{l}");
-    assert!(l.contains("custodio.service"), "{l}");
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(l.fixes.concat().contains("custodio.service"), "{l:?}");
     assert_eq!(r.exit, 1, "{}", r.text);
+    l
 }
 
 #[test]
-fn a_bus_without_the_service_name_is_could_not_check() {
-    let r = storage(None);
-    could_not_check(&r);
-    assert!(line(&r).contains("nothing owns"), "{}", line(&r));
+fn a_bus_without_the_service_name_is_could_not_check_and_names_it() {
+    let l = could_not_check(&storage(None));
+    assert!(l.text.contains(custodio_client::BUS_NAME), "{l:?}");
 }
 
 #[test]
@@ -666,7 +638,6 @@ fn a_slow_answer_is_could_not_check_within_a_bound() {
     svc.delay = Duration::from_millis(2500);
     let r = storage(Some(svc));
     could_not_check(&r);
-    assert!(line(&r).contains("no answer within"), "{}", line(&r));
     assert!(r.elapsed < Duration::from_millis(2300), "{:?}", r.elapsed);
 }
 
@@ -674,12 +645,8 @@ fn a_slow_answer_is_could_not_check_within_a_bound() {
 fn no_bus_socket_is_could_not_check() {
     let fx = Fx::new();
     let o = fx.doctor(NO_BUS);
-    let text = out(&o);
-    assert_eq!(state(&text, STORAGE), "could not check", "{text}");
-    assert!(
-        section(&text, STORAGE)
-            .join("")
-            .contains("custodio.service")
-    );
+    let l = check(&out(&o), STORAGE);
+    assert_eq!(l.state, "could not check", "{l:?}");
+    assert!(l.fixes.concat().contains("custodio.service"), "{l:?}");
     assert_eq!(o.status.code(), Some(1));
 }

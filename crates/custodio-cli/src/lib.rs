@@ -256,11 +256,19 @@ pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     }
 }
 
-/// Writes the diagnostic of a failed run to `err` (nothing on success) and returns the exit status.
+/// Writes the diagnostic of a failed run to `err` (nothing on success, nor after a doctor report)
+/// and returns the exit status.
 /// `coloured` puts the `custodio:` prefix of the first line in bold.
 pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W, coloured: bool) -> u8 {
-    if let Err(e) = result {
-        let _ = writeln!(err, "{}", colour::prefix(&error::render(e), coloured));
+    match result {
+        // The report on standard output already ends with how many problems there are.
+        Ok(())
+        | Err(CliError::Doctor(
+            doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied(_),
+        )) => {}
+        Err(e) => {
+            let _ = writeln!(err, "{}", colour::prefix(&error::render(e), coloured));
+        }
     }
     exit_status(result)
 }

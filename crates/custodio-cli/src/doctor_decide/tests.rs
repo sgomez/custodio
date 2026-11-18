@@ -150,15 +150,154 @@ fn a_name_without_an_owner_is_missing_only_when_there_is_no_service_file() {
     assert_eq!(states(&f)[0], State::NotOk);
 }
 
+/// Reports that between them have every kind of line: each state, notes, a warning, several
+/// profiles, text from outside with an escape sequence.
+fn varied_reports() -> Vec<Report> {
+    let profile = |path: &str, entry| ProfileFact {
+        browser: "Firefox",
+        path: path.into(),
+        copy: None,
+        entry,
+    };
+    let mut all = Vec::new();
+    let mut f = facts(Reader::Failed("a\x1b[2Jb".into()), Fingers::NotAsked);
+    all.push(decide(&f));
+    f.reader = Reader::Devices(1);
+    f.fingers = Fingers::Listed(1);
+    f.files.polkit_file = FileState::Regular(file_bytes().to_vec());
+    all.push(decide(&f));
+    f.files.common_auth = Some("auth sufficient pam_fprintd.so\n".to_owned());
+    f.firefox = Firefox::Profiles(vec![
+        profile("~/a.default", Entry::Missing),
+        profile("~/b.default", Entry::Present("x".into())),
+    ]);
+    f.service = Service::Answered(StateStorage::NotEncrypted, None);
+    all.push(decide(&f));
+    f.files.vendor = VendorState::Missing;
+    f.service = Service::Unreachable("x".into());
+    all.push(decide(&f));
+    all
+}
+
 #[test]
-fn text_from_outside_is_escaped_and_fixes_sit_under_their_check() {
-    let f = facts(Reader::Failed("a\x1b[2Jb".into()), Fingers::NotAsked);
-    let text = decide(&f).text();
-    assert!(!text.contains('\x1b'), "{text:?}");
-    let lines: Vec<&str> = text.lines().collect();
-    assert!(lines[0].starts_with("could not check fingerprint reader: "));
-    assert!(lines[1].trim_start().starts_with("fix: "));
-    assert!(lines[1].starts_with(' '));
+fn the_report_prints_every_check_once_under_its_heading_with_its_lines_indented_below() {
+    for report in varied_reports() {
+        let text = report.text(false);
+        assert!(!text.contains('\x1b'), "{text:?}");
+        let lines: Vec<&str> = text.lines().collect();
+        let mut at = 0;
+        let mut headings: Vec<&str> = Vec::new();
+        let mut text_column = None;
+        for c in &report.checks {
+            if headings.last() != Some(&c.section) {
+                assert_eq!(lines[at], c.section, "{text}");
+                assert!(
+                    !headings.contains(&c.section),
+                    "{} twice:\n{text}",
+                    c.section
+                );
+                headings.push(c.section);
+                at += 1;
+            }
+            let line = lines[at];
+            assert!(
+                line.starts_with("  ") && !line.starts_with("   "),
+                "{line:?}"
+            );
+            assert!(line.contains(c.name) && line.ends_with(&c.text), "{line:?}");
+            let column = line.len() - c.text.len();
+            assert_eq!(
+                *text_column.get_or_insert(column),
+                column,
+                "not aligned:\n{text}"
+            );
+            at += 1;
+            let under: Vec<&String> = c
+                .note
+                .iter()
+                .chain(c.warning.iter().flat_map(|w| [&w.text, &w.fix]))
+                .chain(c.fix.iter())
+                .collect();
+            for part in under {
+                assert!(
+                    lines[at].ends_with(part.as_str()),
+                    "{part:?} not under {}:\n{text}",
+                    c.name
+                );
+                assert!(
+                    lines[at].starts_with(&" ".repeat(column)),
+                    "{:?}",
+                    lines[at]
+                );
+                at += 1;
+            }
+        }
+        let problems = report
+            .checks
+            .iter()
+            .filter(|c| c.state != State::Ok || c.warning.is_some())
+            .count();
+        let rest: Vec<&str> = lines[at..]
+            .iter()
+            .copied()
+            .filter(|l| !l.is_empty())
+            .collect();
+        if problems == 0 {
+            assert!(rest.is_empty(), "{text}");
+        } else {
+            assert_eq!(rest.len(), 1, "{text}");
+            assert!(rest[0].starts_with(&format!("{problems} ")), "{text}");
+        }
+    }
+}
+
+#[test]
+fn the_states_print_differently_and_colour_changes_nothing_but_escape_sequences() {
+    let words = [State::Ok, State::NotOk, State::Warn, State::CouldNotCheck].map(State::word);
+    for (i, w) in words.iter().enumerate() {
+        assert!(!words[i + 1..].contains(w), "{w} twice");
+    }
+    for report in varied_reports() {
+        let coloured = report.text(true);
+        assert!(coloured.contains('\x1b'), "{coloured:?}");
+        assert_eq!(crate::colour::strip(&coloured), report.text(false));
+    }
+}
+
+#[test]
+fn the_profiles_get_one_line_each_and_one_fix_under_the_last_that_needs_it() {
+    let mut f = facts(Reader::Devices(1), Fingers::Listed(1));
+    let profile = |path: &str, entry| ProfileFact {
+        browser: "Firefox",
+        path: path.into(),
+        copy: None,
+        entry,
+    };
+    f.firefox = Firefox::Profiles(vec![
+        profile("~/.mozilla/firefox/a.default", Entry::Missing),
+        profile("~/.mozilla/firefox/b.default", Entry::Stale),
+        profile("~/.mozilla/firefox/c.default", Entry::Present("x".into())),
+    ]);
+    let checks = decide(&f).checks;
+    let fox: Vec<&Check> = checks.iter().filter(|c| c.name == "Firefox").collect();
+    let states: Vec<State> = fox.iter().map(|c| c.state).collect();
+    assert_eq!(states, [State::NotOk, State::NotOk, State::Ok]);
+    for (c, dir) in fox.iter().zip(["a.default", "b.default", "c.default"]) {
+        assert!(
+            c.text.starts_with(dir) && !c.text.contains('/'),
+            "{}",
+            c.text
+        );
+    }
+    assert_ne!(fox[0].text, fox[1].text, "missing and stale read alike");
+    let with_fix: Vec<bool> = fox.iter().map(|c| c.fix.is_some()).collect();
+    assert_eq!(with_fix, [false, true, false]);
+    assert!(
+        fox[1]
+            .fix
+            .as_deref()
+            .is_some_and(|f| f.contains("custodio register"))
+    );
 }
 
 #[test]
@@ -177,7 +316,7 @@ fn a_foreign_polkit_file_without_the_finger_is_not_fixed_by_enable() {
         assert_eq!(polkit.state, State::NotOk, "{file:?}");
         let fix = polkit.fix.unwrap();
         assert!(
-            !fix.starts_with("Run: sudo custodio fingerprint enable"),
+            !fix.starts_with("sudo custodio fingerprint enable"),
             "{fix}"
         );
         assert!(fix.contains("dpkg -S"), "{fix}");
@@ -197,8 +336,5 @@ fn the_failing_checks_are_named_once_each_in_report_order() {
     };
     f.firefox = Firefox::Profiles(vec![missing("/a"), missing("/b")]);
     f.files.polkit_file = FileState::NotRegular;
-    assert_eq!(
-        decide(&f).failing(),
-        ["module in browsers", "state directory storage"]
-    );
+    assert_eq!(decide(&f).failing(), ["Firefox", STORAGE]);
 }

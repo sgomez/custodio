@@ -221,7 +221,7 @@ pub fn evaluate(files: &Files, dir: &JournalDir) -> Verdict {
     let explicit_source = || source.clone().filter(|_| !by_default);
     match storage {
         Storage::Persistent => Verdict::Persistent(if by_default {
-            "the default is persistent".to_owned()
+            "the default".to_owned()
         } else {
             "Storage=persistent".to_owned()
         }),

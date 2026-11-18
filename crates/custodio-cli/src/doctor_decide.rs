@@ -7,6 +7,7 @@
 use std::fmt::Write as _;
 
 use crate::cert_text::escape;
+use crate::colour::{self, Paint};
 use crate::doctor_later::{firefox, journal, storage};
 use crate::fingerprint_decide::{
     FileState, GlobalVia, Observed, POLKIT_FILE, VENDOR_FILE, VendorState, first_fprintd_auth_line,
@@ -19,6 +20,8 @@ use crate::journald_conf::Verdict;
 pub enum State {
     Ok,
     NotOk,
+    /// Works, with a risk the person should know: it counts like `NotOk` for the exit status.
+    Warn,
     CouldNotCheck,
 }
 
@@ -28,9 +31,21 @@ impl State {
     pub const fn word(self) -> &'static str {
         match self {
             Self::Ok => "ok",
-            Self::NotOk => "not ok",
-            Self::CouldNotCheck => "could not check",
+            Self::NotOk => "FAIL",
+            Self::Warn => "warn",
+            Self::CouldNotCheck => "?",
         }
+    }
+
+    /// [`Self::word`], coloured when `on`, padded to the width of the longest.
+    fn painted(self, on: bool) -> String {
+        let paint = match self {
+            Self::Ok => Paint::Green,
+            Self::NotOk => Paint::Red,
+            Self::Warn | Self::CouldNotCheck => Paint::Yellow,
+        };
+        let pad = " ".repeat(4 - self.word().len());
+        format!("{}{pad}", colour::paint(self.word(), paint, on))
     }
 }
 
@@ -78,12 +93,20 @@ pub struct Warning {
     pub fix: String,
 }
 
+/// The headings of the report.
+pub const FINGERPRINT_SECTION: &str = "Fingerprint (optional)";
+pub const BROWSERS_SECTION: &str = "Browsers";
+pub const SYSTEM_SECTION: &str = "System";
+
 /// One check of the report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Check {
     pub state: State,
+    pub section: &'static str,
     pub name: &'static str,
     pub text: String,
+    /// What it means, for a check whose text does not say it.
+    pub note: Option<String>,
     /// What to do, for a check that is not `ok`.
     pub fix: Option<String>,
     pub warning: Option<Warning>,
@@ -98,9 +121,9 @@ pub struct Report {
     pub broken_include: bool,
 }
 
-pub const READER: &str = "fingerprint reader";
-pub const FINGER: &str = "enrolled finger";
-pub const POLKIT: &str = "fingerprint for polkit";
+pub const READER: &str = "reader";
+pub const FINGER: &str = "finger";
+pub const POLKIT: &str = "polkit";
 
 /// The exit status: 0, unless a polkit include is broken or one of the `later` checks (Firefox, journal, storage) is not `ok`.
 /// Checks 1 to 3 never count, "could not check" among them: they are the fingerprint's, which is optional; a broken include stops every polkit dialog.
@@ -138,22 +161,43 @@ impl Report {
         names
     }
 
-    /// One line per check, then its warning and its fix, indented.
+    /// One line per check under its section's heading; under it, indented, its note, warning and
+    /// fix; last, how many problems there are. `on` colours the words and the headings.
     #[must_use]
-    pub fn text(&self) -> String {
+    pub fn text(&self, on: bool) -> String {
+        let width = self.checks.iter().map(|c| c.name.len()).max().unwrap_or(0);
+        let indent = " ".repeat(width + 10);
         let mut text = String::new();
+        let mut section = None;
         for c in &self.checks {
-            let _ = writeln!(text, "{:<15} {}: {}", c.state.word(), c.name, c.text);
+            if section != Some(c.section) {
+                let _ = writeln!(text, "{}", colour::bold(c.section, on));
+                section = Some(c.section);
+            }
+            let _ = writeln!(
+                text,
+                "  {}  {:<width$}  {}",
+                c.state.painted(on),
+                c.name,
+                c.text
+            );
+            if let Some(note) = &c.note {
+                let _ = writeln!(text, "{indent}{note}");
+            }
             if let Some(w) = &c.warning {
-                let _ = writeln!(
-                    text,
-                    "{:16}warning: {}\n{:16}fix: {}",
-                    "", w.text, "", w.fix
-                );
+                let _ = writeln!(text, "{indent}Warning: {}\n{indent}Fix: {}", w.text, w.fix);
             }
             if let Some(fix) = &c.fix {
-                let _ = writeln!(text, "{:16}fix: {fix}", "");
+                let _ = writeln!(text, "{indent}Fix: {fix}");
             }
+        }
+        let problems = self
+            .checks
+            .iter()
+            .filter(|c| c.state != State::Ok || c.warning.is_some())
+            .count();
+        if problems > 0 {
+            let _ = writeln!(text, "\n{}.", plural(problems, "problem", "problems"));
         }
         text
     }
@@ -163,19 +207,21 @@ pub(crate) fn check(
     state: State,
     name: &'static str,
     text: impl Into<String>,
-    fix: Option<String>,
+    fix: Option<&str>,
 ) -> Check {
     Check {
         state,
+        section: FINGERPRINT_SECTION,
         name,
         text: text.into(),
-        fix,
+        note: None,
+        fix: fix.map(str::to_owned),
         warning: None,
         later: false,
     }
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
+pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
     if n == 1 {
         format!("1 {one}")
     } else {
@@ -184,36 +230,35 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 }
 
 fn reader(f: &Facts) -> Check {
-    let (state, text, fix) = match &f.reader {
-        Reader::Devices(0) => (
+    match &f.reader {
+        Reader::Devices(0) => check(
             State::NotOk,
-            "fprintd reports no fingerprint reader".to_owned(),
-            Some("Plug the reader in or enable it in the firmware setup, and check that libfprint supports it (https://fprint.freedesktop.org/supported-devices.html).".to_owned()),
+            READER,
+            "none found",
+            Some("plug it in or enable it in the firmware; libfprint must support it"),
         ),
-        Reader::Devices(n) => (
-            State::Ok,
-            format!("fprintd lists {}", plural(*n, "reader", "readers")),
-            None,
-        ),
+        Reader::Devices(n) => check(State::Ok, READER, plural(*n, "reader", "readers"), None),
         // Not installed: no service file and the bus says the name has no owner. Any other sign (a
         // name that is there and does not answer, an error, a service file with no owner) is "could not check".
-        Reader::NoOwner if !f.files.fprintd_present => (
+        Reader::NoOwner if !f.files.fprintd_present => check(
             State::NotOk,
-            "fprintd is not installed".to_owned(),
-            Some(format!("Install {}.", packages(f.files.family))),
+            READER,
+            "fprintd is not installed",
+            Some(&format!("install {}", packages(f.files.family))),
         ),
-        Reader::NoOwner => (
+        Reader::NoOwner => check(
             State::CouldNotCheck,
-            "fprintd is installed but nothing on the bus answers for it".to_owned(),
-            Some("Look at 'systemctl status fprintd', then run 'custodio doctor' again.".to_owned()),
+            READER,
+            "fprintd does not answer",
+            Some("systemctl status fprintd"),
         ),
-        Reader::Failed(why) => (
+        Reader::Failed(why) => check(
             State::CouldNotCheck,
-            format!("could not ask fprintd: {}", escape(why)),
-            Some("Check that the system bus and fprintd run (systemctl status dbus fprintd), then run 'custodio doctor' again.".to_owned()),
+            READER,
+            format!("cannot ask fprintd: {}", escape(why)),
+            Some("systemctl status dbus fprintd"),
         ),
-    };
-    check(state, READER, text, fix)
+    }
 }
 
 fn finger(f: &Facts) -> Check {
@@ -221,45 +266,44 @@ fn finger(f: &Facts) -> Check {
         return check(
             State::CouldNotCheck,
             FINGER,
-            "there is no reader to ask (see the line above)",
-            Some("Fix the reader first, then run 'custodio doctor' again.".to_owned()),
+            "no reader to ask",
+            Some("fix the reader first"),
         );
     }
-    let again = "Run 'custodio doctor' again from the desktop session of the person who will use the finger.";
-    let (state, text, fix) = match &f.fingers {
-        Fingers::Listed(n) if *n > 0 => (
+    let desktop = Some("run 'custodio doctor' in your desktop session");
+    match &f.fingers {
+        Fingers::Listed(n) if *n > 0 => check(
             State::Ok,
-            format!("{} enrolled for you", plural(*n, "finger", "fingers")),
+            FINGER,
+            format!("{} enrolled", plural(*n, "finger", "fingers")),
             None,
         ),
-        Fingers::Listed(_) | Fingers::NoPrints => (
+        Fingers::Listed(_) | Fingers::NoPrints => check(
             State::NotOk,
-            "no finger is enrolled for you".to_owned(),
-            Some("Enrol one in the desktop's settings (GNOME: Settings, Users, Fingerprint Login) or run 'fprintd-enroll'.".to_owned()),
+            FINGER,
+            "none enrolled",
+            Some("Settings > Users > Fingerprint Login, or fprintd-enroll"),
         ),
-        Fingers::Refused(why) => (
+        Fingers::Refused(why) => check(
             State::CouldNotCheck,
-            format!("fprintd refused to answer ({}): this is what an ssh session gets", escape(why)),
-            Some(again.to_owned()),
+            FINGER,
+            format!("fprintd refused ({}), as it does over ssh", escape(why)),
+            desktop,
         ),
-        Fingers::Failed(why) => (
+        Fingers::Failed(why) => check(
             State::CouldNotCheck,
-            format!("could not ask fprintd: {}", escape(why)),
-            Some(again.to_owned()),
+            FINGER,
+            format!("cannot ask fprintd: {}", escape(why)),
+            desktop,
         ),
-        Fingers::NotAsked => (
-            State::CouldNotCheck,
-            "fprintd was not asked".to_owned(),
-            Some(again.to_owned()),
-        ),
-    };
-    check(state, FINGER, text, fix)
+        Fingers::NotAsked => check(State::CouldNotCheck, FINGER, "not asked", desktop),
+    }
 }
 
 fn via_text(via: GlobalVia) -> &'static str {
     match via {
         GlobalVia::CommonAuth => "/etc/pam.d/common-auth",
-        GlobalVia::Authselect => "authselect (with-fingerprint)",
+        GlobalVia::Authselect => "authselect with-fingerprint",
         GlobalVia::SystemAuth => "/etc/pam.d/system-auth",
         GlobalVia::Sudo => "/etc/pam.d/sudo",
     }
@@ -286,33 +330,23 @@ fn polkit(f: &Facts) -> (Check, bool) {
         check(
             State::NotOk,
             POLKIT,
-            format!("Custodio's override {POLKIT_FILE} includes {VENDOR_FILE}, which is {what}: no polkit dialog can authenticate"),
-            Some("Reinstall polkit (it ships that file), or remove the override: sudo custodio fingerprint disable".to_owned()),
+            format!("{POLKIT_FILE} includes {VENDOR_FILE}, which is {what}"),
+            Some("reinstall polkit, or: sudo custodio fingerprint disable"),
         )
     } else if custodios {
-        check(
-            State::Ok,
-            POLKIT,
-            format!("active through Custodio's override {POLKIT_FILE}"),
-            None,
-        )
+        check(State::Ok, POLKIT, "on", None)
     } else if foreign {
         check(
             State::Ok,
             POLKIT,
-            format!(
-                "active through {POLKIT_FILE}, which is not Custodio's (it has an auth line with pam_fprintd.so)"
-            ),
+            format!("on, through {POLKIT_FILE} (not Custodio's)"),
             None,
         )
     } else if let Some(via) = global_via(o) {
         check(
             State::Ok,
             POLKIT,
-            format!(
-                "active for the whole system, through {}: sudo uses the finger too",
-                via_text(via)
-            ),
+            format!("on for the whole system ({}), sudo too", via_text(via)),
             None,
         )
     } else if o.polkit_file != FileState::Missing {
@@ -320,28 +354,31 @@ fn polkit(f: &Facts) -> (Check, bool) {
         check(
             State::NotOk,
             POLKIT,
-            format!("fingerprint is not active for polkit, and {POLKIT_FILE} is not Custodio's"),
-            Some(format!(
-                "Look at who owns {POLKIT_FILE} ('dpkg -S', 'rpm -qf' or 'pacman -Qo'), and remove or merge it yourself before running 'sudo custodio fingerprint enable'."
-            )),
+            format!("off, and {POLKIT_FILE} is not Custodio's"),
+            Some(
+                "remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio fingerprint enable",
+            ),
         )
     } else {
         check(
             State::NotOk,
             POLKIT,
-            "fingerprint is not active for polkit",
-            Some("Run: sudo custodio fingerprint enable".to_owned()),
+            "off",
+            Some("sudo custodio fingerprint enable"),
         )
     };
+    if broken {
+        c.note = Some("No polkit dialog works, not even with the password.".to_owned());
+    }
     // F201: an override with its own fingerprint line and `pam_fprintd` in common-auth ask for the finger twice.
     if (custodios || foreign) && o.common_auth.as_deref().is_some_and(pam_has_fprintd) {
         let fix = if custodios {
             "sudo custodio fingerprint disable"
         } else {
-            "remove the pam_fprintd.so line of /etc/pam.d/polkit-1, or run 'sudo pam-auth-update --disable fprintd'"
+            "remove pam_fprintd.so from /etc/pam.d/polkit-1, or: sudo pam-auth-update --disable fprintd"
         };
         c.warning = Some(Warning {
-            text: "both the polkit file and common-auth ask for the finger: after a wrong finger or no touch it is asked twice (20 s)".to_owned(),
+            text: "polkit-1 and common-auth both ask for the finger, so a failed touch waits twice (20 s)".to_owned(),
             fix: fix.to_owned(),
         });
     }

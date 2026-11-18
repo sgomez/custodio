@@ -520,35 +520,6 @@ impl Fx {
 /// An address nothing listens on.
 pub const NO_BUS: &str = "unix:path=/nonexistent/custodio-bus";
 
-/// The lines of one check: its line, then the indented lines under it (its warning and its fix).
-pub fn section(text: &str, name: &str) -> Vec<String> {
-    let mut lines = text
-        .lines()
-        .skip_while(|l| !l.contains(&format!(" {name}: ")));
-    let mut found: Vec<String> = lines.next().map(str::to_owned).into_iter().collect();
-    found.extend(lines.take_while(|l| l.starts_with(' ')).map(str::to_owned));
-    found
-}
-
-/// The state word a check line starts with.
-pub fn state(text: &str, name: &str) -> String {
-    let line = section(text, name).into_iter().next().unwrap_or_default();
-    ["could not check", "not ok", "ok"]
-        .into_iter()
-        .find(|w| line.starts_with(&format!("{w} ")))
-        .unwrap_or("none")
-        .to_owned()
-}
-
-/// The fix lines of a check.
-pub fn fixes(text: &str, name: &str) -> Vec<String> {
-    section(text, name)
-        .into_iter()
-        .skip(1)
-        .filter(|l| l.trim_start().starts_with("fix:"))
-        .collect()
-}
-
-pub const READER: &str = "fingerprint reader";
-pub const FINGER: &str = "enrolled finger";
-pub const POLKIT_CHECK: &str = "fingerprint for polkit";
+mod report;
+#[allow(unused_imports)] // Each test binary uses its own part of the reader.
+pub use report::{FINGER, Line, POLKIT_CHECK, READER, check, checks, fixes, report, state};

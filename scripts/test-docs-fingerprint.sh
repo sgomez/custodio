@@ -69,7 +69,7 @@ case \$1 in
         [ "\$(fp_tree $d/root)" = "\$(cat \$d/tree.fixture)" ] || { echo "a refused enable changed the tree" >&2; exit 1; }
         echo refused >> "\$d/checked" ;;
     "custodio doctor"*)
-        custodio doctor 2> /dev/null | sed -n 's/^\(ok\|not ok\|could not check\) *\([^:]*\):.*/\2/p' >> "\$d/names" ;;
+        custodio doctor 2> /dev/null | sed -E -n 's/^  (ok|FAIL|\?) +([^ ]+( [^ ]+)*)  .*/\2/p' >> "\$d/names" ;;
     "gsettings set org.gnome.login-screen enable-fingerprint-authentication false")
         # The argv is fixed here (SPEC Design 5), not read from the page.
         [ "\$(cat \$d/gs.log)" = "set org.gnome.login-screen enable-fingerprint-authentication false" ] || { echo "gsettings was called with other arguments" >&2; exit 1; }
@@ -165,8 +165,8 @@ t = sys.stdin.read()
 sys.stdout.write(re.sub(r"```console fails=yes fixture=omarchy\n.*?```\n", "", t, count=1, flags=re.S))'
     control "a doctor check's section removed" doctor python3 -I -c '
 import re, sys
-sys.stdout.write(re.sub(r"### persistent journal\n.*?(?=### state directory storage)", "", sys.stdin.read(), count=1, flags=re.S))'
-    control "doctor fix differs from the CLI's" doctor sed '0,/fix: Run: sudo custodio fingerprint enable/s//fix: Run: sudo custodio fingerprint on/'
+sys.stdout.write(re.sub(r"### journal\n.*?(?=### key storage)", "", sys.stdin.read(), count=1, flags=re.S))'
+    control "doctor fix differs from the CLI's" doctor sed '0,/Fix: sudo custodio fingerprint enable/s//Fix: sudo custodio fingerprint on/'
     control "command moved into a bash block" static sed 's/^```console$/```bash/'
     control "command in a text block" static sed '0,/^```text$/s//```text\n$ rm -rf \/etc/'
     control "broken link" static sed 's#(threat-model\.md)#(no-such-file.md)#'

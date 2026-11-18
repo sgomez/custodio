@@ -6,7 +6,7 @@ mod fprint_fixture;
 use std::time::{Duration, Instant};
 
 use fprint_fixture::{
-    Bus, FINGER, Fake, Fingers, Fx, NO_BUS, READER, err, fixes, out, section, serve, state,
+    Bus, FINGER, Fake, Fingers, Fx, NO_BUS, READER, check, err, fixes, out, serve, state,
 };
 
 const SERVICE: &str = "usr/share/dbus-1/system-services/net.reactivated.Fprint.service";
@@ -23,13 +23,8 @@ fn doctor(fx: &Fx, bus: &str) -> (std::process::Output, String) {
     );
     assert_eq!(fx.tree(), before, "doctor changed the tree");
     let text = out(&o);
-    // Checks 1 and 2 never write to standard error; a bus with no Custodio service leaves check 6 `could not check`,
-    // which is the one thing doctor may say there (and exit 1 for).
-    let e = err(&o);
-    assert!(
-        e.is_empty() || e.contains("did not pass: state directory storage"),
-        "{e}"
-    );
+    // The report is all doctor says, even when it exits 1 (no Custodio service on these buses).
+    assert!(err(&o).is_empty(), "{}", err(&o));
     (o, text)
 }
 
@@ -51,7 +46,7 @@ fn a_reader_and_an_enrolled_finger_are_ok_and_only_the_two_questions_are_asked()
     let (o, text) = doctor(&fx, &bus.address);
     assert_eq!(state(&text, READER), "ok", "{text}");
     assert_eq!(state(&text, FINGER), "ok", "{text}");
-    assert!(section(&text, FINGER)[0].contains("2 fingers"), "{text}");
+    assert!(check(&text, FINGER).text.contains('2'), "the count: {text}");
     assert!(
         fixes(&text, READER).is_empty() && fixes(&text, FINGER).is_empty(),
         "{text}"
@@ -95,7 +90,7 @@ fn no_device_is_not_ok_with_its_fix_and_the_finger_could_not_be_checked() {
     assert_eq!(state(&text, READER), "not ok", "{text}");
     assert_eq!(fixes(&text, READER).len(), 1, "{text}");
     assert_eq!(state(&text, FINGER), "could not check", "{text}");
-    assert!(section(&text, FINGER)[0].contains("no reader"), "{text}");
+    assert_eq!(fixes(&text, FINGER).len(), 1, "{text}");
     assert_eq!(exit(&o), 0, "the fingerprint is optional");
     assert_eq!(calls.lock().unwrap().as_slice(), ["GetDevices"]);
 }
@@ -139,7 +134,7 @@ fn fprintd_not_installed_names_the_fedora_packages() {
 
 #[test]
 fn fprintd_not_installed_names_the_arch_package() {
-    not_installed("ID=arch\n", &["Install fprintd."], &["pam"]);
+    not_installed("ID=arch\n", &["fprintd"], &["pam"]);
 }
 
 #[test]
@@ -170,8 +165,10 @@ fn a_bus_that_cannot_be_reached_is_could_not_check_with_the_reason() {
     let (o, text) = doctor(&fx, NO_BUS);
     assert_eq!(state(&text, READER), "could not check", "{text}");
     assert!(
-        section(&text, READER)[0].contains("could not ask fprintd:"),
-        "{text}"
+        check(&text, READER)
+            .text
+            .contains("/nonexistent/custodio-bus"),
+        "the reason: {text}"
     );
     assert_eq!(
         exit(&o),
@@ -195,10 +192,7 @@ fn a_name_that_is_there_and_does_not_answer_is_could_not_check_even_without_a_se
     );
     let (o, text) = doctor(&fx, &bus.address);
     assert_eq!(state(&text, READER), "could not check", "{text}");
-    assert!(
-        section(&text, READER)[0].contains("no answer within 1500 ms"),
-        "{text}"
-    );
+    assert!(check(&text, READER).text.contains("1500 ms"), "{text}");
     assert_eq!(state(&text, FINGER), "could not check", "{text}");
     assert_eq!(exit(&o), 0);
 }
@@ -218,7 +212,7 @@ fn an_error_from_a_name_that_is_there_is_could_not_check_even_without_a_service_
     let (o, text) = doctor(&fx, &bus.address);
     assert_eq!(state(&text, READER), "could not check", "{text}");
     assert!(
-        section(&text, READER)[0].contains("the manager is broken"),
+        check(&text, READER).text.contains("the manager is broken"),
         "{text}"
     );
     assert_eq!(exit(&o), 0);
@@ -244,10 +238,7 @@ fn no_enrolled_prints_is_not_ok_with_the_way_to_enrol() {
     let (o, text, _) = finger_case(Fingers::NoPrints);
     assert_eq!(state(&text, FINGER), "not ok", "{text}");
     let fix = fixes(&text, FINGER).join("\n");
-    assert!(
-        fix.contains("fprintd-enroll") && fix.contains("Fingerprint Login"),
-        "{fix}"
-    );
+    assert!(fix.contains("fprintd-enroll"), "{fix}");
     assert_eq!(exit(&o), 0);
 }
 
@@ -255,14 +246,12 @@ fn no_enrolled_prints_is_not_ok_with_the_way_to_enrol() {
 fn a_refusal_to_answer_is_could_not_check_never_missing() {
     let (o, text, calls) = finger_case(Fingers::Refused);
     assert_eq!(state(&text, FINGER), "could not check", "{text}");
-    let line = &section(&text, FINGER)[0];
-    assert!(
-        line.contains("Not Authorized: net.reactivated.fprint.device.verify"),
-        "{line}"
-    );
-    assert!(
-        !line.contains("missing") && !line.contains("no finger"),
-        "{line}"
+    assert_eq!(fixes(&text, FINGER).len(), 1, "{text}");
+    let (_, none, _) = finger_case(Fingers::NoPrints);
+    assert_ne!(
+        check(&text, FINGER).text,
+        check(&none, FINGER).text,
+        "never missing"
     );
     assert_eq!(exit(&o), 0, "could not check on the finger does not count");
     assert_eq!(
@@ -277,7 +266,7 @@ fn another_error_is_could_not_check() {
     let (o, text, _) = finger_case(Fingers::Other);
     assert_eq!(state(&text, FINGER), "could not check", "{text}");
     assert!(
-        section(&text, FINGER)[0].contains("the device is broken"),
+        check(&text, FINGER).text.contains("the device is broken"),
         "{text}"
     );
     assert_eq!(exit(&o), 0);
@@ -311,7 +300,7 @@ fn doctor_refuses_root_with_two_lines_and_writes_nothing() {
     assert_eq!(exit(&o), 2);
     assert_eq!(out(&o), "");
     assert_eq!(err(&o).lines().count(), 2, "{}", err(&o));
-    assert!(err(&o).contains("refused to run as root"), "{}", err(&o));
+    assert!(err(&o).contains("root"), "{}", err(&o));
     assert_eq!(fx.tree(), before);
     assert!(
         calls.lock().unwrap().is_empty(),

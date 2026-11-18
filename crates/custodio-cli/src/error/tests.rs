@@ -366,8 +366,8 @@ fn a_doctor_failure_names_what_happened_in_both_forms() {
         (Failure::Root, "as root"),
         (Failure::BrokenInclude, "include"),
         (
-            Failure::Unsatisfied(vec!["module in browsers", "state directory storage"]),
-            "did not pass: module in browsers, state directory storage",
+            Failure::Unsatisfied(vec!["Firefox", "key storage"]),
+            "did not pass: Firefox, key storage",
         ),
     ] {
         let e = CliError::Doctor(failure);

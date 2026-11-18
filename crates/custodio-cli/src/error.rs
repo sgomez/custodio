@@ -133,11 +133,12 @@ fn doctor(error: &crate::doctor_cmd::Failure) -> (String, String) {
         ),
         Failure::Unsatisfied(names) => (
             format!("custodio doctor: did not pass: {}", names.join(", ")),
-            "Do what their fix lines say, then run 'custodio doctor' again.".to_owned(),
+            "Do what their Fix lines say, then run 'custodio doctor' again.".to_owned(),
         ),
         Failure::BrokenInclude => (
-            "custodio doctor: a polkit include is broken (the first line of the report)".to_owned(),
-            "Do what its fix says, then run 'custodio doctor' again.".to_owned(),
+            "custodio doctor: a polkit include is broken (the first check of the report)"
+                .to_owned(),
+            "Do what its Fix line says, then run 'custodio doctor' again.".to_owned(),
         ),
     }
 }

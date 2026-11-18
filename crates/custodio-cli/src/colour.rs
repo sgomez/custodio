@@ -14,6 +14,29 @@ pub fn enabled(stream_is_terminal: bool, stdout_is_terminal: bool, no_color: Opt
     stream_is_terminal && stdout_is_terminal && no_color.is_none_or(str::is_empty)
 }
 
+/// A colour for [`paint`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Paint {
+    Green,
+    Red,
+    Yellow,
+}
+
+/// `text` in that colour when `on`, unchanged otherwise.
+#[must_use]
+pub fn paint(text: &str, colour: Paint, on: bool) -> String {
+    let code = match colour {
+        Paint::Green => "\x1b[32m",
+        Paint::Red => "\x1b[31m",
+        Paint::Yellow => "\x1b[33m",
+    };
+    if on {
+        format!("{code}{text}{RESET}")
+    } else {
+        text.to_owned()
+    }
+}
+
 /// `text` in bold when `on`, unchanged otherwise.
 #[must_use]
 pub fn bold(text: &str, on: bool) -> String {
@@ -56,7 +79,23 @@ pub fn prefix(text: &str, on: bool) -> String {
 /// `text` without the escape sequences this module writes.
 #[must_use]
 pub fn strip(text: &str) -> String {
-    text.replace(BOLD, "").replace(RESET, "")
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("\x1b[") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at + 2..];
+        match tail.find('m') {
+            Some(end) if tail[..end].bytes().all(|b| b.is_ascii_digit() || b == b';') => {
+                rest = &tail[end + 1..];
+            }
+            _ => {
+                out.push_str("\x1b[");
+                rest = tail;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]

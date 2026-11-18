@@ -8,12 +8,11 @@ use std::process::Output;
 
 use custodio_cli::fingerprint_decide::file_bytes;
 use fprint_fixture::{
-    Bus, Fake, Fingers, Fx, GLOBAL_FORMS, NO_BUS, OMARCHY, POLKIT, POLKIT_CHECK, err, fixes, out,
-    section, serve, state,
+    Bus, Fake, Fingers, Fx, GLOBAL_FORMS, NO_BUS, OMARCHY, POLKIT, POLKIT_CHECK, check, err, fixes,
+    out, report, serve, state,
 };
 
 const VENDOR: &str = "usr/lib/pam.d/polkit-1";
-const ASKS_TWICE: &str = "asked twice";
 
 fn doctor(fx: &Fx, bus: &str) -> (Output, String) {
     let before = fx.tree();
@@ -39,8 +38,16 @@ fn custodios(fx: &Fx) {
     fx.put(POLKIT, std::str::from_utf8(file_bytes()).unwrap());
 }
 
+/// The text of the polkit check, which tells its `ok` states apart.
 fn polkit_text(text: &str) -> String {
-    section(text, POLKIT_CHECK).join("\n")
+    check(text, POLKIT_CHECK).text
+}
+
+/// The polkit text of Custodio's own override, active and alone.
+fn custodios_text() -> String {
+    let fx = Fx::new();
+    custodios(&fx);
+    polkit_text(&doctor(&fx, NO_BUS).1)
 }
 
 #[test]
@@ -48,45 +55,51 @@ fn custodios_override_with_its_vendor_file_is_active_and_has_no_warning() {
     let fx = Fx::new();
     custodios(&fx);
     let (o, text) = doctor(&fx, NO_BUS);
-    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{text}");
-    assert!(polkit_text(&text).contains("Custodio's override"), "{text}");
-    assert!(fixes(&text, POLKIT_CHECK).is_empty(), "{text}");
-    assert!(!text.contains("warning"), "each alone: {text}");
+    let polkit = check(&text, POLKIT_CHECK);
+    assert_eq!(polkit.state, "ok", "{text}");
+    assert!(
+        polkit.fixes.is_empty() && polkit.warnings.is_empty(),
+        "{text}"
+    );
     assert_eq!(code(&o), 0);
 }
 
-fn broken_include(setup: impl FnOnce(&Fx), why: &str) {
+/// A broken include: the first check, `not ok`, naming the vendor file, with a note and the disable fix.
+fn broken_include(setup: impl FnOnce(&Fx)) -> String {
     let fx = Fx::new();
     custodios(&fx);
     setup(&fx);
     let (o, text) = doctor(&fx, NO_BUS);
-    let first = text.lines().next().unwrap();
-    assert!(
-        first.starts_with("not ok") && first.contains(POLKIT_CHECK),
+    let first = report(&text).into_iter().next().unwrap();
+    assert_eq!(
+        (first.name.as_str(), first.state),
+        (POLKIT_CHECK, "not ok"),
         "{text}"
     );
-    assert!(first.contains(why), "{first}");
-    let fix = fixes(&text, POLKIT_CHECK);
-    assert_eq!(fix.len(), 1, "{text}");
-    assert!(fix[0].contains("Reinstall polkit"), "{text}");
+    assert!(first.text.contains("/usr/lib/pam.d/polkit-1"), "{text}");
+    assert_eq!(first.notes.len(), 1, "{text}");
+    assert_eq!(first.fixes.len(), 1, "{text}");
+    assert!(
+        first.fixes[0].contains("sudo custodio fingerprint disable"),
+        "{text}"
+    );
     assert_eq!(code(&o), 1, "{text}");
-    assert_eq!(err(&o).lines().count(), 2, "{}", err(&o));
+    assert!(err(&o).is_empty(), "the report says it all: {}", err(&o));
+    first.text
 }
 
 #[test]
 fn a_missing_vendor_file_is_the_first_line_and_the_exit_status_is_1() {
-    broken_include(|fx| fx.remove(VENDOR), "missing");
+    broken_include(|fx| fx.remove(VENDOR));
 }
 
 #[test]
 fn a_vendor_file_that_is_not_a_regular_file_is_the_first_line_too() {
-    broken_include(
-        |fx| {
-            fx.remove(VENDOR);
-            fs::create_dir(fx.path(VENDOR)).unwrap();
-        },
-        "not a regular file",
-    );
+    let directory = broken_include(|fx| {
+        fx.remove(VENDOR);
+        fs::create_dir(fx.path(VENDOR)).unwrap();
+    });
+    assert_ne!(directory, broken_include(|fx| fx.remove(VENDOR)));
 }
 
 #[test]
@@ -95,11 +108,11 @@ fn a_vendor_less_root_without_the_override_is_not_a_broken_include() {
     fx.remove(VENDOR);
     let (o, text) = doctor(&fx, NO_BUS);
     assert_eq!(state(&text, POLKIT_CHECK), "not ok", "{text}");
-    assert!(!polkit_text(&text).contains("includes"), "{text}");
     assert!(
-        !text.lines().next().unwrap().contains(POLKIT_CHECK),
+        !polkit_text(&text).contains("/usr/lib/pam.d/polkit-1"),
         "{text}"
     );
+    assert_ne!(report(&text)[0].name, POLKIT_CHECK, "{text}");
     assert_eq!(code(&o), 0);
 }
 
@@ -111,10 +124,7 @@ fn broken_include_exit(fake: Fake) {
     serve(&bus.address, fake);
     let (o, text) = doctor(&fx, &bus.address);
     assert_eq!(code(&o), 1, "{text}");
-    assert!(
-        text.lines().next().unwrap().contains(POLKIT_CHECK),
-        "{text}"
-    );
+    assert_eq!(report(&text)[0].name, POLKIT_CHECK, "{text}");
 }
 
 #[test]
@@ -135,9 +145,15 @@ fn someone_elses_file_with_an_auth_line_is_active_through_that_file() {
     let fx = Fx::new();
     fx.put(POLKIT, OMARCHY);
     let (o, text) = doctor(&fx, NO_BUS);
-    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{text}");
-    assert!(polkit_text(&text).contains("not Custodio's"), "{text}");
-    assert!(!text.contains("warning"), "each alone: {text}");
+    let polkit = check(&text, POLKIT_CHECK);
+    assert_eq!(polkit.state, "ok", "{text}");
+    assert!(polkit.text.contains("/etc/pam.d/polkit-1"), "{text}");
+    assert_ne!(
+        polkit.text,
+        custodios_text(),
+        "told apart from Custodio's: {text}"
+    );
+    assert!(polkit.warnings.is_empty(), "each alone: {text}");
     assert_eq!(code(&o), 0);
 }
 
@@ -169,7 +185,7 @@ fn a_dash_auth_line_counts_as_active_as_enable_reads_it() {
     );
     let (o, text) = doctor(&fx, NO_BUS);
     assert_eq!(state(&text, POLKIT_CHECK), "ok", "{text}");
-    assert!(polkit_text(&text).contains("not Custodio's"), "{text}");
+    assert_ne!(polkit_text(&text), custodios_text(), "{text}");
     assert_eq!(code(&o), 0);
 }
 
@@ -179,21 +195,20 @@ fn global_on(i: usize, named: &str) {
     fx.put("etc/os-release", os);
     fx.put(file, content);
     let (o, text) = doctor(&fx, NO_BUS);
-    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{file}: {text}");
-    let line = polkit_text(&text);
+    let polkit = check(&text, POLKIT_CHECK);
+    assert_eq!(polkit.state, "ok", "{file}: {text}");
+    // The spec: the report names where it is on, and that sudo uses the finger too.
     assert!(
-        line.contains("whole system")
-            && line.contains("sudo uses the finger too")
-            && line.contains(named),
-        "{file}: {line}"
+        polkit.text.contains(named) && polkit.text.contains("sudo"),
+        "{file}: {text}"
     );
-    assert!(!text.contains("warning"), "global alone: {text}");
+    assert!(polkit.warnings.is_empty(), "global alone: {text}");
     assert_eq!(code(&o), 0);
 }
 
 #[test]
 fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_debian() {
-    global_on(0, "common-auth");
+    global_on(0, "/etc/pam.d/common-auth");
 }
 
 #[test]
@@ -203,12 +218,12 @@ fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_fedora() {
 
 #[test]
 fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_arch_system_auth() {
-    global_on(2, "system-auth");
+    global_on(2, "/etc/pam.d/system-auth");
 }
 
 #[test]
 fn fingerprint_for_the_whole_system_says_sudo_uses_the_finger_too_on_arch_sudo() {
-    global_on(3, "pam.d/sudo");
+    global_on(3, "/etc/pam.d/sudo");
 }
 
 #[test]
@@ -216,10 +231,9 @@ fn nothing_active_says_how_to_enable_it() {
     let fx = Fx::new();
     let (o, text) = doctor(&fx, NO_BUS);
     assert_eq!(state(&text, POLKIT_CHECK), "not ok", "{text}");
-    let fix = fixes(&text, POLKIT_CHECK);
-    assert_eq!(fix.len(), 1, "{text}");
-    assert!(
-        fix[0].contains("sudo custodio fingerprint enable"),
+    assert_eq!(
+        fixes(&text, POLKIT_CHECK),
+        ["sudo custodio fingerprint enable"],
         "{text}"
     );
     assert_eq!(code(&o), 0);
@@ -235,32 +249,29 @@ fn combination(own: &str) -> (Output, String) {
 #[test]
 fn custodios_override_with_common_auth_is_a_warning_with_the_disable_fix_and_exit_status_0() {
     let (o, text) = combination(std::str::from_utf8(file_bytes()).unwrap());
-    let lines = section(&text, POLKIT_CHECK).join("\n");
-    assert!(
-        lines.contains("warning") && lines.contains(ASKS_TWICE),
+    let polkit = check(&text, POLKIT_CHECK);
+    assert_eq!(polkit.state, "ok", "{text}");
+    assert_eq!(polkit.warnings.len(), 1, "{text}");
+    assert_eq!(
+        polkit.fixes,
+        ["sudo custodio fingerprint disable"],
         "{text}"
     );
-    assert!(
-        lines.contains("fix: sudo custodio fingerprint disable"),
-        "{text}"
-    );
-    assert_eq!(state(&text, POLKIT_CHECK), "ok", "{text}");
     assert_eq!(code(&o), 0, "the warning does not count");
 }
 
 #[test]
 fn someone_elses_file_with_common_auth_is_a_warning_with_the_two_other_fixes() {
     let (o, text) = combination(OMARCHY);
-    let lines = section(&text, POLKIT_CHECK).join("\n");
+    let polkit = check(&text, POLKIT_CHECK);
+    assert_eq!(polkit.warnings.len(), 1, "{text}");
+    assert_eq!(polkit.fixes.len(), 1, "{text}");
+    let fix = &polkit.fixes[0];
     assert!(
-        lines.contains("warning") && lines.contains(ASKS_TWICE),
+        fix.contains("/etc/pam.d/polkit-1")
+            && fix.contains("sudo pam-auth-update --disable fprintd"),
         "{text}"
     );
-    assert!(
-        lines.contains("remove the pam_fprintd.so line")
-            && lines.contains("pam-auth-update --disable fprintd"),
-        "{text}"
-    );
-    assert!(!lines.contains("custodio fingerprint disable"), "{text}");
+    assert!(!fix.contains("custodio fingerprint disable"), "{text}");
     assert_eq!(code(&o), 0);
 }

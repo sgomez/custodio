@@ -60,7 +60,8 @@ fn run() -> Result<(), CliError> {
             .map_err(CliError::Fingerprint);
     }
     if matches!(command, Command::Doctor) {
-        return custodio_cli::doctor_cmd::run(&mut io::stdout()).map_err(CliError::Doctor);
+        let on = colour_on(rustix::termios::isatty(io::stdout()));
+        return custodio_cli::doctor_cmd::run(&mut io::stdout(), on).map_err(CliError::Doctor);
     }
     if matches!(command, Command::KeyIds) {
         return key_ids();

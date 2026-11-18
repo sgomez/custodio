@@ -129,12 +129,15 @@ is not right. Run it as yourself, not with `sudo`. Every check and its fixes are
 
 ```console for=fingerprint fixture=ok
 $ custodio doctor
-ok              fingerprint reader: fprintd lists 1 reader
-ok              enrolled finger: 1 finger enrolled for you
-ok              fingerprint for polkit: active through Custodio's override /etc/pam.d/polkit-1
-ok              module in browsers: no browser profile was found, so there is nothing to register
-ok              persistent journal: the journal is persistent (Storage=persistent)
-ok              state directory storage: the service's state directory is on an encrypted device
+Fingerprint (optional)
+  ok    reader       1 reader
+  ok    finger       1 finger enrolled
+  ok    polkit       on
+Browsers
+  ok    profiles     none found, nothing to register
+System
+  ok    journal      persistent
+  ok    key storage  /var/lib/custodio is on an encrypted disk
 ```
 
 ## TPM2 Software Stack

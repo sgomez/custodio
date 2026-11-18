@@ -1,7 +1,7 @@
 //! Acceptance 6: `custodio doctor` as a whole command. Each run is a full fixture system (files, a fake `fprintd`, a fake
 //! Custodio service and a fake polkit authority on one private bus) with several checks varied together, so that every
-//! state of every check occurs. The per-state texts of checks 1 to 3 are F202's; here only the state word, the fix and the
-//! order are asserted.
+//! state of every check occurs. The report is read through `fprint_fixture::report`: here only the state, the section,
+//! whether there is a fix, the commands a fix names, the order and the exit status are asserted.
 
 mod fprint_fixture;
 
@@ -9,15 +9,26 @@ use std::fs;
 use std::process::Output;
 use std::time::Duration;
 
+use custodio_cli::doctor_decide::{
+    BROWSERS_SECTION, FINGERPRINT_SECTION, FIREFOX, JOURNAL, STORAGE, SYSTEM_SECTION,
+};
 use custodio_cli::fingerprint_decide::file_bytes;
 use fprint_fixture::{
-    Bus, FINGER, Fake, Fingers, Fx, GLOBAL_PAM, POLKIT, POLKIT_CHECK, READER, Svc, err, fixes, out,
-    section, serve_all, state,
+    Bus, FINGER, Fake, Fingers, Fx, GLOBAL_PAM, POLKIT, POLKIT_CHECK, READER, Svc, check, err, out,
+    report, serve_all,
 };
 
-const FIREFOX: &str = "module in browsers";
-const JOURNAL: &str = "persistent journal";
-const STORAGE: &str = "state directory storage";
+/// The one profile `register_profile` creates is Firefox's.
+const PROFILE: &str = "Firefox";
+
+/// What a check's fix must be.
+#[derive(Clone, Copy)]
+enum Fix {
+    No,
+    Any,
+    /// A fix that names this command, package or path.
+    Names(&'static str),
+}
 
 struct Run {
     text: String,
@@ -52,29 +63,61 @@ fn run(setup: impl FnOnce(&Fx), fake: Fake) -> Run {
         Vec::<String>::new().as_slice(),
         "polkit was asked"
     );
-    Run {
+    let r = Run {
         text: out(&o),
         code: o.status.code().unwrap(),
         stderr: err(&o),
-    }
+    };
+    every_report(&r);
+    r
 }
 
-/// Every check in `want` has this state word and (if given) a fix with this text; and the lines come in order.
-fn expect(r: &Run, want: &[(&str, &str, Option<&str>)]) {
-    let text = &r.text;
+/// What every report promises: each check in its section, a fix under each check that is not `ok`, the number of
+/// problems last, and nothing on standard error whatever the exit status.
+fn every_report(r: &Run) {
+    let checks = report(&r.text);
+    for c in &checks {
+        let section = match c.name.as_str() {
+            READER | FINGER | POLKIT_CHECK => FINGERPRINT_SECTION,
+            JOURNAL | STORAGE => SYSTEM_SECTION,
+            _ => BROWSERS_SECTION,
+        };
+        assert_eq!(c.section, section, "{}:\n{}", c.name, r.text);
+    }
+    let problems = checks
+        .iter()
+        .filter(|c| c.state != "ok" || !c.warnings.is_empty())
+        .count();
+    let last = r.text.lines().last().unwrap_or_default();
+    if problems == 0 {
+        assert!(!last.contains("problem"), "{}", r.text);
+    } else {
+        assert!(last.starts_with(&format!("{problems} ")), "{}", r.text);
+    }
+    assert_eq!(r.stderr, "", "{}", r.text);
+}
+
+/// Every check in `want` has this state and fix, and they come in this order.
+fn expect(r: &Run, want: &[(&str, &str, Fix)]) {
+    let checks = report(&r.text);
     let mut last = 0;
-    for (name, word, fix) in want {
-        assert_eq!(state(text, name), *word, "{name}:\n{text}");
-        let fix_lines = fixes(text, name).join("\n");
+    for (name, state, fix) in want {
+        let at = checks
+            .iter()
+            .position(|c| c.name == *name)
+            .unwrap_or_else(|| panic!("no {name}:\n{}", r.text));
+        let c = &checks[at];
+        assert_eq!(c.state, *state, "{name}:\n{}", r.text);
         match fix {
-            Some(needle) => assert!(fix_lines.contains(needle), "{name} fix {needle}:\n{text}"),
-            None => assert!(fix_lines.is_empty(), "{name} has a fix:\n{text}"),
+            Fix::No => assert!(c.fixes.is_empty(), "{name} has a fix:\n{}", r.text),
+            Fix::Any => assert!(!c.fixes.is_empty(), "{name} has no fix:\n{}", r.text),
+            Fix::Names(what) => assert!(
+                c.fixes.concat().contains(what),
+                "{name}: no fix names {what}:\n{}",
+                r.text
+            ),
         }
-        let at = text
-            .lines()
-            .position(|l| l.contains(&format!(" {name}: ")))
-            .unwrap();
-        assert!(at >= last, "{name} is out of order:\n{text}");
+        assert!(at >= last, "{name} is out of order:\n{}", r.text);
         last = at;
     }
 }
@@ -120,15 +163,15 @@ fn everything_satisfied_is_exit_status_0_with_the_six_checks_in_order() {
     expect(
         &r,
         &[
-            (READER, "ok", None),
-            (FINGER, "ok", None),
-            (POLKIT_CHECK, "ok", None),
-            (FIREFOX, "ok", None),
-            (JOURNAL, "ok", None),
-            (STORAGE, "ok", None),
+            (READER, "ok", Fix::No),
+            (FINGER, "ok", Fix::No),
+            (POLKIT_CHECK, "ok", Fix::No),
+            (PROFILE, "ok", Fix::No),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "ok", Fix::No),
         ],
     );
-    assert_eq!((r.code, r.stderr.as_str()), (0, ""), "{}", r.text);
+    assert_eq!(r.code, 0, "{}", r.text);
 }
 
 #[test]
@@ -137,15 +180,18 @@ fn no_reader_no_override_and_no_profile_leave_checks_1_to_3_unsatisfied_and_exit
     expect(
         &r,
         &[
-            (READER, "not ok", Some("Plug the reader in")),
-            (FINGER, "could not check", Some("Fix the reader first")),
-            (POLKIT_CHECK, "not ok", Some("custodio fingerprint enable")),
-            (FIREFOX, "ok", None),
-            (JOURNAL, "ok", None),
-            (STORAGE, "ok", None),
+            (READER, "not ok", Fix::Any),
+            (FINGER, "could not check", Fix::Any),
+            (
+                POLKIT_CHECK,
+                "not ok",
+                Fix::Names("sudo custodio fingerprint enable"),
+            ),
+            (FIREFOX, "ok", Fix::No),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "ok", Fix::No),
         ],
     );
-    assert!(r.text.contains("no browser profile"), "{}", r.text);
     assert_eq!(r.code, 0, "{}", r.text);
 }
 
@@ -161,8 +207,8 @@ fn fprintd_not_installed_and_no_finger_enrolled_are_unsatisfied_and_exit_status_
     expect(
         &r,
         &[
-            (READER, "not ok", Some("Install libpam-fprintd")),
-            (FINGER, "could not check", Some("Fix the reader first")),
+            (READER, "not ok", Fix::Names("libpam-fprintd")),
+            (FINGER, "could not check", Fix::Any),
         ],
     );
     assert_eq!(r.code, 0, "{}", r.text);
@@ -170,8 +216,8 @@ fn fprintd_not_installed_and_no_finger_enrolled_are_unsatisfied_and_exit_status_
     expect(
         &r,
         &[
-            (READER, "ok", None),
-            (FINGER, "not ok", Some("fprintd-enroll")),
+            (READER, "ok", Fix::No),
+            (FINGER, "not ok", Fix::Names("fprintd-enroll")),
         ],
     );
     assert_eq!(r.code, 0);
@@ -192,10 +238,14 @@ fn a_service_file_with_no_owner_is_could_not_check_on_check_1_and_exit_status_0(
     expect(
         &r,
         &[
-            (READER, "could not check", Some("fprintd")),
-            (FIREFOX, "ok", None),
-            (JOURNAL, "ok", None),
-            (STORAGE, "ok", None),
+            (
+                READER,
+                "could not check",
+                Fix::Names("systemctl status fprintd"),
+            ),
+            (PROFILE, "ok", Fix::No),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "ok", Fix::No),
         ],
     );
     assert_eq!(r.code, 0, "{}", r.text);
@@ -213,20 +263,21 @@ fn a_refused_listing_is_could_not_check_and_exit_status_0() {
     expect(
         &r,
         &[
-            (READER, "ok", None),
-            (FINGER, "could not check", Some("desktop session")),
+            (READER, "ok", Fix::No),
+            (FINGER, "could not check", Fix::Names("custodio doctor")),
         ],
     );
-    assert!(r.text.contains("Not Authorized"), "{}", r.text);
     assert_eq!(r.code, 0);
 }
 
 #[test]
 fn the_finger_active_elsewhere_is_ok_with_no_fix() {
     let r = run(|fx| fx.put("etc/pam.d/common-auth", GLOBAL_PAM), finger());
-    expect(&r, &[(POLKIT_CHECK, "ok", None)]);
+    expect(&r, &[(POLKIT_CHECK, "ok", Fix::No)]);
+    // SPEC: when the finger is on for the whole system, the report says that sudo uses it too.
+    let polkit = check(&r.text, POLKIT_CHECK).text;
     assert!(
-        section(&r.text, POLKIT_CHECK)[0].contains("whole system"),
+        polkit.contains("/etc/pam.d/common-auth") && polkit.contains("sudo"),
         "{}",
         r.text
     );
@@ -242,20 +293,22 @@ fn a_broken_include_is_first_and_exit_status_1_with_everything_else_ok() {
         },
         finger(),
     );
-    assert!(
-        r.text.lines().next().unwrap().contains(POLKIT_CHECK),
-        "{}",
-        r.text
-    );
+    let first = &report(&r.text)[0];
+    assert_eq!(first.name, POLKIT_CHECK, "{}", r.text);
+    assert!(!first.notes.is_empty(), "{}", r.text);
     expect(
         &r,
         &[
-            (POLKIT_CHECK, "not ok", Some("Reinstall polkit")),
-            (READER, "ok", None),
-            (FINGER, "ok", None),
-            (FIREFOX, "ok", None),
-            (JOURNAL, "ok", None),
-            (STORAGE, "ok", None),
+            (
+                POLKIT_CHECK,
+                "not ok",
+                Fix::Names("sudo custodio fingerprint disable"),
+            ),
+            (READER, "ok", Fix::No),
+            (FINGER, "ok", Fix::No),
+            (FIREFOX, "ok", Fix::No),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "ok", Fix::No),
         ],
     );
     assert_eq!(r.code, 1, "{}", r.text);
@@ -264,7 +317,7 @@ fn a_broken_include_is_first_and_exit_status_1_with_everything_else_ok() {
 #[test]
 fn an_unregistered_profile_is_not_ok_with_the_register_fix_and_exit_status_1() {
     let r = run(|fx| register_profile(fx, false), finger());
-    expect(&r, &[(FIREFOX, "not ok", Some("custodio register"))]);
+    expect(&r, &[(PROFILE, "not ok", Fix::Names("custodio register"))]);
     assert_eq!(r.code, 1);
 }
 
@@ -280,9 +333,9 @@ fn a_malformed_profiles_ini_alone_is_could_not_check_and_exit_status_1() {
     expect(
         &r,
         &[
-            (FIREFOX, "could not check", Some("Fix or remove")),
-            (JOURNAL, "ok", None),
-            (STORAGE, "ok", None),
+            (FIREFOX, "could not check", Fix::Any),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "ok", Fix::No),
         ],
     );
     assert_eq!(r.code, 1);
@@ -297,9 +350,13 @@ fn a_volatile_journal_alone_is_not_ok_and_exit_status_1() {
     expect(
         &r,
         &[
-            (FIREFOX, "ok", None),
-            (JOURNAL, "not ok", Some("journald.conf:2")),
-            (STORAGE, "ok", None),
+            (FIREFOX, "ok", Fix::No),
+            (
+                JOURNAL,
+                "not ok",
+                Fix::Names("/etc/systemd/journald.conf:2"),
+            ),
+            (STORAGE, "ok", Fix::No),
         ],
     );
     assert_eq!(r.code, 1);
@@ -311,15 +368,15 @@ fn a_journal_that_cannot_be_judged_alone_is_could_not_check_and_exit_status_1() 
     expect(
         &r,
         &[
-            (JOURNAL, "could not check", Some("doctor")),
-            (STORAGE, "ok", None),
+            (JOURNAL, "could not check", Fix::Names("custodio doctor")),
+            (STORAGE, "ok", Fix::No),
         ],
     );
     assert_eq!(r.code, 1);
 }
 
 #[test]
-fn storage_not_encrypted_alone_is_not_ok_and_exit_status_1() {
+fn storage_not_encrypted_alone_is_a_warning_and_exit_status_1() {
     let r = run(
         |_| {},
         Fake {
@@ -330,8 +387,8 @@ fn storage_not_encrypted_alone_is_not_ok_and_exit_status_1() {
     expect(
         &r,
         &[
-            (JOURNAL, "ok", None),
-            (STORAGE, "not ok", Some("full-disk encryption")),
+            (JOURNAL, "ok", Fix::No),
+            (STORAGE, "warn", Fix::Names("LUKS")),
         ],
     );
     assert_eq!(r.code, 1);
@@ -346,7 +403,7 @@ fn storage_unknown_alone_is_not_ok_with_the_reason_and_exit_status_1() {
             ..finger()
         },
     );
-    expect(&r, &[(STORAGE, "not ok", Some("/proc"))]);
+    expect(&r, &[(STORAGE, "not ok", Fix::Names("/proc"))]);
     assert_eq!(r.code, 1);
 }
 
@@ -361,7 +418,7 @@ fn an_unreachable_service_alone_is_could_not_check_and_exit_status_1() {
     );
     expect(
         &r,
-        &[(STORAGE, "could not check", Some("custodio.service"))],
+        &[(STORAGE, "could not check", Fix::Names("custodio.service"))],
     );
     assert_eq!(r.code, 1);
 }
@@ -380,8 +437,8 @@ fn a_slow_service_is_could_not_check_and_the_other_checks_still_answer() {
     expect(
         &r,
         &[
-            (FINGER, "ok", None),
-            (STORAGE, "could not check", Some("custodio.service")),
+            (FINGER, "ok", Fix::No),
+            (STORAGE, "could not check", Fix::Names("custodio.service")),
         ],
     );
     assert_eq!(r.code, 1);
