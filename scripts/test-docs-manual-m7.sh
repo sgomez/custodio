@@ -108,6 +108,7 @@ import sys
 t = sys.stdin.read()
 sys.stdout.write(t.replace("```console\n$ custodio list\n", "```bash\n$ custodio list\n", 1))'
     control "a custodio command with a wrong flag" run sed '0,/^\$ custodio import --id ana ana.p12$/s//$ custodio import --idd ana ana.p12/'
+    control "a setup command with an option the binary rejects" run sed '0,/^\$ custodio setup browsers enable$/s//$ custodio setup browsers enable --nonsense/'
     control "an output line changed" run sed '0,/^warn  ana  /s//warn  anx  /'
     control "an extra console command whose output then differs" run python3 -I -c '
 import re, sys

@@ -106,6 +106,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "title with another version" static "$DOC" sed "1s/${VER//./\\.}/v0.0.1/"
     control "a bash block in the notes" static "$DOC" sed '$a \n```bash\ntrue\n```'
     control "a console command that fails" run "$DOC" sed 's/^\$ custodio setup browsers enable$/$ custodio setup browsers enable --nonsense/'
+    control "a setup browsers enable that registers nothing" run "$DOC" sed 's/^\$ custodio setup browsers enable$/$ custodio setup browsers refresh/'
     # an unknown directory in a copy of e2e/targets
     mkdir -p "$TMP/targets"
     cp -r "$TARGETS"/. "$TMP/targets/"

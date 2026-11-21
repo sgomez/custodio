@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Test of docs/guide-ubuntu-2604.md (F207, acceptance 16). It runs every `console` block of the guide, in order, as written, in one
 # fixture system: the real `dpkg` installs, removes and purges the .deb built from packaging/nfpm.yaml into a small root (the way
-# test-deb-lifecycle-real.sh does); the real `custodio` (the `fixture-root` build) runs `doctor` and `fingerprint` against a fixture root and a
-# fake fprintd, and `import`, `list`, `delete` against the test server of test-docs-api.sh, on private buses; `register` runs on a HOME
+# test-deb-lifecycle-real.sh does); the real `custodio` (the `fixture-root` build) runs `doctor` and `setup fingerprint` against a fixture root and a
+# fake fprintd, and `import`, `list`, `delete` against the test server of test-docs-api.sh, on private buses; `setup browsers` runs on a HOME
 # with Firefox profiles and a stub `modutil` (the namespace of test-docs-readme.sh). Stand-ins first on PATH, none of which proves more than
 # the command it receives: `sudo` (fixture root), `apt-get` (dpkg into the root), `ls` and `getent` (look into the root), `custodio` (sends
-# `doctor` and `fingerprint` to the fprintd bus, the rest to the server bus). A person's: enrolling a finger, exporting the .p12 from Firefox,
+# `doctor` and `setup fingerprint` to the fprintd bus, the rest to the server bus). A person's: enrolling a finger, exporting the .p12 from Firefox,
 # restarting it and signing in (prose). Negative controls: broken copies of the guide must fail.
 # Usage: scripts/test-docs-guide.sh   (DOC overrides the guide; CHECK_ONLY=1 skips the controls)
 # The single-quoted strings are scripts for another shell or markdown with literal `$`, which must not expand here.
@@ -49,11 +49,15 @@ wrappers() {
     rm -f "$bin/custodio"
     cat > "$bin/custodio" << W
 #!/bin/sh
-case \$1 in
-    doctor | fingerprint) DBUS_SYSTEM_BUS_ADDRESS=\$(cat $d/fp/address | head -n 1) ;;
+case "\$1 \$2" in
+    "doctor "* | "setup fingerprint") DBUS_SYSTEM_BUS_ADDRESS=\$(cat $d/fp/address | head -n 1) ;;
     *) DBUS_SYSTEM_BUS_ADDRESS=\$(cat $d/srv/address | head -n 1) ;;
 esac
 export DBUS_SYSTEM_BUS_ADDRESS
+# What \`setup fingerprint\` prints on standard error is kept for the checks (a no-reader warning there means the line missed the fprintd bus).
+case "\$1 \$2" in
+    "setup fingerprint") $FP_CLI "\$@" 2> $d/fp.err; rc=\$?; cat $d/fp.err >&2; exit \$rc ;;
+esac
 exec $FP_CLI "\$@"
 W
     cat > "$bin/sudo" << 'W'
@@ -130,7 +134,9 @@ case \$1 in
         [ -x \$d/droot/usr/libexec/custodio/custodiod ] || { echo "the package's files are not in the root" >&2; exit 1; }
         grep -q '^custodio:' \$d/droot/etc/passwd || { echo "no account" >&2; exit 1; }
         snap > \$d/state.before ;;
-    "sudo custodio setup fingerprint enable") [ -s \$d/root/etc/pam.d/polkit-1 ] || { echo "no override" >&2; exit 1; } ;;
+    "sudo custodio setup fingerprint enable")
+        [ ! -s \$d/fp.err ] || { echo "enable wrote to standard error (no reader reached?): \$(head -n 1 \$d/fp.err)" >&2; exit 1; }
+        [ -s \$d/root/etc/pam.d/polkit-1 ] || { echo "no override" >&2; exit 1; } ;;
     "sudo custodio setup fingerprint disable") [ ! -e \$d/root/etc/pam.d/polkit-1 ] || { echo "the override is still there" >&2; exit 1; } ;;
     "sudo apt-get remove custodio" | "sudo apt-get purge custodio")
         [ ! -e \$d/droot/usr/libexec/custodio/custodiod ] || { echo "files are left" >&2; exit 1; }
@@ -224,6 +230,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "output altered" run sed '0,/^warn  ana  /s//warn  anx  /'
     control "install notice altered" run sed '0,/^custodio: to check the setup at any time, run: custodio doctor$/s//custodio: to check the setup, run: custodio doctor/'
     control "deb name changed" run sed 's/custodio_0\.9\.0-1_amd64\.deb/custodio_0.9.1-1_amd64.deb/'
+    control "setup fingerprint enable swapped for disable" run sed '0,/^\$ sudo custodio setup fingerprint enable$/s//$ sudo custodio setup fingerprint disable/'
     control "setup browsers disable after the removal" run python3 -I -c '
 import re, sys
 t = sys.stdin.read()

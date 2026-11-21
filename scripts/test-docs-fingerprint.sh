@@ -156,6 +156,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
         names+=("$name")
     }
     control "shown file differs by one character" run sed 's/max-tries=1 timeout=10$/max-tries=2 timeout=10/'
+    control "setup command with an option the binary rejects" run sed '0,/^\$ sudo custodio setup fingerprint enable$/s//$ sudo custodio setup fingerprint enable --nonsense/'
     control "output line changed" run sed '0,/^      Undo: sudo custodio setup fingerprint disable$/s//      Undo: sudo custodio setup fingerprint off/'
     control "Debian package name under the Fedora heading" run sed '0,/^Install fprintd-pam and fprintd/s//Install libpam-fprintd and fprintd/'
     control "gsettings key changed" run sed 's/^\$ gsettings set org.gnome.login-screen enable-fingerprint-authentication false$/$ gsettings set org.gnome.login-screen enable-fingerprint false/'

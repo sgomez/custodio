@@ -116,6 +116,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "link to the guide removed" static sed 's#(docs/guide-ubuntu-2604\.md[^)]*)#(docs/install.md)#g'
     control "command altered" run sed '0,/^\$ custodio list$/s//$ custodio lst/'
     control "output altered" run sed '0,/^ana  ecdsa-p256  encrypted-host  /s//ana  ecdsa-p256  tpm  /'
+    control "setup command with an option the binary rejects" run sed '0,/^\$ custodio setup browsers enable$/s//$ custodio setup browsers enable --nonsense/'
     control "remove command replaced by refresh-only" run sed 's/^\$ custodio setup browsers disable$/$ custodio setup browsers refresh/'
     for i in "${!pids[@]}"; do
         if wait "${pids[$i]}"; then echo "control ok: ${names[$i]}"; else bad "control '${names[$i]}' passed on a broken README"; fi
