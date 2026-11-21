@@ -64,7 +64,9 @@ crash() {
     [ "${pid:-0}" -gt 1 ] || fail "$1: custodio.service has no MainPID"
     before=$(store)
     n_before=$(journal_entries)
+    # Rust's runtime handles the first SIGSEGV that is not a stack overflow, resets the action to the default and returns: the process survives it, the second one kills it
     kill -SEGV "$pid"
+    until_ok 5 is_failed custodio || kill -SEGV "$pid" 2> /dev/null || true
     until_ok 30 is_failed custodio || fail "$1: custodio.service did not fail after SIGSEGV (state $(unit_state ActiveState))"
     [ "$(unit_state Result)" = signal ] || fail "$1: Result is '$(unit_state Result)', expected 'signal' (a result of core-dump means the kernel dumped custodiod)"
     after=$(store)
@@ -83,7 +85,7 @@ control() {
     systemd-run --quiet --unit="$CTRL" -p LimitCORE=infinity /usr/bin/sleep 300 || fail "$1: systemd-run of the control failed"
     until_ok 20 systemctl is-active --quiet "$CTRL" || fail "$1: the control did not start"
     systemctl kill -s SEGV "$CTRL"
-    until_ok 60 is_failed "$CTRL" || fail "$1: the control did not fail after SIGSEGV"
+    until_ok 120 is_failed "$CTRL" || { systemctl status "$CTRL" --no-pager -n 5 >&2 || true; why_no_dump >&2; fail "$1: the control did not fail after SIGSEGV"; }
     [ "$(unit_state Result "$CTRL")" = core-dump ] || { why_no_dump >&2; fail "$1: the control's Result is '$(unit_state Result "$CTRL")', expected core-dump"; }
     new=''
     for _ in $(seq 150); do
