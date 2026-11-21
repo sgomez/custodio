@@ -266,7 +266,7 @@
         "F209"
       ],
       "verify": "just quick && cargo test -p custodio-cli --test setup --locked && cargo test -p custodio-cli --test help --locked && cargo test -p custodio-it --test completions --locked && shellcheck packaging/completions/custodio.bash && zsh -n packaging/completions/_custodio && fish --no-execute packaging/completions/custodio.fish && scripts/test-docs-readme.sh && scripts/test-docs-install-register.sh && scripts/test-docs-fingerprint.sh && scripts/test-docs-guide.sh && scripts/test-docs-manual-m7.sh && scripts/test-docs-release-notes.sh && scripts/test-docs-threat-model.sh && scripts/test-user-refresh-units.sh && scripts/test-package-scripts.sh && scripts/test-check-packages-pam.sh && scripts/test-e2e-fingerprint.sh && scripts/test-e2e-doctor.sh && scripts/test-e2e-vm-snap.sh && just mutants-diff F212",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F214",
