@@ -80,7 +80,7 @@ fn broken_include(setup: impl FnOnce(&Fx)) -> String {
     assert_eq!(first.notes.len(), 1, "{text}");
     assert_eq!(first.fixes.len(), 1, "{text}");
     assert!(
-        first.fixes[0].contains("sudo custodio fingerprint disable"),
+        first.fixes[0].contains("sudo custodio setup fingerprint disable"),
         "{text}"
     );
     assert_eq!(code(&o), 1, "{text}");
@@ -233,7 +233,7 @@ fn nothing_active_says_how_to_enable_it() {
     assert_eq!(state(&text, POLKIT_CHECK), "not ok", "{text}");
     assert_eq!(
         fixes(&text, POLKIT_CHECK),
-        ["sudo custodio fingerprint enable"],
+        ["sudo custodio setup fingerprint enable"],
         "{text}"
     );
     assert_eq!(code(&o), 0);
@@ -254,7 +254,7 @@ fn custodios_override_with_common_auth_is_a_warning_with_the_disable_fix_and_exi
     assert_eq!(polkit.warnings.len(), 1, "{text}");
     assert_eq!(
         polkit.fixes,
-        ["sudo custodio fingerprint disable"],
+        ["sudo custodio setup fingerprint disable"],
         "{text}"
     );
     assert_eq!(code(&o), 0, "the warning does not count");
@@ -272,6 +272,9 @@ fn someone_elses_file_with_common_auth_is_a_warning_with_the_two_other_fixes() {
             && fix.contains("sudo pam-auth-update --disable fprintd"),
         "{text}"
     );
-    assert!(!fix.contains("custodio fingerprint disable"), "{text}");
+    assert!(
+        !fix.contains("custodio setup fingerprint disable"),
+        "{text}"
+    );
     assert_eq!(code(&o), 0);
 }

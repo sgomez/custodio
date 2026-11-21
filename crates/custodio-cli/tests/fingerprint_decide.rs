@@ -1,4 +1,4 @@
-//! The decisions of `custodio fingerprint enable` and `disable`, from observed values only: no
+//! The decisions of `custodio setup fingerprint enable` and `disable`, from observed values only: no
 //! file system, no bus, no temporary directory.
 
 use custodio_cli::fingerprint_decide::{
@@ -213,11 +213,11 @@ fn each_outcome_is_one_ok_polkit_line_with_the_undo_command_under_it() {
         assert_eq!((l.state, l.name.as_str()), (State::Ok, POLKIT), "{l:?}");
     }
     assert!(
-        undo(&on).ends_with("sudo custodio fingerprint disable"),
+        undo(&on).ends_with("sudo custodio setup fingerprint disable"),
         "{on:?}"
     );
     assert!(
-        undo(&off).ends_with("sudo custodio fingerprint enable"),
+        undo(&off).ends_with("sudo custodio setup fingerprint enable"),
         "{off:?}"
     );
     assert_eq!(noted.under.len(), on.under.len() + 1);
@@ -235,7 +235,7 @@ fn not_root() {
     let mut o = base(Family::Debian);
     o.euid = 1000;
     let m = refusal(decide_enable(&o));
-    assert!(m.contains("root") && m.contains("sudo custodio fingerprint enable"));
+    assert!(m.contains("root") && m.contains("sudo custodio setup fingerprint enable"));
     // Not root comes first, before any other state.
     o.vendor = VendorState::Missing;
     assert!(refusal(decide_enable(&o)).contains("root"));
@@ -265,7 +265,7 @@ fn foreign_files() {
         let m = refusal(decide_enable(&o));
         assert!(m.contains("/etc/pam.d/polkit-1"), "{m}");
         assert!(
-            m.contains("custodio fingerprint disable") || m.contains("not Custodio"),
+            m.contains("custodio setup fingerprint disable") || m.contains("not Custodio"),
             "{m}"
         );
     }

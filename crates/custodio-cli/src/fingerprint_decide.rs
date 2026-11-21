@@ -1,4 +1,4 @@
-//! What `custodio fingerprint enable` and `disable` decide, from observed values only.
+//! What `custodio setup fingerprint enable` and `disable` decide, from observed values only.
 //!
 //! Nothing here reads a file, asks the bus or prints: the command gathers an [`Observed`] and
 //! applies the decision, so every state is tested without a file system.
@@ -15,7 +15,7 @@ pub const VENDOR_FILE: &str = "/usr/lib/pam.d/polkit-1";
 /// What `enable` writes. The comment lines say who wrote the file and how to undo it; none of
 /// them names the module, so the first non-comment `auth` line that does is the one of Design 1.
 const FILE: &str = "#%PAM-1.0\n\
-# Written by 'custodio fingerprint enable'. Remove it with 'sudo custodio fingerprint disable'.\n\
+# Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.\n\
 # If you edit this file, Custodio treats it as yours and will not touch it again.\n\
 auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10\n\
 auth     include /usr/lib/pam.d/polkit-1\n\
@@ -246,7 +246,7 @@ pub enum Done {
     AlreadyOff,
 }
 
-const UNDO_ENABLE: &str = "Undo: sudo custodio fingerprint disable";
+const UNDO_ENABLE: &str = "Undo: sudo custodio setup fingerprint disable";
 
 /// The line `enable` or `disable` prints on success, under the name doctor uses for this check.
 #[must_use]
@@ -264,7 +264,7 @@ pub fn done_line(done: Done) -> Line {
         }
         Done::AlreadyOn => line("already on, nothing changed").with(UNDO_ENABLE),
         Done::Disabled => line("off, polkit asks for the password only")
-            .with("Undo: sudo custodio fingerprint enable"),
+            .with("Undo: sudo custodio setup fingerprint enable"),
         Done::AlreadyOff => line("already off, nothing changed"),
     }
 }
@@ -329,17 +329,17 @@ fn global_fingerprint(o: &Observed) -> bool {
 
 fn not_root() -> Refusal {
     Refusal::new(
-        "custodio fingerprint: this changes a system file and must run as root",
-        "Run it again with sudo: 'sudo custodio fingerprint enable' (or 'disable').",
+        "custodio setup fingerprint: this changes a system file and must run as root",
+        "Run it again with sudo: 'sudo custodio setup fingerprint enable' (or 'disable').",
     )
 }
 
 fn foreign() -> Refusal {
     Refusal::new(
         format!(
-            "custodio fingerprint: {POLKIT_FILE} exists and is not Custodio's (or is not a regular file); nothing was changed"
+            "custodio setup fingerprint: {POLKIT_FILE} exists and is not Custodio's (or is not a regular file); nothing was changed"
         ),
-        "Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio fingerprint enable' again.",
+        "Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio setup fingerprint enable' again.",
     )
 }
 
@@ -357,7 +357,7 @@ pub fn decide_enable(o: &Observed) -> EnableDecision {
     if o.vendor != VendorState::Regular {
         return EnableDecision::Refuse(Refusal::new(
             format!(
-                "custodio fingerprint: {VENDOR_FILE} is missing or is not a regular file, so the override has nothing to include; nothing was changed"
+                "custodio setup fingerprint: {VENDOR_FILE} is missing or is not a regular file, so the override has nothing to include; nothing was changed"
             ),
             "Check that polkit is installed and where its PAM file is ('rpm -ql polkit' or 'dpkg -L polkit'), and report it if it is elsewhere.",
         ));
@@ -365,26 +365,26 @@ pub fn decide_enable(o: &Observed) -> EnableDecision {
     let family = o.family;
     if !o.module_present {
         return EnableDecision::Refuse(Refusal::new(
-            "custodio fingerprint: pam_fprintd.so is not installed; nothing was changed",
+            "custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed",
             format!(
-                "Install {} and run 'sudo custodio fingerprint enable' again.",
+                "Install {} and run 'sudo custodio setup fingerprint enable' again.",
                 packages(family)
             ),
         ));
     }
     if !o.fprintd_present {
         return EnableDecision::Refuse(Refusal::new(
-            "custodio fingerprint: fprintd is not installed; nothing was changed",
+            "custodio setup fingerprint: fprintd is not installed; nothing was changed",
             format!(
-                "Install {} and run 'sudo custodio fingerprint enable' again.",
+                "Install {} and run 'sudo custodio setup fingerprint enable' again.",
                 packages(family)
             ),
         ));
     }
     if global_fingerprint(o) {
         return EnableDecision::Refuse(Refusal::new(
-            "custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed",
-            "Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.",
+            "custodio setup fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed",
+            "Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio setup fingerprint enable' again.",
         ));
     }
     EnableDecision::Write {
@@ -408,7 +408,7 @@ pub fn decide_disable(o: &Observed) -> DisableDecision {
         FileState::Regular(b) if is_custodios(b) => DisableDecision::Remove,
         _ => DisableDecision::Refuse(Refusal::new(
             format!(
-                "custodio fingerprint: {POLKIT_FILE} is not Custodio's (or is not a regular file); nothing was changed"
+                "custodio setup fingerprint: {POLKIT_FILE} is not Custodio's (or is not a regular file); nothing was changed"
             ),
             "Find who owns it with 'dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path, and remove it yourself if you mean to.",
         )),

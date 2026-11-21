@@ -1,4 +1,4 @@
-//! The Firefox snap half of `custodio register` (F183): the copy, its refresh, removal and refresh-only mode.
+//! The Firefox snap half of `custodio setup browsers enable` (F183): the copy, its refresh, removal and refresh-only mode.
 
 mod fixture;
 #[path = "lines/mod.rs"]
@@ -61,7 +61,11 @@ fn outcomes(r: &Report) -> Vec<&Outcome> {
 fn held_rows(out: &str) -> Vec<lines::Row> {
     lines::rows(out)
         .into_iter()
-        .filter(|r| r.fixes().iter().any(|f| f.contains("'custodio register")))
+        .filter(|r| {
+            r.fixes()
+                .iter()
+                .any(|f| f.contains("'custodio setup browsers "))
+        })
         .collect()
 }
 
@@ -479,7 +483,7 @@ fn removal_deletes_the_copy_and_the_entry() {
     assert!(result.is_err());
     assert_eq!(held_rows(&out).len(), 1, "{out}");
     assert!(
-        held_rows(&out)[0].fixes()[0].contains("custodio register --remove"),
+        held_rows(&out)[0].fixes()[0].contains("custodio setup browsers disable"),
         "{out}"
     );
     assert_eq!(fs::read(&s.copy).unwrap(), bytes);

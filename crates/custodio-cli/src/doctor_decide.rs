@@ -46,7 +46,7 @@ pub enum Fingers {
 /// Everything the report depends on.
 #[derive(Debug, Clone)]
 pub struct Facts {
-    /// The files, read as `custodio fingerprint` reads them (the same global detection).
+    /// The files, read as `custodio setup fingerprint` reads them (the same global detection).
     pub files: Observed,
     pub reader: Reader,
     pub fingers: Fingers,
@@ -314,7 +314,7 @@ fn polkit(f: &Facts) -> (Check, bool) {
             State::NotOk,
             POLKIT,
             format!("{POLKIT_FILE} includes {VENDOR_FILE}, which is {what}"),
-            Some("reinstall polkit, or: sudo custodio fingerprint disable"),
+            Some("reinstall polkit, or: sudo custodio setup fingerprint disable"),
         )
     } else if custodios {
         check(State::Ok, POLKIT, "on", None)
@@ -339,7 +339,7 @@ fn polkit(f: &Facts) -> (Check, bool) {
             POLKIT,
             format!("off, and {POLKIT_FILE} is not Custodio's"),
             Some(
-                "remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio fingerprint enable",
+                "remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio setup fingerprint enable",
             ),
         )
     } else {
@@ -347,7 +347,7 @@ fn polkit(f: &Facts) -> (Check, bool) {
             State::NotOk,
             POLKIT,
             "off",
-            Some("sudo custodio fingerprint enable"),
+            Some("sudo custodio setup fingerprint enable"),
         )
     };
     if broken {
@@ -356,7 +356,7 @@ fn polkit(f: &Facts) -> (Check, bool) {
     // F201: an override with its own fingerprint line and `pam_fprintd` in common-auth ask for the finger twice.
     if (custodios || foreign) && o.common_auth.as_deref().is_some_and(pam_has_fprintd) {
         let fix = if custodios {
-            "sudo custodio fingerprint disable"
+            "sudo custodio setup fingerprint disable"
         } else {
             "remove pam_fprintd.so from /etc/pam.d/polkit-1, or: sudo pam-auth-update --disable fprintd"
         };

@@ -1,4 +1,4 @@
-//! `custodio register` over fixture homes with the real `modutil` (F182, F172's Decisions).
+//! `custodio setup browsers enable` over fixture homes with the real `modutil` (F182, F172's Decisions).
 
 mod fixture;
 #[path = "lines/mod.rs"]
@@ -303,7 +303,7 @@ fn the_lines_of_a_run_put_the_fix_under_a_held_profile_and_the_restart_once_at_t
         );
         let fixes = rows[1].fixes();
         assert_eq!(fixes.len(), 1, "{rendered}");
-        assert_eq!(fixes[0].contains("--remove"), remove, "{rendered}");
+        assert_eq!(fixes[0].contains("disable"), remove, "{rendered}");
         assert!(
             rows[..2]
                 .iter()

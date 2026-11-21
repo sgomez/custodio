@@ -1,4 +1,4 @@
-//! `custodio fingerprint enable` and `disable`: observes the system, asks [`crate::fingerprint_decide`]
+//! `custodio setup fingerprint enable` and `disable`: observes the system, asks [`crate::fingerprint_decide`]
 //! what to do and applies it.
 //!
 //! The only file written is `/etc/pam.d/polkit-1`, as a whole or not at all. With the cargo feature
@@ -44,7 +44,7 @@ impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Refused(r) => write!(f, "{r}"),
-            Self::Io { what, error } => write!(f, "custodio fingerprint: {what}: {error}"),
+            Self::Io { what, error } => write!(f, "custodio setup fingerprint: {what}: {error}"),
         }
     }
 }

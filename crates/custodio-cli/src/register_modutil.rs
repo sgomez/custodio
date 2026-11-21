@@ -1,4 +1,4 @@
-//! Running NSS's `modutil` for `custodio register`, and asking it whether the system NSS loads the p11-kit proxy.
+//! Running NSS's `modutil` for `custodio setup browsers enable`, and asking it whether the system NSS loads the p11-kit proxy.
 
 use std::ffi::{OsStr, OsString};
 use std::fs;

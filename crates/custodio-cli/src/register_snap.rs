@@ -1,4 +1,4 @@
-//! The Firefox snap's copy of the module (SPEC Design 3 and 4): placed, refreshed and removed by `custodio register`.
+//! The Firefox snap's copy of the module (SPEC Design 3 and 4): placed, refreshed and removed by `custodio setup browsers enable`.
 //!
 //! The snap cannot read `/usr/lib/custodio`, so the command keeps a copy at a fixed path under the snap's own
 //! directory. The copy is written beside its target and `rename(2)`d over it; a link at the target is replaced, never
@@ -223,7 +223,9 @@ pub fn refresh_only(home: &Path, module: &Path) -> Refresh {
 pub fn journal_datagram(refresh: &Refresh, copy: &Path) -> Vec<u8> {
     let priority = if refresh.is_failure() { 3 } else { 6 };
     let copy = escape(&copy.to_string_lossy());
-    let message = escape(&format!("custodio register: {copy}: {refresh}"));
+    let message = escape(&format!(
+        "custodio setup browsers enable: {copy}: {refresh}"
+    ));
     format!(
         "SYSLOG_IDENTIFIER={JOURNAL_IDENTIFIER}\nPRIORITY={priority}\nCUSTODIO_COPY={copy}\nMESSAGE={message}\n"
     )

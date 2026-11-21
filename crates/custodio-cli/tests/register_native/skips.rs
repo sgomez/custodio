@@ -35,7 +35,7 @@ fn refuses_root_and_sudo() {
     let marker = f.marker();
     let (mk, ms) = (marker.to_str().unwrap(), m.to_str().unwrap());
     let before = f.snapshot();
-    let args = ["register", "--module", ms];
+    let args = ["setup", "browsers", "enable", "--module", ms];
     let root = f
         .command(&args, &stub, &[("MARKER", mk)], true)
         .output()
@@ -94,7 +94,7 @@ fn the_default_module_path_is_the_installed_one() {
     let marker = f.marker();
     let before = f.snapshot();
     let out = f.binary(
-        &["register"],
+        &["setup", "browsers", "enable"],
         &stub,
         &[("MARKER", marker.to_str().unwrap())],
     );
@@ -120,7 +120,7 @@ fn a_missing_module_file_is_one_error() {
     let before = f.snapshot();
     let absent = "/nonexistent/libcustodio_pkcs11.so";
     let out = f.binary(
-        &["register", "--module", absent],
+        &["setup", "browsers", "enable", "--module", absent],
         &stub,
         &[("MARKER", marker.to_str().unwrap())],
     );
@@ -136,16 +136,18 @@ fn a_missing_module_file_is_one_error() {
     assert_eq!(f.snapshot(), before);
     // removal does not need the file
     let ok = f.binary(
-        &["register", "--module", m.to_str().unwrap()],
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap(),
+        ],
         &real_path(),
         &[],
     );
     assert_eq!(ok.status.code(), Some(0), "{ok:?}");
-    let gone = f.binary(
-        &["register", "--remove", "--module", absent],
-        &real_path(),
-        &[],
-    );
+    let gone = f.binary(&["setup", "browsers", "disable"], &real_path(), &[]);
     assert_eq!(gone.status.code(), Some(0), "{gone:?}");
     assert!(
         entries(&f.home().join(".mozilla/firefox/a.default"))
@@ -162,7 +164,17 @@ fn a_missing_modutil_is_an_error_naming_it() {
     let empty = f.dir.path().join("empty");
     fs::create_dir(&empty).unwrap();
     let before = f.snapshot();
-    let out = f.binary(&["register", "--module", m.to_str().unwrap()], &empty, &[]);
+    let out = f.binary(
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap(),
+        ],
+        &empty,
+        &[],
+    );
     assert_eq!(out.status.code(), Some(1));
     let err = String::from_utf8_lossy(&out.stderr);
     assert_eq!(
@@ -242,7 +254,10 @@ fn a_held_profile_is_skipped_named_and_fails_the_exit() {
             "{out}"
         );
         assert!(row.text.starts_with(&format!("{profile}: ")), "{out}");
-        assert!(row.fixes()[0].contains("'custodio register'"), "{out}");
+        assert!(
+            row.fixes()[0].contains("'custodio setup browsers enable'"),
+            "{out}"
+        );
     }
     let (_, registered) = Outcome::Registered.state_text();
     assert!(
@@ -289,7 +304,13 @@ fn skip_reasons_decide_the_exit_code() {
     };
     let before = outside_snap(&f);
     let out = f.binary(
-        &["register", "--module", m.to_str().unwrap()],
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap(),
+        ],
         &stub,
         &[("MARKER", marker.to_str().unwrap())],
     );
@@ -321,9 +342,18 @@ fn skip_reasons_decide_the_exit_code() {
         let recorded = fs::read_to_string(&marker).unwrap_or_default();
         recorded.contains(" -create") || recorded.contains(" -list")
     };
-    assert!(!asked(&f, &["register", "--remove"]));
+    assert!(!asked(&f, &["setup", "browsers", "disable"]));
     fs::remove_dir_all(native.parent().unwrap()).unwrap();
-    assert!(!asked(&f, &["register", "--module", m.to_str().unwrap()]));
+    assert!(!asked(
+        &f,
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap()
+        ]
+    ));
     // an unwritable profile directory
     let f = Fixture::new();
     let m = f.module("a");
@@ -417,7 +447,13 @@ fn a_killed_run_leaves_the_old_state_and_the_next_run_cleans_up() {
     ];
     let mut child = f
         .command(
-            &["register", "--module", m.to_str().unwrap()],
+            &[
+                "setup",
+                "browsers",
+                "enable",
+                "--module",
+                m.to_str().unwrap(),
+            ],
             &stub,
             &env,
             false,
@@ -467,7 +503,13 @@ fn a_killed_run_leaves_the_old_state_and_the_next_run_cleans_up() {
         "a killed run leaves its scratch directory"
     );
     let out = f.binary(
-        &["register", "--module", m.to_str().unwrap()],
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap(),
+        ],
         &real_path(),
         &[],
     );
@@ -502,10 +544,12 @@ fn only_handled_profiles_change() {
 #[test]
 fn the_register_command_line() {
     use custodio_cli::register_native::{RegisterArgs, parse_register_args};
-    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned())).ok();
-    assert_eq!(a(&[]), Some(RegisterArgs::default()));
+    let a = |action: &str, v: &[&str]| {
+        parse_register_args(action, v.iter().map(|s| (*s).to_owned())).ok()
+    };
+    assert_eq!(a("enable", &[]), Some(RegisterArgs::default()));
     assert_eq!(
-        a(&["--remove"]),
+        a("disable", &[]),
         Some(RegisterArgs {
             module: None,
             remove: true,
@@ -513,28 +557,31 @@ fn the_register_command_line() {
         })
     );
     assert_eq!(
-        a(&["--module", "/x/lib.so", "--remove"]),
+        a("enable", &["--module", "/x/lib.so"]),
         Some(RegisterArgs {
             module: Some("/x/lib.so".into()),
-            remove: true,
+            remove: false,
             refresh_only: false
         })
     );
-    for bad in [
-        &["--module"][..],
-        &["--module", ""],
-        &["--remove", "--remove"],
-        &["--module", "a", "--module", "b"],
-        &["--force"],
-        &["x"],
+    for (action, bad) in [
+        ("enable", &["--module"][..]),
+        ("enable", &["--module", ""]),
+        ("enable", &["--module", "a", "--module", "b"]),
+        ("enable", &["--remove"]),
+        ("enable", &["--force"]),
+        ("enable", &["x"]),
+        // `disable` takes no module: it removes the entries of every Custodio module file
+        ("disable", &["--module", "/x/lib.so"]),
+        ("disable", &["--remove"]),
     ] {
-        assert_eq!(a(bad), None, "{bad:?}");
+        assert_eq!(a(action, bad), None, "{action} {bad:?}");
     }
     let bin = env!("CARGO_BIN_EXE_custodio-cli");
     let out = Command::new(bin)
-        .args(["register", "--bogus"])
+        .args(["setup", "browsers", "enable", "--bogus"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("custodio register"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("custodio setup browsers enable"));
 }

@@ -128,7 +128,7 @@ fn refresh_only_touches_nothing_but_the_copy() {
     let marker = s.f.marker();
     let mk = marker.to_str().unwrap();
     let ms = s.module.to_str().unwrap();
-    let args = ["register", "--refresh-only", "--module", ms];
+    let args = ["setup", "browsers", "refresh", "--module", ms];
     let tracked = |s: &Snap| -> BTreeMap<PathBuf, Vec<u8>> {
         s.f.snapshot()
             .into_iter()
@@ -164,23 +164,23 @@ fn refresh_only_touches_nothing_but_the_copy() {
     assert_eq!(listed(&native.join("a.default"), &s.module), 1);
     // a usage error is exit 2
     let bad =
-        s.f.binary(&["register", "--refresh-only", "--remove"], &stub, &[]);
+        s.f.binary(&["setup", "browsers", "refresh", "--bogus"], &stub, &[]);
     assert_eq!(bad.status.code(), Some(2));
 }
 
 #[test]
 fn the_refresh_only_command_line() {
     use custodio_cli::register_native::parse_register_args;
-    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned())).ok();
+    let a = |v: &[&str]| parse_register_args("refresh", v.iter().map(|s| (*s).to_owned())).ok();
     assert_eq!(
-        a(&["--refresh-only"]),
+        a(&[]),
         Some(RegisterArgs {
             refresh_only: true,
             ..RegisterArgs::default()
         })
     );
     assert_eq!(
-        a(&["--module", "/x/lib.so", "--refresh-only"]),
+        a(&["--module", "/x/lib.so"]),
         Some(RegisterArgs {
             module: Some("/x/lib.so".into()),
             remove: false,
@@ -188,10 +188,10 @@ fn the_refresh_only_command_line() {
         })
     );
     for bad in [
-        &["--refresh-only", "--remove"][..],
-        &["--remove", "--refresh-only"],
-        &["--refresh-only", "--refresh-only"],
-        &["--refresh-only", "x"],
+        &["--remove"][..],
+        &["--refresh-only"],
+        &["--module", "a", "--module", "b"],
+        &["x"],
     ] {
         assert_eq!(a(bad), None, "{bad:?}");
     }

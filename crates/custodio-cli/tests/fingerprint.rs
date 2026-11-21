@@ -1,4 +1,4 @@
-//! `custodio fingerprint enable` and `disable` against a fixture file system: the binary is built with the
+//! `custodio setup fingerprint enable` and `disable` against a fixture file system: the binary is built with the
 //! `fixture-root` seam (a dev-dependency of the crate on itself), so every path is under a temporary root.
 //! Owner `root:root` and the `SELinux` label need a real `/etc`: F199 proves them.
 
@@ -60,7 +60,7 @@ fn enable_writes_the_exact_file_and_a_second_run_changes_nothing() {
         Command::new("sh")
             .args([
                 "-c",
-                "umask 077; exec \"$0\" fingerprint enable",
+                "umask 077; exec \"$0\" setup fingerprint enable",
                 env!("CARGO_BIN_EXE_custodio-cli"),
             ])
             .env("CUSTODIO_FIXTURE_ROOT", fx.root())
@@ -227,7 +227,7 @@ fn an_unwritable_pam_directory_is_refused_and_nothing_is_created() {
     fs::set_permissions(fx.path("etc/pam.d"), fs::Permissions::from_mode(0o555)).unwrap();
     let before = fx.tree();
     let e = assert_refused(&fx, &["enable"], &before, "unwritable");
-    assert!(e.contains("custodio fingerprint"), "{e}");
+    assert!(e.contains("custodio setup fingerprint"), "{e}");
 }
 
 // ---- not root ----
@@ -241,7 +241,7 @@ fn not_root_is_refused(action: &str) {
     let fx = Fx::new();
     let before = fx.tree();
     let o = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
-        .args(["fingerprint", action])
+        .args(["setup", "fingerprint", action])
         .env("CUSTODIO_FIXTURE_ROOT", fx.root())
         .env_remove("CUSTODIO_FIXTURE_EUID")
         .env("DBUS_SYSTEM_BUS_ADDRESS", fx.no_bus())

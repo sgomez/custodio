@@ -316,7 +316,7 @@ fn the_profiles_get_one_line_each_and_one_fix_under_the_last_that_needs_it() {
         fox[1]
             .fix
             .as_deref()
-            .is_some_and(|f| f.contains("custodio register"))
+            .is_some_and(|f| f.contains("custodio setup browsers enable"))
     );
 }
 
@@ -336,7 +336,7 @@ fn a_foreign_polkit_file_without_the_finger_is_not_fixed_by_enable() {
         assert_eq!(polkit.state, State::NotOk, "{file:?}");
         let fix = polkit.fix.unwrap();
         assert!(
-            !fix.starts_with("sudo custodio fingerprint enable"),
+            !fix.starts_with("sudo custodio setup fingerprint enable"),
             "{fix}"
         );
         assert!(fix.contains("dpkg -S"), "{fix}");

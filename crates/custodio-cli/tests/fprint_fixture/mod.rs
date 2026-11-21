@@ -1,4 +1,4 @@
-//! The fixture of the `custodio fingerprint` and `custodio doctor` tests: a temporary root with a Debian-family
+//! The fixture of the `custodio setup fingerprint` and `custodio doctor` tests: a temporary root with a Debian-family
 //! system, the files the commands read under it, and a private bus with a fake `net.reactivated.Fprint`.
 //! The fake records every call, with the D-Bus header flag that allows interactive authorization.
 #![allow(
@@ -114,7 +114,7 @@ impl Fx {
 
     pub fn run_with(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
         let mut c = Command::new(CLI_BIN);
-        c.arg("fingerprint")
+        c.args(["setup", "fingerprint"])
             .args(args)
             .env("CUSTODIO_FIXTURE_ROOT", self.root())
             .env("CUSTODIO_FIXTURE_EUID", "0");

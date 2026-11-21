@@ -174,7 +174,7 @@ fn a_pipe_on_one_stream_decides_for_stderr_and_a_pipe_on_stdout_for_both() -> Re
 fn every_failing_command_prints_what_went_wrong_then_the_next_step() -> Res {
     let cases: [(&[&str], i32); 4] = [
         (&["frobnicate"], 2),
-        (&["register", "--bogus"], 2),
+        (&["setup", "browsers", "enable", "--bogus"], 2),
         (&["delete", "some-key"], 1),
         (&["list"], 1),
     ];

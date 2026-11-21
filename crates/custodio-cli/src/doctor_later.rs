@@ -83,7 +83,7 @@ const AGAIN: &str = "fix what is named, then run 'custodio doctor' again";
 
 /// The state of one profile, what it says and what to do.
 fn profile_state(p: &ProfileFact) -> (State, String, Option<&'static str>) {
-    let register = Some("custodio register, then restart the browsers");
+    let register = Some("custodio setup browsers enable, then restart the browsers");
     match (&p.copy, &p.entry) {
         (Some(Copy::CouldNot(why)), _) => (
             State::CouldNotCheck,

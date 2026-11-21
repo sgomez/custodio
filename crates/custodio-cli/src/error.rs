@@ -149,7 +149,7 @@ fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
             (what.to_owned(), next.to_owned())
         }
         Failure::Io { what, error } => (
-            format!("custodio fingerprint: {what}: {error}"),
+            format!("custodio setup fingerprint: {what}: {error}"),
             "Check with ls -l /etc/pam.d/polkit-1 whether the file is there, fix /etc/pam.d (free space, read-only mount, SELinux) and run the command again.".to_owned(),
         ),
     }
@@ -158,11 +158,11 @@ fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
 fn register(error: &RegisterError) -> (String, String) {
     match error {
         RegisterError::Refused(Refusal::Root) => (
-            "custodio register: refused to run as root".to_owned(),
+            "custodio setup browsers enable: refused to run as root".to_owned(),
             "Run it as the user whose browsers should see Custodio.".to_owned(),
         ),
         RegisterError::Refused(Refusal::Sudo) => (
-            "custodio register: refused to run under sudo (SUDO_USER or SUDO_UID is set)"
+            "custodio setup browsers enable: refused to run under sudo (SUDO_USER or SUDO_UID is set)"
                 .to_owned(),
             "Run it as the user whose browsers should see Custodio.".to_owned(),
         ),
@@ -173,13 +173,13 @@ fn register(error: &RegisterError) -> (String, String) {
                 crate::register_cli::profiles(*count)
             ),
             format!(
-                "Fix what is named above and run 'custodio register{}' again.",
-                if *remove { " --remove" } else { "" }
+                "Fix what is named above and run 'custodio setup browsers {}' again.",
+                if *remove { "disable" } else { "enable" }
             ),
         ),
         RegisterError::Refresh(why) => (
             format!("custodio: {why}"),
-            format!("Run 'custodio register --refresh-only' again, and if it persists, {REPORT}."),
+            format!("Run 'custodio setup browsers refresh' again, and if it persists, {REPORT}."),
         ),
     }
 }
@@ -188,7 +188,7 @@ fn run(error: &RunError) -> (String, String) {
     match error {
         RunError::Discover(e) => (
             format!("custodio: {e}"),
-            "Fix or remove that file, then run 'custodio register' again.".to_owned(),
+            "Fix or remove that file, then run 'custodio setup browsers enable' again.".to_owned(),
         ),
         RunError::MissingModule(p) => (
             format!(
@@ -200,12 +200,12 @@ fn run(error: &RunError) -> (String, String) {
         ),
         RunError::NoModutil(p) => (
             format!("custodio: {} was not found", p.to_string_lossy()),
-            "Install NSS's tools (libnss3-tools or nss-tools) and run 'custodio register' again."
+            "Install NSS's tools (libnss3-tools or nss-tools) and run 'custodio setup browsers enable' again."
                 .to_owned(),
         ),
         RunError::NoHome => (
             "custodio: HOME is not set; cannot find the browser profiles".to_owned(),
-            "Set HOME to your home directory and run 'custodio register' again.".to_owned(),
+            "Set HOME to your home directory and run 'custodio setup browsers enable' again.".to_owned(),
         ),
     }
 }

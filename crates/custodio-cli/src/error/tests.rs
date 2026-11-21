@@ -389,13 +389,13 @@ fn a_skipped_profile_names_the_command_that_was_run() {
             false,
             1,
             "custodio: 1 profile skipped",
-            "run 'custodio register' again",
+            "run 'custodio setup browsers enable' again",
         ),
         (
             true,
             2,
             "custodio: 2 profiles skipped",
-            "run 'custodio register --remove' again",
+            "run 'custodio setup browsers disable' again",
         ),
     ] {
         let text = render(&CliError::Register(RegisterError::Skipped {

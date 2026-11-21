@@ -154,7 +154,7 @@ fn ask() -> (Reader, Fingers) {
     (reader, fingers)
 }
 
-/// Check 4, read-only: the discovery and the decisions of `custodio register`, without its writes.
+/// Check 4, read-only: the discovery and the decisions of `custodio setup browsers enable`, without its writes.
 fn observe_firefox(root: &Path) -> Firefox {
     let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) else {
         return Firefox::CouldNot("HOME is not set".to_owned());

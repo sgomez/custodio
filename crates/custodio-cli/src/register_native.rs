@@ -1,4 +1,4 @@
-//! `custodio register`: the module in each native browser profile, with NSS's `modutil` (SPEC Design 3).
+//! `custodio setup browsers enable`: the module in each native browser profile, with NSS's `modutil` (SPEC Design 3).
 //!
 //! The rules are the `Decision:` lines of `docs/findings/F172.md`. `modutil` is the only writer of module entries; the
 //! command only reads `pkcs11.txt` to recognise an entry, and swaps the one file it changed in with `rename(2)`.

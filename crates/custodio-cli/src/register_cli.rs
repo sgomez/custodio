@@ -1,4 +1,4 @@
-//! The command line of `custodio register`: its arguments, refusals, exit reasons and the two entry points.
+//! The command line of `custodio setup browsers enable`: its arguments, refusals, exit reasons and the two entry points.
 
 use std::ffi::OsString;
 use std::fmt;
@@ -24,8 +24,8 @@ pub enum Refusal {
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Root => f.write_str("custodio register: refused to run as root; run it as the user whose browsers should see Custodio"),
-            Self::Sudo => f.write_str("custodio register: refused to run under sudo (SUDO_USER or SUDO_UID is set); run it as the user whose browsers should see Custodio"),
+            Self::Root => f.write_str("custodio setup browsers enable: refused to run as root; run it as the user whose browsers should see Custodio"),
+            Self::Sudo => f.write_str("custodio setup browsers enable: refused to run under sudo (SUDO_USER or SUDO_UID is set); run it as the user whose browsers should see Custodio"),
         }
     }
 }
@@ -49,7 +49,7 @@ pub fn refuse_root_and_sudo(
     Ok(())
 }
 
-/// What the command line of `custodio register` asks for.
+/// What the command line of `custodio setup browsers enable` asks for.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RegisterArgs {
     /// `--module PATH`: register this library instead of [`INSTALLED_MODULE`].
@@ -91,7 +91,7 @@ pub fn parse_register_args<I: IntoIterator<Item = String>>(
     Ok(parsed)
 }
 
-/// Why `custodio register` ends without success.
+/// Why `custodio setup browsers enable` ends without success.
 #[derive(Debug)]
 pub enum RegisterError {
     Refused(Refusal),
@@ -133,7 +133,7 @@ pub fn profiles(count: usize) -> String {
     }
 }
 
-/// `custodio register`: refuse root and sudo, run, print [`register_lines`] on `out`, coloured when `on`.
+/// `custodio setup browsers enable`: refuse root and sudo, run, print [`register_lines`] on `out`, coloured when `on`.
 ///
 /// # Errors
 /// See [`RegisterError`].
@@ -184,9 +184,9 @@ pub fn register_lines(report: &Report, remove: bool) -> Vec<report::Line> {
         return vec![report::Line::new(State::Ok, FIREFOX, "none found")];
     }
     let again = if remove {
-        "custodio register --remove"
+        "custodio setup browsers disable"
     } else {
-        "custodio register"
+        "custodio setup browsers enable"
     };
     let mut lines: Vec<report::Line> = report
         .lines
@@ -234,7 +234,7 @@ pub fn refresh_line(outcome: &Refresh, copy: &Path, home: &Path) -> report::Line
 /// The name of the `--refresh-only` line.
 pub const SNAP_COPY: &str = "snap copy";
 
-/// `custodio register --refresh-only`: refuse root and sudo, replace a stale copy, say what happened on `out` (coloured
+/// `custodio setup browsers refresh`: refuse root and sudo, replace a stale copy, say what happened on `out` (coloured
 /// when `on`) and in the
 /// journal at `journal`. A journal that cannot be reached is reported on `err` and changes nothing else.
 ///
@@ -285,7 +285,7 @@ pub fn refresh_only_command<W: io::Write, E: io::Write>(
     }
 }
 
-/// The journal socket `custodio register --refresh-only` writes to.
+/// The journal socket `custodio setup browsers refresh` writes to.
 #[must_use]
 pub const fn default_journal_socket() -> &'static str {
     DEFAULT_JOURNAL_SOCKET

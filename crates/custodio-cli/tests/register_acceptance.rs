@@ -132,9 +132,11 @@ impl Scenario {
         [&self.legacy, &self.xdg, &self.snap]
     }
 
-    fn run(&self, extra: &[&str]) -> Output {
-        let mut a = vec!["register", "--module", self.module.to_str().unwrap()];
-        a.extend_from_slice(extra);
+    fn run(&self, action: &str) -> Output {
+        let mut a = vec!["setup", "browsers", action];
+        if action == "enable" {
+            a.extend_from_slice(&["--module", self.module.to_str().unwrap()]);
+        }
         self.f.binary(&a, &path(), &[])
     }
 }
@@ -153,7 +155,7 @@ fn acceptance_10_registration_on_one_home() {
     let ms = s.module.to_str().unwrap();
     // a locked native profile is skipped and named, the others are done, the exit is non-zero
     let browser = Browser::open(&s.xdg);
-    let locked = s.run(&[]);
+    let locked = s.run("enable");
     assert_eq!(locked.status.code(), Some(1), "{}", shown(&locked));
     let text = String::from_utf8_lossy(&locked.stdout);
     let held: Vec<_> = lines::rows(&text)
@@ -169,7 +171,7 @@ fn acceptance_10_registration_on_one_home() {
     );
     browser.close();
 
-    let first = s.run(&[]);
+    let first = s.run("enable");
     assert_eq!(first.status.code(), Some(0), "{}", shown(&first));
     assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
     let hand: Vec<_> = entries(&s.legacy)
@@ -194,11 +196,11 @@ fn acceptance_10_registration_on_one_home() {
 
     // a second run leaves the whole home equal
     let one = s.f.snapshot();
-    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(s.run("enable").status.code(), Some(0));
     assert_eq!(s.f.snapshot(), one);
 
     // root and sudo are refused, the home is equal
-    let args = ["register", "--module", ms];
+    let args = ["setup", "browsers", "enable", "--module", ms];
     let root = s.f.command(&args, &path(), &[], true).output().unwrap();
     let sudo = s.f.binary(&args, &path(), &[("SUDO_UID", "1000")]);
     assert_eq!(root.status.code(), Some(2), "{root:?}");
@@ -210,12 +212,12 @@ fn acceptance_10_registration_on_one_home() {
 fn acceptance_10_removal_on_one_home() {
     let s = Scenario::new();
     let foreign_before: Vec<_> = s.all().iter().map(|p| others(p)).collect();
-    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(s.run("enable").status.code(), Some(0));
     assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
 
     // a locked profile keeps its entry; the others are cleaned and the exit is non-zero
     let browser = Browser::open(&s.xdg);
-    let removal = s.run(&["--remove"]);
+    let removal = s.run("disable");
     assert_eq!(removal.status.code(), Some(1), "{}", shown(&removal));
     let held: Vec<_> = lines::rows(&String::from_utf8_lossy(&removal.stdout))
         .into_iter()
@@ -231,7 +233,7 @@ fn acceptance_10_removal_on_one_home() {
     assert!(exactly_one_in_each(&[&s.legacy]).is_err() && exactly_one_in_each(&[&s.snap]).is_err());
     browser.close();
 
-    let removal = s.run(&["--remove"]);
+    let removal = s.run("disable");
     assert_eq!(removal.status.code(), Some(0), "{}", shown(&removal));
     for p in s.all() {
         assert!(

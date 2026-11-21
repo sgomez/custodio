@@ -196,7 +196,7 @@ fn no_reader_no_override_and_no_profile_leave_checks_1_to_3_unsatisfied_and_exit
             (
                 POLKIT_CHECK,
                 "not ok",
-                Fix::Names("sudo custodio fingerprint enable"),
+                Fix::Names("sudo custodio setup fingerprint enable"),
             ),
             (FIREFOX, "ok", Fix::No),
             (JOURNAL, "ok", Fix::No),
@@ -313,7 +313,7 @@ fn a_broken_include_is_first_and_exit_status_1_with_everything_else_ok() {
             (
                 POLKIT_CHECK,
                 "not ok",
-                Fix::Names("sudo custodio fingerprint disable"),
+                Fix::Names("sudo custodio setup fingerprint disable"),
             ),
             (READER, "ok", Fix::No),
             (FINGER, "ok", Fix::No),
@@ -328,7 +328,14 @@ fn a_broken_include_is_first_and_exit_status_1_with_everything_else_ok() {
 #[test]
 fn an_unregistered_profile_is_not_ok_with_the_register_fix_and_exit_status_1() {
     let r = run(|fx| register_profile(fx, false), finger());
-    expect(&r, &[(PROFILE, "not ok", Fix::Names("custodio register"))]);
+    expect(
+        &r,
+        &[(
+            PROFILE,
+            "not ok",
+            Fix::Names("custodio setup browsers enable"),
+        )],
+    );
     assert_eq!(r.code, 1);
 }
 

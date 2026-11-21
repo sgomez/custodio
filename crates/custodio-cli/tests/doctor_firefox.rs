@@ -120,7 +120,10 @@ fn dir_of(line: &Line) -> String {
 fn fixed_by_register(line: &Line) {
     assert_eq!(line.state, "not ok", "{line:?}");
     assert_eq!(line.fixes.len(), 1, "{line:?}");
-    assert!(line.fixes[0].contains("custodio register"), "{line:?}");
+    assert!(
+        line.fixes[0].contains("custodio setup browsers enable"),
+        "{line:?}"
+    );
 }
 
 #[test]
@@ -217,7 +220,7 @@ fn every_profile_has_its_own_line_and_the_other_browsers_are_listed_by_the_same_
     fixed_by_register(bad[0]);
     // `register` runs after doctor's comparison, on the same fixture: it names the same profiles.
     let reg = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
-        .args(["register", "--module"])
+        .args(["setup", "browsers", "enable", "--module"])
         .arg(c.module())
         .env_clear()
         // Under cargo llvm-cov the instrumented binary writes its profile where this says.
