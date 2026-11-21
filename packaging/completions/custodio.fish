@@ -34,18 +34,31 @@ complete -c custodio -s h -l help -d 'Show the help'
 complete -c custodio -n __custodio_no_command -a import -d 'Import a key from a PKCS#12 file'
 complete -c custodio -n __custodio_no_command -a list -d 'List the keys'
 complete -c custodio -n __custodio_no_command -a delete -d 'Delete a key'
-complete -c custodio -n __custodio_no_command -a register -d 'Register the module with the browsers'
-complete -c custodio -n __custodio_no_command -a fingerprint -d 'Turn the fingerprint on or off'
+complete -c custodio -n __custodio_no_command -a setup -d 'Set up the browsers and the fingerprint'
 complete -c custodio -n __custodio_no_command -a doctor -d 'Check the setup'
 
 complete -c custodio -n '__fish_seen_subcommand_from import' -l id -x -d 'Name of the new key'
 complete -c custodio -n '__fish_seen_subcommand_from import' -F
 
-complete -c custodio -n '__fish_seen_subcommand_from register' -l module -r -F -d 'Path of the module'
-complete -c custodio -n '__fish_seen_subcommand_from register' -l remove -d 'Remove the registration'
-complete -c custodio -n '__fish_seen_subcommand_from register' -l refresh-only -d 'Only refresh'
+# `setup <topic> <action>`: the topics, then the actions of the topic, then `--module` where it applies.
+function __custodio_setup_is
+    test (string join ' ' (__custodio_args)) = "$argv"
+end
+
+function __custodio_setup_at_topic
+    __custodio_setup_is setup
+end
+
+complete -c custodio -n __custodio_setup_at_topic -a browsers -d 'Add or remove the module in the browsers'
+complete -c custodio -n __custodio_setup_at_topic -a fingerprint -d 'Let a finger answer polkit dialogs'
+complete -c custodio -n '__custodio_setup_is setup browsers' -a enable -d 'Add the module to the browser profiles'
+complete -c custodio -n '__custodio_setup_is setup browsers' -a disable -d 'Remove the module from the browser profiles'
+complete -c custodio -n '__custodio_setup_is setup browsers' -a refresh -d 'Update the Firefox snap copy'
+complete -c custodio -n '__custodio_setup_is setup fingerprint' -a enable -d 'Let a finger answer polkit dialogs'
+complete -c custodio -n '__custodio_setup_is setup fingerprint' -a disable -d 'Stop a finger answering polkit dialogs'
+complete -c custodio -n '__custodio_setup_is setup browsers enable' -l module -r -F -d 'Path of the module'
+complete -c custodio -n '__custodio_setup_is setup browsers refresh' -l module -r -F -d 'Path of the module'
 
 complete -c custodio -n '__fish_seen_subcommand_from list' -s v -l verbose -d 'Show every key in full'
 
 complete -c custodio -n '__custodio_first_arg_of list delete' -a '(__custodio_key_ids)'
-complete -c custodio -n '__custodio_first_arg_of fingerprint' -a 'enable disable'

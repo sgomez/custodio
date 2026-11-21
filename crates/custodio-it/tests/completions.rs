@@ -87,7 +87,7 @@ fn key_ids_with_a_service_that_never_answers_gives_up_at_its_limit() -> TestResu
 use std::collections::BTreeSet;
 
 use completions_rig::{Setup, Shell};
-use custodio_cli::COMMANDS;
+use custodio_cli::{COMMANDS, CommandSpec};
 
 fn set(items: &[String]) -> BTreeSet<String> {
     items.iter().cloned().collect()
@@ -97,7 +97,49 @@ fn set_of<const N: usize>(items: [&str; N]) -> BTreeSet<String> {
     items.iter().map(|s| (*s).to_owned()).collect()
 }
 
-/// What the commands and options of the help ask of a completion file; the first difference.
+/// The offers at one level of the command table and below it: the actions after a command that
+/// has some, the options of each command, the words of its arguments. The first difference.
+fn check_level(setup: &Setup, prefix: &[&str], c: &'static CommandSpec) -> Result<(), String> {
+    let at = |last: &str| -> Result<BTreeSet<String>, String> {
+        let mut words = vec!["custodio"];
+        words.extend_from_slice(prefix);
+        words.push(c.name);
+        words.push(last);
+        Ok(set(&setup.offer(&words).map_err(|e| e.to_string())?.items))
+    };
+    let mut want = set_of(["--help", "-h"]);
+    want.extend(c.options.iter().map(|o| o.flag.to_owned()));
+    want.extend(c.options.iter().filter_map(|o| o.short.map(str::to_owned)));
+    let got = at("-")?;
+    if got != want {
+        return Err(format!(
+            "options of {}: {got:?} instead of {want:?}",
+            c.path
+        ));
+    }
+    // Actions (`enable`, `disable`) and arguments that are words, not placeholders.
+    let mut words: BTreeSet<String> = c.children.iter().map(|k| k.name.to_owned()).collect();
+    if c.children.is_empty() && c.args.iter().all(|(a, _)| !a.starts_with('<')) {
+        words.extend(c.args.iter().map(|(a, _)| (*a).to_owned()));
+    }
+    if !c.children.is_empty() || c.args.iter().all(|(a, _)| !a.starts_with('<')) {
+        let got = at("")?;
+        if got != words {
+            return Err(format!(
+                "words after {}: {got:?} instead of {words:?}",
+                c.path
+            ));
+        }
+    }
+    let mut below = prefix.to_vec();
+    below.push(c.name);
+    for k in c.children {
+        check_level(setup, &below, k)?;
+    }
+    Ok(())
+}
+
+/// What the commands, actions and options of the help ask of a completion file; the first difference.
 fn check_commands_and_options(setup: &Setup) -> Result<(), String> {
     let first = setup.offer(&["custodio", ""]).map_err(|e| e.to_string())?;
     let names: BTreeSet<String> = COMMANDS.iter().map(|c| c.name.to_owned()).collect();
@@ -109,43 +151,19 @@ fn check_commands_and_options(setup: &Setup) -> Result<(), String> {
         return Err(format!("tool options: {:?}", dash.items));
     }
     for c in COMMANDS {
-        let mut want = set_of(["--help", "-h"]);
-        want.extend(c.options.iter().map(|o| o.flag.to_owned()));
-        want.extend(c.options.iter().filter_map(|o| o.short.map(str::to_owned)));
-        let got = setup
-            .offer(&["custodio", c.name, "-"])
-            .map_err(|e| e.to_string())?;
-        if set(&got.items) != want {
-            return Err(format!(
-                "options of {}: {:?} instead of {want:?}",
-                c.name, got.items
-            ));
-        }
-        // Arguments that are words (`enable`, `disable`), not placeholders.
-        if c.args.iter().all(|(a, _)| !a.starts_with('<')) {
-            let want: BTreeSet<String> = c.args.iter().map(|(a, _)| (*a).to_owned()).collect();
-            let got = setup
-                .offer(&["custodio", c.name, ""])
-                .map_err(|e| e.to_string())?;
-            if set(&got.items) != want {
-                return Err(format!(
-                    "arguments of {}: {:?} instead of {want:?}",
-                    c.name, got.items
-                ));
-            }
-        }
+        check_level(setup, &[], c)?;
     }
     Ok(())
 }
 
-/// The completion text without the option `--remove` of `register`: the word in bash and zsh
-/// (one string of options), the line of its own in fish.
-fn without_remove(shell: Shell, text: &str) -> String {
+/// The completion text without the action `refresh` of `setup browsers`: the word in bash and
+/// zsh (one string of actions), the line of its own in fish.
+fn without_refresh(shell: Shell, text: &str) -> String {
     match shell {
-        Shell::Bash | Shell::Zsh => text.replace("--remove", ""),
+        Shell::Bash | Shell::Zsh => text.replace("enable disable refresh", "enable disable"),
         Shell::Fish => text
             .lines()
-            .filter(|l| !l.contains("-l remove"))
+            .filter(|l| !l.contains("-a refresh"))
             .collect::<Vec<_>>()
             .join("\n"),
     }
@@ -156,10 +174,10 @@ fn commands_and_options(shell: Shell) -> TestResult {
     let text = shell.text()?;
     let setup = Setup::new(shell, &rig.bus.address, &text)?;
     check_commands_and_options(&setup)?;
-    // Negative control: the same comparison fails on a copy without `--remove`.
-    let cut = Setup::new(shell, &rig.bus.address, &without_remove(shell, &text))?;
+    // Negative control: the same comparison fails on a copy without the action `refresh`.
+    let cut = Setup::new(shell, &rig.bus.address, &without_refresh(shell, &text))?;
     let err = check_commands_and_options(&cut).expect_err("a missing option goes unnoticed");
-    assert!(err.contains("register"), "{err}");
+    assert!(err.contains("setup browsers"), "{err}");
     Ok(())
 }
 

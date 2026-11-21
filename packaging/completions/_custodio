@@ -13,6 +13,34 @@ _custodio_key_ids() {
     compadd -- "${ids[@]}"
 }
 
+# The options of the action being typed after `setup <topic> <action>`: only `--module` takes a value.
+_custodio_setup_options() {
+    case "$words[3] $words[4]" in
+        "browsers enable" | "browsers refresh") compadd -- --module -h --help ;;
+        *) compadd -- -h --help ;;
+    esac
+}
+
+# The topics after `setup`, the actions after a topic, a file after `--module`.
+_custodio_setup_words() {
+    case $CURRENT in
+        3) compadd -- browsers fingerprint ;;
+        4)
+            case $words[3] in
+                browsers) compadd -- enable disable refresh ;;
+                fingerprint) compadd -- enable disable ;;
+            esac
+            ;;
+        *)
+            case "$words[3] $words[4]" in
+                "browsers enable" | "browsers refresh")
+                    [[ $words[CURRENT-1] == --module ]] && _files
+                    ;;
+            esac
+            ;;
+    esac
+}
+
 _custodio() {
     local cur=$words[CURRENT] cmd=$words[2] prev=$words[CURRENT-1]
 
@@ -20,7 +48,7 @@ _custodio() {
         if [[ $cur == -* ]]; then
             compadd -- -h --help
         else
-            compadd -- import list delete register fingerprint doctor
+            compadd -- import list delete setup doctor
         fi
         return
     fi
@@ -28,9 +56,9 @@ _custodio() {
     if [[ $cur == -* && $prev != -- ]]; then
         case $cmd in
             import) compadd -- --id -h --help ;;
-            register) compadd -- --module --remove --refresh-only -h --help ;;
+            setup) _custodio_setup_options ;;
             list) compadd -- -v --verbose -h --help ;;
-            delete | fingerprint | doctor) compadd -- -h --help ;;
+            delete | doctor) compadd -- -h --help ;;
         esac
         return
     fi
@@ -49,12 +77,7 @@ _custodio() {
             done
             _custodio_key_ids
             ;;
-        register)
-            [[ $prev == --module ]] && _files
-            ;;
-        fingerprint)
-            ((CURRENT == 3)) && compadd -- enable disable
-            ;;
+        setup) _custodio_setup_words ;;
     esac
 }
 
