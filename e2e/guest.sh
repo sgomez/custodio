@@ -3,11 +3,10 @@
 # imports a key, and runs user.sh in a logind session of an ordinary user. Prints the record (the target's probe.sh) and one E2E-CASE line per case (report.sh).
 # Usage: guest.sh TARGET [oldpath|m3]: "m3" (F142) installs the M3 build, then this tree's package over it; "oldpath" (F61) installs the old-path fixture (/pkg-oldpath)
 # and reports the upgrade-oldpath-* cases only; a target with a no-oldpath marker skips them.
-# Each step prints `E2E-PHASE NAME SECONDS` at its end.
-# F160: with E2E_VM=1 (e2e/vm/run.sh) apt has installed the package and the TPM is the VM's own: no install, tpm_setup, swtpm or drop-in;
+# Each step prints `E2E-PHASE NAME SECONDS`.
+# F160: with E2E_VM=1 (e2e/vm/run.sh) apt installed the package and the TPM is the VM's own: no install, tpm_setup, swtpm or drop-in;
 # the VM-only cases (e2e/vm/judge.sh) are judged at the end. E2E_TPM says what the cases expect. E2E_DIR (default /e2e) holds select.sh, report.sh, the VM files.
-# With E2E_SELECT (F63, `just e2e-cases`: ids separated by spaces) only those cases are reported, and a step no selected case needs is not run (select.sh);
-# the setup always runs.
+# With E2E_SELECT (F63, `just e2e-cases`) only those cases are reported, and a step no selected case needs is not run (select.sh); setup always runs.
 set -euo pipefail
 mode=${2:-main}
 E2E_DIR=${E2E_DIR:-/e2e}
@@ -29,7 +28,7 @@ phase_done() { # phase_done NAME: the step that ends here, named after the run (
 # shellcheck source=e2e/select.sh
 source "$E2E_DIR"/select.sh
 if [ -n "${E2E_SELECT:-}" ]; then
-    # shellcheck disable=SC2086 # one id per word; globbing is off, an id has no character the shell would expand
+    # shellcheck disable=SC2086 # one id per word; globbing is off
     (set -f; printf '%s\n' $E2E_SELECT) > "$E2E_SELECT_FILE"
 else
     rm -f "$E2E_SELECT_FILE"
@@ -218,7 +217,7 @@ fi
 phase_done cli
 
 # The TPM kind cases (F133): alice imports an RSA 2048 and a P-256 key with the CLI and the kind they get is judged in the import result, the API's list, `custodio list` and the
-# journal; under a mode other than swtpm each case is reported skipped. After cli and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+# journal; under a mode other than swtpm each case is reported skipped. After cli and before the upgrade.
 if phase_runs tpm-kind; then
     WORK=$work E2E_TPM=$tpm_mode bash /e2e/tpmkind-run.sh || fail "tpmkind-run.sh failed"
 fi
@@ -242,21 +241,19 @@ if phase_runs vm-fingerprint; then
 fi
 phase_done vm-fingerprint
 
-# The memory cases of the VM (F214, full mode): crashes of custodiod under apport and under systemd-coredump; e2e/vm/memory.sh. After the fingerprint group.
-if phase_runs vm-memory; then
-    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/memory.sh" || fail "memory.sh failed"
-fi
+# F214 (VM, full): crashes of custodiod per core handler (vm/memory.sh).
+if phase_runs vm-memory; then WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/memory.sh" || fail "memory.sh failed"; fi
 phase_done vm-memory
 
-# The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
-# in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
+# The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism and `openssl` verifies each signature; every TPM mode.
+# After tpm-kind and before the upgrade; both keys are deleted, so the state and the counts are as before.
 if phase_runs sign; then
     WORK=$work MODULE=$MODULE E2E_VM=$vm E2E_TPM=$tpm_mode bash /e2e/sign-run.sh || fail "sign-run.sh failed"
 fi
 phase_done sign
 
-# The no-plaintext cases (F135): alice imports an RSA 2048 and a P-256 key, and after each import scripts/check-no-plaintext.sh (mounted unchanged) searches the real state directory for the key in
-# every encoding; no file there may be an unencrypted private key. Every TPM mode; both keys are deleted, so the state and the counts are as before.
+# The no-plaintext cases (F135): alice imports an RSA 2048 and a P-256 key; after each import scripts/check-no-plaintext.sh searches the state directory
+# for the key in every encoding. Every TPM mode; both keys are deleted afterwards.
 if phase_runs noplain; then
     WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash /e2e/noplain-run.sh || fail "noplain-run.sh failed"
 fi
@@ -281,7 +278,7 @@ elif phase_runs pcr && [ "$pcr_half" != first ]; then
     fail "a pcr-* case is selected in a VM run without E2E_PCR_HALF=first: the power cycle is the host's (e2e/vm/run.sh)"
 fi
 
-# The fallback cases (F138): in mode none alice imports an RSA 2048 and a P-256 key with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so (weaker, no TPM).
+# The fallback cases (F138): in mode none alice imports two keys with the CLI; the kind is encrypted-host and `custodio import` and `custodio list` say so.
 # (The tpmbound cases are skipped in every mode: SPEC_DEVIATIONS.md, F134.)
 if phase_runs fallback; then
     WORK=$work E2E_TPM=$tpm_mode bash /e2e/fallback-run.sh || fail "fallback-run.sh failed"
@@ -324,7 +321,7 @@ phase_done fingerprint
 if [ -z "$vm" ] && phase_runs doctor; then WORK=$work bash /e2e/doctor-run.sh || fail "doctor-run.sh failed"; fi
 phase_done doctor
 
-# The memory cases (F214): the unit's core and swap settings, the service's own limit and flag; containers only (the crashes are vm-memory-*). After doctor.
+# F214 (containers only): the unit settings, the service limit and flag.
 if [ -z "$vm" ] && phase_runs memory; then WORK=$work bash /e2e/memory-run.sh || fail "memory-run.sh failed"; fi
 phase_done memory
 
