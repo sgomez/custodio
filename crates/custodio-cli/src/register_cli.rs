@@ -60,33 +60,33 @@ pub struct RegisterArgs {
     pub refresh_only: bool,
 }
 
-/// Parse the arguments after `register`: `[--module PATH] [--remove | --refresh-only]`, each at most once.
+/// Parse the arguments after `setup browsers <action>`: `enable` and `refresh` take `[--module PATH]`,
+/// `disable` takes nothing. Any other `action` is not a browsers action.
 ///
 /// # Errors
 /// What is wrong with the line.
-pub fn parse_register_args<I: IntoIterator<Item = String>>(args: I) -> Result<RegisterArgs, Wrong> {
+pub fn parse_register_args<I: IntoIterator<Item = String>>(
+    action: &str,
+    args: I,
+) -> Result<RegisterArgs, Wrong> {
     let mut it = args.into_iter();
-    let mut parsed = RegisterArgs::default();
+    let mut parsed = RegisterArgs {
+        remove: action == "disable",
+        refresh_only: action == "refresh",
+        ..RegisterArgs::default()
+    };
     while let Some(arg) = it.next() {
-        match arg.as_str() {
-            "--module" => {
-                let path = it
-                    .next()
-                    .filter(|p| !p.is_empty())
-                    .ok_or(Wrong::NoValue("--module"))?;
-                if parsed.module.replace(PathBuf::from(path)).is_some() {
-                    return Err(Wrong::Twice("--module"));
-                }
+        if arg == "--module" && !parsed.remove {
+            let path = it
+                .next()
+                .filter(|p| !p.is_empty())
+                .ok_or(Wrong::NoValue("--module"))?;
+            if parsed.module.replace(PathBuf::from(path)).is_some() {
+                return Err(Wrong::Twice("--module"));
             }
-            "--remove" if parsed.remove => return Err(Wrong::Twice("--remove")),
-            "--remove" => parsed.remove = true,
-            "--refresh-only" if parsed.refresh_only => return Err(Wrong::Twice("--refresh-only")),
-            "--refresh-only" => parsed.refresh_only = true,
-            _ => return Err(Wrong::extra(arg)),
+        } else {
+            return Err(Wrong::extra(arg));
         }
-    }
-    if parsed.remove && parsed.refresh_only {
-        return Err(Wrong::Conflict("--remove", "--refresh-only"));
     }
     Ok(parsed)
 }

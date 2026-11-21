@@ -53,12 +53,15 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
     let help_only = args.len() == 2 && is_help(&args[1]);
     if let Some(spec) = known {
         if help_only {
-            return Ok(Command::Help(Some(spec.name)));
+            return Ok(Command::Help(Some(spec.path)));
+        }
+        if !spec.children.is_empty() {
+            return parse_group(spec, &args[1..]);
         }
         let bare = args.len() == 1;
         return parse_known(spec.name, args).map_err(|e| match e {
-            Bad::Wrong(Wrong::Missing(_)) if bare => ArgError::Bare(spec.name),
-            Bad::Wrong(w) => ArgError::CommandUsage(spec.name, w),
+            Bad::Wrong(Wrong::Missing(_)) if bare => ArgError::Bare(spec.path),
+            Bad::Wrong(w) => ArgError::CommandUsage(spec.path, w),
             Bad::BadId => ArgError::BadId,
         });
     }
@@ -69,6 +72,45 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
         return Ok(Command::Help(None));
     }
     Err(ArgError::Usage)
+}
+
+/// The words after a command that only groups others: a topic or an action each, down to the one
+/// that does something. Help for any level is `--help` or `-h` alone after its words.
+fn parse_group(group: &'static help::CommandSpec, rest: &[String]) -> Result<Command, ArgError> {
+    let mut node = group;
+    let mut rest = rest;
+    while !node.children.is_empty() {
+        let Some((word, after)) = rest.split_first() else {
+            return Err(ArgError::Bare(node.path));
+        };
+        if let Some(child) = node.children.iter().find(|c| c.name == *word) {
+            node = child;
+            rest = after;
+            if rest.len() == 1 && is_help(&rest[0]) {
+                return Ok(Command::Help(Some(node.path)));
+            }
+        } else {
+            return Err(ArgError::CommandUsage(
+                node.path,
+                Wrong::extra(word.clone()),
+            ));
+        }
+    }
+    let wrong = |w| ArgError::CommandUsage(node.path, w);
+    let it = rest.iter().cloned();
+    match node.path.split(' ').nth(1) {
+        Some("fingerprint") => {
+            end(it).map_err(wrong)?;
+            Ok(Command::Fingerprint(if node.name == "enable" {
+                Action::Enable
+            } else {
+                Action::Disable
+            }))
+        }
+        _ => register_native::parse_register_args(node.name, it)
+            .map(Command::Register)
+            .map_err(wrong),
+    }
 }
 
 /// What is wrong with the command line of a known command.
@@ -84,8 +126,6 @@ pub enum Wrong {
     NoValue(&'static str),
     /// An option given twice.
     Twice(&'static str),
-    /// Two options that exclude each other.
-    Conflict(&'static str, &'static str),
 }
 
 impl Wrong {
@@ -109,7 +149,6 @@ impl fmt::Display for Wrong {
             Self::Missing(a) => write!(f, "missing {a}"),
             Self::NoValue(o) => write!(f, "{o} needs a value"),
             Self::Twice(o) => write!(f, "{o} given twice"),
-            Self::Conflict(a, b) => write!(f, "{a} and {b} cannot go together"),
         }
     }
 }
@@ -156,23 +195,10 @@ fn parse_known(name: &str, args: Vec<String>) -> Result<Command, Bad> {
             end(it)?;
             Ok(Command::List(crate::list::ListArgs { id, ..args }))
         }
-        "fingerprint" => {
-            let action = match it.next().as_deref() {
-                Some("enable") => Action::Enable,
-                Some("disable") => Action::Disable,
-                Some(other) => return Err(Wrong::extra(other.to_owned()).into()),
-                None => return Err(Wrong::Missing("enable or disable").into()),
-            };
-            end(it)?;
-            Ok(Command::Fingerprint(action))
-        }
         "doctor" => {
             end(it)?;
             Ok(Command::Doctor)
         }
-        "register" => register_native::parse_register_args(it)
-            .map(Command::Register)
-            .map_err(Bad::Wrong),
         "delete" => {
             // `--` ends the options, so an id that starts with `-` can still be deleted. It is the
             // only option accepted, and it is not a bypass of the confirmation.
@@ -212,9 +238,9 @@ impl fmt::Display for ArgError {
         match self {
             Self::Usage => f.write_str(&usage()),
             Self::Bare(name) => f.write_str(&help::short(name).unwrap_or_else(usage)),
-            Self::CommandUsage(name, wrong) => write!(
+            Self::CommandUsage(path, wrong) => write!(
                 f,
-                "custodio {name}: {wrong}\nRun 'custodio {name} --help' for help."
+                "custodio {path}: {wrong}\nRun 'custodio {path} --help' for help."
             ),
             Self::BadId => f.write_str("cannot derive a key id from the file name; use --id"),
         }

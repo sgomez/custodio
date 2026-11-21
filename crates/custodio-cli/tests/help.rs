@@ -5,6 +5,7 @@ use std::error::Error;
 use std::process::{Command, Output};
 
 use custodio_cli::COMMANDS;
+use custodio_cli::help::{self, CommandSpec};
 
 type Res = Result<(), Box<dyn Error>>;
 
@@ -69,7 +70,7 @@ fn usage_errors_go_to_stderr_and_say_how_to_get_help() -> Res {
         vec!["--help", "list"],
         vec!["list", "--nosuch"],
         vec!["import", "--nosuch"],
-        vec!["register", "--nosuch"],
+        vec!["setup", "browsers", "enable", "--nosuch"],
         vec!["delete", "--nosuch"],
     ];
     for c in COMMANDS {
@@ -84,9 +85,23 @@ fn usage_errors_go_to_stderr_and_say_how_to_get_help() -> Res {
         assert!(out.stdout.is_empty(), "{line:?}");
         let err = text(&out.stderr);
         assert!(err.contains("--help"), "{line:?}: {err}");
-        if let Some(c) = line.first().and_then(|n| custodio_cli::help::command(n)) {
+        if let Some(c) = line
+            .first()
+            .and_then(|n| custodio_cli::help::command(n))
+            .filter(|_| !(line.len() > 2 && line[0] == "setup"))
+        {
             assert!(
                 err.contains(&format!("custodio {} --help", c.name)),
+                "{line:?}: {err}"
+            );
+        }
+        if line.len() > 2 && line[0] == "setup" {
+            // below a group the error names the level where it was found
+            assert!(
+                err.contains(&format!(
+                    "custodio {} --help",
+                    line[..line.len() - 1].join(" ")
+                )),
                 "{line:?}: {err}"
             );
         }
@@ -125,7 +140,7 @@ fn page_commands(page: &str) -> Vec<String> {
     found
 }
 
-/// The commands the global help lists under `Commands:`.
+/// The words the help lists under `Commands:`.
 fn help_commands(help: &str) -> Vec<String> {
     let mut found: Vec<String> = help
         .lines()
@@ -138,10 +153,43 @@ fn help_commands(help: &str) -> Vec<String> {
     found
 }
 
+/// Every command the help names, as the path to it: the global help's commands, and below each
+/// command that groups others the ones its own help lists.
+fn help_paths(run_help: &dyn Fn(&[&str]) -> String) -> Vec<String> {
+    fn below(
+        prefix: &[String],
+        listed: Vec<String>,
+        run_help: &dyn Fn(&[&str]) -> String,
+        out: &mut Vec<String>,
+    ) {
+        for name in listed {
+            let mut path = prefix.to_vec();
+            path.push(name);
+            let mut line: Vec<&str> = path.iter().map(String::as_str).collect();
+            line.push("--help");
+            let sub = help_commands(&run_help(&line));
+            if sub.is_empty() {
+                out.push(path.join(" "));
+            } else {
+                below(&path, sub, run_help, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    below(
+        &[],
+        help_commands(&run_help(&["--help"])),
+        run_help,
+        &mut out,
+    );
+    out.sort();
+    out
+}
+
 /// What differs between the help and the page, as lines that say what is missing where.
-fn disagreements(help_all: &str, global: &str, page: &str) -> Vec<String> {
+fn disagreements(help_all: &str, hc: &[String], page: &str) -> Vec<String> {
     let mut problems = Vec::new();
-    let (hc, pc) = (help_commands(global), page_commands(page));
+    let pc = page_commands(page);
     let (ho, po) = (long_options(help_all), long_options(page));
     for c in hc.iter().filter(|c| !pc.contains(c)) {
         problems.push(format!("command {c} is in the help, not in the page"));
@@ -158,35 +206,47 @@ fn disagreements(help_all: &str, global: &str, page: &str) -> Vec<String> {
     problems
 }
 
-fn every_help() -> Result<(String, String), Box<dyn Error>> {
-    let global = text(&run(&["--help"])?.stdout);
-    let mut all = global.clone();
-    for c in COMMANDS {
-        all.push_str(&text(&run(&[c.name, "--help"])?.stdout));
+/// The help of every level, one after the other.
+fn every_help() -> Result<String, Box<dyn Error>> {
+    let mut all = text(&run(&["--help"])?.stdout);
+    for c in help::all() {
+        let mut line: Vec<&str> = c.path.split(' ').collect();
+        line.push("--help");
+        all.push_str(&text(&run(&line)?.stdout));
     }
-    Ok((all, global))
+    Ok(all)
 }
 
 #[test]
 fn man_page_and_help_agree() -> Res {
     let page = std::fs::read_to_string(root("packaging/custodio.1"))?;
-    let (all, global) = every_help()?;
-    assert_eq!(disagreements(&all, &global, &page), Vec::<String>::new());
-    // what the help read from the binary has is what the table has
-    let mut table: Vec<String> = COMMANDS.iter().map(|c| c.name.to_owned()).collect();
+    let all = every_help()?;
+    let listed = help_paths(&|line| text(&run(line).map(|o| o.stdout).unwrap_or_default()));
+    assert_eq!(disagreements(&all, &listed, &page), Vec::<String>::new());
+    // what the help read from the binary has is what the table has: every command that does
+    // something, at any level
+    let mut table: Vec<String> = help::all()
+        .into_iter()
+        .filter(|c: &&CommandSpec| c.children.is_empty())
+        .map(|c| c.path.to_owned())
+        .collect();
     table.sort();
-    assert_eq!(help_commands(&global), table);
+    assert_eq!(listed, table);
+    assert!(!page.contains("custodio register") && !all.contains("custodio register"));
     Ok(())
 }
 
 const FIXTURE_HELP: &str = "Commands:\n  alpha     a\n\n  --one  x\n  --two  y\n";
-const FIXTURE_PAGE: &str =
-    ".SH SYNOPSIS\n.B custodio alpha\n.SH OPTIONS\n.B \\-\\-one\n.B \\-\\-two\n";
+const FIXTURE_PAGE: &str = ".SH SYNOPSIS\n.B custodio alpha\n.br\n.B custodio setup beta go\n.SH OPTIONS\n.B \\-\\-one\n.B \\-\\-two\n";
+
+fn fixture_paths() -> Vec<String> {
+    vec!["alpha".to_owned(), "setup beta go".to_owned()]
+}
 
 #[test]
 fn the_parity_check_accepts_agreeing_fixtures() {
     assert_eq!(
-        disagreements(FIXTURE_HELP, FIXTURE_HELP, FIXTURE_PAGE),
+        disagreements(FIXTURE_HELP, &fixture_paths(), FIXTURE_PAGE),
         Vec::<String>::new()
     );
 }
@@ -194,14 +254,14 @@ fn the_parity_check_accepts_agreeing_fixtures() {
 #[test]
 fn the_parity_check_fails_for_a_page_missing_an_option() {
     let page = FIXTURE_PAGE.replace(".B \\-\\-two\n", "");
-    let found = disagreements(FIXTURE_HELP, FIXTURE_HELP, &page);
+    let found = disagreements(FIXTURE_HELP, &fixture_paths(), &page);
     assert_eq!(found, ["option --two is in the help, not in the page"]);
 }
 
 #[test]
 fn the_parity_check_fails_for_a_page_with_an_extra_option() {
     let page = format!("{FIXTURE_PAGE}.B \\-\\-three\n");
-    let found = disagreements(FIXTURE_HELP, FIXTURE_HELP, &page);
+    let found = disagreements(FIXTURE_HELP, &fixture_paths(), &page);
     assert_eq!(found, ["option --three is in the page, not in the help"]);
 }
 
@@ -249,4 +309,21 @@ fn no_argument_parser_crate_in_the_graph() -> Res {
 fn the_dependency_check_sees_a_parser_crate_in_a_fixture_lock() {
     let lock = "[[package]]\nname = \"serde\"\nversion = \"1.0.0\"\n\n[[package]]\nname = \"clap\"\nversion = \"4.0.0\"\n";
     assert_eq!(banned_in(lock), ["clap"]);
+}
+
+#[test]
+fn the_parity_check_fails_for_a_page_missing_a_nested_action() {
+    let page = FIXTURE_PAGE.replace(".B custodio setup beta go\n", "");
+    let found = disagreements(FIXTURE_HELP, &fixture_paths(), &page);
+    assert_eq!(
+        found,
+        ["command setup beta go is in the help, not in the page"]
+    );
+}
+
+#[test]
+fn the_parity_check_fails_for_a_page_that_lists_register() {
+    let page = format!("{FIXTURE_PAGE}.B custodio register\n");
+    let found = disagreements(FIXTURE_HELP, &fixture_paths(), &page);
+    assert_eq!(found, ["command register is in the page, not in the help"]);
 }

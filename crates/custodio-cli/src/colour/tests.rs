@@ -49,8 +49,8 @@ fn headings_are_bold_and_the_text_is_the_same_without_the_escapes() {
             .lines()
             .any(|l| !l.starts_with(BOLD) && !l.ends_with(':'))
     );
-    for c in crate::COMMANDS {
-        let text = crate::help::text(Some(c.name));
+    for c in crate::help::all() {
+        let text = crate::help::text(Some(c.path));
         assert_eq!(strip(&headings(&text, true)), text);
     }
 }

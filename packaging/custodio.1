@@ -13,12 +13,17 @@ custodio \- import, list and delete keys of the custodio signing service
 .B custodio delete
 .I key id
 .br
-.B custodio register
+.B custodio setup browsers enable
 [\fB\-\-module\fR \fIpath\fR]
-[\fB\-\-remove\fR | \fB\-\-refresh\-only\fR]
 .br
-.B custodio fingerprint
-.RB ( enable | disable )
+.B custodio setup browsers disable
+.br
+.B custodio setup browsers refresh
+[\fB\-\-module\fR \fIpath\fR]
+.br
+.B custodio setup fingerprint enable
+.br
+.B custodio setup fingerprint disable
 .br
 .B custodio doctor
 .SH DESCRIPTION
@@ -136,7 +141,7 @@ to delete a key whose id starts with a dash, write
 .B \-\-
 before it.
 .PP
-.B register
+.B setup browsers enable
 makes the module visible to the native browsers (Firefox, Thunderbird, LibreWolf, Floorp, Waterfox) of the user who runs it.
 It lists their profiles (legacy
 .I ~/.mozilla/firefox
@@ -169,29 +174,33 @@ a run never creates a copy where there was none unless it registers a snap profi
 If a copy cannot be replaced, its line is \fBFAIL\fR with the reason and the exit status is 1.
 .TP
 .B \-\-module \fIpath\fR
-Register this library instead of the installed one.
+Add this library instead of the installed one (\fBenable\fR), or copy from it to the snap's copy (\fBrefresh\fR).
 It must exist: otherwise one error is printed and nothing is changed.
-.TP
-.B \-\-remove
-Remove every entry whose library is a Custodio module file (\fBlibcustodio_pkcs11.so\fR), whatever its name.
+.PP
+.B setup browsers disable
+removes every entry whose library is a Custodio module file (\fBlibcustodio_pkcs11.so\fR), whatever its name.
 This includes an entry added by hand, so it is wider than the entries
-.B register
+.B setup browsers enable
 added itself.
-The module file need not exist.
+The module file need not exist, and
+.B disable
+takes no
+.BR \-\-module .
 It also deletes the snap copy.
 If a snap profile is open, that profile keeps its entry and the copy stays, the profile is named, and the exit status is 1.
-.TP
-.B \-\-refresh\-only
-Only replace the snap copy if it exists and its bytes differ from the module's; do nothing else (no profile is read, and
+.PP
+.B setup browsers refresh
+only replaces the snap copy if it exists and its bytes differ from the module's (from the library given with
+.B \-\-module
+when there is one); it does nothing else (no profile is read, and
 .BR modutil (1)
 is not needed).
 It never creates a copy, and does nothing, with exit status 0, if there is no installed module.
 The outcome (\fBrefreshed\fR, up to date, no copy, no installed module, or the failure and its reason) is written to your journal with the identifier \fBcustodio\-register\fR, at error priority for a failure.
 A journal that cannot be reached is reported on standard error and does not change the exit status.
-It cannot be combined with
-.BR \-\-remove .
+It changes no profile.
 .PP
-.B fingerprint enable
+.B setup fingerprint enable
 writes
 .IR /etc/pam.d/polkit-1 ,
 so that every polkit dialog, Custodio's among them, first accepts a finger (\fBpam_fprintd.so\fR, one try, 10 seconds)
@@ -208,7 +217,7 @@ The file is written whole or not at all, mode 0644, owner root, with the SELinux
 Running it again changes nothing.
 On GNOME it adds a note that an enrolled finger may also unlock the lock screen; it changes no setting.
 .PP
-.B fingerprint disable
+.B setup fingerprint disable
 removes the file, only if it is exactly the one
 .B enable
 writes; with no file it says so and succeeds, and with any other file it refuses.
@@ -235,10 +244,10 @@ A warning is added when the override and the system's common-auth both ask for t
 is waited for 1.5 seconds for each question.
 Three more checks follow.
 The module is registered in each Firefox profile, one line per profile, found as
-.B register
+.B setup browsers enable
 finds them (the Firefox snap's copy of the module included, and a stale copy is not ok);
 a system where NSS loads the p11-kit proxy needs no registration;
-the fix is \fBcustodio register\fR.
+the fix is \fBcustodio setup browsers enable\fR.
 The systemd journal is persistent, read from \fIjournald.conf\fR, its drop-ins and \fI/var/log/journal\fR, never with \fBjournalctl\fR;
 a line that is not ok names the file and line that set it.
 The service's state directory is on an encrypted device: not-encrypted or unknown is not ok and the fix points to full-disk encryption;
@@ -281,9 +290,9 @@ or there is no terminal to confirm it on.
 The command line is wrong: the error says what is wrong.
 .BR import ,
 .B delete
-and
-.B fingerprint
-without arguments print their short help.
+and each level of
+.B setup
+without what it needs print their short help.
 .SH OPTIONS
 .TP
 .BI \-\-id " key id"

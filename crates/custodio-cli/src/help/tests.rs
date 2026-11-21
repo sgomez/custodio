@@ -12,21 +12,31 @@ fn options_in(text: &str) -> Vec<String> {
     found
 }
 
+fn all_commands() -> Vec<&'static CommandSpec> {
+    all()
+}
+
 fn all_helps() -> String {
     let mut all = global();
-    for c in COMMANDS {
-        all.push_str(&for_command(c.name).unwrap_or_default());
+    for c in all_commands() {
+        all.push_str(&for_command(c.path).unwrap_or_default());
     }
     all
 }
 
 #[test]
 fn every_command_has_its_own_help_with_every_part() {
-    for c in COMMANDS {
-        let text = for_command(c.name).unwrap_or_default();
+    for c in all() {
+        let text = for_command(c.path).unwrap_or_default();
         for part in ["Usage:", "Options:", "Example:", c.summary, c.description] {
-            assert!(text.contains(part), "{}: no {part:?}", c.name);
+            assert!(text.contains(part), "{}: no {part:?}", c.path);
         }
+        assert_eq!(
+            c.children.is_empty(),
+            !text.contains("Commands:"),
+            "{}",
+            c.path
+        );
         assert_eq!(
             c.args.is_empty(),
             !text.contains("Arguments:"),
@@ -41,6 +51,11 @@ fn every_command_has_its_own_help_with_every_part() {
                 o.flag
             );
         }
+        for child in c.children {
+            assert!(text.contains(child.name) && text.contains(child.summary));
+        }
+    }
+    for c in COMMANDS {
         assert!(global().contains(c.name) && global().contains(c.summary));
     }
     assert_eq!(for_command("nosuch"), None);
@@ -52,11 +67,7 @@ fn every_command_has_its_own_help_with_every_part() {
 #[test]
 fn the_help_names_no_option_that_is_not_in_the_table() {
     let mut known: Vec<&str> = vec!["--help"];
-    known.extend(
-        COMMANDS
-            .iter()
-            .flat_map(|c| c.options.iter().map(|o| o.flag)),
-    );
+    known.extend(all().iter().flat_map(|c| c.options.iter().map(|o| o.flag)));
     for found in options_in(&all_helps()) {
         assert!(
             known.contains(&found.as_str()),
@@ -67,10 +78,21 @@ fn the_help_names_no_option_that_is_not_in_the_table() {
 
 #[test]
 fn every_example_starts_with_its_command_and_is_accepted_by_the_parser() {
-    for c in COMMANDS {
+    for c in all() {
         let line = c.example.strip_prefix("sudo ").unwrap_or(c.example);
         let words: Vec<String> = line.split(' ').map(str::to_owned).collect();
-        assert_eq!(words[..2], ["custodio".to_owned(), c.name.to_owned()]);
+        let path: Vec<String> = c.path.split(' ').map(str::to_owned).collect();
+        assert_eq!(words[0], "custodio");
+        assert_eq!(
+            words[1..=path.len().min(words.len() - 1)],
+            path[..path.len().min(words.len() - 1)],
+            "{}",
+            c.example
+        );
+        if !c.children.is_empty() {
+            // a group's example is one of its own commands, whole
+            assert!(c.children.iter().any(|k| c.example.contains(k.name)));
+        }
         let parsed = parse_command(words[1..].iter().cloned());
         assert!(
             matches!(parsed, Ok(ref cmd) if !matches!(cmd, Command::Help(_))),
@@ -82,14 +104,15 @@ fn every_example_starts_with_its_command_and_is_accepted_by_the_parser() {
 
 #[test]
 fn the_parser_accepts_every_option_of_the_table() {
-    for c in COMMANDS {
+    for c in all() {
         for o in c.options {
             for form in std::iter::once(o.flag).chain(o.short) {
-                let mut line = vec![c.name.to_owned(), form.to_owned()];
+                let mut line: Vec<String> = c.path.split(' ').map(str::to_owned).collect();
+                line.push(form.to_owned());
                 if o.value.is_some() {
                     line.push("x.p12".to_owned());
                 }
-                if c.name == "import" {
+                if c.path == "import" {
                     line.push("a.p12".to_owned());
                 }
                 assert!(parse_command(line.clone()).is_ok(), "{line:?}");
@@ -100,13 +123,14 @@ fn the_parser_accepts_every_option_of_the_table() {
 
 #[test]
 fn the_usage_line_of_each_command_starts_with_it() {
-    for c in COMMANDS {
-        assert!(c.usage_line().starts_with(&format!("custodio {}", c.name)));
+    for c in all() {
+        assert!(c.usage_line().starts_with(&format!("custodio {}", c.path)));
+        assert!(c.path.ends_with(c.name));
     }
-    for c in COMMANDS.iter().filter(|c| c.name != "register") {
+    for c in all() {
         assert_eq!(
             c.usage_line(),
-            format!("custodio {} {}", c.name, c.usage).trim_end()
+            format!("custodio {} {}", c.path, c.usage).trim_end()
         );
         for a in c.args {
             assert!(
@@ -121,10 +145,15 @@ fn the_usage_line_of_each_command_starts_with_it() {
 
 #[test]
 fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_the_rest_is() {
-    for c in COMMANDS {
-        let text = short(c.name).unwrap_or_default();
+    for c in all() {
+        let text = short(c.path).unwrap_or_default();
         let mut parts = vec![c.usage_line(), c.example.to_owned()];
-        parts.push(format!("custodio {} --help", c.name));
+        parts.push(format!("custodio {} --help", c.path));
+        parts.extend(
+            c.children
+                .iter()
+                .flat_map(|k| [k.name.to_owned(), k.summary.to_owned()]),
+        );
         parts.extend(
             c.args
                 .iter()
@@ -139,7 +168,49 @@ fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_
         for part in parts {
             assert!(text.contains(&part), "{}: no {part:?}", c.name);
         }
-        assert!(!text.contains(c.description), "{}", c.name);
+        assert!(!text.contains(c.description), "{}", c.path);
+        // nothing of another level: no sibling, no grandchild
+        for other in all().into_iter().filter(|o| !c.path.starts_with(o.path)) {
+            if !c.children.iter().any(|k| k.path == other.path) {
+                let row = format!("  {} ", other.name);
+                let same_name = c.children.iter().any(|k| k.name == other.name)
+                    || c.options.iter().any(|o| o.flag == other.name);
+                assert!(
+                    same_name || !text.lines().any(|l| l.starts_with(&row)),
+                    "{}: {}",
+                    c.path,
+                    other.path
+                );
+            }
+        }
     }
     assert_eq!(short("nosuch"), None);
+    assert_eq!(short("setup nosuch"), None);
+}
+
+/// Control: dropping one action from a level's short help is seen by the check above.
+#[test]
+fn the_short_help_check_sees_a_dropped_action() {
+    let level = find("setup browsers")
+        .map(|c| c.children)
+        .unwrap_or_default();
+    let text = short("setup browsers").unwrap_or_default();
+    let dropped = text
+        .lines()
+        .filter(|l| !l.starts_with(&format!("  {} ", level[0].name)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains(level[0].summary));
+    assert!(!dropped.contains(level[0].summary));
+}
+
+#[test]
+fn find_follows_a_path_down_the_table() {
+    assert_eq!(
+        find("setup browsers enable").map(|c| c.name),
+        Some("enable")
+    );
+    assert_eq!(find("setup fingerprint").map(|c| c.children.len()), Some(2));
+    assert!(find("register").is_none() && find("fingerprint").is_none());
+    assert!(find("setup enable").is_none() && find("list enable").is_none());
 }
