@@ -25,7 +25,8 @@ KEY_LINE = re.compile(r"(ok|warn) +(\S+)  +(\S+)  +(\S+)")
 
 
 def key_lines(text):
-    lines = text.replace("\r", "").split("\n")
+    # On a terminal (import.py runs the CLI on a pty) the CLI colours the word: the layout is read without the colour codes.
+    lines = re.sub(r"\x1b\[[0-9;]*m", "", text).replace("\r", "").split("\n")
     found = []
     for i, ln in enumerate(lines):
         m = KEY_LINE.fullmatch(ln)
