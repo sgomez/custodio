@@ -25,7 +25,22 @@ fn state_dir(var: Option<OsString>) -> PathBuf {
     fs::canonicalize(&dir).unwrap_or(dir)
 }
 
+/// F214: no core file and no handler-made dump of the decrypted keys, whatever the unit and the core handler say.
+/// The limit goes first, then the flag: a non-dumpable process is skipped by the kernel before any handler is run.
+fn harden() -> rustix::io::Result<()> {
+    use rustix::process::{DumpableBehavior, Resource, Rlimit, set_dumpable_behavior, setrlimit};
+    setrlimit(
+        Resource::Core,
+        Rlimit {
+            current: Some(0),
+            maximum: Some(0),
+        },
+    )?;
+    set_dumpable_behavior(DumpableBehavior::NotDumpable)
+}
+
 fn run() -> Result<(), Box<dyn Error>> {
+    harden()?;
     let store = Arc::new(KeyStore::open(state_dir(env::var_os("STATE_DIRECTORY")))?);
     block_on(async {
         // An import chooses TPM, encrypted TPM-bound or encrypted host-bound from what this access point finds.

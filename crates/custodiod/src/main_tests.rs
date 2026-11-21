@@ -214,3 +214,13 @@ mod wiring {
         Ok(())
     }
 }
+
+#[test]
+fn core_limit_and_dumpable() -> TestResult {
+    use rustix::process::{DumpableBehavior, Resource, dumpable_behavior, getrlimit};
+    harden()?;
+    let limit = getrlimit(Resource::Core);
+    assert_eq!((limit.current, limit.maximum), (Some(0), Some(0)));
+    assert_eq!(dumpable_behavior()?, DumpableBehavior::NotDumpable);
+    Ok(())
+}
