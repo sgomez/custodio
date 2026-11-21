@@ -557,3 +557,11 @@ with an empty context.
 - Done: step 1 `CHECK_FORCE=1 just check` run twice: red only on the two Arch image builds (archive.archlinux.org times out; see BLOCKED.md).
   `test-vm-gap-map.sh` failed once in run 1 (case list line missing, flaky), green alone and in run 2.
 - Not done: everything after; steps unticked. Next session: after the network is back, rerun step 1 and go on; look into the gap-map flake if it recurs.
+
+### 2026-11-21 — F213 — attempt 2 (session 2)
+- Done: step 1 green (`CHECK_FORCE=1 just check`, api-contract, fuzz-smoke, memory-safety; Arch images now load from the saved tars). Step 2: first `just e2e` failed on debian13
+  (both modes): `tpm-kind-import-*` and `fallback-host-import-*` read 0 key lines because the CLI (since F210) colours the `ok` word on the pty `import.py` uses. Fix: `key_lines` in
+  `e2e/fallback.py`, `tpmfail.py`, `tpmkind.py` strips colour codes (no new test; the existing runs cover it). Rerun of `just e2e`: six records, all passed, wall 176 s max
+  (alma10 146, arch 149, debian13 swtpm 176, fedora44 136, ubuntu2604 146, debian13 none 153; all far under rows). Counts: doctor 11 each; fingerprint alma10 9, arch 7, debian13 8 (×2 records),
+  fedora44 9, ubuntu2604 8; memory 4 in each debian13 log; none skipped. Records: six = five targets, debian13 twice (swtpm and none).
+- Next: step 3 (package-gates, coverage, crap), step 4 (VM), step 5.
