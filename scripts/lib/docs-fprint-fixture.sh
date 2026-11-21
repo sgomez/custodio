@@ -1,5 +1,5 @@
 # shellcheck shell=bash disable=SC2016,SC2153
-# Fixtures for the docs tests that run `custodio fingerprint` and `custodio doctor` on a documented page (F207). Sourced; the
+# Fixtures for the docs tests that run `custodio setup fingerprint` and `custodio doctor` on a documented page (F207). Sourced; the
 # caller sets ROOT. The CLI is built with the test-only `fixture-root` feature in its own target directory (so it does not
 # replace the binary the other tests use) and every path it touches is under CUSTODIO_FIXTURE_ROOT. Tools the dev container lacks are
 # wrappers first on PATH: `sudo` runs `custodio ...` as the fixture's root (CUSTODIO_FIXTURE_EUID=0) and refuses anything else;
@@ -123,7 +123,7 @@ fp_doc_setup() {
     case $name in
         ok | noreader | nofinger | plainstorage | plainreason | brokeninclude | foreign | default)
             fp_root "$d" debian
-            case $name in ok | brokeninclude) CUSTODIO_FIXTURE_ROOT=$d CUSTODIO_FIXTURE_EUID=0 "$FP_CLI" fingerprint enable > /dev/null 2>&1 ;; esac
+            case $name in ok | brokeninclude) CUSTODIO_FIXTURE_ROOT=$d CUSTODIO_FIXTURE_EUID=0 "$FP_CLI" setup fingerprint enable > /dev/null 2>&1 ;; esac
             [ "$name" != brokeninclude ] || rm "$d/usr/lib/pam.d/polkit-1"
             [ "$name" != foreign ] || echo "# the administrator's own file" > "$d/etc/pam.d/polkit-1"
             case $name in

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # F179: container-free checks of the snap-* cases (e2e/vm/snap.py, snap-lib.sh): the judge of every case accepts a fixture of the guest's evidence and rejects one
-# broken fact, the real `custodio register` acts on the profile the place phase makes, and the mode that skips the cases reports them. NOT checked here: a real guest.
+# broken fact, the real `custodio setup browsers enable` acts on the profile the place phase makes, and the mode that skips the cases reports them. NOT checked here: a real guest.
 # shellcheck disable=SC2015,SC2016 # A && B || bad is the check; single quotes hold text for the copies
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -116,11 +116,11 @@ stub=$(find /usr/lib /usr/lib64 -name libsoftokn3.so -print -quit 2> /dev/null) 
 mkdir -p "$tmp/mod"
 cp "$stub" "$tmp/mod/libcustodio_pkcs11.so"
 reg() { # HOME: the real command on it, as the place phase runs it, with the module of this run
-    HOME=$1 "$bin" register --module "$tmp/mod/libcustodio_pkcs11.so"
+    HOME=$1 "$bin" setup browsers enable --module "$tmp/mod/libcustodio_pkcs11.so"
 }
 mkdir -p "$tmp/home"
 snap_make_profile "$tmp/home/snap/firefox/common/.mozilla/firefox" || bad "snap_make_profile failed on a temporary home"
-out=$(reg "$tmp/home") || bad "custodio register failed on the home the function made: $out"
+out=$(reg "$tmp/home") || bad "custodio setup browsers enable failed on the home the function made: $out"
 grep -qE '^ok +Firefox \(snap\)  +s\.default: ' <<< "$out" || bad "the command did not report the snap profile registered: $out"
 cmp -s "$tmp/mod/libcustodio_pkcs11.so" "$tmp/home/snap/firefox/common/libcustodio_pkcs11.so" || bad "the copy is not the module"
 modutil -dbdir "sql:$tmp/home/snap/firefox/common/.mozilla/firefox/s.default" -list < /dev/null | grep -q 'common/libcustodio_pkcs11.so' || bad "the profile does not list the copy"

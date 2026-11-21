@@ -166,7 +166,7 @@ def main(case, d):
         c3 = line(br, POLKIT)
         need(c3["word"] == "not ok", f"broken: polkit is '{c3['raw']}', not 'not ok'")
         need(inc in c3["text"], f"broken: polkit does not name {inc}")
-        need(any("sudo custodio fingerprint disable" in x for x in c3["fixes"]), "broken: the fix is not 'sudo custodio fingerprint disable'")
+        need(any("sudo custodio setup fingerprint disable" in x for x in c3["fixes"]), "broken: the fix is not 'sudo custodio setup fingerprint disable'")
         need(bool(br) and broken_include(br, br[0]), "broken: the include line is not the first line")
         need(POLKIT in counting(br), "broken: the include line is not among the counting lines")
         need(POLKIT not in counting(on), "on: the intact include counts")

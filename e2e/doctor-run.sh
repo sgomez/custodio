@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Root side of the doctor-* cases (F204, acceptance 17 of SPEC.md, doctor part). Runs the installed `custodio doctor` as a regular account (doctor-user.sh, `su -l`) on the real /etc of the target and
-# judges what it prints (e2e/doctor.py reads the observations in $WORK/doctor). Staged, and put back by the exit trap: the override (`custodio fingerprint enable`), the file its include names (renamed in its
+# judges what it prints (e2e/doctor.py reads the observations in $WORK/doctor). Staged, and put back by the exit trap: the override (`custodio setup fingerprint enable`), the file its include names (renamed in its
 # own directory), the journal (a directory made, or a drop-in with Storage=volatile; journald restarted), custodio.service stopped. The image's pam_permit /etc/pam.d/polkit-1 (the test agent's) is
 # renamed to /etc/pam.d.doctor-aside, as fingerprint-run.sh does. Exit 0 cannot happen in a container (the state directory is on overlay, check 6 is `not ok`); F203's doctor_acceptance covers it.
 set -euo pipefail
@@ -49,7 +49,7 @@ cleanup() {
     systemctl unmask --runtime custodio.service > /dev/null 2>&1
     systemctl start custodio.service > /dev/null 2>&1
     [ ! -e "$INCLUDE.doctor-aside" ] || mv -f "$INCLUDE.doctor-aside" "$INCLUDE"
-    if [ -e "$OVERRIDE" ] && [ -e "$ASIDE" ]; then custodio fingerprint disable > /dev/null 2>&1; [ ! -e "$OVERRIDE" ] || rm -f "$OVERRIDE"; fi
+    if [ -e "$OVERRIDE" ] && [ -e "$ASIDE" ]; then custodio setup fingerprint disable > /dev/null 2>&1; [ ! -e "$OVERRIDE" ] || rm -f "$OVERRIDE"; fi
     [ ! -e "$ASIDE" ] || { rm -f "$OVERRIDE"; mv -f "$ASIDE" "$OVERRIDE"; }
     if [ -n "$journal_staged" ]; then
         rm -f "$DROPIN"
@@ -126,7 +126,7 @@ sig_count "$since" | obs never.sig.after
 id -nG "$TUSER" | obs never.groups
 
 # the override on, its include broken, the override off
-fp_ok() { custodio fingerprint "$@" > /dev/null 2>&1 || fail "custodio fingerprint $* failed"; }
+fp_ok() { custodio setup fingerprint "$@" > /dev/null 2>&1 || fail "custodio setup fingerprint $* failed"; }
 fp_ok enable
 echo 1 | obs override.present
 INCLUDE=$(sed -n 's/^auth[[:space:]]\+include[[:space:]]\+//p' "$OVERRIDE" | head -n 1)

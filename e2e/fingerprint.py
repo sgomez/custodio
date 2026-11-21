@@ -8,10 +8,10 @@ Manifests: one line per path, `path type mode owner label hash [mtime]`, sorted;
 import os
 import sys
 
-# What `custodio fingerprint enable` writes (crates/custodio-cli/src/fingerprint_decide.rs, FILE).
+# What `custodio setup fingerprint enable` writes (crates/custodio-cli/src/fingerprint_decide.rs, FILE).
 EXPECTED = (
     "#%PAM-1.0\n"
-    "# Written by 'custodio fingerprint enable'. Remove it with 'sudo custodio fingerprint disable'.\n"
+    "# Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.\n"
     "# If you edit this file, Custodio treats it as yours and will not touch it again.\n"
     "auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10\n"
     "auth     include /usr/lib/pam.d/polkit-1\n"

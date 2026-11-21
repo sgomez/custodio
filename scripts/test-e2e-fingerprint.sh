@@ -22,9 +22,9 @@ good() { # DIR: the accepted observations of every case
     for c in refuse-foreign refuse-no-vendor refuse-no-module; do
         w "$d" $c rc 1; w "$d" $c before "$M"; w "$d" $c after "$M"
     done
-    w "$d" refuse-foreign out 'custodio fingerprint: /etc/pam.d/polkit-1 is not Custodio'"'"'s'
-    w "$d" refuse-no-vendor out 'custodio fingerprint: /usr/lib/pam.d/polkit-1 is missing'
-    w "$d" refuse-no-module out 'custodio fingerprint: pam_fprintd.so is not installed'
+    w "$d" refuse-foreign out 'custodio setup fingerprint: /etc/pam.d/polkit-1 is not Custodio'"'"'s'
+    w "$d" refuse-no-vendor out 'custodio setup fingerprint: /usr/lib/pam.d/polkit-1 is missing'
+    w "$d" refuse-no-module out 'custodio setup fingerprint: pam_fprintd.so is not installed'
     w "$d" disable-restores rc 0; w "$d" disable-restores before "$M"; w "$d" disable-restores after "$M"
     w "$d" disable-restores agent-before '/etc/pam.d/polkit-1 file 644 root:root - cccc'; w "$d" disable-restores agent-after '/etc/pam.d/polkit-1 file 644 root:root - cccc'
     w "$d" pam-auth-update rc-enable 0; w "$d" pam-auth-update rc-disable 0
@@ -64,7 +64,7 @@ ctl twice-empty enable-twice 'empty' before ''
 for c in refuse-foreign refuse-no-vendor refuse-no-module; do
     ctl "$c-left-file" $c 'manifests differ' after "$M"$'\n/etc/pam.d/polkit-1 file 644 root:root - eeee'
     ctl "$c-accepted" $c 'did not refuse' rc 0
-    ctl "$c-no-cause" $c 'does not name the cause' out 'custodio fingerprint: something'
+    ctl "$c-no-cause" $c 'does not name the cause' out 'custodio setup fingerprint: something'
 done
 ctl disable-extra disable-restores 'byte for byte' after "$M"$'\n/etc/pam.d/polkit-1 file 644 root:root - eeee'
 ctl disable-mode disable-restores 'byte for byte' after "${M/644 root:root - bbbb/600 root:root - bbbb}"

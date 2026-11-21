@@ -132,7 +132,7 @@ rm -f "$FP/user/k.p12" # no key material stays in the evidence
 # the harness's pam_permit file is a foreign file for `enable`: set aside, the real layout used
 mv -f "$PAMF" "$ASIDE"
 override=no
-if custodio fingerprint enable > "$FP/enable.out" 2>&1 && [ -f "$PAMF" ] && grep -q pam_fprintd "$PAMF"; then override=yes; fi
+if custodio setup fingerprint enable > "$FP/enable.out" 2>&1 && [ -f "$PAMF" ] && grep -q pam_fprintd "$PAMF"; then override=yes; fi
 {
     echo "staging=$([ "$virt$sock$enrolled$override" = yesyesyesyes ] && echo ok || echo failed)"
     echo "virtual_driver=$virt"
@@ -233,7 +233,7 @@ enroll_finger
 fprintd_back fallback-finger
 
 # disabled: the override is gone, polkit shows the password only and consumes no scan
-custodio fingerprint disable > "$FP/disable.out" 2>&1 || fail "custodio fingerprint disable failed: $(head -c 300 "$FP/disable.out")"
+custodio setup fingerprint disable > "$FP/disable.out" 2>&1 || fail "custodio setup fingerprint disable failed: $(head -c 300 "$FP/disable.out")"
 if [ -e "$PAMF" ] && grep -q pam_fprintd "$PAMF"; then echo fprintd > "$FP/disabled.pam"; else echo absent > "$FP/disabled.pam"; fi
 approve disabled "{\"prompt-password\":[\"type:$FPPW\"]}" 0
 

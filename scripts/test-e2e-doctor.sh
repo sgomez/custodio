@@ -23,9 +23,9 @@ rep() {
 }
 L1=$(c FAIL reader 'fprintd is not installed' 'Fix: install fprintd and libpam-fprintd')
 L2=$(c '?' finger 'no reader to ask' 'Fix: fix the reader first')
-L3_OFF=$(c FAIL polkit off 'Fix: sudo custodio fingerprint enable')
+L3_OFF=$(c FAIL polkit off 'Fix: sudo custodio setup fingerprint enable')
 L3_ON=$(c ok polkit on)
-L3_BR=$(c FAIL polkit '/etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing' 'No polkit dialog works, not even with the password.' 'Fix: reinstall polkit, or: sudo custodio fingerprint disable')
+L3_BR=$(c FAIL polkit '/etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing' 'No polkit dialog works, not even with the password.' 'Fix: reinstall polkit, or: sudo custodio setup fingerprint disable')
 L4=$(c ok profiles 'none found, nothing to register')
 L4N=$(c '?' profiles 'cannot look for them: x' "Fix: fix or remove that file, then run 'custodio doctor' again")
 L5=$(c ok journal persistent)
@@ -86,7 +86,7 @@ ctl broken-ignored broken-include "not 'not ok'" broken.out "$(rep "$L1"$'\n'"$L
 ctl broken-no-fix broken-include 'the fix is not' broken.out "$(rep "$(c FAIL polkit '/etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing' 'No polkit dialog works.' 'Fix: x')"$'\n'"$L1"$'\n'"$L2" "$L4" "$SYS")"
 ctl broken-first-notok broken-include 'not the first line' broken.out "$(rep "$L1"$'\n'"$L2"$'\n'"$L3_BR" "$L4" "$SYS")"
 ctl fox-notok no-firefox-profile 'is not ok' base.out "$(rep "$FP" "$L4N" "$SYS")"
-ctl fox-profile-line no-firefox-profile "not the one 'profiles' line" base.out "$(rep "$FP" "$(c FAIL Firefox 'a.default: not registered' 'Fix: custodio register, then restart the browsers')" "$SYS")"
+ctl fox-profile-line no-firefox-profile "not the one 'profiles' line" base.out "$(rep "$FP" "$(c FAIL Firefox 'a.default: not registered' 'Fix: custodio setup browsers enable, then restart the browsers')" "$SYS")"
 ctl fox-home no-firefox-profile 'home is not as before' home.after 'changed'
 ctl journal-ok-no-dir journal 'says not ok' journal.dir 0
 ctl journal-no-flip journal 'did not flip' jflip.out "$(rep "$FP" "$L4" "$SYS")"

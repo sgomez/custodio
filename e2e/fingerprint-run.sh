@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Root side of the fingerprint-* cases (F199, acceptance 17 of SPEC.md). Runs the installed `custodio fingerprint` on the real /etc and /usr of the target. It does not touch the daemon,
+# Root side of the fingerprint-* cases (F199, acceptance 17 of SPEC.md). Runs the installed `custodio setup fingerprint` on the real /etc and /usr of the target. It does not touch the daemon,
 # keys or the TPM. The image's pam_permit /etc/pam.d/polkit-1 (the test agent's) is renamed to /etc/pam.d.fp-aside (same file system: mode, owner and label stay) and put back at the end and
 # from the exit trap. The files the cases move aside (vendor file, module) are renamed in their own directory and put back the same way. Observations go to $WORK/fp as <case>.<name>
 # and e2e/fingerprint.py judges each case; every notes line of the judge ("SELinux not enforcing here") is shown in the run record.
@@ -41,10 +41,10 @@ manifest() { # PATH...: one line per path: path type mode owner label hash [mtim
     done
 }
 obs() { cat > "$OBS/$1.$2"; } # CASE NAME, content on stdin
-fp() { # CASE: run `custodio fingerprint ARGS`, its exit code and output into CASE.rc and CASE.out
+fp() { # CASE: run `custodio setup fingerprint ARGS`, its exit code and output into CASE.rc and CASE.out
     local case=$1 rc=0
     shift
-    custodio fingerprint "$@" > "$OBS/$case.out" 2>&1 || rc=$?
+    custodio setup fingerprint "$@" > "$OBS/$case.out" 2>&1 || rc=$?
     echo "$rc" > "$OBS/$case.rc"
 }
 client() { python3 -I "$here/fingerprint-pam.py" polkit-1 "$TUSER" "$1"; }
@@ -55,7 +55,7 @@ cleanup() {
     cleaned=1
     set +e
     if [ -e $PAMD/polkit-1 ] && [ -e "$ASIDE" ]; then
-        custodio fingerprint disable > /dev/null 2>&1
+        custodio setup fingerprint disable > /dev/null 2>&1
         [ ! -e $PAMD/polkit-1 ] || rm -f $PAMD/polkit-1
     fi
     [ ! -e "$VENDOR_ASIDE" ] || mv -f "$VENDOR_ASIDE" "$VENDOR"
@@ -118,7 +118,7 @@ client "$TPASS" | obs pam-password disabled
 
 # the family cases, with the override enabled again
 if owes fingerprint-pam-auth-update; then
-    custodio fingerprint enable > /dev/null 2>&1 || fail "enable (before pam-auth-update) failed"
+    custodio setup fingerprint enable > /dev/null 2>&1 || fail "enable (before pam-auth-update) failed"
     ov() { { stat -c '%a %U:%G' $PAMD/polkit-1; sha256sum < $PAMD/polkit-1; } | obs pam-auth-update "$1"; }
     ca() { sha256sum < $PAMD/common-auth | obs pam-auth-update "$1"; }
     ov override-before; ca common-before
@@ -130,7 +130,7 @@ if owes fingerprint-pam-auth-update; then
     ov override-disabled; ca common-disabled
 fi
 if owes fingerprint-authselect; then
-    [ -f $PAMD/polkit-1 ] || custodio fingerprint enable > /dev/null 2>&1 || fail "enable (before authselect) failed"
+    [ -f $PAMD/polkit-1 ] || custodio setup fingerprint enable > /dev/null 2>&1 || fail "enable (before authselect) failed"
     ov() { { stat -c '%a %U:%G' $PAMD/polkit-1; sha256sum < $PAMD/polkit-1; } | obs authselect "$1"; }
     ov override-before
     sa() { sha256sum < $PAMD/system-auth | obs authselect "$1"; }

@@ -14,7 +14,7 @@ snap_problems() {
     printf '%s\n' "$o" | sed '/^$/d'
 }
 
-# snap_make_profile ROOT: a Firefox profile root with one profile `s.default` (profiles.ini and an empty NSS database), which is what `custodio register` acts on.
+# snap_make_profile ROOT: a Firefox profile root with one profile `s.default` (profiles.ini and an empty NSS database), which is what `custodio setup browsers enable` acts on.
 # A first `snap run --shell firefox` creates no profile and a headless first start is not used, so the harness makes it (F183).
 snap_make_profile() {
     local root=$1
