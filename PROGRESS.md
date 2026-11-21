@@ -496,7 +496,9 @@ with an empty context.
   were reworded (`custodio li` is not a command). `test-user-refresh-units.sh` judge now reads `replaced, it differed` (the F210
   output) instead of `refreshed`. Runners passed on this tree: readme, install-register, fingerprint, guide, manual-m7,
   release-notes, threat-model, user-refresh-units, package-scripts, check-packages-pam, e2e-fingerprint, e2e-doctor, e2e-vm-snap.
-- Not done: step 3's unit test "every message names a real command" with its two controls (still unwritten) and the stronger
-  short-help control; step 1 (`just fuzz-build`); step 9 (`just quick`, mutants-diff F212, the three doc runners were not re-run after the
-  last doc rewording of Tab lines: guide, manual-m7). Prefix constant for error lines is a list in `setup.rs` (`SETUP_PREFIXES`).
-- Next session should: write the step 3 test, run `just fuzz-build`, `just quick`, `just mutants-diff F212`, re-run guide/manual-m7 runners.
+- Later in the same session: `just fuzz-build` and `just quick` pass (step 1 ticked); `error/tests.rs` checks that every command a
+  `CliError` sample names parses (with a control), and `register_native/skips.rs` was split (`killed.rs`) for the file-size gate.
+- Not done: step 3 stays unticked: the same check is still missing for doctor `Fix:` lines (all states), enable's undo hint, the
+  polkit file header and the `register_lines` fixes, and the short-help control in `help/tests.rs` is still the weak one. Step 9:
+  `just mutants-diff F212` not run yet; `guide` and `manual-m7` doc runners to be re-run after the Tab-line rewording.
+- Next session should: finish step 3 (the missing sources above), then run mutants-diff F212 and the verify's fast part.
