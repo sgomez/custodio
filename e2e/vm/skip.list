@@ -30,3 +30,12 @@ vm-fingerprint-fallback-module: lacking mode: the fingerprint group runs in the 
 vm-fingerprint-fallback-daemon: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
 vm-fingerprint-fallback-reader: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
 vm-fingerprint-fallback-finger: lacking mode: the fingerprint group runs in the full VM mode (SPEC, end-to-end scope; acceptances 18 and 19)
+vm-memory-swap-max: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-default-stage: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-default-crash: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-default-crash-override: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-default-control: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-coredump-stage: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-coredump-crash: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-coredump-crash-override: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode
+vm-memory-coredump-control: lacking mode: the memory group runs in the full VM mode (SPEC acceptance 24); the unit, the kernel and the handlers do not depend on the TPM mode

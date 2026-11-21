@@ -242,6 +242,12 @@ if phase_runs vm-fingerprint; then
 fi
 phase_done vm-fingerprint
 
+# The memory cases of the VM (F214, full mode): crashes of custodiod under apport and under systemd-coredump; e2e/vm/memory.sh. After the fingerprint group.
+if phase_runs vm-memory; then
+    WORK=$work E2E_VM=$vm E2E_TPM=$tpm_mode bash "$E2E_DIR/vm/memory.sh" || fail "memory.sh failed"
+fi
+phase_done vm-memory
+
 # The signing cases (F134): alice imports an RSA 2048 and a P-256 key, signs with every mechanism the module offers and `openssl` verifies each signature with the key's certificate; they run
 # in every TPM mode (the keys get another kind in each). After tpm-kind and before the upgrade, for the same reasons; both keys are deleted, so the state and the counts are as before.
 if phase_runs sign; then
@@ -317,6 +323,10 @@ phase_done fingerprint
 # The doctor cases (F204): containers only, after fingerprint.
 if [ -z "$vm" ] && phase_runs doctor; then WORK=$work bash /e2e/doctor-run.sh || fail "doctor-run.sh failed"; fi
 phase_done doctor
+
+# The memory cases (F214): the unit's core and swap settings, the service's own limit and flag; containers only (the crashes are vm-memory-*). After doctor.
+if [ -z "$vm" ] && phase_runs memory; then WORK=$work bash /e2e/memory-run.sh || fail "memory-run.sh failed"; fi
+phase_done memory
 
 # The upgrade case comes last, so it does not disturb the audit counts above; the lifecycle cases start from its state.
 if phase_runs upgrade; then

@@ -65,3 +65,13 @@ vm-fingerprint-fallback-module
 vm-fingerprint-fallback-daemon
 vm-fingerprint-fallback-reader
 vm-fingerprint-fallback-finger
+# F214: custodiod's crashes leave no core under the default handler and under systemd-coredump, with controls; e2e/vm/memory.sh (the full mode; the container cases are memory-*)
+vm-memory-swap-max
+vm-memory-default-stage
+vm-memory-default-crash
+vm-memory-default-crash-override
+vm-memory-default-control
+vm-memory-coredump-stage
+vm-memory-coredump-crash
+vm-memory-coredump-crash-override
+vm-memory-coredump-control
