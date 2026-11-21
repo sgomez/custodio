@@ -11,8 +11,8 @@ Download `custodio_0.9.0-1_amd64.deb` to the directory you are in, then:
 
 ```console
 $ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
-custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
-custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable
+custodio: Custodio's dialogs ask for your password; the fingerprint is off.
+custodio: to let a finger answer them, and every other polkit dialog, run: sudo custodio setup fingerprint enable
 custodio: to check the setup at any time, run: custodio doctor
 ```
 

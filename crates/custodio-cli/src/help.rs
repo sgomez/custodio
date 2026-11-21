@@ -54,9 +54,10 @@ const SETUP: &[CommandSpec] = &[
     CommandSpec {
         name: "browsers",
         path: "setup browsers",
-        summary: "make the module visible to the native browsers",
+        summary: "add Custodio to Firefox, Thunderbird and LibreWolf, or remove it",
         usage: "<action>",
-        description: "Adds or removes the module in your browser profiles. Restart the browser afterwards.",
+        description: "Adds Custodio's PKCS#11 module to your browser profiles, the Firefox snap's included, or removes it.\n\
+Close the browser before and open it again after.",
         args: &[],
         options: &[],
         example: "custodio setup browsers enable",
@@ -64,20 +65,24 @@ const SETUP: &[CommandSpec] = &[
             CommandSpec {
                 name: "enable",
                 path: "setup browsers enable",
-                summary: "add the module to your browser profiles",
+                summary: "add Custodio to your browser profiles",
                 usage: "[--module <path>]",
-                description: "Adds the module to your browser profiles. Run it after installing and after creating a profile, then restart the browser.",
+                description: "Adds Custodio's module to every profile of Firefox, Thunderbird and LibreWolf,\n\
+the Firefox snap's included. Run it once after installing, and again after creating a profile.\n\
+Close the browser before and open it again after: a profile the browser holds open is skipped.",
                 args: &[],
                 options: &[MODULE],
-                example: "custodio setup browsers enable --module /usr/lib/custodio/libcustodio_pkcs11.so",
+                example: "custodio setup browsers enable",
                 children: &[],
             },
             CommandSpec {
                 name: "disable",
                 path: "setup browsers disable",
-                summary: "remove the entries of every Custodio module file",
+                summary: "remove Custodio from your browser profiles",
                 usage: "",
-                description: "Removes the module from your browser profiles, whichever Custodio module file they name. It does not need the file to exist.",
+                description: "Removes Custodio's module from every browser profile, wherever it was installed from,\n\
+even if it is gone.\n\
+Close the browser before and open it again after.",
                 args: &[],
                 options: &[],
                 example: "custodio setup browsers disable",
@@ -88,7 +93,9 @@ const SETUP: &[CommandSpec] = &[
                 path: "setup browsers refresh",
                 summary: "update the Firefox snap's copy of the module",
                 usage: "[--module <path>]",
-                description: "Only updates the copy of the module that the Firefox snap loads, if it differs. It changes no profile.",
+                description: "Updates the copy of the module that the Firefox snap loads, if it differs. It changes no profile.\n\
+It runs on its own at each login (custodio-refresh.service); run it by hand only after updating\n\
+Custodio, if you do not want to log out and in.",
                 args: &[],
                 options: &[MODULE],
                 example: "custodio setup browsers refresh",
@@ -101,8 +108,10 @@ const SETUP: &[CommandSpec] = &[
         path: "setup fingerprint",
         summary: "let a finger answer polkit dialogs (enable) or stop that (disable)",
         usage: "<action>",
-        description: "enable lets a finger answer polkit dialogs, with the password as fallback; disable undoes it.\n\
-sudo and the login do not change. Run it as root.",
+        description: "enable lets an enrolled finger answer every polkit dialog, Custodio's and the\n\
+administrator's alike, with the password as fallback; disable undoes it. Run it as root.\n\
+sudo and the login screen do not change. On GNOME the lock screen may accept the finger anyway:\n\
+that is GNOME's own setting, not Custodio's; the man page says how to turn it off.",
         args: &[],
         options: &[],
         example: "sudo custodio setup fingerprint enable",
@@ -112,7 +121,12 @@ sudo and the login do not change. Run it as root.",
                 path: "setup fingerprint enable",
                 summary: "let a finger answer polkit dialogs",
                 usage: "",
-                description: "Writes the polkit override that lets a finger answer polkit dialogs, with the password as fallback. sudo and the login do not change. Run it as root.",
+                description: "Writes /etc/pam.d/polkit-1 so that an enrolled finger answers every polkit dialog,\n\
+Custodio's and the administrator's alike, with the password as fallback. Run it as root.\n\
+Enrol a finger first (GNOME Settings, Users, or fprintd-enroll); 'custodio doctor' says\n\
+whether there is a reader and a finger.\n\
+sudo and the login screen do not change. On GNOME the lock screen may accept the finger anyway:\n\
+that is GNOME's own setting, not Custodio's; the man page says how to turn it off.",
                 args: &[],
                 options: &[],
                 example: "sudo custodio setup fingerprint enable",
@@ -123,7 +137,8 @@ sudo and the login do not change. Run it as root.",
                 path: "setup fingerprint disable",
                 summary: "stop a finger answering polkit dialogs",
                 usage: "",
-                description: "Removes the polkit override that enable wrote. Run it as root.",
+                description: "Removes the /etc/pam.d/polkit-1 that enable wrote, so polkit asks for the password again.\n\
+Run it as root, and before removing the package, which leaves the file in place.",
                 args: &[],
                 options: &[],
                 example: "sudo custodio setup fingerprint disable",
@@ -148,6 +163,8 @@ pub const COMMANDS: &[CommandSpec] = &[
         summary: "store the key of a PKCS#12 file in the service",
         usage: "[--id <key id>] <file.p12>",
         description: "Asks for the file's password on the terminal, then a polkit dialog asks for yours.\n\
+To get the file from Firefox: Settings, Privacy & Security, Certificates, View Certificates,\n\
+Your Certificates, Backup.\n\
 Restart Firefox afterwards to see the key.",
         args: &[(
             "<file.p12>",
@@ -157,7 +174,7 @@ Restart Firefox afterwards to see the key.",
             flag: "--id",
             short: None,
             value: Some("<key id>"),
-            text: "name the stored key: 1 to 64 letters, digits, _ or - (default: the file name without its extension)",
+            text: "1 to 64 letters, digits, _ or - (default: the file's name, no extension)",
         }],
         example: "custodio import --id work work.p12",
         children: &[],
@@ -196,7 +213,8 @@ Restart Firefox afterwards to see the change.",
         path: "setup",
         summary: "set Custodio up: the browsers, the fingerprint",
         usage: "<topic> <action>",
-        description: "Groups what is done once, after installing: browsers (enable, disable, refresh) and fingerprint (enable, disable).\n\
+        description: "Groups what is done once, after installing: browsers (enable, disable, refresh)\n\
+and fingerprint (enable, disable).\n\
 Name a topic and an action; each has its own help.",
         args: &[],
         options: &[],
@@ -206,9 +224,11 @@ Name a topic and an action; each has its own help.",
     CommandSpec {
         name: "doctor",
         path: "doctor",
-        summary: "check the fingerprint, the browsers, the journal and the state directory",
+        summary: "check the fingerprint, the browsers, the journal and the key storage",
         usage: "",
-        description: "Checks what Custodio needs and says how to fix what is not ok. It changes nothing.",
+        description: "Checks what Custodio needs and says how to fix what is not ok. It changes nothing.\n\
+Exit status 1 when a browser, the journal or the key storage needs a fix, or the polkit file\n\
+is broken; 0 otherwise.",
         args: &[],
         options: &[],
         example: "custodio doctor",
@@ -264,7 +284,7 @@ impl CommandSpec {
 #[must_use]
 pub fn global() -> String {
     let mut text = String::from(
-        "custodio - import, list and delete keys of the custodio signing service\n\n\
+        "custodio - manage your keys in the Custodio signing service\n\n\
 Usage:\n  custodio <command> [arguments]\n\nCommands:\n",
     );
     for c in COMMANDS {
@@ -272,7 +292,8 @@ Usage:\n  custodio <command> [arguments]\n\nCommands:\n",
     }
     text.push_str(
         "\nOptions:\n  -h, --help  show this help\n\n\
-Run 'custodio <command> --help' for the arguments and options of a command.\n\n\
+Run 'custodio <command> --help' for the arguments and options of a command.\n\
+First time: 'custodio setup browsers enable', then 'custodio import <file.p12>'.\n\n\
 Example:\n  custodio list\n",
     );
     text

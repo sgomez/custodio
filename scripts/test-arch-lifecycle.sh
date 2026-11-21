@@ -92,8 +92,8 @@ BUS='busctl --address=unix:path=/run/dbus/system_bus_socket call org.freedesktop
 SYSUSERS='systemd-sysusers -'
 ACTIVE='systemctl is-active --quiet custodio.service'
 SOCK=custodio-firefox.socket # the socket of the Firefox snap (F173)
-INSTALL_NOTICE="custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
-custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable
+INSTALL_NOTICE="custodio: Custodio's dialogs ask for your password; the fingerprint is off.
+custodio: to let a finger answer them, and every other polkit dialog, run: sudo custodio setup fingerprint enable
 custodio: to check the setup at any time, run: custodio doctor" # F198
 ACTIVE_SOCK="systemctl is-active --quiet $SOCK"
 RESTART_HOOK=$'systemd-hook restart custodio.service\nsystemctl try-restart custodio.service'

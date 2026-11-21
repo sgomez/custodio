@@ -1,6 +1,6 @@
 .TH CUSTODIO 1 "" "custodio" "User Commands"
 .SH NAME
-custodio \- import, list and delete keys of the custodio signing service
+custodio \- manage your keys in the Custodio signing service
 .SH SYNOPSIS
 .B custodio import
 [\fB\-\-id\fR \fIkey id\fR]
@@ -212,10 +212,15 @@ It refuses, names the reason and the next step, and changes nothing when the fil
 (an administrator's, a symlink, a changed copy), when polkit's vendor file or \fBpam_fprintd.so\fR or \fBfprintd\fR is missing
 (it names the packages), or when fingerprint is already on for the whole system, which would make the override redundant.
 It prints one \fBok\fR line for \fBpolkit\fR and, under it, the fallback, the lock-screen note when it applies, and the command that undoes it.
-Without a reader it writes the file and warns, on standard error, with the reader line and fix of \fBcustodio doctor\fR: polkit keeps asking for the password until there is one.
+Without a reader it writes the file and warns, on standard error, with the reader line and fix of \fBcustodio doctor\fR
+and the advice to run it: polkit keeps asking for the password until there is one.
 The file is written whole or not at all, mode 0644, owner root, with the SELinux label the policy gives it.
 Running it again changes nothing.
 On GNOME it adds a note that an enrolled finger may also unlock the lock screen; it changes no setting.
+That is GNOME's own setting, which works with or without Custodio's file.
+To turn it off for yourself:
+.B gsettings set org.gnome.login\-screen enable\-fingerprint\-authentication false
+(the GDM login screen reads the setting of the \fBgdm\fR user, which was not tested).
 .PP
 .B setup fingerprint disable
 removes the file, only if it is exactly the one
@@ -224,7 +229,8 @@ writes; with no file it says so and succeeds, and with any other file it refuses
 It takes no options.
 .PP
 .B doctor
-prints one line for each check, with its state (\fBok\fR, \fBnot ok\fR or \fBcould not check\fR) and, under every check that is not ok, what to do.
+prints one line for each check, with its state (\fBok\fR, \fBFAIL\fR, \fBwarn\fR, or \fB?\fR when it could not check)
+and, under every check that is not ok, what to do.
 It only reads: it changes nothing, and it never opens a polkit dialog, a password prompt or a browser.
 It refuses to run as root, because the answers are about the person who runs it.
 The checks are:
@@ -232,7 +238,7 @@ The checks are:
 lists a fingerprint reader (or is not installed, and the line names the packages for the distribution);
 you have an enrolled finger (over ssh,
 .B fprintd
-refuses to say, and the line says \fBcould not check\fR, never missing);
+refuses to say, and the line says \fB?\fR, never missing);
 and fingerprint is active for polkit, through Custodio's override, through another
 .IR /etc/pam.d/polkit\-1
 or for the whole system (then
@@ -245,14 +251,15 @@ is waited for 1.5 seconds for each question.
 Three more checks follow.
 The module is registered in each Firefox profile, one line per profile, found as
 .B setup browsers enable
-finds them (the Firefox snap's copy of the module included, and a stale copy is not ok);
+finds them (the Firefox snap's copy of the module included, and a stale copy is \fBFAIL\fR);
 a system where NSS loads the p11-kit proxy needs no registration;
 the fix is \fBcustodio setup browsers enable\fR.
 The systemd journal is persistent, read from \fIjournald.conf\fR, its drop-ins and \fI/var/log/journal\fR, never with \fBjournalctl\fR;
-a line that is not ok names the file and line that set it.
-The service's state directory is on an encrypted device: not-encrypted or unknown is not ok and the fix points to full-disk encryption;
-a service that does not answer in 1.5 seconds is \fBcould not check\fR.
-The exit status is 0 only when no polkit include is broken and these three checks are ok (\fBcould not check\fR counts as not ok there):
+a \fBFAIL\fR line names the file and line that set it.
+The service's state directory is on an encrypted device: not-encrypted or unknown is \fBwarn\fR and the fix points to full-disk encryption;
+a service that does not answer in 1.5 seconds is \fB?\fR.
+The exit status is 0 only when no polkit include is broken and none of these three checks is \fBFAIL\fR or \fB?\fR
+(a \fBwarn\fR does not count):
 a missing reader or finger does not count, because the fingerprint is optional.
 .PP
 When standard input is a terminal,
