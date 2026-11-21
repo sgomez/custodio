@@ -11,6 +11,9 @@ only a person can check.
 2. `just setup`
 3. `claude setup-token`, then put `export CLAUDE_CODE_OAUTH_TOKEN=<token>` in your shell profile.
 
+With Podman, `harness/run.sh` loads every `*.tar` in `~/.cache/custodio-images` (`podman save`) into the dev container's
+podman, so an image whose tag matches the pins is not rebuilt (e.g. the Arch ones while archive.archlinux.org is down).
+
 ## Commands
 
 | Command | Does |
