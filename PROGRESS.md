@@ -535,3 +535,9 @@ with an empty context.
 - Later in the session: step 4 ticked. `just e2e-vm-cases full 'vm-memory-*'` passed (first run failed: Rust's runtime swallows a `kill -SEGV` that is not a stack overflow, so
   `crash` sends it again; one run failed on the systemd-coredump control not failing within 60 s, the wait is now 120 s with diagnostics, and the rerun passed).
   Step 6 not done: `just quick` and `just mutants-diff F214` still to run; also amend the Scope sentence on `setrlimit`.
+
+### 2026-11-21 — F214 — attempt 1 (session 2)
+- Done: Scope sentence on `setrlimit` amended (own commit). `just quick` was red on the file-size gate (`e2e/guest.sh` 5147 tokens): comments shortened,
+  now under 5000. `just quick` green; `just mutants-diff F214` passes (`crates/custodiod/src/main.rs` is not in the recipe's `--file` list, so `harden()` is not mutated;
+  the diff's other files had no mutants). Step 6 ticked; all steps done.
+- Next session should: nothing; the loop runs the verify. F213 proves the real packages and both VM modes.
