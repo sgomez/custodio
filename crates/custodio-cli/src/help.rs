@@ -5,6 +5,16 @@
 
 use std::fmt::Write as _;
 
+/// What a message of the browser commands starts with: the topic, since `enable`, `disable` and
+/// `refresh` refuse alike.
+pub const BROWSERS_PREFIX: &str = "custodio setup browsers";
+/// What the journal entry of the Firefox snap's refresh starts with: the command that wrote it.
+pub const REFRESH_PREFIX: &str = "custodio setup browsers refresh";
+/// What a message of `setup fingerprint enable` and `disable` starts with.
+pub const FINGERPRINT_PREFIX: &str = "custodio setup fingerprint";
+/// Every prefix a setup message may start with.
+pub const SETUP_PREFIXES: &[&str] = &[BROWSERS_PREFIX, REFRESH_PREFIX, FINGERPRINT_PREFIX];
+
 /// One option of a command.
 #[derive(Debug)]
 pub struct OptionSpec {

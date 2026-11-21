@@ -44,7 +44,9 @@ impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Refused(r) => write!(f, "{r}"),
-            Self::Io { what, error } => write!(f, "custodio setup fingerprint: {what}: {error}"),
+            Self::Io { what, error } => {
+                write!(f, "{}: {what}: {error}", crate::help::FINGERPRINT_PREFIX)
+            }
         }
     }
 }

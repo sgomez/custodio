@@ -514,3 +514,10 @@ with an empty context.
   neutral text "use this library instead of the installed one", man page line updated).
 - Reviewer: check the 0.9.0 notes sentence (register became setup browsers; fingerprint moved under setup), as F210's reviewer.
 - Next session should: nothing; the loop runs the verify.
+
+### 2026-11-21 — F212 — attempt 2 (fixes of NEXT_FINDINGS)
+- Done: the setup message prefixes are product constants in `help.rs` (`BROWSERS_PREFIX`, `REFRESH_PREFIX`, `FINGERPRINT_PREFIX`,
+  `SETUP_PREFIXES`). Refusals of enable/disable/refresh say `custodio setup browsers: …`; the snap refresh journal entry says
+  `custodio setup browsers refresh: …`. Tests: `every_browsers_action_refused_under_sudo_…` (binary, all three actions), the journal
+  `MESSAGE` prefix in `refresh_only_logs_its_outcome_to_the_journal`, and `documents_name_only_real_commands` now reads the product list.
+- Checks: `cargo test -p custodio-cli`, `just quick` green; `just mutants-diff F212`: 74 mutants, 55 caught, 19 unviable, 0 missed.

@@ -8,6 +8,7 @@
 
 use crate::cert_text::escape;
 use crate::delete::DeleteFailure;
+use crate::help::{BROWSERS_PREFIX, FINGERPRINT_PREFIX};
 use crate::list::ListFailure;
 use crate::register_cli::{Refusal, RegisterError};
 use crate::register_native::RunError;
@@ -149,7 +150,7 @@ fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
             (what.to_owned(), next.to_owned())
         }
         Failure::Io { what, error } => (
-            format!("custodio setup fingerprint: {what}: {error}"),
+            format!("{FINGERPRINT_PREFIX}: {what}: {error}"),
             "Check with ls -l /etc/pam.d/polkit-1 whether the file is there, fix /etc/pam.d (free space, read-only mount, SELinux) and run the command again.".to_owned(),
         ),
     }
@@ -158,12 +159,11 @@ fn fingerprint(error: &crate::fingerprint_cmd::Failure) -> (String, String) {
 fn register(error: &RegisterError) -> (String, String) {
     match error {
         RegisterError::Refused(Refusal::Root) => (
-            "custodio setup browsers enable: refused to run as root".to_owned(),
+            format!("{BROWSERS_PREFIX}: refused to run as root"),
             "Run it as the user whose browsers should see Custodio.".to_owned(),
         ),
         RegisterError::Refused(Refusal::Sudo) => (
-            "custodio setup browsers enable: refused to run under sudo (SUDO_USER or SUDO_UID is set)"
-                .to_owned(),
+            format!("{BROWSERS_PREFIX}: refused to run under sudo (SUDO_USER or SUDO_UID is set)"),
             "Run it as the user whose browsers should see Custodio.".to_owned(),
         ),
         RegisterError::Run(e) => run(e),

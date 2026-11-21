@@ -63,6 +63,27 @@ fn a_browsers_disable_with_a_module_is_refused_and_changes_nothing() {
 }
 
 /// The levels that only group: `setup` and each topic.
+#[test]
+fn every_browsers_action_refused_under_sudo_names_the_topic_the_product_prints() {
+    for action in ["enable", "disable", "refresh"] {
+        let f = Fixture::new();
+        let out = f.binary(
+            &["setup", "browsers", action],
+            &path(),
+            &[("SUDO_USER", "x")],
+        );
+        assert_eq!(out.status.code(), Some(2), "{action}");
+        let err = text(&out.stderr);
+        assert!(
+            err.starts_with(&format!(
+                "{}: refused to run under sudo",
+                help::BROWSERS_PREFIX
+            )),
+            "{action}: {err}"
+        );
+    }
+}
+
 fn groups() -> Vec<&'static CommandSpec> {
     help::all()
         .into_iter()
@@ -160,10 +181,6 @@ const DOCUMENTS: &[&str] = &[
     "docs/threat-model.md",
     "docs/release-notes-v0.9.0.md",
 ];
-
-/// What the product puts before an error message of the setup commands: the command whose line
-/// the person typed, or its topic when both actions say the same.
-const SETUP_PREFIXES: &[&str] = &["setup browsers enable", "setup fingerprint"];
 
 const NEEDS_A_VALUE: &[&str] = &["-u", "-g", "-U", "-h", "-p", "-C", "-D", "-R", "-r", "-t"];
 
@@ -270,7 +287,9 @@ fn document_problems(name: &str, text: &str) -> Vec<String> {
             if let Some(words) = error_prefix(trimmed) {
                 let first = words.split(' ').next().unwrap_or("");
                 let real = if first == "setup" {
-                    SETUP_PREFIXES.contains(&words)
+                    help::SETUP_PREFIXES
+                        .iter()
+                        .any(|p| p.strip_prefix("custodio ") == Some(words))
                 } else {
                     help::command(first).is_some_and(|c| c.children.is_empty())
                         && !words.contains(' ')

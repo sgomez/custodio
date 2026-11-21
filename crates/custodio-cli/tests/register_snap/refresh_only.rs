@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use crate::fixture::listed;
 use crate::{Snap, args, command, module_bytes, plant, snap};
+use custodio_cli::help::REFRESH_PREFIX;
 use custodio_cli::register_cli::refresh_line;
 use custodio_cli::register_native::RegisterArgs;
 use custodio_cli::register_snap::{JOURNAL_IDENTIFIER, Refresh};
@@ -56,6 +57,10 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
             "{entry}"
         );
         assert!(entry.contains(&format!("PRIORITY={priority}\n")), "{entry}");
+        assert!(
+            entry.contains(&format!("MESSAGE={REFRESH_PREFIX}: ")),
+            "{entry}"
+        );
         assert!(
             entry.contains(copy) && entry.contains(word),
             "{word}: {entry}"

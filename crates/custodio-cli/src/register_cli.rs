@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::doctor_later::FIREFOX;
+use crate::help::BROWSERS_PREFIX;
 use crate::parse::Wrong;
 use crate::register_discover::Environment;
 use crate::register_native::{INSTALLED_MODULE, MODUTIL, Options, Outcome, Report, RunError, run};
@@ -24,8 +25,14 @@ pub enum Refusal {
 impl fmt::Display for Refusal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Root => f.write_str("custodio setup browsers enable: refused to run as root; run it as the user whose browsers should see Custodio"),
-            Self::Sudo => f.write_str("custodio setup browsers enable: refused to run under sudo (SUDO_USER or SUDO_UID is set); run it as the user whose browsers should see Custodio"),
+            Self::Root => write!(
+                f,
+                "{BROWSERS_PREFIX}: refused to run as root; run it as the user whose browsers should see Custodio"
+            ),
+            Self::Sudo => write!(
+                f,
+                "{BROWSERS_PREFIX}: refused to run under sudo (SUDO_USER or SUDO_UID is set); run it as the user whose browsers should see Custodio"
+            ),
         }
     }
 }

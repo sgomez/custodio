@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use crate::browser_files::LockState;
 use crate::cert_text::escape;
+use crate::help::REFRESH_PREFIX;
 use crate::register_discover::{Profile, SNAP_NAME};
 use crate::register_native::{Line, Options, Outcome, handle};
 
@@ -223,9 +224,7 @@ pub fn refresh_only(home: &Path, module: &Path) -> Refresh {
 pub fn journal_datagram(refresh: &Refresh, copy: &Path) -> Vec<u8> {
     let priority = if refresh.is_failure() { 3 } else { 6 };
     let copy = escape(&copy.to_string_lossy());
-    let message = escape(&format!(
-        "custodio setup browsers enable: {copy}: {refresh}"
-    ));
+    let message = escape(&format!("{REFRESH_PREFIX}: {copy}: {refresh}"));
     format!(
         "SYSLOG_IDENTIFIER={JOURNAL_IDENTIFIER}\nPRIORITY={priority}\nCUSTODIO_COPY={copy}\nMESSAGE={message}\n"
     )
