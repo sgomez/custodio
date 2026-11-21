@@ -552,3 +552,8 @@ with an empty context.
 - Done: the failing stage was the systemd-coredump control: Ubuntu's `sleep` is a Rust binary (uutils) whose runtime survives the first SIGSEGV, so `control()` in
   `e2e/vm/memory.sh` now resends SEGV until the unit fails. `just e2e-vm-cases full 'vm-memory-*'`: all 9 cases ok. `scripts/test-e2e-vm-cases.sh` ok; `just quick` green on rerun
   (one earlier run was red once with no failure line I could find; the rerun passed).
+
+### 2026-11-21 — F213 — attempt 1 (session 1)
+- Done: step 1 `CHECK_FORCE=1 just check` run twice: red only on the two Arch image builds (archive.archlinux.org times out; see BLOCKED.md).
+  `test-vm-gap-map.sh` failed once in run 1 (case list line missing, flaky), green alone and in run 2.
+- Not done: everything after; steps unticked. Next session: after the network is back, rerun step 1 and go on; look into the gap-map flake if it recurs.
