@@ -84,7 +84,11 @@ control() {
     before=$(store)
     systemd-run --quiet --unit="$CTRL" -p LimitCORE=infinity /usr/bin/sleep 300 || fail "$1: systemd-run of the control failed"
     until_ok 20 systemctl is-active --quiet "$CTRL" || fail "$1: the control did not start"
-    systemctl kill -s SEGV "$CTRL"
+    # sleep may be a Rust binary (uutils) whose runtime survives the first SIGSEGV: send it until the unit fails
+    for _ in 1 2 3 4 5; do
+        systemctl kill -s SEGV "$CTRL" 2> /dev/null || true
+        until_ok 3 is_failed "$CTRL" && break
+    done
     until_ok 120 is_failed "$CTRL" || { systemctl status "$CTRL" --no-pager -n 5 >&2 || true; why_no_dump >&2; fail "$1: the control did not fail after SIGSEGV"; }
     [ "$(unit_state Result "$CTRL")" = core-dump ] || { why_no_dump >&2; fail "$1: the control's Result is '$(unit_state Result "$CTRL")', expected core-dump"; }
     new=''

@@ -547,3 +547,8 @@ with an empty context.
   `scripts/test-e2e-vm-cases.sh` has the negative control beside vm-fingerprint (full refused per id, lacking accepted, check without the rule passes) and reads `vm/memory.sh`.
 - For F213: `vm/memory.sh` leaves apport stopped and systemd-coredump installed for the rest of the full VM run; a later group depending on the core handler must know.
 - Checks: `scripts/test-e2e-vm-cases.sh` ok; `just quick` result below.
+
+### 2026-11-21 — F214 — attempt 3 (fixes of NEXT_FINDINGS)
+- Done: the failing stage was the systemd-coredump control: Ubuntu's `sleep` is a Rust binary (uutils) whose runtime survives the first SIGSEGV, so `control()` in
+  `e2e/vm/memory.sh` now resends SEGV until the unit fails. `just e2e-vm-cases full 'vm-memory-*'`: all 9 cases ok. `scripts/test-e2e-vm-cases.sh` ok; `just quick` green on rerun
+  (one earlier run was red once with no failure line I could find; the rerun passed).
