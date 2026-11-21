@@ -62,6 +62,9 @@ on the terminal.
     rest of the output is read (no forged rows or lines).
   - **Shell completions** run `custodio` to get key ids. They ask nothing of polkit, write nothing and
     fail silently when the service is absent.
+  - **Decrypted keys stay off the disk.** An `encrypted-tpm` or `encrypted-host` key decrypted in the
+    service's memory never reaches swap, a stored core dump or a crash report, whatever the core
+    handler and even with the unit's core limit overridden (Design 4).
 - **Out of scope:** everything M0–M6 exclude (a hostile process of the same uid outside any sandbox,
   root controlling the running machine, a compromised kernel, tampering with the journal). Also out:
   the security of `fprintd`, `libfprint`, the reader's driver and its matching; an administrator who
@@ -89,6 +92,8 @@ on the terminal.
   - **Debian 13 and RHEL/Alma 10** were not run in a VM. On them the command proceeds only when the
     files match what was proven elsewhere (vendor file at `/usr/lib/pam.d/polkit-1`, no
     `/etc/pam.d/polkit-1`), and refuses otherwise.
+  - **Hibernation writes all of memory to disk**, a decrypted key included, whatever the unit says.
+    The encrypted kinds need an encrypted swap device and hibernation image.
 
 ## Goal
 
@@ -103,13 +108,13 @@ added for this works, or refuses safely, on every supported system.
 The architecture stays: `custodiod` on the system bus and the Firefox snap socket, the documented API,
 per-uid ownership, polkit on every sign, import, delete and replace with nothing cached, one journal
 entry per authorized call, the PKCS#11 module and the CLI as clients of the documented API. M7 adds two
-CLI commands, reworks the CLI's output, fixes three defects, and writes the documents. It adds no
-client.
+CLI commands, groups the setup commands under `custodio setup`, reworks the CLI's output, fixes four
+defects, and writes the documents. It adds no client.
 
-### 1. `custodio fingerprint enable` and `disable`
+### 1. `custodio setup fingerprint enable` and `disable`
 
-A subcommand of `custodio`, run as root (`sudo custodio fingerprint enable`). It changes exactly one
-file, `/etc/pam.d/polkit-1`.
+A subcommand of `custodio setup`, run as root (`sudo custodio setup fingerprint enable`). It changes
+exactly one file, `/etc/pam.d/polkit-1`.
 
 - **The file.** `enable` writes this content (from the report, "Override that worked on all four"; the
   idea fixes it):
@@ -162,10 +167,10 @@ file, `/etc/pam.d/polkit-1`.
   and the login are unchanged, and how to undo it. It also prints the lock-screen note (Threat model,
   "Not guaranteed") when it applies, without changing that setting.
 - **The package does not touch PAM.** No package script creates, edits, renames or removes
-  `/etc/pam.d/polkit-1`, on install, upgrade, removal or purge. The install notice says the fingerprint
-  is off and names `sudo custodio fingerprint enable` and `custodio doctor`. Removing the package
-  leaves an existing override in place, still working (it names only system files), and prints no
-  warning about it; the documents say to run `disable` first.
+  `/etc/pam.d/polkit-1`, on install, upgrade, removal or purge. The install notice says the
+  fingerprint is off and names `sudo custodio setup fingerprint enable` and `custodio doctor`.
+  Removing the package leaves an existing override in place, still working (it names only system
+  files), and prints no warning about it; the documents say to run `disable` first.
 - **Supported systems.** The same command and file on every supported system. Where the files differ
   from the proven layout, the refusals above apply.
 
@@ -176,10 +181,10 @@ edit `sudo` and an existing `polkit-1` with `sed`).
 
 ### 2. `custodio doctor`
 
-A read-only command, run by the person as themselves (it refuses to run as root, as `register` does,
-because it checks the person's own profiles and fingers). It prints one line per check, each with a
-state, and for every check that is not satisfied, the command or documented step that fixes it. The
-checks:
+A read-only command, run by the person as themselves (it refuses to run as root, as `setup browsers`
+does, because it checks the person's own profiles and fingers). It prints one line per check, each
+with a state, and for every check that is not satisfied, the command or documented step that fixes
+it. The checks:
 
 1. **A reader.** `fprintd` reports at least one device. If `fprintd` is not installed, that is the
    missing piece, and the package to install is named.
@@ -191,10 +196,10 @@ checks:
    detection as `enable`). For an override, whether its `include` still resolves (the vendor file
    exists); a broken include is reported as the most urgent problem, because it breaks the password
    path of polkit. When it is active globally, `doctor` says that `sudo` uses the finger too.
-4. **The module registered in Firefox**, per profile, using the same discovery as `custodio register`
-   and read-only: native profiles, the Firefox snap's profiles and copy (including a stale copy), and
-   systems where Firefox sees the module through p11-kit (satisfied without registration). No profile
-   at all is reported as such, not as a failure of Custodio.
+4. **The module registered in Firefox**, per profile, using the same discovery as `custodio setup
+   browsers enable` and read-only: native profiles, the Firefox snap's profiles and copy (including
+   a stale copy), and systems where Firefox sees the module through p11-kit (satisfied without
+   registration). No profile at all is reported as such, not as a failure of Custodio.
 5. **A persistent journal**, so that the audit entries of signatures survive a reboot. How journald's
    effective storage is read without root (its configuration and drop-ins, and the presence of the
    persistent directory) is for a finding; the fix names the documented steps.
@@ -223,11 +228,31 @@ Prior art worth copying: `flutter doctor` and `brew doctor` (one line per check,
 - **Arguments are parsed by hand**, as today. No `clap` or other argument-parsing crate, and no crate
   that generates completions.
 - **Help.** `custodio --help`, `custodio -h`, and `custodio <command> --help` for every command
-  (including `fingerprint` and `doctor`) print real help on standard output and exit 0: what the
-  command does, its arguments and options, and an example. A usage error still goes to standard error
-  with exit status 2, as today, and says how to get help. The man page covers the same commands and
-  options; a test checks that every command and option in the help is in the man page and the other way
-  round.
+  (including `setup` and `doctor`) print real help on standard output and exit 0: what the command
+  does, its arguments and options, and an example. Under `setup`, `--help` works at every level the
+  person can type (`setup --help`, `setup browsers --help`, `setup browsers enable --help`) and
+  prints that level's help. A usage error still goes to standard error with exit status 2, as today,
+  and says how to get help. The man page covers the same commands and options; a test checks that
+  every command and option in the help is in the man page and the other way round.
+- **`custodio setup`** groups the commands that set the system up, apart from the daily ones in the
+  help, each undone by its sibling action. `doctor` stays a top-level command.
+  - `custodio setup browsers enable [--module <path>]` adds the module (the installed one, or
+    `<path>`) to the person's browser profiles, native and the Firefox snap's through its copy;
+    `disable` removes the entries of every Custodio module file and takes no `--module`; `refresh
+    [--module <path>]` only updates the copy of the module that the Firefox snap loads, from
+    `<path>` when given, if it differs. The systemd user unit `custodio-refresh.service` runs
+    `custodio setup browsers refresh`.
+  - `custodio setup fingerprint enable` and `disable` are those of Design 1.
+
+  Each action does what `custodio register [--module <path>]`, `--remove`, `--refresh-only` and
+  `custodio fingerprint enable`/`disable` do before this change: the same effects, refusals, output
+  and exit statuses, with only the command names in them changed. `custodio setup` alone, or a topic
+  with no action, is a usage error (standard error, exit status 2) whose message is that level's
+  short help (the topics, or the topic's actions) ending with the next-step line.
+- **No compatibility.** There is no stable release and no frozen command line: `custodio register`
+  and `custodio fingerprint` are unknown commands after this change, with no alias. Every message,
+  document, test and packaging file of this release uses the new names; the release notes of 0.9.0
+  say that `register` became `setup browsers` and that `fingerprint` moved under `setup`.
 - **`custodio list`** prints a table with one row per key: id, key type, storage kind, subject, and end
   of validity (the day, marked when the certificate has expired or expires within 30 days). On a
   terminal a header row comes first; a script gets the rows only. When any key has a weaker storage
@@ -248,15 +273,15 @@ Prior art worth copying: `flutter doctor` and `brew doctor` (one line per check,
 - **Errors.** Every error, from every command, is at least two lines on standard error: what went
   wrong, then the next step the person can take (a command, a documented section, or "report a bug"
   with where). This includes usage errors, the service being absent, polkit denial and unavailability,
-  every error of `docs/api.md`, the new import errors (Design 4), `register`'s and `fingerprint`'s
-  refusals. Messages never contain a password, key material or untrusted text unescaped.
+  every error of `docs/api.md`, the new import errors (Design 4), the refusals of `setup browsers` and
+  `setup fingerprint`. Messages never contain a password, key material or untrusted text unescaped.
 - **Completions** for bash, zsh and fish, shipped by every package format in the place each shell and
-  distribution loads them from without configuration. They complete commands, options, and key ids
-  (for `list`, `delete`, and any other command that takes one), the ids coming from the service through
-  `custodio` itself. Key id completion asks no polkit, writes nothing, finishes promptly, and offers
-  nothing (no error text) when the service is absent. Which directories each format uses is for a
-  finding; any difference between formats is recorded as the parity rules of
-  `docs/decisions/packaging.md` require.
+  distribution loads them from without configuration. They complete commands (the topics and actions
+  of `setup` included), options, and key ids (for `list`, `delete`, and any other command that takes
+  one), the ids coming from the service through `custodio` itself. Key id completion asks no polkit,
+  writes nothing, finishes promptly, and offers nothing (no error text) when the service is absent.
+  Which directories each format uses is for a finding; any difference between formats is recorded as
+  the parity rules of `docs/decisions/packaging.md` require.
 
 Prior art worth copying: no-color.org; `git`'s and `rustc`'s "hint:"/"help:" second lines;
 systemd's hand-written bash and zsh completions, which call the program for dynamic values;
@@ -292,6 +317,28 @@ systemd's hand-written bash and zsh completions, which call the program for dyna
 - **Firefox and key changes.** After a successful `custodio import` or `custodio delete`, the CLI says
   that Firefox (and any other running program that loaded the module) sees the change only after it
   restarts. Making Firefox see the change without a restart is not in this milestone.
+- **Decrypted keys reaching swap and core dumps.** `encrypted-tpm` and `encrypted-host` keys are
+  decrypted in `custodiod`'s memory to sign, and nothing keeps that memory off the disk: a page in an
+  unencrypted swap file, a core that `systemd-coredump` stores under `/var/lib/systemd/coredump/`, or
+  an apport report in `/var/crash/` with the process's memory in it outlives the process and a
+  power-off. That breaks what `docs/api.md` ("Storage kinds") promises for both kinds, protection
+  against a copy of the files. `custodiod` protects itself at start, as `ssh-agent` and KeePassXC do,
+  so this does not depend on the unit or on the core handler: first thing, before it reads any key,
+  it sets its core-size limit (`RLIMIT_CORE`) to 0, soft and hard, and then makes itself non-dumpable
+  (`PR_SET_DUMPABLE` 0); it does not start if either fails. Non-dumpable is what keeps every handler
+  away: the kernel produces no dump at all for such a process, so no pipe handler (apport, which
+  ignores the core limit, or `systemd-coredump`) receives its memory, and no process of the same uid
+  can attach to it or read its memory through `/proc`. The limit of 0 is the second layer, for the
+  kernel's own core file and for `systemd-coredump`, which stores nothing for a process whose limit is
+  0. `data/custodio.service`, the one unit every package format ships, keeps `LimitCORE=0` as a third
+  and sets `MemorySwapMax=0`, the only protection against swap (no page of the service is swapped);
+  the static unit check requires both. `MADV_DONTDUMP`, `mlock`, `memfd_secret` and
+  `coredump_filter` are not used: the flag, the limit and the swap setting cover the whole process,
+  the libraries' copies of the key included, which marking the service's own buffers would not.
+  Hibernation writes all of memory to the swap device whatever the unit says:
+  `docs/threat-model.md` and `docs/api.md` ("Storage kinds") say that the encrypted kinds need
+  encrypted swap and an encrypted hibernation image. Root reading the running service's memory stays
+  out of scope.
 
 ### 5. Documentation
 
@@ -299,12 +346,13 @@ All in English, in the repository, linked from the README. Commands they show ar
 written, as M6 required; prose is checked by a person, never by a test that greps wording.
 
 - **An end-to-end guide for Ubuntu 26.04** that a person follows without other help: install the
-  `.deb`; run `custodio doctor` and act on it, including enrolling a finger with the desktop's tools;
-  `sudo custodio fingerprint enable`; export a certificate from Firefox as a `.p12` (Firefox's
-  certificate manager, "Your Certificates", backup) and import it; `custodio register`; restart Firefox
-  and sign in to a site; `custodio list` and the completions; and the way back: `custodio delete`,
-  `custodio register --remove`, `sudo custodio fingerprint disable`, removing the package, and what
-  removal and purge leave (as M2 decided for the state directory).
+  `.deb`; run `custodio doctor` and act on it, including enrolling a finger with the desktop's
+  tools; `sudo custodio setup fingerprint enable`; export a certificate from Firefox as a `.p12`
+  (Firefox's certificate manager, "Your Certificates", backup) and import it; `custodio setup
+  browsers enable`; restart Firefox and sign in to a site; `custodio list` and the completions; and
+  the way back: `custodio delete`, `custodio setup browsers disable`, `sudo custodio setup
+  fingerprint disable`, removing the package, and what removal and purge leave (as M2 decided for
+  the state directory).
 - **Fingerprint:** how to turn it on and off; exactly what it changes (one file, every polkit action,
   not `sudo`, not the login); the fallback to the password; the limits of the Threat model's "Not
   guaranteed"; what to do when `enable` refuses (Omarchy's own setup, an administrator's file, the
@@ -340,14 +388,14 @@ blocking:
   contents, each `doctor` state and its fix, the help and argument parser, the table and the full view
   of `list`, escaping of certificate text, colour on and off, the two-line form of every error, and the
   three import cases.
-- **Integration tests** of `fingerprint` against a fixture file system and of `doctor` against fixture
-  homes and system files. Any seam that lets a test point them at a fixture never ships, with a check
-  that the shipped binary has none (as the test-only label source and TCTI rules of
+- **Integration tests** of `setup fingerprint` against a fixture file system and of `doctor` against
+  fixture homes and system files. Any seam that lets a test point them at a fixture never ships,
+  with a check that the shipped binary has none (as the test-only label source and TCTI rules of
   `docs/decisions.md`). Import tests with real `.p12` files for (a), (b) and (c), against the real
   service, checking the D-Bus error and the journal outcome.
-- **Fuzzing** of every new parser of untrusted input: the certificate fields `list` decodes, and the PAM
-  and configuration files `fingerprint` and `doctor` read. The argument parser is fuzzed if it is not
-  already.
+- **Fuzzing** of every new parser of untrusted input: the certificate fields `list` decodes, and the
+  PAM and configuration files `setup fingerprint` and `doctor` read. The argument parser is fuzzed
+  if it is not already.
 - **Completions:** a test drives bash, zsh and fish (the real shells) to complete a command, an option
   and a key id against a running service, and checks that completion with the service absent prints
   nothing and returns promptly. The completion files pass `shellcheck` (bash) and their shell's syntax
@@ -378,7 +426,10 @@ blocking:
 
 ## Scope
 
-- `custodio fingerprint enable` and `disable`, their refusals and messages, on every supported system.
+- `custodio setup fingerprint enable` and `disable`, their refusals and messages, on every supported
+  system.
+- `custodio setup` grouping the setup commands; `custodio register` and `custodio fingerprint`
+  removed.
 - `custodio doctor` with the six checks.
 - Help for every command, the `list` table and full view, colour rules, two-line errors, completions for
   bash, zsh and fish with key ids, shipped by every format.
@@ -386,6 +437,8 @@ blocking:
   explanation, and the Firefox restart notice.
 - The install notice; the documents of Design 5; the manual acceptance steps.
 - The container cases on every target and the Ubuntu VM virtual-fingerprint group.
+- Keeping decrypted `encrypted-*` keys out of swap and core dumps: `custodiod`'s own core limit of 0
+  and non-dumpable flag, the two unit settings, and the documents on hibernation.
 - The findings these need.
 
 ## Out of scope
@@ -400,6 +453,9 @@ blocking:
   RHEL/Alma 10 lab VMs (a person's task).
 - Argument-parsing or completion-generating crates.
 - Localisation of the CLI's messages.
+- `MADV_DONTDUMP`, `mlock` or `memfd_secret` on key buffers; protecting a key from root reading the
+  running service's memory; making hibernation keep keys off the disk (the documents require encrypted
+  swap instead).
 
 ## Acceptance
 
@@ -418,7 +474,7 @@ Automated, on the host (unit, integration, fuzz and package checks):
 4. `disable` removes Custodio's file and nothing else; with no file it succeeds and changes nothing;
    with a foreign file it refuses and the file is byte-identical afterwards.
 5. No package format ships a file under `/etc/pam.d/` or `/usr/lib/pam.d/`, no package script refers
-   to `/etc/pam.d`, and the install notice names `sudo custodio fingerprint enable` and
+   to `/etc/pam.d`, and the install notice names `sudo custodio setup fingerprint enable` and
    `custodio doctor`.
 6. `doctor` reports each of the six checks in each of its states on fixture systems and homes, names
    the fix for each unsatisfied one, reports a broken include of Custodio's override, says "could not
@@ -480,17 +536,44 @@ Manual (a person, following steps in `docs/manual-acceptance.md` and the user do
     `docs/api.md`, `docs/audit.md` and the report.
 21. A person checks that `custodio --help` and each command's help, read alone, are enough to use the
     command.
-22. On Ubuntu 26.04 with a real fingerprint reader and no Custodio installed, a person using only the
-    documentation: installs the `.deb` and sees the install notice; runs `custodio doctor`, which names
-    what is missing; runs `sudo custodio fingerprint enable`, after which `pkexec` takes the finger and
-    `sudo` still asks for the password; imports a certificate exported from Firefox, approving with the
-    finger; runs `custodio register`; signs in to a real site that requires a client certificate,
-    approving with the finger; uses `custodio list` and the completions; sees `custodio doctor` report
-    nothing to fix; then deletes the key, runs `custodio register --remove` and `sudo custodio
-    fingerprint disable`, removes the package, and records that `/etc/pam.d/polkit-1` is absent, the
-    Firefox profiles hold no Custodio entry, no module copy is left, and nothing else Custodio wrote
-    remains beyond what the documents say removal keeps. The form records the reader model, the
-    package versions and every place the documents were not enough.
+22. On Ubuntu 26.04 with a real fingerprint reader and no Custodio installed, a person using only
+    the documentation: installs the `.deb` and sees the install notice; runs `custodio doctor`,
+    which names what is missing; runs `sudo custodio setup fingerprint enable`, after which `pkexec`
+    takes the finger and `sudo` still asks for the password; imports a certificate exported from
+    Firefox, approving with the finger; runs `custodio setup browsers enable`; signs in to a real
+    site that requires a client certificate, approving with the finger; uses `custodio list` and the
+    completions; sees `custodio doctor` report nothing to fix; then deletes the key, runs `custodio
+    setup browsers disable` and `sudo custodio setup fingerprint disable`, removes the package, and
+    records that `/etc/pam.d/polkit-1` is absent, the Firefox profiles hold no Custodio entry, no
+    module copy is left, and nothing else Custodio wrote remains beyond what the documents say
+    removal keeps. The form records the reader model, the package versions and every place the
+    documents were not enough.
+
+Automated, on the host, added with `custodio setup`:
+
+23. `custodio setup browsers enable [--module <path>]`, `disable` and `refresh [--module <path>]`,
+    and `custodio setup fingerprint enable` and `disable`, work as Design 3 specifies, proven by the
+    existing tests of `register` and `fingerprint` run with the new arguments. `custodio register`
+    and `custodio fingerprint` are unknown commands. `custodio setup` and `custodio setup <topic>`
+    print that level's short help on standard error, ending with the next-step line, and exit 2;
+    `--help` at every level prints that level's help on standard output and exits 0; the help and
+    the man page list the same commands and options. bash, zsh and fish complete the topics after
+    `setup` and the actions after each topic. The systemd user unit runs `custodio setup browsers
+    refresh`.
+
+Automated, end-to-end, added with the swap and core-dump settings:
+
+24. The running service's unit has `MemorySwapMax=0` and `LimitCORE=0` (`systemctl show`), its
+    process's own core-size limit reads 0 soft and hard (`/proc/<pid>/limits`) and it is not dumpable,
+    and the static unit check fails a unit without either setting. In the Ubuntu 26.04 VM the
+    service's cgroup has `memory.swap.max` 0, and a SIGSEGV of `custodiod` is not dumped (systemd
+    records it killed by the signal, not dumped) and leaves no core and no crash report with memory
+    where the handler writes, both with the shipped unit and with a drop-in that overrides its
+    `LimitCORE=` to `infinity`. This holds under the core handler Ubuntu 26.04 ships by default
+    (apport: no `/var/crash/*.crash` with a `CoreDump` field, nothing in `/var/lib/apport/coredump/`)
+    and under `systemd-coredump` (nothing in `/var/lib/systemd/coredump/`). Under each handler a
+    control process with `LimitCORE=infinity`, crashed the same way, is dumped and leaves its core
+    there. If the VM cannot run either handler, the case fails, not skips.
 
 ## Open questions
 

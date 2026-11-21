@@ -251,12 +251,73 @@
       "passes": true
     },
     {
+      "id": "F212",
+      "title": "`custodio setup`: the setup commands grouped under one command",
+      "description": "`custodio register` and `custodio fingerprint` move under one command, `custodio setup` (SPEC Design 3, acceptance 23): `setup browsers enable [--module <path>]` adds the module to the browser profiles, `disable` removes the entries of every Custodio module file (no --module), `refresh [--module <path>]` only updates the Firefox snap's copy of the module (from <path> when given); `setup fingerprint enable` and `disable` are Design 1's. Each action keeps the effects, refusals, output and exit statuses that register and fingerprint have before this feature, with only command names changed; the existing register and fingerprint tests, re-pointed to the new argv, prove it. `custodio register` and `custodio fingerprint` are unknown commands, with no alias. `custodio setup` alone, or a topic with no action, is a usage error (standard error, status 2) whose message is that level's short help ending with the next-step line; `--help` at every level of `setup` prints that level's help on standard output with status 0. Every message, document, test, e2e script and packaging file uses the new names: doctor's Fix: lines, the refusals, enable's undo hint, the polkit file header, the install notice of every package format, the help, packaging/custodio.1 (the parity test of crates/custodio-cli/tests/help.rs covers every level of setup), the three completion files (the topics after setup, the actions after each topic), data/systemd-user/custodio-refresh.service (`custodio setup browsers refresh`), the container and VM end-to-end cases, the README, docs/install.md, the guide, docs/fingerprint.md, docs/doctor.md, docs/manual-acceptance.md (every section, M6's included), SECURITY.md, docs/threat-model.md and docs/release-notes-v0.9.0.md, which says that register became setup browsers and that fingerprint moved under setup. The journal identifier custodio-register is not a command name and stays. Historical records keep the old names: CHANGELOG.md, docs/release-notes-v0.8.0.md, docs/milestones/**, docs/findings/**, PROGRESS.md and earlier contracts; since the 0.8.0 notes describe the 0.8.0 binary, `just check` stops running scripts/test-docs-release-notes.sh on them and runs it on the current release's notes only. crates/custodio-cli/tests/setup.rs proves the rest of acceptance 23 on fixtures: register and fingerprint unknown, bare setup and each bare topic, --help at every level. This supersedes the command names in the descriptions of F193, F197, F198, F205, F207 and F208. The milestone's gates run at F213.",
+      "depends_on": [
+        "F193",
+        "F197",
+        "F198",
+        "F202",
+        "F203",
+        "F205",
+        "F207",
+        "F208",
+        "F209"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test setup --locked && cargo test -p custodio-cli --test help --locked && cargo test -p custodio-it --test completions --locked && shellcheck packaging/completions/custodio.bash && zsh -n packaging/completions/_custodio && fish --no-execute packaging/completions/custodio.fish && scripts/test-docs-readme.sh && scripts/test-docs-install-register.sh && scripts/test-docs-fingerprint.sh && scripts/test-docs-guide.sh && scripts/test-docs-manual-m7.sh && scripts/test-docs-release-notes.sh && scripts/test-docs-threat-model.sh && scripts/test-user-refresh-units.sh && scripts/test-package-scripts.sh && scripts/test-check-packages-pam.sh && scripts/test-e2e-fingerprint.sh && scripts/test-e2e-doctor.sh && scripts/test-e2e-vm-snap.sh && just mutants-diff F212",
+      "passes": false
+    },
+    {
+      "id": "F214",
+      "title": "Decrypted keys stay out of swap and core dumps",
+      "description": "`encrypted-tpm` and `encrypted-host` keys are decrypted in custodiod's memory to sign; nothing keeps that memory off the disk (SPEC Design 4, acceptance 24). custodiod protects itself at start, independent of the unit and of the core handler: first thing in main, before the key store is opened, it sets RLIMIT_CORE to 0 soft and hard and then PR_SET_DUMPABLE 0, both through rustix's `process` wrappers so the crate keeps `forbid(unsafe_code)`, and exits non-zero if either fails; a unit test of the function reads back both the limit and the flag. data/custodio.service, the one source of every package format's unit (scripts/derive-units.sh), gains `LimitCORE=0` and `MemorySwapMax=0` (the only swap protection), and scripts/check-unit-hardening.sh requires each exactly once, with a negative control per setting in scripts/test-check-unit-hardening.sh; `just unit-verify` and the exposure ceiling still pass. Container case group `memory-*` on debian13 (e2e/targets/debian13/cases.list: nothing in it depends on the distribution): `systemctl show` gives `MemorySwapMax=0` and `LimitCORE=0`, /proc/<MainPID>/limits a core size of 0 soft and hard, and the process is not dumpable (its /proc/<pid> entries are root's while it runs as the service's uid), with an in-case control that a dumpable process of another uid reads differently. VM group `vm-memory-*` (Ubuntu 26.04, full mode; the lacking mode reports it skipped through e2e/vm/skip.list); the service's cgroup has memory.swap.max 0. First under the core handler the image ships by default (apport expected; kernel.core_pattern and the handler's version recorded), then with systemd-coredump staged as the handler (installed from the archive if absent, version recorded): a SIGSEGV of custodiod, with the shipped unit and again with a drop-in that sets the unit's LimitCORE=infinity, ends with systemd's Result `signal`, not `core-dump`, and leaves nothing where that handler writes (apport: no /var/crash/*.crash with a CoreDump field, nothing in /var/lib/apport/coredump/; systemd-coredump: nothing in /var/lib/systemd/coredump/); under each handler a transient control process of a packaged binary with LimitCORE=infinity, crashed the same way, ends `core-dump` and leaves its core there, or the case fails; a handler that cannot be run fails the group, never skips; the service starts again on the next call. docs/threat-model.md ('Not guaranteed') and docs/api.md ('Storage kinds') say that the encrypted kinds need encrypted swap and an encrypted hibernation image, and what the flag, the limit and the unit settings cover; root reading the running service's memory stays excluded. docs/release-notes-v0.9.0.md names the change. MADV_DONTDUMP, mlock, memfd_secret and coredump_filter are out of scope. The real packages' unit, `just e2e` and both VM modes run at F213.",
+      "depends_on": [
+        "F212"
+      ],
+      "verify": "just quick && scripts/test-check-unit-hardening.sh && just unit-hardening && just unit-verify && just security-ceiling && cargo test -p custodiod --locked dumpable && scripts/test-docs-threat-model.sh && scripts/test-docs-api.sh && scripts/test-docs-release-notes.sh && just e2e-cases debian13 'memory-*' && just e2e-vm-cases full 'vm-memory-*' && just mutants-diff F214",
+      "passes": false
+    },
+    {
+      "id": "F213",
+      "title": "Checkpoint and last automated feature: the whole milestone after `custodio setup`",
+      "description": "Every gate on the whole milestone after F212's rename and F214's swap and core-dump settings, as F209 ran them: full checks, API contract, fuzz smoke, memory safety, the container suite on every target (the fingerprint-* and doctor-* groups on the new argv), the package gates (the install notice names `sudo custodio setup fingerprint enable`), coverage and CRAP, and the VM suite in both modes, the vm-fingerprint-*, vm-memory-* and snap groups included (the memory-* cases on debian13). A failure is fixed here; a VM group that cannot stage the virtual sensor fails and is reported, never skipped.",
+      "depends_on": [
+        "F189",
+        "F190",
+        "F191",
+        "F192",
+        "F193",
+        "F194",
+        "F195",
+        "F196",
+        "F197",
+        "F198",
+        "F199",
+        "F200",
+        "F201",
+        "F202",
+        "F203",
+        "F204",
+        "F205",
+        "F206",
+        "F207",
+        "F208",
+        "F209",
+        "F212",
+        "F214"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": false
+    },
+    {
       "id": "F210",
       "title": "By hand: the documents and the help read by a person",
       "description": "A person checks the fingerprint, lock-screen, Firefox-restart, doctor and end-to-end documents against SPEC Design 5 and the threat model's 'Not guaranteed' (every item present, agreeing with docs/api.md, docs/audit.md and the report), and that `custodio --help` and each command's help, read alone, are enough to use the command (acceptances 20 and 21).",
       "depends_on": [
         "F208",
-        "F209"
+        "F209",
+        "F213"
       ],
       "manual": true,
       "passes": false
@@ -264,11 +325,12 @@
     {
       "id": "F211",
       "title": "By hand: Ubuntu 26.04 with a real fingerprint reader, from install to removal",
-      "description": "On Ubuntu 26.04 with a real reader and no Custodio installed, a person follows only the documentation through the steps of acceptance 22 in docs/manual-acceptance.md: install notice, doctor naming what is missing, enable (pkexec takes the finger, sudo asks for the password), import a certificate exported from Firefox with the finger, register, sign in to a real site with the finger, list and completions, doctor reporting nothing, then delete, register --remove, fingerprint disable and package removal leaving the system as it was; the returned form is recorded.",
+      "description": "On Ubuntu 26.04 with a real reader and no Custodio installed, a person follows only the documentation through the steps of acceptance 22 in docs/manual-acceptance.md: install notice, doctor naming what is missing, setup fingerprint enable (pkexec takes the finger, sudo asks for the password), import a certificate exported from Firefox with the finger, setup browsers enable, sign in to a real site with the finger, list and completions, doctor reporting nothing, then delete, setup browsers disable, setup fingerprint disable and package removal leaving the system as it was; the returned form is recorded.",
       "depends_on": [
         "F208",
         "F209",
-        "F210"
+        "F210",
+        "F213"
       ],
       "manual": true,
       "passes": false
