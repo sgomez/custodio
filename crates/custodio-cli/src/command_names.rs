@@ -123,11 +123,35 @@ fn the_fingerprint_texts_name_commands_that_parse() {
     assert_runnable(&texts);
 }
 
+fn observed(
+    euid: u32,
+    family: crate::fingerprint_decide::Family,
+    polkit_file: crate::fingerprint_decide::FileState,
+    vendor: crate::fingerprint_decide::VendorState,
+    common_auth: Option<String>,
+) -> crate::fingerprint_decide::Observed {
+    crate::fingerprint_decide::Observed {
+        euid,
+        family,
+        polkit_file,
+        vendor,
+        module_present: true,
+        fprintd_present: true,
+        reader_present: true,
+        common_auth,
+        authselect: None,
+        system_auth: None,
+        sudo: None,
+        gnome_login_schema: false,
+        dconf_disables_login_fingerprint: false,
+    }
+}
+
 #[test]
 fn the_doctor_fixes_name_commands_that_parse() {
     use crate::doctor_decide::*;
     use crate::doctor_later::{Copy, Entry, Firefox, ProfileFact};
-    use crate::fingerprint_decide::{FileState, Observed, VendorState, file_bytes};
+    use crate::fingerprint_decide::{FileState, VendorState, file_bytes};
     let entries = [
         Entry::Present("n".into()),
         Entry::PresentElsewhere("n".into()),
@@ -179,21 +203,13 @@ fn the_doctor_fixes_name_commands_that_parse() {
                         (Reader::Devices(1), Fingers::Failed("x".into())),
                     ] {
                         let f = Facts {
-                            files: Observed {
-                                euid: 1000,
-                                family: crate::fingerprint_decide::Family::Debian,
-                                polkit_file: polkit_file.clone(),
+                            files: observed(
+                                1000,
+                                crate::fingerprint_decide::Family::Debian,
+                                polkit_file.clone(),
                                 vendor,
-                                module_present: true,
-                                fprintd_present: true,
-                                reader_present: true,
-                                common_auth: common_auth.clone(),
-                                authselect: None,
-                                system_auth: None,
-                                sudo: None,
-                                gnome_login_schema: false,
-                                dconf_disables_login_fingerprint: false,
-                            },
+                                common_auth.clone(),
+                            ),
                             reader,
                             fingers,
                             firefox: firefox.clone(),
