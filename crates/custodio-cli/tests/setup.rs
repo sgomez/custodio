@@ -58,7 +58,7 @@ fn a_browsers_disable_with_a_module_is_refused_and_changes_nothing() {
         "/nonexistent.so",
     ]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty());
+    assert_eq!(text(&out.stdout), "");
     assert!(untouched);
 }
 

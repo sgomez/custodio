@@ -1,6 +1,8 @@
 //! `custodio setup browsers enable` over fixture homes with the real `modutil` (F182, F172's Decisions).
 
 mod fixture;
+#[path = "register_native/killed.rs"]
+mod killed;
 #[path = "lines/mod.rs"]
 mod lines;
 #[path = "register_native/real.rs"]
