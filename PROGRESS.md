@@ -502,3 +502,15 @@ with an empty context.
   polkit file header and the `register_lines` fixes, and the short-help control in `help/tests.rs` is still the weak one. Step 9:
   `just mutants-diff F212` not run yet; `guide` and `manual-m7` doc runners to be re-run after the Tab-line rewording.
 - Next session should: finish step 3 (the missing sources above), then run mutants-diff F212 and the verify's fast part.
+
+### 2026-11-21 — F212 — attempt 1 (session 3)
+- Done: step 3 finished: `command_names.rs` (test-only) holds the shared "every command a text names parses" check and runs it over
+  the polkit file header, `done_line` (undo hints), every `decide_enable`/`decide_disable` refusal over the observed states, every
+  doctor `Fix:`/warning fix/note over polkit file × vendor × common-auth × reader/fingers × profile copy/entry states, and the
+  `register_lines` fixes; a control fails removed command names. The short-help control in `help/tests.rs` now calls a checker
+  (`missing_from_short`) on a text with one action dropped. Step 9: `just quick` green, `setup`, `help`, `completions` tests,
+  the three shell checks, guide and manual-m7 runners pass; `just mutants-diff F212`: 74 mutants, 55 caught, 19 unviable, 0 missed
+  (two survivors killed: `Refusal` Display tested against the error line; the refresh `--module` option text now shares `MODULE`'s
+  neutral text "use this library instead of the installed one", man page line updated).
+- Reviewer: check the 0.9.0 notes sentence (register became setup browsers; fingerprint moved under setup), as F210's reviewer.
+- Next session should: nothing; the loop runs the verify.
