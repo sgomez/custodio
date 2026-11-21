@@ -565,3 +565,8 @@ with an empty context.
   (alma10 146, arch 149, debian13 swtpm 176, fedora44 136, ubuntu2604 146, debian13 none 153; all far under rows). Counts: doctor 11 each; fingerprint alma10 9, arch 7, debian13 8 (×2 records),
   fedora44 9, ubuntu2604 8; memory 4 in each debian13 log; none skipped. Records: six = five targets, debian13 twice (swtpm and none).
 - Next: step 3 (package-gates, coverage, crap), step 4 (VM), step 5.
+- Later in the session: step 3 green (package-gates 87 findings all excepted; coverage and crap exit 0, worst CRAP 28.1 of 30). Step 4: `just e2e-vm full` exit 0 in 252 s wall
+  (image 19, boot 15, install 12, cycle 14, snap 54, vm-fingerprint 61, vm-memory 23, sign 9, noplain 3, pcr 7, fallback 1, tpmclear 9, upgrade 10); row 700 s; baselines 372 s (F209, before F214)
+  and 503 s (F168, the row's reason). 12 `vm-fingerprint-*` run, 9 `vm-memory-*` run, none skipped; record has polkit/fprintd/libfprint/libpam_fprintd versions, no `unknown`.
+  `lacking` exit 0 in 89 s wall (row 500 s; F209 97 s), the nine `vm-memory-*` skipped, no `unknown`. Step 5: after the last fix (e2e python only) `CHECK_FORCE=1 just check` and `just quick` green again;
+  VM and container runs were all made on the final tree. All steps ticked; the loop runs the verify.
