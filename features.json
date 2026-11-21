@@ -276,7 +276,7 @@
         "F212"
       ],
       "verify": "just quick && scripts/test-check-unit-hardening.sh && just unit-hardening && just unit-verify && just security-ceiling && cargo test -p custodiod --locked dumpable && scripts/test-docs-threat-model.sh && scripts/test-docs-api.sh && scripts/test-docs-release-notes.sh && just e2e-cases debian13 'memory-*' && just e2e-vm-cases full 'vm-memory-*' && just mutants-diff F214",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F213",
