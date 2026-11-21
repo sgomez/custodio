@@ -467,3 +467,22 @@ with an empty context.
   comes from the product (`storage::summary`, `imported_line`, `next_steps`, `deleted_line`, `done_line`,
   `Outcome::state_text`). e2e judges (doctor, fallback, tpmkind, tpmfail, vm snap) read by layout.
 - Next session should: nothing; the person closes F210.
+
+### 2026-11-21 — F212 — attempt 1 (session 1)
+- Done: step 2 (ticked) and most of step 3's re-pointing. `help::COMMANDS` now has `setup` with `children` (browsers: enable,
+  disable, refresh; fingerprint: enable, disable); `CommandSpec.path` is the full path (`setup browsers enable`), `help::find`,
+  `help::all()` walk the levels; `parse_group` in `parse.rs` handles `setup …` (bare level = `ArgError::Bare(path)`, unknown
+  word = `CommandUsage(level path, …)`); `parse_register_args(action, args)` takes the action (`--module` only for enable and
+  refresh; `Wrong::Conflict` removed). `register`/`fingerprint` are unknown commands. `tests/setup.rs` (5 tests) and `tests/help.rs`
+  (parity over every level, two new fixture controls) pass; the man page SYNOPSIS/prose use `setup browsers|fingerprint`.
+  Every product text, polkit header and doctor Fix now names the new commands (perl rename), and all `cargo test -p custodio-cli`
+  tests pass on the new argv (`--remove --module` cases became `setup browsers disable`; parser unit tests re-pointed).
+- Not done: step 1 is unticked only because `just fuzz-build` was not run. Step 3's "every message names a real command" unit test
+  (with its two controls, exhaustive over error variants, doctor Fix lines, polkit header, undo hint, refusals) is NOT written yet;
+  the short-help-per-level control in `help/tests.rs` (`the_short_help_check_sees_a_dropped_action`) is weak: make it call a checker
+  function on a text with one action dropped. Steps 4–9 not started (completions, systemd unit, packaging notices, e2e, docs +
+  `documents_name_only_real_commands`, runners, justfile 0.8.0 line, mutants). `crates/custodio-it/tests/completions.rs` and the
+  three completion files still use the old names (it is red). Evaluator notes to apply in the document test: accept any
+  `sudo [options] ` prefix or reject unknown sudo options (no silent skip); a `<placeholder>` in a command-name position fails;
+  the costs row for `setup.rs` covers the third control and the wider block scan (wording only).
+- Next session should: run `just fuzz-build`, write the step 3 unit test, then steps 4 onwards in order.
