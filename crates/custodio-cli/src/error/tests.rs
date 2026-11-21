@@ -25,12 +25,17 @@ fn samples() -> Vec<CliError> {
     let mut all = Vec::new();
     for a in [
         ArgError::Usage,
+        ArgError::Unknown(ESC.into()),
         ArgError::Bare("import"),
         ArgError::CommandUsage("list", crate::Wrong::Unexpected(ESC.into())),
         ArgError::BadId,
     ] {
         match &a {
-            ArgError::Usage | ArgError::Bare(_) | ArgError::CommandUsage(..) | ArgError::BadId => {}
+            ArgError::Usage
+            | ArgError::Unknown(_)
+            | ArgError::Bare(_)
+            | ArgError::CommandUsage(..)
+            | ArgError::BadId => {}
         }
         all.push(CliError::Args(a));
     }
@@ -348,6 +353,15 @@ fn import_errors_say_what_failed_and_what_to_do() {
         "{pw}"
     );
     assert!(pw.contains("from a terminal"), "{pw}");
+}
+
+#[test]
+fn an_unknown_command_is_named_escaped_with_where_the_commands_are() {
+    let text = render(&CliError::Args(ArgError::Unknown("l\u{1b}st".into())));
+    assert_eq!(
+        text,
+        "custodio: unknown command 'l\\x1bst'\nRun 'custodio --help' to see the commands."
+    );
 }
 
 #[test]

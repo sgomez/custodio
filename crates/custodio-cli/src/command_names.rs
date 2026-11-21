@@ -167,7 +167,11 @@ fn the_doctor_fixes_name_commands_that_parse() {
         Some(Copy::Stale),
         Some(Copy::CouldNot("why".into())),
     ];
-    let mut firefoxes = vec![Firefox::NoProfile, Firefox::CouldNot("why".into())];
+    let mut firefoxes = vec![
+        Firefox::NoProfile,
+        Firefox::CouldNot("why".into()),
+        Firefox::NoHome,
+    ];
     for entry in &entries {
         for copy in &copies {
             firefoxes.push(Firefox::Profiles(vec![ProfileFact {

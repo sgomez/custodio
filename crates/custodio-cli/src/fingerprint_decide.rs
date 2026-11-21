@@ -275,6 +275,7 @@ pub fn done_line(done: Done) -> Line {
 pub fn no_reader_line() -> Line {
     Line::new(State::Warn, READER, NO_READER)
         .with("Polkit asks for the password until there is a reader and an enrolled finger.")
+        .with("Run 'custodio doctor' to see what is missing.")
         .fix(NO_READER_FIX)
 }
 

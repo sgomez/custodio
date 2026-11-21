@@ -225,6 +225,10 @@ fn each_outcome_is_one_ok_polkit_line_with_the_undo_command_under_it() {
     let w = no_reader_line();
     assert_eq!((w.state, w.name.as_str()), (State::Warn, READER));
     assert!(
+        w.under.iter().any(|l| l.contains("'custodio doctor'")),
+        "{w:?}"
+    );
+    assert!(
         w.under.last().is_some_and(|f| f.starts_with("Fix: ")),
         "{w:?}"
     );

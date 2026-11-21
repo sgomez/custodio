@@ -507,7 +507,7 @@ fn list_takes_a_verbose_flag_then_one_optional_key_id() {
             "{bad:?}"
         );
     }
-    assert_eq!(args(&["List"]), Err(ArgError::Usage));
+    assert_eq!(args(&["List"]), Err(ArgError::Unknown("List".into())));
 }
 
 #[test]

@@ -65,9 +65,13 @@ impl Case {
     /// Runs doctor as the person, on `bus`; checks the tree is the same afterwards and that `modutil` was run only
     /// in a scratch directory. Returns the output and what `modutil` was asked.
     fn run(&self, bus: &str) -> (Output, String, Vec<String>) {
+        self.run_with(bus, true)
+    }
+
+    fn run_with(&self, bus: &str, home: bool) -> (Output, String, Vec<String>) {
         let before = self.fx.tree();
-        let o = Command::new(env!("CARGO_BIN_EXE_custodio-cli"))
-            .arg("doctor")
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_custodio-cli"));
+        cmd.arg("doctor")
             .env_clear()
             // Under cargo llvm-cov the instrumented binary writes its profile where this says.
             .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
@@ -76,10 +80,11 @@ impl Case {
             .env("CUSTODIO_FIXTURE_ROOT", self.fx.root())
             .env("CUSTODIO_FIXTURE_EUID", "1000")
             .env("DBUS_SYSTEM_BUS_ADDRESS", bus)
-            .env("HOME", self.fx.home())
-            .stdin(Stdio::null())
-            .output()
-            .unwrap();
+            .stdin(Stdio::null());
+        if home {
+            cmd.env("HOME", self.fx.home());
+        }
+        let o = cmd.output().unwrap();
         assert_eq!(self.fx.tree(), before, "doctor changed the tree");
         let record = fs::read_to_string(self.outside.path().join("record")).unwrap_or_default();
         let runs: Vec<String> = record.lines().map(str::to_owned).collect();
@@ -332,6 +337,21 @@ fn no_profile_at_all_is_ok_and_the_exit_status_is_unaffected() {
     assert!(l.fixes.is_empty(), "{text}");
     assert_eq!(o.status.code(), Some(0), "{text}{}", err(&o));
     assert_eq!(runs.len(), 0, "{runs:?}");
+}
+
+#[test]
+fn without_home_the_profiles_are_could_not_check_and_the_fix_is_about_home() {
+    let c = Case::new(false);
+    let (o, text, _) = c.run_with(&c.fx.no_bus(), false);
+    let l = only(&text);
+    assert_eq!(
+        (l.state, l.name.as_str()),
+        ("could not check", FIREFOX),
+        "{text}"
+    );
+    assert_eq!(l.fixes.len(), 1, "{text}");
+    assert!(l.fixes[0].contains("HOME"), "{text}");
+    assert_eq!(o.status.code(), Some(1), "{text}");
 }
 
 #[test]

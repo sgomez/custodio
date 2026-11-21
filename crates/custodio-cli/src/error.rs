@@ -32,6 +32,10 @@ fn args(error: &ArgError) -> String {
             "custodio: unknown command or wrong arguments\n{}",
             crate::usage()
         ),
+        ArgError::Unknown(word) => format!(
+            "custodio: unknown command '{}'\nRun 'custodio --help' to see the commands.",
+            escape(word)
+        ),
         ArgError::Bare(_) | ArgError::CommandUsage(..) => error.to_string(),
         ArgError::BadId => format!(
             "custodio: {error}\nRun 'custodio import --id <key id> <file.p12>', or 'custodio import --help' for help."

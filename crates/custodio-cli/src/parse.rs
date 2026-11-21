@@ -45,8 +45,8 @@ fn is_help(arg: &str) -> bool {
 ///
 /// # Errors
 /// [`ArgError::Bare`] for a command that needs arguments and got none, [`ArgError::CommandUsage`]
-/// with what is wrong for any other bad line of a known command, [`ArgError::Usage`] for an unknown
-/// command, and [`ArgError::BadId`] for an `import` without a derivable key id.
+/// with what is wrong for any other bad line of a known command, [`ArgError::Unknown`] for an unknown
+/// command, [`ArgError::Usage`] for any other line, and [`ArgError::BadId`] for an `import` without a derivable key id.
 pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command, ArgError> {
     let args: Vec<String> = args.into_iter().collect();
     let known = args.first().and_then(|a| help::command(a));
@@ -71,7 +71,12 @@ pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command,
     if args.is_empty() || (args.len() == 1 && is_help(&args[0])) {
         return Ok(Command::Help(None));
     }
-    Err(ArgError::Usage)
+    match args.first() {
+        Some(word) if !word.starts_with('-') && word != "__key-ids" => {
+            Err(ArgError::Unknown(word.clone()))
+        }
+        _ => Err(ArgError::Usage),
+    }
 }
 
 /// The words after a command that only groups others: a topic or an action each, down to the one
@@ -224,8 +229,10 @@ pub struct ImportArgs {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ArgError {
-    /// An unknown command, or a line that is not a command at all.
+    /// A line that is not a command at all.
     Usage,
+    /// A first word that is no command.
+    Unknown(String),
     /// A command that needs arguments was given none: its short help is the answer.
     Bare(&'static str),
     /// The command line of this known command is wrong, and how.
@@ -237,6 +244,7 @@ impl fmt::Display for ArgError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Usage => f.write_str(&usage()),
+            Self::Unknown(word) => write!(f, "unknown command '{word}'"),
             Self::Bare(name) => f.write_str(&help::short(name).unwrap_or_else(usage)),
             Self::CommandUsage(path, wrong) => write!(
                 f,

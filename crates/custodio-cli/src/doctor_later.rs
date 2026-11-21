@@ -54,6 +54,8 @@ pub enum Firefox {
     Profiles(Vec<ProfileFact>),
     /// Discovery failed: the file and why.
     CouldNot(String),
+    /// `HOME` is not set, so there is nowhere to look.
+    NoHome,
 }
 
 /// What the service said about its state directory (check 6).
@@ -132,6 +134,15 @@ pub fn firefox(f: &Firefox) -> Vec<Check> {
                 FIREFOX,
                 format!("cannot look for them: {}", escape(why)),
                 Some("fix or remove that file, then run 'custodio doctor' again"),
+            )];
+        }
+        Firefox::NoHome => {
+            return vec![later(
+                BROWSERS_SECTION,
+                State::CouldNotCheck,
+                FIREFOX,
+                "cannot look for them: HOME is not set",
+                Some("run 'custodio doctor' as yourself, in a session where HOME is set"),
             )];
         }
         Firefox::Profiles(list) => list,

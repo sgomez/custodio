@@ -23,11 +23,15 @@ fn help_flags_ask_for_the_help_of_the_whole_tool_or_of_a_command() {
     }
 }
 
+fn unknown(word: &str) -> ArgError {
+    ArgError::Unknown(word.to_owned())
+}
+
 #[test]
 fn help_flag_with_anything_else_is_a_usage_error() {
     assert_eq!(args(&["--help", "list"]), Err(ArgError::Usage));
     assert_eq!(args(&["-h", "-h"]), Err(ArgError::Usage));
-    assert_eq!(args(&["nosuch", "--help"]), Err(ArgError::Usage));
+    assert_eq!(args(&["nosuch", "--help"]), Err(unknown("nosuch")));
     for name in ["list", "delete"] {
         assert!(
             matches!(args(&[name, "--help", "x"]), Err(ArgError::CommandUsage(n, _)) if n == name),
@@ -108,7 +112,7 @@ fn a_bad_line_of_a_known_command_says_what_is_wrong() {
         (&["register"], "", u("")),
     ] {
         if line[0] == "register" {
-            assert_eq!(args(line), Err(ArgError::Usage));
+            assert_eq!(args(line), Err(unknown("register")));
             continue;
         }
         assert_eq!(
@@ -117,10 +121,13 @@ fn a_bad_line_of_a_known_command_says_what_is_wrong() {
             "{line:?}"
         );
     }
-    assert_eq!(args(&["fingerprint", "enable"]), Err(ArgError::Usage));
+    assert_eq!(
+        args(&["fingerprint", "enable"]),
+        Err(unknown("fingerprint"))
+    );
     assert_eq!(Missing("x").to_string(), "missing x");
     assert_eq!(args(&[]), Ok(Command::Help(None)));
-    assert_eq!(args(&["nosuch"]), Err(ArgError::Usage));
+    assert_eq!(args(&["nosuch"]), Err(unknown("nosuch")));
 }
 
 #[test]
