@@ -1,5 +1,5 @@
 # Per-user refresh of the module copy in the Firefox snap (SPEC Design 4). The snap cannot read /usr/lib/custodio, so
-# `custodio register` keeps a copy in ~/snap/firefox/common; this runs only the refresh part, as the user, at every login
+# `custodio setup browsers enable` keeps a copy in ~/snap/firefox/common; this runs only the refresh part, as the user, at every login
 # (default.target.wants/) and each time custodio-refresh.path sees the installed module change. It changes nothing when
 # the user has no copy. The command's output goes to this unit's journal through stderr; the command also sends its own
 # entry to /run/systemd/journal/socket of the user's system.
@@ -13,7 +13,7 @@ ConditionUser=!root
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/custodio register --refresh-only
+ExecStart=/usr/bin/custodio setup browsers refresh
 NoNewPrivileges=yes
 
 [Install]

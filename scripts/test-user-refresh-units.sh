@@ -90,7 +90,7 @@ control onefmt "limited to packager deb"
 
 # A service that does not run the refresh mode is caught by the run below; the control edits the argument list of a copy.
 fixture noargs
-sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/custodio register|' "$tmp/noargs/$USER_SRC/custodio-refresh.service"
+sed -i 's|^ExecStart=.*|ExecStart=/usr/bin/custodio setup browsers|' "$tmp/noargs/$USER_SRC/custodio-refresh.service"
 
 # --- the run: the service's command line against the debug CLI ---
 exec_line=$(python3 -I -B "$CHECK" "$ROOT" --exec-line)
@@ -99,7 +99,7 @@ run_line() {
     local line=$1 home=$2 words
     read -ra words <<< "$line"
     [ "${words[0]}" = /usr/bin/custodio ] || { echo "the ExecStart binary is ${words[0]}" >&2; return 1; }
-    [ "${words[*]:1}" = "register --refresh-only" ] || { echo "the ExecStart arguments are '${words[*]:1}', not 'register --refresh-only'" >&2; return 1; }
+    [ "${words[*]:1}" = "setup browsers refresh" ] || { echo "the ExecStart arguments are '${words[*]:1}', not 'setup browsers refresh'" >&2; return 1; }
     HOME=$home "$CLI" "${words[@]:1}" --module "$tmp/module.so" > "$tmp/run.out" 2> "$tmp/cli.err"
 }
 printf 'the new module' > "$tmp/module.so"
@@ -109,13 +109,13 @@ copy=$home/snap/firefox/common/libcustodio_pkcs11.so
 printf 'a stale copy' > "$copy"
 run_line "$exec_line" "$home" 2> "$tmp/run.err" || bad "the service's command failed: $(cat "$tmp/run.err")"
 cmp -s "$copy" "$tmp/module.so" || bad "the stale copy was not replaced by the module"
-grep -q "refreshed" "$tmp/run.out" || bad "the outcome line does not say the copy was refreshed: $(cat "$tmp/run.out")"
+grep -q "replaced, it differed" "$tmp/run.out" || bad "the outcome line does not say the copy was refreshed: $(cat "$tmp/run.out")"
 # /run/systemd/journal/socket does not exist in the container, so the journal outcome is read from stderr.
 if [ -S /run/systemd/journal/socket ]; then :; else
     grep -q "cannot write to the journal at /run/systemd/journal/socket" "$tmp/cli.err" || bad "stderr lacks the journal message: $(cat "$tmp/cli.err")"
 fi
-# The control: a service without --refresh-only fails the argument check.
+# The control: a service that runs only the browsers topic fails the argument check.
 noargs_line=$(python3 -I -B "$CHECK" "$tmp/noargs" --exec-line)
 if run_line "$noargs_line" "$home" 2> "$tmp/noargs.err"; then bad "noargs: a service that does not run the refresh mode passed"; fi
-grep -qF "not 'register --refresh-only'" "$tmp/noargs.err" || bad "noargs: the message does not name the arguments: $(cat "$tmp/noargs.err")"
+grep -qF "not 'setup browsers refresh'" "$tmp/noargs.err" || bad "noargs: the message does not name the arguments: $(cat "$tmp/noargs.err")"
 exit "$fail"

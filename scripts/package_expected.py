@@ -100,7 +100,7 @@ TSS_LIBS = {
 }
 SYSTEMD = {"deb": "systemd (>= 257)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
 
-# The package that ships `modutil` (F172, verified there): `custodio register` runs it to add the module to the NSS databases of Firefox
+# The package that ships `modutil` (F172, verified there): `custodio setup browsers enable` runs it to add the module to the NSS databases of Firefox
 # and Thunderbird (F183). The deb names libnss3-tools, the rpm nss-tools, Arch's nss. scripts/check-register-deps.sh compares this with nfpm.yaml.
 MODUTIL = {"deb": "libnss3-tools", "rpm": "nss-tools", "arch": "nss"}
 

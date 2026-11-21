@@ -1,4 +1,4 @@
-# The base of the Firefox snap (stable channel) and what it provides to the module copy that `custodio register` places in
+# The base of the Firefox snap (stable channel) and what it provides to the module copy that `custodio setup browsers enable` places in
 # ~/snap/firefox/common (F171). scripts/check-snap-base.sh (`just snap-base-fit`) fails when the shipped libcustodio_pkcs11.so needs a
 # GLIBC_x.y above the base's glibc or a NEEDED library the base does not list. Researched 2026-11-14 in the VM of F171; the dev
 # container has no snap and no network route to the store, so the base snap itself could not be unpacked here.

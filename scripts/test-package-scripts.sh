@@ -95,7 +95,7 @@ err_case() {
     [ "$status" -eq 0 ] || bad "$label: exit status $status"
     if [ "$want" = notice ]; then
         grep -qF 'fingerprint is off' "$tmp/err" || bad "$label: the notice does not say the fingerprint is off: $(cat "$tmp/err")"
-        grep -qF 'sudo custodio fingerprint enable' "$tmp/err" || bad "$label: the notice lacks the enable command"
+        grep -qF 'sudo custodio setup fingerprint enable' "$tmp/err" || bad "$label: the notice lacks the enable command"
         grep -qF 'custodio doctor' "$tmp/err" || bad "$label: the notice lacks custodio doctor"
         grep -E "^custodio: " "$tmp/err" > "$tmp/notice.${label%% *}" || true  # only the notice lines: a real tool may add its own stderr
     else

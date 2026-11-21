@@ -9,7 +9,7 @@ systemctl start custodio-firefox.socket || true
 # The notice, on a first install only (post_upgrade prints none). Nothing here runs the command or touches the login configuration.
 {
     echo "custodio: the fingerprint is off for Custodio's dialogs; they ask for your password."
-    echo "custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable"
+    echo "custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable"
     echo "custodio: to check the setup at any time, run: custodio doctor"
 } >&2
 :

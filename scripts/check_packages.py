@@ -269,7 +269,7 @@ def check_needed(label, pkg, files):
 
 
 PAM_DIRS = ("/etc/pam.d", "/usr/lib/pam.d")
-NOTICE_PHRASES = ("sudo custodio fingerprint enable", "custodio doctor")
+NOTICE_PHRASES = ("sudo custodio setup fingerprint enable", "custodio doctor")
 
 
 def script_texts(label, pkg):

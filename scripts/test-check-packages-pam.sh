@@ -12,7 +12,7 @@ trap fx_cleanup EXIT
 fail=0
 
 GATE=$ROOT/scripts/check-packages.sh
-ENABLE='sudo custodio fingerprint enable'
+ENABLE='sudo custodio setup fingerprint enable'
 DOCTOR='custodio doctor'
 
 # script_case NAME KIND: $FX_DIR/cases/NAME holds, for each format, the install script (KIND no-enable or no-doctor: the notice lacks that phrase) or

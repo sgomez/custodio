@@ -36,7 +36,7 @@ configure)
     if [ -z "$2" ]; then
         {
             echo "custodio: the fingerprint is off for Custodio's dialogs; they ask for your password."
-            echo "custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable"
+            echo "custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable"
             echo "custodio: to check the setup at any time, run: custodio doctor"
         } >&2
     fi
