@@ -399,6 +399,13 @@ What each protects against, and from whom:
   the service's memory to sign, so root can take it, and the host key lives on the same disk: anyone with a backup
   or a copy of `/var/lib` has both the encrypted key and the key to open it.
 
+Both encrypted kinds also assume that the decrypted key never reaches a disk in the clear: use encrypted swap and, if the
+machine hibernates, an encrypted hibernation image (the swap area holds it). Without them, a copy of the swap area or of the
+image can carry a key the service had decrypted. The service helps but does not replace that: it sets its own core limit to 0
+and marks itself non-dumpable when it starts, so a crash writes no core file and no crash report whatever the unit and the core
+handler say, and its unit sets `LimitCORE=0` and `MemorySwapMax=0`, so the service's memory is not swapped out by the
+kernel. A `tpm` key is never in the service's memory and needs none of this.
+
 When each is chosen. After polkit approves the import and the `.p12` is opened, the service picks the first that fits:
 
 1. `tpm`, when a TPM is reachable and supports the key's algorithm and every hash the mechanisms for that key type

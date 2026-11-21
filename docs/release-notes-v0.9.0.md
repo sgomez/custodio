@@ -31,6 +31,10 @@ Ubuntu 26.04. What is said of the other two comes from the packages' files and t
 - **`custodio doctor`.** It checks the reader, the enrolled finger, the PAM file, the storage and the Firefox registration, tells
   you what is wrong and what to do, and changes nothing. See [docs/doctor.md](doctor.md).
 - **Shell completions** for bash, zsh and fish, shipped in every package. They ask nothing of polkit and fail silently.
+- **Decrypted keys stay out of swap and core dumps.** custodiod sets its core limit to 0 and clears its dumpable flag when it
+  starts, so a crash leaves no core file and no apport or systemd-coredump report with a key in it, and its unit sets
+  `LimitCORE=0` and `MemorySwapMax=0`. The `encrypted-tpm` and `encrypted-host` kinds still need encrypted swap and an encrypted
+  hibernation image; see [the threat model](threat-model.md#not-guaranteed).
 - **Clearer errors and messages** from the API and the journal, and a guide for Ubuntu 26.04 that goes from the package to a
   signature: [docs/guide-ubuntu-2604.md](guide-ubuntu-2604.md).
 

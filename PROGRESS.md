@@ -521,3 +521,14 @@ with an empty context.
   `custodio setup browsers refresh: …`. Tests: `every_browsers_action_refused_under_sudo_…` (binary, all three actions), the journal
   `MESSAGE` prefix in `refresh_only_logs_its_outcome_to_the_journal`, and `documents_name_only_real_commands` now reads the product list.
 - Checks: `cargo test -p custodio-cli`, `just quick` green; `just mutants-diff F212`: 74 mutants, 55 caught, 19 unviable, 0 missed.
+
+### 2026-11-21 — F214 — attempt 1 (session 1)
+- Done: steps 1, 2, 3, 5. Unit has `LimitCORE=0` and `MemorySwapMax=0`, gate and two controls (line removed; `LimitCORE` line replaced by `infinity`);
+  `harden()` in `crates/custodiod/src/main.rs` (rustix `setrlimit`, then `set_dumpable_behavior`), called first in `run()`, test `core_limit_and_dumpable` in
+  `main_tests.rs` (a test of the binary). `memory-*` (4 cases: unit settings, core limit, not dumpable with a uid 65534 control, and `memory-service-answers`: one
+  ListKeys) in `e2e/memory-run.sh`, `just e2e-cases debian13 'memory-*'` passes. Finding: the `/proc/<pid>` directory itself is always the process's uid
+  (mode 0555); the dumpable flag shows on the files in it, so the case reads `/proc/<pid>/status`. Docs and release notes written; the three doc runners pass.
+- `vm-memory-*` (9 cases) written: `e2e/vm/memory.sh`, wired in guest.sh/select.sh/run.sh, cases.list and skip.list. NOT yet run: step 4 and step 6 (verify's fast
+  part, `just mutants-diff F214`) remain. The contract's Scope sentence about `setrlimit` and `@resources` is wrong (evaluator note 1: rustix makes `prlimit64`, allowed);
+  amend it.
+- Next session should: run `just e2e-vm-cases full 'vm-memory-*'` and fix what it finds, tick step 4, then step 6.

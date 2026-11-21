@@ -91,6 +91,13 @@ Custodio does not defend against:
   in the service's memory to sign, so root can take the key. An `encrypted-host` key, bound to the host key and not to a TPM,
   protects against almost nothing beyond a copy of the state directory alone: a backup of `/var/lib` or a copy of the disk
   carries the key and the host key together. Import falls back to these kinds without asking.
+- **That a decrypted key never reaches a disk.** The encrypted kinds need encrypted swap and, if the machine hibernates, an
+  encrypted hibernation image: the service decrypts a key in memory to sign, and a swap area or a hibernation image holds
+  memory in the clear unless it is encrypted. What Custodio does covers a crash and the kernel's swapping, not hibernation:
+  the service sets its core limit to 0 and its dumpable flag off when it starts (so no core file and no crash report of
+  apport or systemd-coredump holds its memory, whatever the unit and the handler say), and its unit sets `LimitCORE=0` and
+  `MemorySwapMax=0` (no swap for the service's cgroup). Hibernation writes all memory, so these settings do not help there.
+  Root reading the running service's memory stays excluded, as for the rest of this model.
 - **That keys survive a TPM clear.** A TPM clear, some firmware updates of firmware TPMs or a replaced motherboard change the
   TPM's owner hierarchy, and every key wrapped under it is lost. Keys cannot be exported, so the only recovery is importing
   the `.p12` again. Keys bound to the host key are lost with it or with a change of machine id.
