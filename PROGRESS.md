@@ -532,3 +532,6 @@ with an empty context.
   part, `just mutants-diff F214`) remain. The contract's Scope sentence about `setrlimit` and `@resources` is wrong (evaluator note 1: rustix makes `prlimit64`, allowed);
   amend it.
 - Next session should: run `just e2e-vm-cases full 'vm-memory-*'` and fix what it finds, tick step 4, then step 6.
+- Later in the session: step 4 ticked. `just e2e-vm-cases full 'vm-memory-*'` passed (first run failed: Rust's runtime swallows a `kill -SEGV` that is not a stack overflow, so
+  `crash` sends it again; one run failed on the systemd-coredump control not failing within 60 s, the wait is now 120 s with diagnostics, and the rerun passed).
+  Step 6 not done: `just quick` and `just mutants-diff F214` still to run; also amend the Scope sentence on `setrlimit`.
