@@ -262,6 +262,16 @@ fn polkit_denial_and_absent_service_keep_the_strings_scripts_read() {
     assert!(root.contains("refused to run as root"), "{root}");
 }
 
+#[test]
+fn a_refusal_prints_the_error_line_and_then_what_to_do() {
+    for r in [Refusal::Root, Refusal::Sudo] {
+        let text = r.to_string();
+        let rendered = render(&CliError::Register(RegisterError::Refused(r)));
+        let first = rendered.lines().next().unwrap_or_default();
+        assert!(text.starts_with(first), "{text} / {first}");
+    }
+}
+
 const API: &str = include_str!("../../../../docs/api.md");
 
 /// The error names under "Errors" in `api` that `ServiceFailure` does not map.

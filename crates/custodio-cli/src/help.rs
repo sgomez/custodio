@@ -80,10 +80,7 @@ const SETUP: &[CommandSpec] = &[
                 usage: "[--module <path>]",
                 description: "Only updates the copy of the module that the Firefox snap loads, if it differs. It changes no profile.",
                 args: &[],
-                options: &[OptionSpec {
-                    text: "copy this library instead of the installed one",
-                    ..MODULE
-                }],
+                options: &[MODULE],
                 example: "custodio setup browsers refresh",
                 children: &[],
             },
@@ -130,7 +127,7 @@ const MODULE: OptionSpec = OptionSpec {
     flag: "--module",
     short: None,
     value: Some("<path>"),
-    text: "add this library instead of the installed one",
+    text: "use this library instead of the installed one",
 };
 
 /// Every command, in the order of the help.
