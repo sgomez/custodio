@@ -541,3 +541,9 @@ with an empty context.
   now under 5000. `just quick` green; `just mutants-diff F214` passes (`crates/custodiod/src/main.rs` is not in the recipe's `--file` list, so `harden()` is not mutated;
   the diff's other files had no mutants). Step 6 ticked; all steps done.
 - Next session should: nothing; the loop runs the verify. F213 proves the real packages and both VM modes.
+
+### 2026-11-21 — F214 — attempt 2 (fixes of NEXT_FINDINGS)
+- Done: `e2e/check-cases.sh` refuses `vm-memory-*` reported skipped in a full VM run (and the skip-list entry is expected to match nothing there);
+  `scripts/test-e2e-vm-cases.sh` has the negative control beside vm-fingerprint (full refused per id, lacking accepted, check without the rule passes) and reads `vm/memory.sh`.
+- For F213: `vm/memory.sh` leaves apport stopped and systemd-coredump installed for the rest of the full VM run; a later group depending on the core handler must know.
+- Checks: `scripts/test-e2e-vm-cases.sh` ok; `just quick` result below.

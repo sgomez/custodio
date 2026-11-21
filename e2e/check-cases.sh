@@ -85,6 +85,7 @@ check() {
             case $id in tpm-kind-*) echo "check-cases: case '$id' must run in a VM run and was skipped" >&2; bad=1 ;; esac
             case $id in snap-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || { echo "check-cases: case '$id' must run in a full VM run and was skipped" >&2; bad=1; } ;; esac
             case $id in vm-fingerprint-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || { echo "check-cases: case '$id' must run in a full VM run and was skipped" >&2; bad=1; } ;; esac
+            case $id in vm-memory-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || { echo "check-cases: case '$id' must run in a full VM run and was skipped" >&2; bad=1; } ;; esac
             case $id in vm-silent-*) [ "${CHECK_TPM_MODE:-}" != lacking ] || { echo "check-cases: case '$id' must run in a lacking VM run and was skipped" >&2; bad=1; } ;; esac
         fi
         if [ "$kind" = skipped ] && [ "${CHECK_TPM_MODE:-}" = swtpm ]; then
@@ -107,7 +108,7 @@ check() {
         # tpm-kind-* are listed for the modes without swtpm; under swtpm they run, so the entry is expected to match nothing
         case $id in tpm-kind-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
         # snap-* are listed for the lacking mode; in a full run they run, so the entry is expected to match nothing
-        case $id in snap-* | vm-fingerprint-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
+        case $id in snap-* | vm-fingerprint-* | vm-memory-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac
         case $id in tpm-dup-* | pcr-* | tpm-clear-* | tpm-slots-*) case ${CHECK_TPM_MODE:-} in swtpm | lacking) continue ;; esac ;; esac
         case $id in fallback-host-*) [ "${CHECK_TPM_MODE:-}" != none ] || continue ;; esac
         case $id in tpmfail-*) [ "${CHECK_TPM_MODE:-}" != swtpm ] || continue ;; esac

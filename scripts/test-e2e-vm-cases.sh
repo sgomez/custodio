@@ -40,7 +40,7 @@ grep -v '^pcr-extended-signs$' "$LIST" > "$tmp/l1"; differs "$LIST" "$tmp/l1" li
 bash "$CHK" lint "$VSKIP" || bad "skip.list does not lint"
 
 # ---- scripts
-SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh vm/snap.sh vm/fingerprint.sh tpmkind-cases.sh"
+SCRIPTS="sign-run.sh sign.py noplain-run.sh pcr-cases.sh pcr-run.sh pcr.py fallback-cases.sh tpmclear-cases.sh tpmclear-run.sh tpmclear.py upgrade-kinds.sh upgradekinds.py vm/judge.sh vm/silent.sh vm/snap.sh vm/fingerprint.sh vm/memory.sh tpmkind-cases.sh"
 stage() { # stage DIR: copies the case scripts
     local s; mkdir -p "$1/vm"; for s in $SCRIPTS; do cp "$ROOT/e2e/$s" "$1/$s"; done
 }
@@ -147,6 +147,19 @@ acct lacking "$tmp/fp5" > /dev/null || bad "the fingerprint group skipped in a l
 cp "$CHK" "$tmp/chk-fp.sh"; sed -i "s/case \$id in vm-fingerprint-\*) \[ \"\${CHECK_TPM_MODE:-}\" != swtpm \]/case \$id in vm-fingerprint-*) true/" "$tmp/chk-fp.sh"; differs "$CHK" "$tmp/chk-fp.sh" control-fp || true
 out_for "$tmp/fp6" -vm-fingerprint-stage "skipped vm-fingerprint-stage"
 CHK_UNDER=$tmp/chk-fp.sh acct swtpm "$tmp/fp6" > /dev/null 2>&1 || bad "control: the check without the fingerprint rule still refuses a fingerprint case skipped in a full VM run (the rule is not what refuses it)"
+
+# ---- vm-memory (F214): the group runs in full; skipped there is refused even when the skip list names it; in lacking it is skipped and accepted
+MEM_IDS=$(ids "$LIST" | grep '^vm-memory-')
+[ -n "$MEM_IDS" ] || bad "the list has no vm-memory-* cases"
+for id in $MEM_IDS; do
+    out_for "$tmp/mem1" "-$id" "skipped $id"
+    expect_fail "mem-skipped-$id" "case '$id' must run in a full VM run and was skipped" swtpm "$tmp/mem1"
+done
+{ for id in $(ids "$LIST"); do case $id in vm-memory-*) echo "E2E-CASE skipped $id" ;; *) echo "E2E-CASE run $id" ;; esac; done; } > "$tmp/mem2"
+acct lacking "$tmp/mem2" > /dev/null || bad "the memory group skipped in a lacking run was refused"
+cp "$CHK" "$tmp/chk-mem.sh"; sed -i "s/case \$id in vm-memory-\*) \[ \"\${CHECK_TPM_MODE:-}\" != swtpm \]/case \$id in vm-memory-*) true/" "$tmp/chk-mem.sh"; differs "$CHK" "$tmp/chk-mem.sh" control-mem || true
+out_for "$tmp/mem3" -vm-memory-swap-max "skipped vm-memory-swap-max"
+CHK_UNDER=$tmp/chk-mem.sh acct swtpm "$tmp/mem3" > /dev/null 2>&1 || bad "control: the check without the memory rule still refuses a memory case skipped in a full VM run (the rule is not what refuses it)"
 
 # ---- tpmbound
 TB="fallback-tpmbound-import fallback-tpmbound-cli-list upgrade-kinds-tpmbound"
