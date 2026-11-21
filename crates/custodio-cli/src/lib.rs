@@ -24,6 +24,8 @@ pub mod browser_files;
 pub mod bus;
 pub mod cert_text;
 pub mod colour;
+#[cfg(test)]
+mod command_names;
 pub mod delete;
 pub mod doctor_cmd;
 pub mod doctor_decide;

@@ -143,6 +143,20 @@ fn the_usage_line_of_each_command_starts_with_it() {
     }
 }
 
+/// The children of a level that its short help does not list with their summary.
+fn missing_from_short(level: &CommandSpec, text: &str) -> Vec<String> {
+    level
+        .children
+        .iter()
+        .filter(|k| {
+            !text
+                .lines()
+                .any(|l| l.starts_with(&format!("  {} ", k.name)) && l.contains(k.summary))
+        })
+        .map(|k| k.name.to_owned())
+        .collect()
+}
+
 #[test]
 fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_the_rest_is() {
     for c in all() {
@@ -169,6 +183,12 @@ fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_
             assert!(text.contains(&part), "{}: no {part:?}", c.name);
         }
         assert!(!text.contains(c.description), "{}", c.path);
+        assert_eq!(
+            missing_from_short(c, &text),
+            Vec::<String>::new(),
+            "{}",
+            c.path
+        );
         // nothing of another level: no sibling, no grandchild
         for other in all().into_iter().filter(|o| !c.path.starts_with(o.path)) {
             if !c.children.iter().any(|k| k.path == other.path) {
@@ -191,17 +211,19 @@ fn the_short_help_has_the_usage_every_argument_and_option_the_example_and_where_
 /// Control: dropping one action from a level's short help is seen by the check above.
 #[test]
 fn the_short_help_check_sees_a_dropped_action() {
-    let level = find("setup browsers")
-        .map(|c| c.children)
-        .unwrap_or_default();
+    let level = find("setup browsers").unwrap();
     let text = short("setup browsers").unwrap_or_default();
+    assert_eq!(missing_from_short(level, &text), Vec::<String>::new());
+    let first = &level.children[0];
     let dropped = text
         .lines()
-        .filter(|l| !l.starts_with(&format!("  {} ", level[0].name)))
+        .filter(|l| !l.starts_with(&format!("  {} ", first.name)))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(text.contains(level[0].summary));
-    assert!(!dropped.contains(level[0].summary));
+    assert_eq!(
+        missing_from_short(level, &dropped),
+        vec![first.name.to_owned()]
+    );
 }
 
 #[test]
