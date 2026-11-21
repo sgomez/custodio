@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The six install-script functions of the Arch package (packaging/arch/{pre_install,pre_upgrade,post_install,post_upgrade,pre_remove,post_remove},
+# The six install-script functions of the Arch package (packaging/arch/{pre,post}_{install,upgrade,remove},
 # F58) and its restart hook (zz-custodio-restart.hook), run one by one in a temporary root with stubbed systemctl, systemd-sysusers,
 # journalctl, busctl and systemd-hook (scripts/lib/lifecycle-fixtures.sh, shared with the deb and rpm tests). The real pacman runs them in
 # scripts/test-arch-lifecycle-real.sh. What the stubs cannot cover: a real running systemd and bus, and pacman's own order of scripts and hooks

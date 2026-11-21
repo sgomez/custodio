@@ -570,3 +570,21 @@ with an empty context.
   and 503 s (F168, the row's reason). 12 `vm-fingerprint-*` run, 9 `vm-memory-*` run, none skipped; record has polkit/fprintd/libfprint/libpam_fprintd versions, no `unknown`.
   `lacking` exit 0 in 89 s wall (row 500 s; F209 97 s), the nine `vm-memory-*` skipped, no `unknown`. Step 5: after the last fix (e2e python only) `CHECK_FORCE=1 just check` and `just quick` green again;
   VM and container runs were all made on the final tree. All steps ticked; the loop runs the verify.
+
+### 2026-11-21 — F210 — second review (with the person), after F212's renames
+- Done: pre-review of acceptances 20 and 21 again. Code (`1680aa5`): an unknown command says `unknown command '<word>'`
+  (escaped, `ArgError::Unknown`); `setup fingerprint enable`'s no-reader warning names `custodio doctor` (SPEC Design 1);
+  doctor's profiles line without HOME has its own state (`Firefox::NoHome`) and fix. Help, man page, notice (`61cc98f`):
+  fingerprint help says every polkit dialog, enrol first, and the GNOME lock screen nuance (the person asked for it); browsers
+  help names the browsers and says to close them; refresh says when it runs; enable's example without `--module`; doctor's
+  exit status; man page doctor states `ok`/`FAIL`/`warn`/`?` and the gsettings line; install notice says every polkit dialog.
+  Docs: fingerprint.md (hibernation, Fedora "observed", Omarchy needs no override, which systems ran in VMs), threat model and
+  0.9.0 notes (the four VM systems, Debian/Alma from F199), guide and manual acceptance (close Firefox before
+  `setup browsers enable`, `warn` allowed in step 7, the downloaded `.deb` excluded from step 9), doctor.md (`?` states of
+  profiles), install.md (fingerprint disable before removal). 0.9.0 rename sentence checked for F212: correct.
+- Checks: custodio-cli tests, completions, package-scripts, every doc runner, `just quick` green (in the dev container: the
+  host has Custodio installed, which `skips::the_default_module_path_is_the_installed_one` refuses on purpose).
+  `scripts/test-arch-lifecycle.sh` (package gate) not run; only its expected notice text and a comment changed.
+- Not done / known issues: doctor's register fix still reads "custodio setup browsers enable, then restart the browsers"
+  (a person with Firefox open gets a skipped profile, with its own fix). The `README.md` references in CLI messages remain.
+- Next session should: nothing; the person rereads and closes F210 with `just milestone pass F210`.

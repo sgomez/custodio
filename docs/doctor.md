@@ -44,7 +44,8 @@ System
 Asks fprintd how many readers it sees. If it sees none, plug the reader in or enable it in the firmware setup, and check that
 libfprint supports it (<https://fprint.freedesktop.org/supported-devices.html>). When fprintd is not installed, the fix names the
 package of your system (see [the table of packages](fingerprint.md#when-enable-refuses)). When fprintd is installed but nothing
-answers for it on the bus, or the bus cannot be asked, the state is `?` and the fix is to look at `systemctl status fprintd`.
+answers for it on the bus, or the bus cannot be asked, the state is `?` and the fix is to look at `systemctl status fprintd` (`systemctl status dbus fprintd` when the bus
+could not be asked).
 
 ```console fixture=noreader
 $ custodio doctor
@@ -114,7 +115,7 @@ System
 ```
 
 - The fingerprint is on for the whole system (`common-auth`, `system-auth`, authselect or `/etc/pam.d/sudo`): `ok`, and the line
-  names the file and says that `sudo` uses the finger too.
+  names where it is set and says that `sudo` uses the finger too.
 - Both the polkit file and `common-auth` ask for the finger: a `Warning:` line (after a wrong finger or no touch the finger is asked
   twice, 20 s) with its own `Fix:`: `sudo custodio setup fingerprint disable` when the file is Custodio's, otherwise remove its
   `pam_fprintd.so` line or run `sudo pam-auth-update --disable fprintd`.
@@ -148,6 +149,11 @@ no profile there is one line, `profiles`, as in every report above.
 A profile is `FAIL` when the module is not registered in it, when it is registered at a path that no longer exists, or, for the
 Firefox snap, when the snap's own copy of the module is missing or older than the installed module. A system where NSS loads the
 p11-kit proxy is `ok` without registration.
+
+A profile is `?` when its `pkcs11.txt`, or the snap's copy of the module, cannot be read; the line says which file and why, and the
+fix is to correct that and run `custodio doctor` again. The single `profiles` line is `?` when the profiles cannot be looked for: a
+`profiles.ini` that cannot be read or parsed (the line names it; fix or remove it), or `HOME` not set (run `custodio doctor` as
+yourself, in a session where `HOME` is set). A `?` here counts against the exit status, as a `FAIL` does.
 
 ### journal
 

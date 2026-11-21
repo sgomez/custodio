@@ -45,7 +45,8 @@ to that caller it looks exactly like a key that does not exist.
   must not lock anyone out of polkit: a failed or missing finger falls back to the password. It never destroys someone else's
   configuration: a file it did not write is left alone. It writes atomically, with the mode, owner and label of the other files in
   `/etc/pam.d/`.
-- **`custodio doctor`** ([docs/doctor.md](doctor.md)) changes nothing: it reads and reports.
+- **`custodio doctor`** ([docs/doctor.md](doctor.md)) changes nothing: it reads and reports. It needs no root and opens no polkit
+  dialog; asking fprintd may start it through bus activation.
 - **Certificate text.** The subject and issuer names in a `.p12` are chosen by whoever made the file, so they are untrusted: they are
   printed as data and never interpreted.
 - **The shell completions** ask nothing of polkit, write nothing and fail silently: a completion never shows a dialog, and an
@@ -127,8 +128,10 @@ Custodio does not defend against:
 - **That the password path survives a vanished vendor file.** If the file that `/etc/pam.d/polkit-1` includes disappears (a future
   polkit package that moves it), polkit's password path fails while the finger still works. `sudo` is unaffected, so the system
   can be recovered. `custodio doctor` detects it; nothing watches for it between its runs.
-- **Debian 13 and Alma 10 with a finger.** The run with a virtual fingerprint sensor in a VM was made on Ubuntu 26.04;
-  Debian 13 and Alma 10 were not run in a VM, and what is said of them comes from the packages' files. On them `enable` proceeds
+- **Debian 13 and Alma 10 with a finger.** The runs with a virtual fingerprint sensor in a VM were made on Ubuntu 26.04,
+  Fedora 44, Bazzite and Omarchy ([report](reports/polkit-fingerprint.md)); Debian 13 and Alma 10 were not run in a VM. Their
+  package names and module paths come from installing the packages in their base images; where their polkit keeps its PAM file
+  was not checked. On them `enable` proceeds
   only when the files are as where it was run (the vendor file at `/usr/lib/pam.d/polkit-1`, no `/etc/pam.d/polkit-1`), and
   refuses otherwise.
 - **Several dialogs per page.** TLS client authentication signs once per handshake, and every signature asks.

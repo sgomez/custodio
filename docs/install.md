@@ -259,7 +259,11 @@ upgrade; the authorization of the earlier request is not kept, because every sig
 
 ## Removing and purging
 
-Before you uninstall, undo the registration, as each user who ran it. It is in the user's home, which the package
+Before you uninstall, undo the fingerprint and the registration. The package leaves `/etc/pam.d/polkit-1` in place,
+still letting a finger answer polkit, so if you turned the fingerprint on, run `sudo custodio setup fingerprint disable`
+first ([above](#fingerprint-for-polkit-dialogs)).
+
+Then undo the registration, as each user who ran it, with the browsers closed. It is in the user's home, which the package
 cannot reach:
 
 ```console

@@ -16,8 +16,9 @@ you from, is in the [README](../README.md) and the [threat model](threat-model.m
 x86_64, one package per family (`.deb`, `.rpm`, Arch `.pkg.tar.zst`). Each needs systemd 257 or later, polkit 124 or
 later and a system bus that provides `ProcessFD`. [docs/install.md](install.md) has the install command for each.
 
-Debian 13 and Alma 10 were not run in a VM with a fingerprint sensor: the real run with a virtual sensor was made on
-Ubuntu 26.04. What is said of the other two comes from the packages' files and the container runs of the test suite.
+Debian 13 and Alma 10 were not run in a VM with a fingerprint sensor: the runs with a virtual sensor were made on
+Ubuntu 26.04, Fedora 44, Bazzite and Omarchy. What is said of Debian 13 and Alma 10 comes from installing their packages
+and from the container runs of the test suite; where their polkit keeps its PAM file was not checked.
 
 ## What is new
 
@@ -25,11 +26,11 @@ Ubuntu 26.04. What is said of the other two comes from the packages' files and t
   `setup browsers enable` (with `--module`); `register --remove` became `setup browsers disable`, and
   `register --refresh-only` became `setup browsers refresh`. `fingerprint` moved under `setup`:
   `setup fingerprint enable` and `disable`. The old names are not commands any more and have no alias.
-- **`custodio setup fingerprint enable` and `disable`.** One command writes `/etc/pam.d/polkit-1` so that a finger answers polkit
-  dialogs, and one removes it. It refuses rather than guesses on a system it does not know, and never touches a file it did not
-  write. See [docs/fingerprint.md](fingerprint.md).
-- **`custodio doctor`.** It checks the reader, the enrolled finger, the PAM file, the storage and the Firefox registration, tells
-  you what is wrong and what to do, and changes nothing. See [docs/doctor.md](doctor.md).
+- **`custodio setup fingerprint enable` and `disable`.** One command writes `/etc/pam.d/polkit-1` so that a finger answers
+  every polkit dialog, not only Custodio's, and one removes it. It refuses rather than guesses on a system it does not know,
+  and never touches a file it did not write. See [docs/fingerprint.md](fingerprint.md).
+- **`custodio doctor`.** It checks the reader, the enrolled finger, the PAM file, the Firefox registration, the journal and
+  the storage, tells you what is wrong and what to do, and changes nothing. See [docs/doctor.md](doctor.md).
 - **Shell completions** for bash, zsh and fish, shipped in every package. They ask nothing of polkit and fail silently.
 - **Decrypted keys stay out of swap and core dumps.** custodiod sets its core limit to 0 and clears its dumpable flag when it
   starts, so a crash leaves no core file and no apport or systemd-coredump report with a key in it, and its unit sets

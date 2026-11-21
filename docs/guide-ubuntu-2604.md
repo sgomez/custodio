@@ -39,8 +39,8 @@ System
 ```
 
 Each `FAIL` has a `Fix:` under it; [doctor.md](doctor.md) explains every check. The Browsers lines are fixed in step 5.
-The reader and the finger are your desktop's to set up: in GNOME Settings, Users, Fingerprint Login, enrol a finger
-(or run `fprintd-enroll` in a terminal). Then run `custodio doctor` again.
+The reader and the finger are your desktop's to set up. If the `finger` line is not `ok` on your machine, enrol one in GNOME
+Settings, Users, Fingerprint Login (or run `fprintd-enroll` in a terminal), then run `custodio doctor` again.
 
 ## 3. Let a finger answer the polkit dialogs (optional)
 
@@ -70,9 +70,12 @@ warn  ana  ecdsa-p256  encrypted-host
       Restart Firefox, and any program using Custodio, to see the key.
 ```
 
-Delete the original file as the message says. Close Firefox completely and open it again: a running Firefox sees the new key only after it restarts.
+On a machine with a TPM the first line says `ok` and `tpm`, without the note under it. Delete the original file as the message
+says. Firefox will see the key after step 5, which ends with a restart of Firefox.
 
 ## 5. Register the module and sign in
+
+Close Firefox completely first: a profile that a running Firefox holds is skipped (its line is `FAIL`). Then:
 
 ```console
 $ custodio setup browsers enable
@@ -82,7 +85,7 @@ ok    Firefox (snap)  efgh5678.default: registered
       Restart the browsers to see the change.
 ```
 
-Restart Firefox, and sign in to the site that asks for your certificate; the polkit dialog asks for your password (or your finger,
+Open Firefox again, and sign in to the site that asks for your certificate; the polkit dialog asks for your password (or your finger,
 if you did step 3). Then:
 
 ```console
@@ -91,6 +94,8 @@ ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03
 
 Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
 ```
+
+On a terminal a header row comes first.
 
 The package also installs the shell completions; open a new terminal, type `custodio`, a space and `li`, and press Tab; it completes:
 
@@ -105,7 +110,9 @@ The last two lines are what the Tab key does for you: they ask the completion fo
 
 ## 6. Take it all away
 
-Delete the key (it asks you to confirm), undo the registration and the fingerprint, then remove the package. Do these before removing the package:
+Delete the key (it asks you to confirm: type `y`), close Firefox, undo the registration and the fingerprint, then remove the
+package. Do these first: removing the package leaves `/etc/pam.d/polkit-1` in place, still letting a finger answer polkit, and
+leaves the module's entries in your browser profiles.
 
 ```console
 $ custodio delete ana

@@ -60,7 +60,8 @@ It removes the file only if it is Custodio's. After it the system is as it was b
   which finger or which reader answered.
 - **It answers every polkit action**, not only Custodio's (above).
 - **A finger at the machine can approve a remote request.** On Ubuntu a polkit authentication started from an ssh session also
-  asks for the finger, and a touch on the local reader approves it. On Fedora, `pam_fprintd` skips remote sessions.
+  asks for the finger, and a touch on the local reader approves it. On Fedora, `pam_fprintd` skips remote sessions (observed;
+  the reason is inferred).
 - **The login and lock screens are not Custodio's.** On Ubuntu, enrolling a finger is enough for the lock screen to accept it,
   with or without the override ([below](#the-gnome-lock-screen-on-ubuntu)). Fedora and Bazzite keep it off through authselect;
   Omarchy uses a separate file.
@@ -69,6 +70,8 @@ It removes the file only if it is Custodio's. After it the system is as it was b
   `sudo custodio setup fingerprint disable`. `custodio doctor` detects it; nothing watches for it between its runs.
 - **Debian 13 and AlmaLinux 10 were not run** in a virtual machine (below). On them `enable` proceeds only when the files are as
   on the systems where it was run, and refuses otherwise.
+- **Hibernation writes all of memory to disk**, a decrypted key included, whatever the service's settings say. The
+  `encrypted-tpm` and `encrypted-host` kinds need an encrypted swap device and hibernation image.
 
 The other limits of the [threat model](threat-model.md)'s "Not guaranteed" list still hold with a finger: the dialog does not show
 which key or what is signed; an audit entry records a uid and pid, not a person; root can use a key; a TPM clear loses the
@@ -88,7 +91,8 @@ Run it again with sudo: 'sudo custodio setup fingerprint enable' (or 'disable').
 ```
 
 The file is someone else's (an administrator's own `polkit-1`, or Omarchy's setup, which ships one that already asks for the
-finger). Look at who owns it and remove or merge it yourself:
+finger). Look at who owns it and remove or merge it yourself. On Omarchy you do not need Custodio's file: Omarchy's own
+already lets a finger answer polkit, so leave it as it is.
 
 ```console fails=yes fixture=debian-foreign
 $ sudo custodio setup fingerprint enable 2>&1
@@ -208,10 +212,13 @@ The login screen reads the same setting of the `gdm` user, a separate one set as
 
 Firefox reads the list of keys from Custodio's module when it starts. After `custodio import` or `custodio delete`, quit
 Firefox completely and start it again, or the new key does not show (or the deleted one still shows) in its certificate dialog.
+The same holds for any other program that loaded the module (Thunderbird, LibreWolf, LibreOffice).
 
 ## Other systems
 
 The commands are the same on every supported system; only the package names differ (the table above). The tests that run this
-page use a fixture system and a fake fprintd. Ubuntu 26.04, Fedora 44, Bazzite and Arch with Omarchy were run (Ubuntu 26.04 in a
-virtual machine with a virtual fingerprint sensor); Debian 13 and AlmaLinux 10 were not run in a virtual machine, and what this
-page says of them comes from their packages' files.
+page use a fixture system and a fake fprintd. Ubuntu 26.04, Fedora 44, Bazzite and Arch with Omarchy were run in virtual machines
+with libfprint's virtual fingerprint sensor ([the report](reports/polkit-fingerprint.md)), and Ubuntu 26.04 again in the
+project's own virtual machine test. Debian 13 and AlmaLinux 10 were not run in a virtual machine: their package names and module
+paths come from installing the packages in their base images ([F199](findings/F199.md)); where their polkit keeps its PAM file
+was not checked, which is why `enable` there proceeds only when the files are as on the systems where it was run.

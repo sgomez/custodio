@@ -1173,7 +1173,7 @@ ok    polkit  finger on for every polkit dialog
    Then run `pkexec true` in a terminal: the dialog must take your finger. Run `sudo true`: it must still ask for your password. Both
    are a person's (a finger at a screen).
 
-4. In Firefox export your certificate (Settings, Privacy & Security, View Certificates, Your Certificates, Backup) as `ana.p12` into the
+4. In Firefox export your certificate (Settings, Privacy & Security, Certificates, View Certificates, Your Certificates, Backup) as `ana.p12` into the
    directory you are in, with a password, and import it. Use **your exported file** in this command; approve the dialog with your finger:
 
 ```console
@@ -1185,9 +1185,10 @@ warn  ana  ecdsa-p256  encrypted-host
 ```
 
    On your machine the first line may differ (a TPM key says `ok` and `tpm`, with only the two steps under it); write what you see.
+   Do not restart Firefox yet: it sees the key after step 5.
 
-5. Register the module, restart Firefox completely, and sign in with your finger at a real site that requires a client certificate
-   (a person's):
+5. Close Firefox completely, register the module, open Firefox again, and sign in with your finger at a real site that requires a
+   client certificate (a person's):
 
 ```console
 $ custodio setup browsers enable
@@ -1215,10 +1216,11 @@ list
 
    In a new terminal type `custodio`, a space and `li`, and press Tab: it must complete to `list` (a person's key press).
 
-7. Run `custodio doctor` again, with the finger enabled and Firefox registered: every line must say `ok` and none may show a fix
-   (the screen of your machine; the fixture of the script cannot show it).
+7. Run `custodio doctor` again, with the finger enabled and Firefox registered: every line must say `ok`, except `key storage`, which
+   says `warn` with a fix when the disk is not encrypted; the exit status (`echo $?`) must be 0 (the screen of your machine; the fixture
+   of the script cannot show it).
 
-8. The way back. Delete the key, undo the registration and the fingerprint, and remove the package, in this order:
+8. The way back. Delete the key, close Firefox, undo the registration and the fingerprint, and remove the package, in this order:
 
 ```console
 $ custodio delete ana
@@ -1271,7 +1273,8 @@ no_firefox_entry() { ! grep -rqsi custodio "$HOME"/.mozilla/firefox/*/pkcs11.txt
 no_module_copy() { [ -z "$(find "$HOME" "$R/usr" -name 'libcustodio_pkcs11*' 2> /dev/null)" ]; }
 nothing_else_left() {
     local f k keep extra=
-    for f in $(find "$R/etc" "$R/usr" "$R/var" "$R/run" "$HOME" -iname '*custodio*' 2> /dev/null); do
+    # The downloaded package is not something the package left.
+    for f in $(find "$R/etc" "$R/usr" "$R/var" "$R/run" "$HOME" -iname '*custodio*' ! -name 'custodio_*.deb' 2> /dev/null); do
         keep=
         for k in $KEPT; do case $f in "$k" | "$k"/*) keep=1 ;; esac; done
         [ -n "$keep" ] || extra="$extra $f"
@@ -1290,7 +1293,7 @@ exit "$rc"
 A person reads [docs/fingerprint.md](fingerprint.md), the lock-screen and Firefox-restart parts of it, [docs/doctor.md](doctor.md),
 [docs/guide-ubuntu-2604.md](guide-ubuntu-2604.md) and [docs/threat-model.md](threat-model.md), and checks, with SPEC.md's Design 5 and the Threat
 model's "Not guaranteed" list open, that every item is present and agrees with [docs/api.md](api.md), [docs/audit.md](audit.md) and the
-report in `docs/findings/`. Write in the form of section 29 each place where an item is missing, wrong or says something another document
+report in `docs/reports/polkit-fingerprint.md`. Write in the form of section 29 each place where an item is missing, wrong or says something another document
 contradicts, with the file and the line. Nothing is run here.
 
 ```text
