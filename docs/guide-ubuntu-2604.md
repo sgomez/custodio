@@ -92,7 +92,7 @@ ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03
 Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
 ```
 
-The package also installs the shell completions; open a new terminal and `custodio li` followed by Tab completes:
+The package also installs the shell completions; open a new terminal, type `custodio`, a space and `li`, and press Tab; it completes:
 
 ```console
 $ source /usr/share/bash-completion/completions/custodio

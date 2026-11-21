@@ -486,3 +486,17 @@ with an empty context.
   `sudo [options] ` prefix or reject unknown sudo options (no silent skip); a `<placeholder>` in a command-name position fails;
   the costs row for `setup.rs` covers the third control and the wider block scan (wording only).
 - Next session should: run `just fuzz-build`, write the step 3 unit test, then steps 4 onwards in order.
+
+### 2026-11-21 — F212 — attempt 1 (session 2)
+- Done: steps 4–8 ticked. Completions (three files; `completions.rs` walks the table recursively, control drops the `refresh`
+  action); refresh unit, install notices and their gates; e2e scripts and judges; every current document and doc runner on the new
+  names (release notes 0.9.0 gained the `setup` bullet; reviewer to check that sentence: F210's reviewer); justfile no longer runs
+  the 0.8.0 notes; `setup.rs::documents_name_only_real_commands` with its three controls (in-process parser; sudo options accepted;
+  placeholders in a name position fail through the parser; `Bare` counts as a real command). Two docs lines about Tab completion
+  were reworded (`custodio li` is not a command). `test-user-refresh-units.sh` judge now reads `replaced, it differed` (the F210
+  output) instead of `refreshed`. Runners passed on this tree: readme, install-register, fingerprint, guide, manual-m7,
+  release-notes, threat-model, user-refresh-units, package-scripts, check-packages-pam, e2e-fingerprint, e2e-doctor, e2e-vm-snap.
+- Not done: step 3's unit test "every message names a real command" with its two controls (still unwritten) and the stronger
+  short-help control; step 1 (`just fuzz-build`); step 9 (`just quick`, mutants-diff F212, the three doc runners were not re-run after the
+  last doc rewording of Tab lines: guide, manual-m7). Prefix constant for error lines is a list in `setup.rs` (`SETUP_PREFIXES`).
+- Next session should: write the step 3 test, run `just fuzz-build`, `just quick`, `just mutants-diff F212`, re-run guide/manual-m7 runners.

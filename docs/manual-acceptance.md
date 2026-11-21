@@ -1213,7 +1213,7 @@ $ _custodio; echo "${COMPREPLY[@]}"
 list
 ```
 
-   In a new terminal type `custodio li` and press Tab: it must complete to `list` (a person's key press).
+   In a new terminal type `custodio`, a space and `li`, and press Tab: it must complete to `list` (a person's key press).
 
 7. Run `custodio doctor` again, with the finger enabled and Firefox registered: every line must say `ok` and none may show a fix
    (the screen of your machine; the fixture of the script cannot show it).
@@ -1301,7 +1301,7 @@ the Firefox restart; every check of doctor with its fix; Debian 13 and Alma 10 n
 
 ## 28. M7 acceptance 21: the help alone
 
-A person who has not read the documents runs `custodio --help` and then the help of each command (`custodio <command> --help`), reading
+A person who has not read the documents runs `custodio --help` and then the help of each command (the `--help` option of each), reading
 nothing else, and says for each command whether the help is enough to use it. Write in the form each command whose help was not enough
 and what was missing.
 
