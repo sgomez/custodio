@@ -50,6 +50,9 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 IPAddressDeny=any
+# F214: no core file and no swap for the decrypted keys (custodiod also drops its own core limit and dumpable flag at start).
+LimitCORE=0
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target

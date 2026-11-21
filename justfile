@@ -257,7 +257,7 @@ snap-sockets:
 socket-dir-override:
     scripts/check-test-socket-dir.sh
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override), so the
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access and F214's LimitCORE=0 and MemorySwapMax=0 (each once, no raw TPM node, no TCTI override), so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh

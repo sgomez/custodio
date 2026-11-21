@@ -18,6 +18,8 @@ unit_case() { # LABEL SED-EXPRESSION
     expect_fail "$1" "$dir/u.service"
 }
 unit_case "ProtectProc=default" 's/^ProtectProc=.*/ProtectProc=default/'
+unit_case "MemorySwapMax=0 removed" '/^MemorySwapMax=/d'
+unit_case "LimitCORE=infinity (the line replaced)" 's/^LimitCORE=.*/LimitCORE=infinity/'
 add_case() { # LABEL LINE (inserted before [Install])
     sed "/^\[Install\]/i $2" "$UNIT" > "$dir/u.service"
     grep -qxF -- "$2" "$dir/u.service" || bad "fixture for '$1' was not written"
