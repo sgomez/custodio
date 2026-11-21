@@ -407,3 +407,70 @@ fn a_skipped_profile_names_the_command_that_was_run() {
         assert!(lines[1].contains(again), "{text}");
     }
 }
+
+/// Every `custodio …` command a message names that the parser does not accept. A command ends at
+/// a quote, a comma, a colon, a closing bracket, a full stop or the word `again`.
+fn unknown_commands(text: &str) -> Vec<String> {
+    let mut bad = Vec::new();
+    // A placeholder is a value: `<file.p12>` stands for a word.
+    let mut plain = String::new();
+    let mut inside = false;
+    for c in text.chars() {
+        match c {
+            '<' => {
+                inside = true;
+                plain.push('x');
+            }
+            '>' => inside = false,
+            _ if !inside => plain.push(c),
+            _ => {}
+        }
+    }
+    let mut rest = plain.as_str();
+    while let Some(at) = rest.find("custodio ") {
+        let before = &rest[..at];
+        let after = &rest[at + "custodio ".len()..];
+        // A command starts a line, follows a quote or `sudo `: `the custodio package` is prose.
+        let starts =
+            before.is_empty() || before.ends_with(['\'', '\n']) || before.ends_with("sudo ");
+        if !starts {
+            rest = after;
+            continue;
+        }
+        let end = after
+            .find(['\'', '"', ',', ':', ')', ';', '.'])
+            .unwrap_or(after.len());
+        let words = after[..end].trim_end_matches(" again");
+        let args: Vec<String> = words.split_whitespace().map(str::to_owned).collect();
+        if !matches!(
+            crate::parse::parse_command(args),
+            Ok(_) | Err(crate::parse::ArgError::Bare(_))
+        ) {
+            bad.push(format!("custodio {words}"));
+        }
+        rest = &after[end..];
+    }
+    bad
+}
+
+#[test]
+fn every_command_an_error_names_is_one_the_parser_accepts() {
+    for e in samples() {
+        let text = render(&e);
+        // The usage synopsis shows placeholders, not commands to run.
+        if text.to_lowercase().contains("usage:") {
+            continue;
+        }
+        assert_eq!(unknown_commands(&text), Vec::<String>::new(), "{text}");
+    }
+}
+
+#[test]
+fn the_command_check_fails_a_message_that_names_a_removed_command() {
+    for text in [
+        "Run 'custodio register --remove' again.",
+        "Run it again with sudo: 'sudo custodio fingerprint enable' (or 'disable').",
+    ] {
+        assert!(!unknown_commands(text).is_empty(), "{text}");
+    }
+}
