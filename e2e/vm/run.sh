@@ -214,7 +214,7 @@ declare -A grp=()
 while read -r name secs; do
     case $name in
     install | service | import) setup=$((setup + secs)) ;;
-    snap | vm-fingerprint | sign | noplain | pcr | fallback | tpmclear | upgrade)
+    snap | vm-fingerprint | vm-memory | sign | noplain | pcr | fallback | tpmclear | upgrade)
         case $name in
         snap) pat='^snap-' ;; vm-fingerprint) pat='^vm-fingerprint-' ;; sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
         tpmclear) pat='^tpm-clear-' ;; upgrade) pat='^upgrade-kinds-' ;;
@@ -222,7 +222,7 @@ while read -r name secs; do
         ! grep -q "$pat" <<< "$selection" || grp[$name]=$((${grp[$name]:-0} + secs)) ;;
     esac
 done < <(sed -n 's/^E2E-PHASE \([^ ]*\) \([0-9]*\)$/\1 \2/p' "$guest_out")
-for name in snap vm-fingerprint sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
+for name in snap vm-fingerprint vm-memory sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
 steps+=("setup=$setup")
 t0=$SECONDS
 [ "$rc" -eq 0 ] || die "the guest run failed with status $rc (see $log)"
