@@ -88,14 +88,14 @@ fn usage_errors_go_to_stderr_and_say_how_to_get_help() -> Res {
         if let Some(c) = line
             .first()
             .and_then(|n| custodio_cli::help::command(n))
-            .filter(|_| !(line.len() > 2 && line[0] == "setup"))
+            .filter(|_| !(line.len() > 3 && line[0] == "setup"))
         {
             assert!(
                 err.contains(&format!("custodio {} --help", c.name)),
                 "{line:?}: {err}"
             );
         }
-        if line.len() > 2 && line[0] == "setup" {
+        if line.len() > 3 && line[0] == "setup" {
             // below a group the error names the level where it was found
             assert!(
                 err.contains(&format!(
