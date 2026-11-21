@@ -114,10 +114,10 @@ import re, sys
 t = sys.stdin.read()
 m = re.search(r"(```console\n\$ custodio delete ana\n)", t)
 sys.stdout.write(t.replace(m.group(1), m.group(1) + "$ custodio list\n", 1))'
-    control "register --remove missing from the way back" run python3 -I -c '
+    control "setup browsers disable missing from the way back" run python3 -I -c '
 import re, sys
 t = sys.stdin.read()
-m = re.search(r"```console\n\$ custodio register --remove\n(?:(?!```).)*```\n", t, re.S)
+m = re.search(r"```console\n\$ custodio setup browsers disable\n(?:(?!```).)*```\n", t, re.S)
 sys.stdout.write(t.replace(m.group(0), ""))'
     # the final checks on a fixture left dirty: each check reports NOT CLEAN by itself
     for mode in pam profile copy extra; do

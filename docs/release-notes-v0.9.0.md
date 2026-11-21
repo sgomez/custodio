@@ -21,7 +21,11 @@ Ubuntu 26.04. What is said of the other two comes from the packages' files and t
 
 ## What is new
 
-- **`custodio fingerprint enable` and `disable`.** One command writes `/etc/pam.d/polkit-1` so that a finger answers polkit
+- **`custodio setup`.** The setup commands are grouped under one command. `register` became
+  `setup browsers enable` (with `--module`); `register --remove` became `setup browsers disable`, and
+  `register --refresh-only` became `setup browsers refresh`. `fingerprint` moved under `setup`:
+  `setup fingerprint enable` and `disable`. The old names are not commands any more and have no alias.
+- **`custodio setup fingerprint enable` and `disable`.** One command writes `/etc/pam.d/polkit-1` so that a finger answers polkit
   dialogs, and one removes it. It refuses rather than guesses on a system it does not know, and never touches a file it did not
   write. See [docs/fingerprint.md](fingerprint.md).
 - **`custodio doctor`.** It checks the reader, the enrolled finger, the PAM file, the storage and the Firefox registration, tells
@@ -45,11 +49,11 @@ supported snapd interface.
 
 ## Upgrading
 
-An upgrade changes no key and no file in the state directory. `custodio fingerprint` is off until you run `enable`. After an
-upgrade, `custodio register` brings the copy of the module the snap runs up to date:
+An upgrade changes no key and no file in the state directory. `custodio setup fingerprint` is off until you run `enable`. After an
+upgrade, `custodio setup browsers enable` brings the copy of the module the snap runs up to date:
 
 ```console
-$ custodio register
+$ custodio setup browsers enable
 ok    Firefox         abcd1234.default-release: registered
 ok    Firefox (snap)  module copy: placed
 ok    Firefox (snap)  efgh5678.default: registered

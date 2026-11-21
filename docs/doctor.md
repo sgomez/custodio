@@ -54,7 +54,7 @@ Fingerprint (optional)
   ?     finger       no reader to ask
         Fix: fix the reader first
   FAIL  polkit       off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
@@ -77,7 +77,7 @@ Fingerprint (optional)
   FAIL  finger       none enrolled
         Fix: Settings > Users > Fingerprint Login, or fprintd-enroll
   FAIL  polkit       off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
@@ -89,7 +89,7 @@ System
 
 ### polkit
 
-Looks at `/etc/pam.d/polkit-1`. `off` with `sudo custodio fingerprint enable` as the fix means Custodio's file is not there (the
+Looks at `/etc/pam.d/polkit-1`. `off` with `sudo custodio setup fingerprint enable` as the fix means Custodio's file is not there (the
 output above). Other states:
 
 - `on`: Custodio's file is there.
@@ -103,7 +103,7 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off, and /etc/pam.d/polkit-1 is not Custodio's
-        Fix: remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio fingerprint enable
+        Fix: remove or merge it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' name its owner), then: sudo custodio setup fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
@@ -116,7 +116,7 @@ System
 - The fingerprint is on for the whole system (`common-auth`, `system-auth`, authselect or `/etc/pam.d/sudo`): `ok`, and the line
   names the file and says that `sudo` uses the finger too.
 - Both the polkit file and `common-auth` ask for the finger: a `Warning:` line (after a wrong finger or no touch the finger is asked
-  twice, 20 s) with its own `Fix:`: `sudo custodio fingerprint disable` when the file is Custodio's, otherwise remove its
+  twice, 20 s) with its own `Fix:`: `sudo custodio setup fingerprint disable` when the file is Custodio's, otherwise remove its
   `pam_fprintd.so` line or run `sudo pam-auth-update --disable fprintd`.
 - A broken include. Custodio's file includes the polkit file of your system, and without it no polkit dialog can authenticate,
   not even with the password. It is the first line of the report, and the exit status is 1:
@@ -126,7 +126,7 @@ $ custodio doctor
 Fingerprint (optional)
   FAIL  polkit       /etc/pam.d/polkit-1 includes /usr/lib/pam.d/polkit-1, which is missing
         No polkit dialog works, not even with the password.
-        Fix: reinstall polkit, or: sudo custodio fingerprint disable
+        Fix: reinstall polkit, or: sudo custodio setup fingerprint disable
   ok    reader       1 reader
   ok    finger       1 finger enrolled
 Browsers
@@ -141,8 +141,8 @@ System
 ### profiles
 
 Looks for your browser profiles (Firefox, its snap, Thunderbird and the browsers like them) with the same discovery as
-`custodio register`, and prints one line per profile under Browsers: the browser, the profile's directory and, when it is not
-`ok`, why. The fix, `custodio register` and then a restart of the browsers, comes once, under the last profile that needs it. With
+`custodio setup browsers enable`, and prints one line per profile under Browsers: the browser, the profile's directory and, when it is not
+`ok`, why. The fix, `custodio setup browsers enable` and then a restart of the browsers, comes once, under the last profile that needs it. With
 no profile there is one line, `profiles`, as in every report above.
 
 A profile is `FAIL` when the module is not registered in it, when it is registered at a path that no longer exists, or, for the
@@ -173,7 +173,7 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System
@@ -193,7 +193,7 @@ Fingerprint (optional)
   ok    reader       1 reader
   ok    finger       1 finger enrolled
   FAIL  polkit       off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   ok    profiles     none found, nothing to register
 System

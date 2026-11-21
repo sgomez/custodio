@@ -318,9 +318,9 @@ or a download from Mozilla, and its NSS tools (`dnf install nss-tools`).
    (`getenforce` prints `Enforcing`, `fprintd` and `fprintd-pam` installed, no `/etc/pam.d/polkit-1`):
 
    ```sh
-   sudo custodio fingerprint enable
+   sudo custodio setup fingerprint enable
    ls -Z /etc/pam.d/polkit-1; matchpathcon -n /etc/pam.d/polkit-1; sudo restorecon -n -v /etc/pam.d/polkit-1
-   sudo custodio fingerprint disable
+   sudo custodio setup fingerprint disable
    ```
 
    Expected: the two labels are equal, `restorecon -n -v` prints nothing, and `disable` leaves no `/etc/pam.d/polkit-1`. A different label or any output of `restorecon` is a failure of acceptance 17.
@@ -998,7 +998,7 @@ as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The co
    the desktop user (not `root`, not `sudo`) with Firefox closed, register it:
 
    ```sh vm
-   custodio register
+   custodio setup browsers enable
    ```
 
    Expected: `ok` lines for the snap profile (`registered`) and for the module copy (`placed`), as in the README. A `FAIL`
@@ -1109,7 +1109,7 @@ as a pass or a fail. The commands marked `sh` run in a plain Linux shell. The co
 | # | Step | Expected | Result (pass/fail, notes) |
 |---|---|---|---|
 | 1 | `snap list firefox` | the Firefox snap, its revision written down | |
-| 2 | `custodio register` | the snap profile registered, the module copy placed | |
+| 2 | `custodio setup browsers enable` | the snap profile registered, the module copy placed | |
 | 3 | `openssl pkey -text` on both client keys | RSA 2048 and `prime256v1` | |
 | 4 | `s_client` against the server | both certificates accepted, none refused | |
 | 5 | Firefox with the RSA 2048 key | the page loads, a polkit dialog for each signature | |
@@ -1134,7 +1134,7 @@ names are `/home/ana`: yours is your own.
 ```console
 $ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
 custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
-custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable
+custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable
 custodio: to check the setup at any time, run: custodio doctor
 ```
 
@@ -1147,11 +1147,11 @@ Fingerprint (optional)
   ok    reader          1 reader
   ok    finger          1 finger enrolled
   FAIL  polkit          off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   FAIL  Firefox         abcd1234.default-release: not registered
   FAIL  Firefox (snap)  efgh5678.default: the snap's copy of the module is missing
-        Fix: custodio register, then restart the browsers
+        Fix: custodio setup browsers enable, then restart the browsers
 System
   ok    journal         persistent
   ok    key storage     on an encrypted disk
@@ -1162,12 +1162,12 @@ System
 3. Turn the fingerprint on:
 
 ```console
-$ sudo custodio fingerprint enable
+$ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
       A wrong finger, or 10 s without a touch, falls back to the password.
       sudo and the login are unchanged.
       On GNOME the finger may also unlock the lock screen (org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.
-      Undo: sudo custodio fingerprint disable
+      Undo: sudo custodio setup fingerprint disable
 ```
 
    Then run `pkexec true` in a terminal: the dialog must take your finger. Run `sudo true`: it must still ask for your password. Both
@@ -1190,7 +1190,7 @@ warn  ana  ecdsa-p256  encrypted-host
    (a person's):
 
 ```console
-$ custodio register
+$ custodio setup browsers enable
 ok    Firefox         abcd1234.default-release: registered
 ok    Firefox (snap)  module copy: placed
 ok    Firefox (snap)  efgh5678.default: registered
@@ -1227,7 +1227,7 @@ ok    ana  deleted
 ```
 
 ```console
-$ custodio register --remove
+$ custodio setup browsers disable
 ok    Firefox         abcd1234.default-release: removed
 ok    Firefox (snap)  efgh5678.default: removed
 ok    Firefox (snap)  module copy: removed
@@ -1235,9 +1235,9 @@ ok    Firefox (snap)  module copy: removed
 ```
 
 ```console
-$ sudo custodio fingerprint disable
+$ sudo custodio setup fingerprint disable
 ok    polkit  off, polkit asks for the password only
-      Undo: sudo custodio fingerprint enable
+      Undo: sudo custodio setup fingerprint enable
 ```
 
 ```console
@@ -1310,9 +1310,15 @@ custodio --help
 custodio import --help
 custodio list --help
 custodio delete --help
-custodio register --help
+custodio setup --help
+custodio setup browsers --help
+custodio setup browsers enable --help
+custodio setup browsers disable --help
+custodio setup browsers refresh --help
+custodio setup fingerprint --help
+custodio setup fingerprint enable --help
+custodio setup fingerprint disable --help
 custodio doctor --help
-custodio fingerprint --help
 ```
 
 ## 29. M7 result form
@@ -1326,10 +1332,10 @@ version ________ polkit, fprintd, libfprint and libpam-fprintd versions ________
 | 2 doctor names what is missing | | |
 | 3 enable; pkexec takes the finger; sudo asks the password | | |
 | 4 import with the finger | | |
-| 5 register; sign in at a site with the finger | | |
+| 5 setup browsers enable; sign in at a site with the finger | | |
 | 6 list and the completion | | |
 | 7 doctor reports nothing to fix | | |
-| 8 delete, register --remove, disable, remove, purge | | |
+| 8 delete, setup browsers disable, setup fingerprint disable, remove, purge | | |
 | 9 final checks (paste the output of final-checks.sh) | | |
 | 20 documents against the design (section 27) | | |
 | 21 the help alone (section 28) | | |

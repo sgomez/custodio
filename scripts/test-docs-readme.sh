@@ -4,7 +4,7 @@
 # scripted polkit), `register` and `register --remove` on a temporary HOME with a Firefox profile, a snap profile and a stub
 # `modutil` first on PATH. Then it checks the effect of register and remove, the block kinds and every relative link, and that
 # the README links the threat model and SECURITY.md. Negative controls: broken copies of the README must fail.
-# `custodio register` without --module uses /usr/lib/custodio/libcustodio_pkcs11.so, which is not here: the commands run in a user
+# `custodio setup browsers enable` without --module uses /usr/lib/custodio/libcustodio_pkcs11.so, which is not here: the commands run in a user
 # and mount namespace where an overlay puts an empty module file there, and then in a nested user namespace mapped to the
 # invoking uid (register refuses root). Nothing on the host changes. Without `unshare` the test fails; it does not skip.
 # Usage: scripts/test-docs-readme.sh   (DOC overrides the README; CHECK_ONLY=1 skips the controls)
@@ -116,7 +116,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "link to the guide removed" static sed 's#(docs/guide-ubuntu-2604\.md[^)]*)#(docs/install.md)#g'
     control "command altered" run sed '0,/^\$ custodio list$/s//$ custodio lst/'
     control "output altered" run sed '0,/^ana  ecdsa-p256  encrypted-host  /s//ana  ecdsa-p256  tpm  /'
-    control "remove command replaced by refresh-only" run sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'
+    control "remove command replaced by refresh-only" run sed 's/^\$ custodio setup browsers disable$/$ custodio setup browsers refresh/'
     for i in "${!pids[@]}"; do
         if wait "${pids[$i]}"; then echo "control ok: ${names[$i]}"; else bad "control '${names[$i]}' passed on a broken README"; fi
     done

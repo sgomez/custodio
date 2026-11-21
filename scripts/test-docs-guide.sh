@@ -76,7 +76,7 @@ esac
 case \$act in
     -i) arg=\$PWD/\$arg ;;
     *) if grep -rqsi custodio \$HOME/.mozilla/firefox/*/pkcs11.txt \$HOME/snap/firefox/common/.mozilla/firefox/*/pkcs11.txt; then
-           echo "the module is still registered in a Firefox profile: run custodio register --remove first" >&2; exit 1; fi ;;
+           echo "the module is still registered in a Firefox profile: run custodio setup browsers disable first" >&2; exit 1; fi ;;
 esac
 cd $d
 unshare --map-root-user --mount env DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket dpkg --root=$d/droot --log=$d/droot/dpkg.log \\
@@ -116,8 +116,8 @@ echo "\$1" >> \$d/ran
 while IFS= read -r c; do
     case \$c in
         "sudo apt-get install ./"* | "sudo apt-get remove custodio" | "sudo apt-get purge custodio") h=apt-get-to-dpkg ;;
-        "sudo custodio fingerprint enable" | "sudo custodio fingerprint disable") h=custodio-fixture-root-as-root ;;
-        "custodio doctor" | "custodio import --id ana ana.p12" | "custodio register" | "custodio register --remove" | "custodio list" | "custodio delete ana") h=custodio-fixture ;;
+        "sudo custodio setup fingerprint enable" | "sudo custodio setup fingerprint disable") h=custodio-fixture-root-as-root ;;
+        "custodio doctor" | "custodio import --id ana ana.p12" | "custodio setup browsers enable" | "custodio setup browsers disable" | "custodio list" | "custodio delete ana") h=custodio-fixture ;;
         "sudo ls -d /var/lib/private/custodio") h=ls-in-package-root ;;
         "getent passwd custodio | cut -d: -f1") h=getent-in-package-root ;;
         "source /usr/share/bash-completion/completions/custodio" | "COMP_WORDS=(custodio li) COMP_CWORD=1" | '_custodio; echo "\${COMPREPLY[@]}"') h=bash-completion ;;
@@ -130,8 +130,8 @@ case \$1 in
         [ -x \$d/droot/usr/libexec/custodio/custodiod ] || { echo "the package's files are not in the root" >&2; exit 1; }
         grep -q '^custodio:' \$d/droot/etc/passwd || { echo "no account" >&2; exit 1; }
         snap > \$d/state.before ;;
-    "sudo custodio fingerprint enable") [ -s \$d/root/etc/pam.d/polkit-1 ] || { echo "no override" >&2; exit 1; } ;;
-    "sudo custodio fingerprint disable") [ ! -e \$d/root/etc/pam.d/polkit-1 ] || { echo "the override is still there" >&2; exit 1; } ;;
+    "sudo custodio setup fingerprint enable") [ -s \$d/root/etc/pam.d/polkit-1 ] || { echo "no override" >&2; exit 1; } ;;
+    "sudo custodio setup fingerprint disable") [ ! -e \$d/root/etc/pam.d/polkit-1 ] || { echo "the override is still there" >&2; exit 1; } ;;
     "sudo apt-get remove custodio" | "sudo apt-get purge custodio")
         [ ! -e \$d/droot/usr/libexec/custodio/custodiod ] || { echo "files are left" >&2; exit 1; }
         grep -q '^custodio:' \$d/droot/etc/passwd || { echo "the account is gone" >&2; exit 1; }
@@ -224,10 +224,10 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "output altered" run sed '0,/^warn  ana  /s//warn  anx  /'
     control "install notice altered" run sed '0,/^custodio: to check the setup at any time, run: custodio doctor$/s//custodio: to check the setup, run: custodio doctor/'
     control "deb name changed" run sed 's/custodio_0\.9\.0-1_amd64\.deb/custodio_0.9.1-1_amd64.deb/'
-    control "register --remove after the removal" run python3 -I -c '
+    control "setup browsers disable after the removal" run python3 -I -c '
 import re, sys
 t = sys.stdin.read()
-m = re.search(r"```console\n(\$ custodio register --remove\n(?:(?!```).)*)```\n", t, re.S)
+m = re.search(r"```console\n(\$ custodio setup browsers disable\n(?:(?!```).)*)```\n", t, re.S)
 blk = m.group(0)
 t = t.replace(blk, "")
 i = t.index("$ sudo apt-get remove custodio")

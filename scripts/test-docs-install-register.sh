@@ -4,7 +4,7 @@
 # supplies /usr/lib/custodio/libcustodio_pkcs11.so) and checks their effect. The manual fallback is in `bash` blocks, which the
 # runner never runs, so this script runs them itself: `<profile directory>` is a placeholder of the page, and the script
 # substitutes a fixture profile directory for it (nothing else is substituted); they run against the real /usr/bin/modutil in an
-# NSS database of that profile and the real built module, and their options are compared with what `custodio register` passed to
+# NSS database of that profile and the real built module, and their options are compared with what `custodio setup browsers enable` passed to
 # the stub (the page leaves out `-force`, which stops modutil's confirmation question; docs/install.md says so). The
 # `register --remove` block must come before the block that removes the package. Links resolve; `bash` blocks are counted.
 # Negative controls: broken copies of the page must fail. Prose is a person's (acceptance 20).
@@ -79,9 +79,9 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
         pids+=($!)
         names+=("$name")
     }
-    control "register command altered" sed '0,/^\$ custodio register$/s//$ custodio regster/'
+    control "register command altered" sed '0,/^\$ custodio setup browsers enable$/s//$ custodio setup browsers enabel/'
     control "an output line altered" sed '0,/module copy: placed$/s//module copy: kept/'
-    control "remove replaced by refresh-only" sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'
+    control "remove replaced by refresh-only" sed 's/^\$ custodio setup browsers disable$/$ custodio setup browsers refresh/'
     control "the -libfile path of the fallback altered" sed '0,/^modutil .* -add .*libcustodio_pkcs11\.so$/s//&.old/'
     control "the fallback -add block removed" sed '/^modutil .* -add /d'
     control "the fallback -delete block removed" sed '/^modutil .* -delete /d'
@@ -93,7 +93,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
 import re, sys
 t = sys.stdin.read()
 a = t.index("## Removing and purging")
-con = re.search(r"```console\n\$ custodio register --remove\n.*?```\n", t[a:], re.S)
+con = re.search(r"```console\n\$ custodio setup browsers disable\n.*?```\n", t[a:], re.S)
 rem = re.search(r"```bash\nsudo apt-get remove custodio\n.*?```\n", t[a:], re.S)
 c, r = con.group(0), rem.group(0)
 sys.stdout.write(t[:a] + t[a:].replace(c, "@@C@@").replace(r, "@@R@@").replace("@@C@@", r).replace("@@R@@", c))'

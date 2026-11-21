@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test of the release notes (F186). The systems the notes name as supported equal the targets of e2e/targets, the README links
-# the notes, every relative link resolves, the block-kind rule holds, the `console` blocks run as written (`custodio register` on
+# the notes, every relative link resolves, the block-kind rule holds, the `console` blocks run as written (`custodio setup browsers enable` on
 # the real CLI, the fixtures of F185), and the notes carry the version of their file name (title and every vX.Y.Z).
 # The notes' version is not compared with Cargo.toml. Prose is a person's
 # (SPEC acceptance 20). Negative controls: broken copies of the notes, the README or the targets must fail.
@@ -72,7 +72,7 @@ readme_links() { python3 -I "$LIB" links "$README_DOC" "$DOC"; }
 
 run_notes() { # run_notes DOC DIR
     local want=()
-    ! grep -q '^\$ custodio register$' "$1" || want=(registered)
+    ! grep -q '^\$ custodio setup browsers enable$' "$1" || want=(registered)
     reg_run "$1" "$2" "${want[@]}"
 }
 
@@ -105,7 +105,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "version v1.0.0" static "$DOC" sed "s/${VER//./\\.}/v1.0.0/g"
     control "title with another version" static "$DOC" sed "1s/${VER//./\\.}/v0.0.1/"
     control "a bash block in the notes" static "$DOC" sed '$a \n```bash\ntrue\n```'
-    control "a console command that fails" run "$DOC" sed 's/^\$ custodio register$/$ custodio register --nonsense/'
+    control "a console command that fails" run "$DOC" sed 's/^\$ custodio setup browsers enable$/$ custodio setup browsers enable --nonsense/'
     # an unknown directory in a copy of e2e/targets
     mkdir -p "$TMP/targets"
     cp -r "$TARGETS"/. "$TMP/targets/"

@@ -109,7 +109,7 @@ list of modules in each profile, so it must have Custodio registered. Close Fire
 and not with `sudo`: it writes into your home):
 
 ```console
-$ custodio register
+$ custodio setup browsers enable
 ok    Firefox         abcd1234.default-release: registered
 ok    Firefox (snap)  module copy: placed
 ok    Firefox (snap)  efgh5678.default: registered
@@ -123,7 +123,7 @@ line is `FAIL`, with the fix under it, and the command exits with an error.
 To remove the registration, run this before you uninstall the package:
 
 ```console
-$ custodio register --remove
+$ custodio setup browsers disable
 ok    Firefox         abcd1234.default-release: removed
 ok    Firefox (snap)  efgh5678.default: removed
 ok    Firefox (snap)  module copy: removed
@@ -141,7 +141,7 @@ button goes through the document portal and the snap is then denied access to th
 - Only the Firefox snap is supported: not Chromium, Thunderbird or Firefox as a Flatpak.
 - Mozilla's own Firefox build on Fedora and RHEL/Alma uses its bundled NSS and does not see Custodio. Register it by
   hand as [docs/install.md](docs/install.md) ("Firefox") describes. Their packaged Firefox needs nothing: the
-  system NSS loads p11-kit, which already shows Custodio, and `custodio register` says so and leaves those profiles alone.
+  system NSS loads p11-kit, which already shows Custodio, and `custodio setup browsers enable` says so and leaves those profiles alone.
 - TLS client authentication with a Custodio key shows one polkit dialog for every signature, which can be several for
   one page.
 - A lost key needs the original `.p12`.

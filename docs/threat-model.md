@@ -40,7 +40,7 @@ to that caller it looks exactly like a key that does not exist.
 - **The Firefox snap socket** (below): a peer that is not the Firefox snap, a call beyond listing and signing, a socket
   replaced by the snap, and a peer that exhausts the service.
 - **The registration command** (below): it must not write outside the user's own browser profiles and snap directory.
-- **The fingerprint command** ([docs/fingerprint.md](fingerprint.md)). `custodio fingerprint enable` writes one file, `/etc/pam.d/polkit-1`,
+- **The fingerprint command** ([docs/fingerprint.md](fingerprint.md)). `custodio setup fingerprint enable` writes one file, `/etc/pam.d/polkit-1`,
   and only when the vendor file it includes exists. On a system that does not match what it knows it refuses rather than guesses. It
   must not lock anyone out of polkit: a failed or missing finger falls back to the password. It never destroys someone else's
   configuration: a file it did not write is left alone. It writes atomically, with the mode, owner and label of the other files in
@@ -104,7 +104,7 @@ Custodio does not defend against:
 - **Platforms.** `encrypted-tpm` was run end to end on a virtual TPM on Ubuntu 26.04, not on real firmware, and not on
   Fedora or Arch. On Debian 13 (run) and RHEL/Alma 10 (inferred from Debian 13, not run), with systemd 257, the daemon binds user credentials to a PCR when a TPM is present, the
   service refuses them, and the `encrypted-tpm` kind is unavailable. Systems with a systemd older than 257 are not supported.
-- **That the override covers only Custodio.** With `custodio fingerprint enable`, the finger answers every polkit action, not only
+- **That the override covers only Custodio.** With `custodio setup fingerprint enable`, the finger answers every polkit action, not only
   Custodio's: `pkexec`, software installation, disk management and the actions that ask for an administrator accept it too.
   Custodio cannot narrow it: PAM has one service for polkit.
 - **That a finger is as strong as a password.** It is weaker. A fingerprint can be copied from surfaces, some readers are fooled
@@ -130,7 +130,7 @@ Custodio does not defend against:
 
 The Firefox snap is confined by AppArmor. It cannot call the service on the system bus, and it sees its own base's
 `/usr`, not `/usr/lib/custodio`. For it the service listens on one more socket, `/run/snap.firefox/custodio.sock`, and
-`custodio register` places a copy of the module in `~/snap/firefox/common/` that connects there. The report that
+`custodio setup browsers enable` places a copy of the module in `~/snap/firefox/common/` that connects there. The report that
 established this is [docs/reports/firefox-snap.md](reports/firefox-snap.md).
 
 **What the service checks.** On every connection it reads from the kernel the peer's credentials, its pidfd and its security
@@ -168,7 +168,7 @@ Firefox Flatpak and a parallel instance (`firefox_x`) see no slot.
 
 ## The registration command
 
-`custodio register` writes into the home of the user who runs it. It touches only the user's own browser profiles
+`custodio setup browsers enable` writes into the home of the user who runs it. It touches only the user's own browser profiles
 (Firefox, its derivatives and the Firefox snap) and the snap directory `~/snap/firefox/common/`. It refuses to run as root or
 under `sudo`, because it would write into a home that is not the invoking user's. It does not edit a profile a running browser
 holds (the profile lock) and tells you to close it. It writes the module copy and each profile through a scratch copy and
@@ -176,7 +176,7 @@ holds (the profile lock) and tells you to close it. It writes the module copy an
 module, and it uses NSS's own tool, `modutil`, to write the NSS database.
 
 A copy of the module left in `~/snap/firefox/common/` after the package is removed is inert: the socket is gone, so the
-browser sees no slot. Run `custodio register --remove` before you uninstall to remove it with the registrations. Do not load
+browser sees no slot. Run `custodio setup browsers disable` before you uninstall to remove it with the registrations. Do not load
 the module through the Firefox "Browse" button: it goes through the document portal and the snap is then denied access to the file.
 
 ## Full-disk encryption

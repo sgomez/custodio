@@ -58,10 +58,10 @@ pam=$d/root/etc/pam.d/polkit-1
 ROOT=$ROOT
 . $ROOT/scripts/lib/docs-fprint-fixture.sh
 case \$1 in
-    "sudo custodio fingerprint enable")
+    "sudo custodio setup fingerprint enable")
         cmp -s "\$pam" "\$d/shown.pam" || { echo "the file written differs from the file the page shows" >&2; exit 1; }
         echo enabled >> "\$d/checked" ;;
-    "sudo custodio fingerprint disable")
+    "sudo custodio setup fingerprint disable")
         [ ! -e "\$pam" ] || { echo "the file is still there after disable" >&2; exit 1; }
         [ "\$(fp_tree $d/root)" = "\$(cat \$d/tree.before)" ] || { echo "the tree differs from before enable" >&2; exit 1; }
         echo disabled >> "\$d/checked" ;;
@@ -126,8 +126,8 @@ text = open(sys.argv[1], encoding="utf-8").read()
 parts = re.split(r"(?m)^(?=## )", text)
 keep = [p for p in parts if re.match(r"## (Fingerprint for polkit dialogs|Checking the system)\n", p)]
 body = "\n".join(keep)
-if "custodio fingerprint enable" not in body or "$ custodio doctor" not in body:
-    sys.exit("docs/install.md: its fingerprint and doctor sections do not run `custodio fingerprint enable` and `custodio doctor`")
+if "custodio setup fingerprint enable" not in body or "$ custodio doctor" not in body:
+    sys.exit("docs/install.md: its fingerprint and doctor sections do not run `custodio setup fingerprint enable` and `custodio doctor`")
 open(sys.argv[2], "w", encoding="utf-8").write(body)
 PY
 }
@@ -156,7 +156,7 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
         names+=("$name")
     }
     control "shown file differs by one character" run sed 's/max-tries=1 timeout=10$/max-tries=2 timeout=10/'
-    control "output line changed" run sed '0,/^      Undo: sudo custodio fingerprint disable$/s//      Undo: sudo custodio fingerprint off/'
+    control "output line changed" run sed '0,/^      Undo: sudo custodio setup fingerprint disable$/s//      Undo: sudo custodio setup fingerprint off/'
     control "Debian package name under the Fedora heading" run sed '0,/^Install fprintd-pam and fprintd/s//Install libpam-fprintd and fprintd/'
     control "gsettings key changed" run sed 's/^\$ gsettings set org.gnome.login-screen enable-fingerprint-authentication false$/$ gsettings set org.gnome.login-screen enable-fingerprint false/'
     control "a refusal block removed" run python3 -I -c '
@@ -166,7 +166,7 @@ sys.stdout.write(re.sub(r"```console fails=yes fixture=omarchy\n.*?```\n", "", t
     control "a doctor check's section removed" doctor python3 -I -c '
 import re, sys
 sys.stdout.write(re.sub(r"### journal\n.*?(?=### key storage)", "", sys.stdin.read(), count=1, flags=re.S))'
-    control "doctor fix differs from the CLI's" doctor sed '0,/Fix: sudo custodio fingerprint enable/s//Fix: sudo custodio fingerprint on/'
+    control "doctor fix differs from the CLI's" doctor sed '0,/Fix: sudo custodio setup fingerprint enable/s//Fix: sudo custodio setup fingerprint on/'
     control "command moved into a bash block" static sed 's/^```console$/```bash/'
     control "command in a text block" static sed '0,/^```text$/s//```text\n$ rm -rf \/etc/'
     control "broken link" static sed 's#(threat-model\.md)#(no-such-file.md)#'

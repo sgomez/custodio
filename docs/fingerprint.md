@@ -1,6 +1,6 @@
 # Fingerprint for polkit dialogs
 
-Custodio asks polkit before every signature. `custodio fingerprint` lets a finger answer those dialogs. The commands below are run
+Custodio asks polkit before every signature. `custodio setup fingerprint` lets a finger answer those dialogs. The commands below are run
 by `scripts/test-docs-fingerprint.sh` as written, on a fixture system with a fake fprintd; the lines under each command are what it
 prints.
 
@@ -10,11 +10,11 @@ Enrol a finger first with your desktop's tools (GNOME Settings, Users, Fingerpri
 Then:
 
 ```console
-$ sudo custodio fingerprint enable
+$ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
       A wrong finger, or 10 s without a touch, falls back to the password.
       sudo and the login are unchanged.
-      Undo: sudo custodio fingerprint disable
+      Undo: sudo custodio setup fingerprint disable
 ```
 
 ## What it changes
@@ -23,7 +23,7 @@ One file, `/etc/pam.d/polkit-1`, and nothing else. This is the file, byte for by
 
 ```text
 #%PAM-1.0
-# Written by 'custodio fingerprint enable'. Remove it with 'sudo custodio fingerprint disable'.
+# Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.
 # If you edit this file, Custodio treats it as yours and will not touch it again.
 auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10
 auth     include /usr/lib/pam.d/polkit-1
@@ -41,14 +41,14 @@ without a touch, falls back to the password prompt of the same dialog. Running `
 On GNOME, `enable` adds a line about the lock screen; with no reader it still writes the file and warns, with `doctor`'s reader line, that polkit keeps
 asking for the password until there is a reader and an enrolled finger.
 
-Run `sudo custodio fingerprint disable` before removing the package.
+Run `sudo custodio setup fingerprint disable` before removing the package.
 
 ## Turn it off
 
 ```console
-$ sudo custodio fingerprint disable
+$ sudo custodio setup fingerprint disable
 ok    polkit  off, polkit asks for the password only
-      Undo: sudo custodio fingerprint enable
+      Undo: sudo custodio setup fingerprint enable
 ```
 
 It removes the file only if it is Custodio's. After it the system is as it was before `enable`.
@@ -66,7 +66,7 @@ It removes the file only if it is Custodio's. After it the system is as it was b
   Omarchy uses a separate file.
 - **If the vendor file disappears** after `enable` (`/usr/lib/pam.d/polkit-1`, for example moved by a future polkit package), the
   password path of polkit fails while the finger still works. `sudo` is unaffected, so the system can be recovered:
-  `sudo custodio fingerprint disable`. `custodio doctor` detects it; nothing watches for it between its runs.
+  `sudo custodio setup fingerprint disable`. `custodio doctor` detects it; nothing watches for it between its runs.
 - **Debian 13 and AlmaLinux 10 were not run** in a virtual machine (below). On them `enable` proceeds only when the files are as
   on the systems where it was run, and refuses otherwise.
 
@@ -82,49 +82,49 @@ you imported stays on disk until you delete it.
 Not run as root:
 
 ```console fails=yes fixture=debian
-$ custodio fingerprint enable 2>&1
-custodio fingerprint: this changes a system file and must run as root
-Run it again with sudo: 'sudo custodio fingerprint enable' (or 'disable').
+$ custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: this changes a system file and must run as root
+Run it again with sudo: 'sudo custodio setup fingerprint enable' (or 'disable').
 ```
 
 The file is someone else's (an administrator's own `polkit-1`, or Omarchy's setup, which ships one that already asks for the
 finger). Look at who owns it and remove or merge it yourself:
 
 ```console fails=yes fixture=debian-foreign
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: /etc/pam.d/polkit-1 exists and is not Custodio's (or is not a regular file); nothing was changed
-Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: /etc/pam.d/polkit-1 exists and is not Custodio's (or is not a regular file); nothing was changed
+Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=omarchy
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: /etc/pam.d/polkit-1 exists and is not Custodio's (or is not a regular file); nothing was changed
-Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: /etc/pam.d/polkit-1 exists and is not Custodio's (or is not a regular file); nothing was changed
+Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio setup fingerprint enable' again.
 ```
 
 Fingerprint is already on for the whole system (the global switch), so the override would be redundant. Turn the global switch
 off first. On the Debian family it is `pam_fprintd` in `common-auth` (`pam-auth-update`):
 
 ```console fails=yes fixture=global-debian
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
-Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
+Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio setup fingerprint enable' again.
 ```
 
 On the Fedora family it is `with-fingerprint` in authselect:
 
 ```console fails=yes fixture=global-fedora
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
-Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
+Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio setup fingerprint enable' again.
 ```
 
 On Arch it is `pam_fprintd` in `system-auth`:
 
 ```console fails=yes fixture=global-arch
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
-Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: fingerprint is already on for the whole system, so this override would be redundant (and might ask for the finger twice after a mismatch); nothing was changed
+Turn the global switch off (pam-auth-update, authselect disable-feature with-fingerprint, or your distribution's tool), then run 'sudo custodio setup fingerprint enable' again.
 ```
 
 On Arch the global switch can also be `pam_fprintd` in `/etc/pam.d/sudo`. On Debian and Ubuntu,
@@ -134,8 +134,8 @@ The vendor file `/usr/lib/pam.d/polkit-1`, which the override includes, is missi
 polkit keeps it elsewhere, such as an untested one):
 
 ```console fails=yes fixture=novendor-debian
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: /usr/lib/pam.d/polkit-1 is missing or is not a regular file, so the override has nothing to include; nothing was changed
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: /usr/lib/pam.d/polkit-1 is missing or is not a regular file, so the override has nothing to include; nothing was changed
 Check that polkit is installed and where its PAM file is ('rpm -ql polkit' or 'dpkg -L polkit'), and report it if it is elsewhere.
 ```
 
@@ -148,46 +148,46 @@ The PAM module or fprintd is not installed. The message names the packages of th
 | Arch | `fprintd` |
 
 ```console fails=yes fixture=nomodule-debian
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
-Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install libpam-fprintd and fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=nofprintd-debian
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: fprintd is not installed; nothing was changed
-Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: fprintd is not installed; nothing was changed
+Install libpam-fprintd and fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=nomodule-ubuntu
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
-Install libpam-fprintd and fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install libpam-fprintd and fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=nomodule-fedora
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
-Install fprintd-pam and fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install fprintd-pam and fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=nomodule-alma
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
-Install fprintd-pam and fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install fprintd-pam and fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 ```console fails=yes fixture=nomodule-arch
-$ sudo custodio fingerprint enable 2>&1
-custodio fingerprint: pam_fprintd.so is not installed; nothing was changed
-Install fprintd and run 'sudo custodio fingerprint enable' again.
+$ sudo custodio setup fingerprint enable 2>&1
+custodio setup fingerprint: pam_fprintd.so is not installed; nothing was changed
+Install fprintd and run 'sudo custodio setup fingerprint enable' again.
 ```
 
 `disable` refuses, and changes nothing, when the file is not Custodio's:
 
 ```console fails=yes fixture=debian-foreign
-$ sudo custodio fingerprint disable 2>&1
-custodio fingerprint: /etc/pam.d/polkit-1 is not Custodio's (or is not a regular file); nothing was changed
+$ sudo custodio setup fingerprint disable 2>&1
+custodio setup fingerprint: /etc/pam.d/polkit-1 is not Custodio's (or is not a regular file); nothing was changed
 Find who owns it with 'dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path, and remove it yourself if you mean to.
 ```
 
@@ -195,7 +195,7 @@ Find who owns it with 'dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path, and rem
 
 On GNOME, an enrolled finger may also unlock the lock screen, because GDM and the lock screen use their own PAM file
 (`/etc/pam.d/gdm-fingerprint`) and the GNOME setting `org.gnome.login-screen enable-fingerprint-authentication`, not
-`polkit-1`. `custodio fingerprint` changes neither. To turn the finger off on the lock screen:
+`polkit-1`. `custodio setup fingerprint` changes neither. To turn the finger off on the lock screen:
 
 ```console
 $ gsettings set org.gnome.login-screen enable-fingerprint-authentication false

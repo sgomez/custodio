@@ -12,7 +12,7 @@ Download `custodio_0.9.0-1_amd64.deb` to the directory you are in, then:
 ```console
 $ sudo apt-get install ./custodio_0.9.0-1_amd64.deb
 custodio: the fingerprint is off for Custodio's dialogs; they ask for your password.
-custodio: to allow the fingerprint there, run: sudo custodio fingerprint enable
+custodio: to allow the fingerprint there, run: sudo custodio setup fingerprint enable
 custodio: to check the setup at any time, run: custodio doctor
 ```
 
@@ -26,11 +26,11 @@ Fingerprint (optional)
   ok    reader          1 reader
   ok    finger          1 finger enrolled
   FAIL  polkit          off
-        Fix: sudo custodio fingerprint enable
+        Fix: sudo custodio setup fingerprint enable
 Browsers
   FAIL  Firefox         abcd1234.default-release: not registered
   FAIL  Firefox (snap)  efgh5678.default: the snap's copy of the module is missing
-        Fix: custodio register, then restart the browsers
+        Fix: custodio setup browsers enable, then restart the browsers
 System
   ok    journal         persistent
   ok    key storage     on an encrypted disk
@@ -45,12 +45,12 @@ The reader and the finger are your desktop's to set up: in GNOME Settings, Users
 ## 3. Let a finger answer the polkit dialogs (optional)
 
 ```console
-$ sudo custodio fingerprint enable
+$ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
       A wrong finger, or 10 s without a touch, falls back to the password.
       sudo and the login are unchanged.
       On GNOME the finger may also unlock the lock screen (org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.
-      Undo: sudo custodio fingerprint disable
+      Undo: sudo custodio setup fingerprint disable
 ```
 
 The "On GNOME" line is about the lock screen, which this command does not change;
@@ -75,7 +75,7 @@ Delete the original file as the message says. Close Firefox completely and open 
 ## 5. Register the module and sign in
 
 ```console
-$ custodio register
+$ custodio setup browsers enable
 ok    Firefox         abcd1234.default-release: registered
 ok    Firefox (snap)  module copy: placed
 ok    Firefox (snap)  efgh5678.default: registered
@@ -114,7 +114,7 @@ ok    ana  deleted
 ```
 
 ```console
-$ custodio register --remove
+$ custodio setup browsers disable
 ok    Firefox         abcd1234.default-release: removed
 ok    Firefox (snap)  efgh5678.default: removed
 ok    Firefox (snap)  module copy: removed
@@ -122,9 +122,9 @@ ok    Firefox (snap)  module copy: removed
 ```
 
 ```console
-$ sudo custodio fingerprint disable
+$ sudo custodio setup fingerprint disable
 ok    polkit  off, polkit asks for the password only
-      Undo: sudo custodio fingerprint enable
+      Undo: sudo custodio setup fingerprint enable
 ```
 
 ```console

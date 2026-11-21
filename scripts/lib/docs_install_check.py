@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Checks of docs/install.md for scripts/test-docs-install-register.sh (F186).
 
-  docs_install_check.py order DOC             in "Removing and purging" the `custodio register --remove` block comes
+  docs_install_check.py order DOC             in "Removing and purging" the `custodio setup browsers disable` block comes
                                               before the block that removes the package
   docs_install_check.py fallback DOC STUBLOG OUTDIR
                                               the manual `modutil` blocks of the "Firefox" section have the form of what
-                                              `custodio register` passed to the stub modutil (STUBLOG), but for the options
+                                              `custodio setup browsers enable` passed to the stub modutil (STUBLOG), but for the options
                                               named in LEFT_OUT; writes add.sh and del.sh to OUTDIR, with the placeholder
                                               `<profile directory>` replaced by the directory in $PROFILE
 """
@@ -41,16 +41,16 @@ def order(doc):
     kinds = []
     for info, body, _ in dc.blocks(sec):
         text = "\n".join(body)
-        if info.split()[:1] == ["console"] and "$ custodio register --remove" in text:
+        if info.split()[:1] == ["console"] and "$ custodio setup browsers disable" in text:
             kinds.append("unregister")
         elif re.search(r"\b(apt-get|dnf|pacman|rpm-ostree)\b.*\b(remove|-R|uninstall)\b", text):
             kinds.append("remove")
     if "unregister" not in kinds:
-        return ["'Removing and purging' has no `custodio register --remove` block"]
+        return ["'Removing and purging' has no `custodio setup browsers disable` block"]
     if "remove" not in kinds:
         return ["'Removing and purging' has no block that removes the package"]
     if kinds.index("unregister") > kinds.index("remove"):
-        return ["the `custodio register --remove` block comes after the block that removes the package"]
+        return ["the `custodio setup browsers disable` block comes after the block that removes the package"]
     return []
 
 
@@ -80,7 +80,7 @@ def fallback(doc, stublog, outdir):
         shown = tokens(mine.replace(PLACEHOLDER, "P"))[1:]
         real = ["sql:P" if t.startswith("sql:") else t for t in tokens(lines[0]) if t not in LEFT_OUT]
         if shown != real:
-            bad.append(f"the page's `modutil {word}` has the options {shown}, `custodio register` passes {real} (left out: {', '.join(LEFT_OUT)})")
+            bad.append(f"the page's `modutil {word}` has the options {shown}, `custodio setup browsers enable` passes {real} (left out: {', '.join(LEFT_OUT)})")
     profile = os.environ.get("PROFILE", "")
     for name, cmd in (("add.sh", adds[0]), ("del.sh", dels[0])):
         with open(os.path.join(outdir, name), "w", encoding="utf-8") as f:

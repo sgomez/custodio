@@ -112,15 +112,15 @@ Optional: let a finger answer the polkit dialogs, Custodio's among them. Enrol a
 per system:
 
 ```console for=fingerprint
-$ sudo custodio fingerprint enable
+$ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
       A wrong finger, or 10 s without a touch, falls back to the password.
       sudo and the login are unchanged.
-      Undo: sudo custodio fingerprint disable
+      Undo: sudo custodio setup fingerprint disable
 ```
 
 What it changes, what it does not guarantee, the refusals and the GNOME lock screen are in [fingerprint.md](fingerprint.md);
-`sudo custodio fingerprint disable` undoes it. Remove it before you remove the package: removal leaves the file, which keeps
+`sudo custodio setup fingerprint disable` undoes it. Remove it before you remove the package: removal leaves the file, which keeps
 working.
 
 ## Checking the system
@@ -164,7 +164,7 @@ Firefox keeps its own list of modules in each profile, so Custodio has to be reg
 as yourself (not as root and not with `sudo`: the command writes into your home):
 
 ```console
-$ custodio register
+$ custodio setup browsers enable
 ok    Firefox         abcd1234.default-release: registered
 ok    Firefox (snap)  module copy: placed
 ok    Firefox (snap)  efgh5678.default: registered
@@ -175,7 +175,7 @@ It finds the profiles of Firefox, of its derivatives and of the Firefox snap, an
 cannot read `/usr/lib`, so the command places a copy of the module in the snap's own directory and registers the copy.
 Run it again whenever you like: what is already registered stays as it is. A profile that a running browser holds is
 skipped: its line is `FAIL`, with the fix under it, and the command exits with an error. Do this once for each user, and again for a new profile.
-The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio register --remove` before
+The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio setup browsers disable` before
 you uninstall the package ([Removing and purging](#removing-and-purging)).
 
 Do not load the module through Firefox's "Browse" button in the device manager: the button goes through the document
@@ -263,7 +263,7 @@ Before you uninstall, undo the registration, as each user who ran it. It is in t
 cannot reach:
 
 ```console
-$ custodio register --remove
+$ custodio setup browsers disable
 ok    Firefox         abcd1234.default-release: removed
 ok    Firefox (snap)  efgh5678.default: removed
 ok    Firefox (snap)  module copy: removed
