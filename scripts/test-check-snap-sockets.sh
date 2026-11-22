@@ -52,6 +52,9 @@ expect_fail "wanted by another target" $S 's/sockets.target/multi-user.target/' 
 # Reachable by any uid.
 append "SocketUser" $S 'SocketUser=root' 'SocketUser'
 expect_fail "SocketMode 0660" $S 's/^SocketMode=.*/SocketMode=0660/' 'SocketMode'
+# The socket file goes with the unit.
+expect_fail "RemoveOnStop missing" $S '/^RemoveOnStop=/d' 'RemoveOnStop'
+expect_fail "RemoveOnStop=no" $S 's/^RemoveOnStop=.*/RemoveOnStop=no/' 'RemoveOnStop'
 # Every format ships both files.
 N=packaging/nfpm.yaml
 expect_fail "socket restricted to deb" $N '/^  - src: data\/custodio-firefox.socket$/{n;n;s/$/\n    packager: deb/}' 'packager'

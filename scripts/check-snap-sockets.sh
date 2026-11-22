@@ -3,7 +3,7 @@
 #   - data/tmpfiles.d/custodio-snap.conf: one active line, `d /run/snap.firefox/ 0755 root root -`.
 #   - data/custodio-firefox.socket: one ListenStream= on /run/snap.firefox/custodio.sock and no other Listen*=, Accept=no, the descriptor
 #     name snap-firefox, Service= (when set) custodio.service, reachable by any uid (no SocketUser=/SocketGroup=, SocketMode= 0666 or
-#     0777 when set), installed into sockets.target.
+#     0777 when set), RemoveOnStop=yes, installed into sockets.target.
 #   - neither that unit nor data/custodio.service has RuntimeDirectory= or RuntimeDirectoryPreserve= (the directory comes from tmpfiles.d).
 #   - packaging/nfpm.yaml ships both files, without a `packager:` restriction, so every format has them.
 #   - the test-seam feature of custodiod (it moves the directory the socket check inspects) is a dev-dependency of the crate only.
@@ -59,6 +59,9 @@ modes=$(grep -c '^SocketMode=' <<< "$unit" || true)
 if [ "$modes" != 0 ]; then
     { [ "$modes" = 1 ] && grep -qE '^SocketMode=0?(666|777)$' <<< "$unit"; } \
         || bad "$SOCKET sets a SocketMode= other than 0666: some uid could not connect"
+fi
+if [ "$(count '^RemoveOnStop=')" != 1 ] || ! grep -qx 'RemoveOnStop=yes' <<< "$unit"; then
+    bad "$SOCKET must have a single RemoveOnStop=yes: without it the socket file outlives the package"
 fi
 if [ "$(count '^WantedBy=')" != 1 ] || ! grep -qx 'WantedBy=sockets.target' <<< "$unit"; then
     bad "$SOCKET must be installed into sockets.target only"

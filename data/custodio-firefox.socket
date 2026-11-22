@@ -11,6 +11,8 @@ FileDescriptorName=snap-firefox
 Accept=no
 # Any uid may connect: the browser runs as the user, and the peer is checked by the service, not by the file mode.
 SocketMode=0666
+# Stopping the unit (the removal of the package) deletes the socket file; systemd leaves it otherwise.
+RemoveOnStop=yes
 Service=custodio.service
 
 [Install]

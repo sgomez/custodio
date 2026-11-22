@@ -70,6 +70,7 @@ cycle() {
     case_run "$p-service-stopped"
 
     leftover_problems "$WORK/packaged.list" "owner_of $fmt" || fail "files remain after the $kind (see above)"
+    runtime_leftover_problems || fail "the Firefox snap socket or its directory remains after the $kind (see above)"
     echo "e2e: lifecycle: after the $kind none of the $(grep -c '^f ' "$WORK/packaged.list") files and no directory of the package remains"
     case_run "$p-no-packaged-files"
 
