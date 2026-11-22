@@ -591,3 +591,14 @@ with an empty context.
   .p12 export path is spelled out; every error is checked not to name README. The project URL in the units, copyright and
   nfpm was github.com/rfirma/custodio, which is wrong (the person: the repo is github.com/sgomez/custodio); fixed.
 - Next session should: nothing; the person rereads and closes F210 with `just milestone pass F210`.
+
+### 2026-11-22 — F211 — manual run 1 (with the person, Ubuntu 26.04, MAFP MOC reader)
+- Done: blocks 1 to 8 of section 26 passed on the person's machine (0.9.0 built with `just package 0.9.0`; test certificate
+  from badssl.com, site client.badssl.com). Found and fixed: the Firefox snap socket file outlived the removal
+  (`f6bf7ef`: RemoveOnStop=yes, gate in check-snap-sockets, the removal scripts rmdir /run/snap.firefox when empty, e2e
+  lifecycle check); gaps in the guide and section 26 (`e468135`): Ubuntu's global fingerprint switch, a .p12 at hand,
+  deleting the certificate from Firefox's own store, several dialogs per page; the final checks no longer search $HOME
+  and check every profile root the CLI registers (Thunderbird missed before).
+- Not done / known issues: `just e2e` not run for the new lifecycle check (checkpoint); the e2e lifecycle case will
+  run it. The person's machine still has the state directory, the account and the old socket from run 1.
+- Next session should: with the person, rerun blocks 1, 8 and 9 with the new .deb, then the form and `just milestone pass F211`.
