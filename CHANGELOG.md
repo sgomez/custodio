@@ -1,3 +1,269 @@
+## [0.9.0] - 2026-11-22
+
+### 🚀 Features
+
+- *(F192)* Install bash-completion, zsh and fish in the dev container and CI
+- *(F193)* Add real help, the command table and the parser module
+- *(F193)* Add the colour rule and bold help headings
+- *(F193)* Render every error as two lines and test colour with ptys
+- *(F194)* Add cert_text, the list table and list <id>
+- *(F194)* Read the list table in the e2e judgements
+- *(F195)* Split the import errors in the service, add two D-Bus errors and a journal outcome
+- *(F195)* Map the new import errors in the CLI, add the restart note and import_messages
+- *(F196)* Add the unknown reason to the classifier and a StateStorageReason bus method
+- *(F197)* Add the fingerprint decision module, its tests and the pam_file fuzz target
+- *(F197)* Add the fixture-seams check, its negative control and the recipe
+- *(F197)* Add the fingerprint command, its fixture seam, help and man page
+- *(F197)* Kill the surviving mutants and record the evidence
+- *(F198)* Gate the packages against PAM files and add the install notice
+- *(F199)* Run the fingerprint cases on every target
+- *(F200)* Add the fingerprint judge, the group wiring and the first guest script
+- *(F200)* Fix the staging of the fingerprint group and record the polkit findings
+- *(F200)* Add the sign case and the four fallbacks to the fingerprint group
+- *(F200)* Record the fingerprint step time and the four versions in the VM record
+- *(F202)* Add custodio doctor with the reader, finger and polkit checks
+- *(F202)* Record the hand-off and tick the contract
+- *(F203)* Add checks 4 to 6 to doctor_decide, the journald parser and fake service
+- *(F203)* Split checks 4 to 6 into doctor_later and update help and man page
+- *(F203)* Tick the contract and record the mutants result
+- *(F204)* Run doctor as a regular user on every target
+- *(F205)* Add the hidden __key-ids command and its rig tests
+- *(F205)* Add the bash completion and its tests
+- *(F205)* Add the zsh completion and its tests
+- *(F205)* Add the fish completion and its tests
+- *(F205)* Ship the completions in every package format
+- *(F205)* Document the completions and update the parity test
+- *(F207)* Add docs/fingerprint.md, its script test and the fake fprintd rig
+- *(F207)* Add docs/doctor.md, the install.md fingerprint and doctor sections and their checks
+- *(F207)* Add the Ubuntu 26.04 guide, test-docs-guide.sh and the README link
+- *(F208)* Add manual acceptance sections 26-29 and test-docs-manual-m7
+- *(F212)* Add the setup command level with nested help and parser
+- *(F212)* Name the setup commands in every message and re-point the tests
+- *(F212)* Complete the setup topics and actions in the three shells
+- *(F212)* Name setup commands in the refresh unit and the install notices
+- *(F212)* Run the setup commands in the end-to-end scripts
+- *(F214)* Add LimitCORE=0 and MemorySwapMax=0 to the unit and its gate
+- *(F214)* Custodiod drops its core limit and dumpable flag at start
+
+### 🐛 Bug Fixes
+
+- *(ci)* Make two tests independent of the runner
+- *(register)* Ask nss whether it loads the p11-kit proxy
+- Ignore warnings about units of the host in the user unit check
+- Clean the workspace artifacts before measuring coverage
+- Import the .p12 files that firefox exports
+- *(F192)* Restore the signoff guard on the tpm install step in mutants-diff
+- *(F193)* Give the journal write error a second line with the next step
+- *(F194)* Move the script tests of the e2e judges to the table rows
+- *(F195)* Map the new names in the pkcs11 error table and satisfy clippy
+- *(F195)* Decide the combined error only without a mac and run import_split cases in parallel
+- *(F196)* Report a dm node without dm/ as sysfs-incomplete
+- *(F197)* Split looped tests, undo the file on a failed flush, use absolute restorecon
+- *(F198)* Compare the notice across formats and widen the removal silence check
+- *(F200)* Drive polkit with pkttyagent and pkcheck and wait for the echo before typing
+- *(F200)* Make the restore of the harness files idempotent and drop dead evidence
+- *(F203)* Treat a backslash-ended line as continued in any section
+- *(F203)* Treat a stale entry on a p11-kit system as registered
+- *(F204)* Drop the journald sleeps, read the journal storage after restart
+- *(F206)* Use the bash info string for the zsh line in install.md
+- *(F206)* Let the cli-list-none judge accept the encryption warning on stderr
+- *(F206)* Judge the tpmfail cases by the CLI sentence, not the bus error name
+- *(F206)* Except namcap owner ids of the three completion files
+- *(F206)* Keep the coverage profile out of the temporary HOME in the completion rig
+- *(F206)* Pass the coverage profile path to the doctor test subprocesses
+- *(F206)* Judge the vm-silent script test by the CLI sentence, not the bus error name
+- *(F207)* Check fingerprint.md, show package notices, run the completion, list handlers
+- *(F208)* Remove seven stray self-referencing symlinks
+- *(F208)* Add the extra-console-command control to test-docs-manual-m7
+- *(F208)* Require console-only blocks in the release notes check
+- *(F209)* Keep the index mtime when tree-hash copies the index
+- *(F210)* Fix the documents and the cli output found in the manual review
+- *(F210)* Make the doctor report short and its tests independent of wording
+- *(F210)* Make an unencrypted or unknown key storage a doctor warning
+- *(F210)* Make custodio list readable and add list -v
+- *(F210)* Make import output short and usage errors say what is wrong
+- *(F210)* Cut each command's help to what is needed to use it
+- *(F212)* Name the topic in browser refusals and the refresh command in the journal
+- *(F214)* Resend sigsegv to the control process until its unit fails
+- *(harness)* Load saved images into the dev container's podman
+- *(F213)* Read the import key lines without the colour codes the CLI prints on a terminal
+- *(F210)* Name an unknown command, doctor in the no-reader warning, a fix for no HOME
+- *(F210)* Help readable alone, man page doctor states, install notice scope
+- *(F210)* Point errors to the issue tracker and the firefox export, not README.md
+- *(F211)* Remove the firefox snap socket and its directory with the package
+- *(F211)* Give the finger three tries in 30 s instead of one in 10 s
+
+### 📚 Documentation
+
+- Allow removing duplicate tests and forbid tests of tests
+- Forbid simulated guests and mutants of test code in contracts
+- *(register)* Describe the p11-kit rule as the modutil listing
+- *(register)* State what was checked on fedora 44 and ubuntu 26.04
+- Record where the registration command was checked with firefox
+- Open milestone M7
+- Update IDEA.md
+- Add spec drafted by the planner
+- *(F189)* Add contract
+- *(F189)* Record why the storage classifier flips on 252:0 and choose route 2
+- *(F189)* Correct the dm-creation claim and index order
+- *(F190)* Add contract
+- *(F190)* Add evaluator's evidence items
+- *(F190)* Settle how doctor reads journald's effective storage
+- *(F191)* Add contract
+- *(F191)* Settle completion locations per format and key ids without polkit
+- *(F192)* Add contract
+- Answer the blocked question
+- *(F192)* Record the verify passing on the rebuilt container
+- *(F193)* Add contract
+- *(F193)* Revise contract after evaluator review
+- *(F194)* Add contract
+- *(F194)* Clarify note evidence
+- *(F194)* Tick steps 1-5 and record progress
+- *(F195)* Add contract
+- *(F195)* Revise contract after evaluator review
+- *(F195)* Add import failure fixtures and finding, block on the deviation format
+- *(F195)* Amend contract to classify by the library result, add pending deviation
+- Answer the blocked question
+- *(F195)* Add two-keys fixtures and finish the finding
+- *(F195)* Add the Firefox export section, the restart note and the man page text
+- *(F195)* Tick the contract and record the evidence
+- *(F196)* Add contract
+- *(F196)* Extend contract after review
+- *(F196)* Tick the contract and record the evidence
+- *(F196)* Record attempt 2
+- *(F197)* Add contract
+- *(F197)* Revise contract after evaluator findings
+- *(F198)* Add contract
+- *(F198)* Amend contract after review
+- *(F199)* Add contract
+- *(F200)* Add contract
+- *(F200)* Record the polkit fix and the remaining steps
+- *(F200)* Tick the contract and record the timed run
+- *(F200)* Amend contract to list the group in skip.list for lacking mode
+- *(F200)* Condense the findings file and add its index line
+- *(F201)* Add contract
+- *(F201)* Amend contract after review
+- *(F201)* Record the double fingerprint prompt run and the doctor decision
+- *(F201)* Quote the versions, every cell and the cleanup in the finding
+- *(F202)* Add contract
+- *(F202)* Amend contract to bound the fprintd wait and name the not-installed signals
+- *(F202)* Amend contract to prove -auth active instead of not active
+- *(F203)* Add contract
+- *(F203)* Amend contract to let doctor reuse register's scratch-database p11-kit probe
+- *(F203)* Record the hand-off
+- *(F204)* Add contract
+- *(F204)* Revise contract
+- *(F205)* Add contract
+- *(F206)* Add contract
+- *(F206)* Record the host, memory-safety and e2e results
+- *(F206)* Record package-gates, coverage and the final runs
+- *(F207)* Add contract
+- *(F207)* List the not-guaranteed limits in fingerprint.md and close the contract
+- *(F208)* Add contract
+- *(F208)* Revise contract after evaluator review
+- *(F208)* Apply evaluator notes to the contract
+- *(F208)* Add 0.9.0 notes, M7 threat model items and SECURITY scope
+- *(F209)* Add contract
+- *(F212)* Add contract
+- *(F212)* Name tests for unknown-level errors and help content
+- *(F212)* Revise contract for document command names
+- *(F212)* Scan every block kind in document command check
+- *(F212)* Record progress of the first session
+- *(F212)* Name the setup commands in the documents and re-point the doc runners
+- *(F212)* Record progress of the second session
+- *(F212)* Record progress of the third session
+- *(F214)* Amend contract after evaluator review
+- *(F214)* Say what the flag, the limit and the unit settings cover, and record progress
+- *(F214)* Record the VM run and what is left
+- *(F214)* Amend contract to correct the setrlimit syscall filter sentence
+- *(F214)* Record the fast checks and tick step 6
+- *(F213)* Add F214's memory cases to the contract
+- *(F213)* Block on unreachable archive.archlinux.org
+- Answer the blocked question
+- *(F213)* Tick step 1
+- *(F213)* Tick step 2 and note the e2e run
+- *(F213)* Tick step 3
+- *(F213)* Tick steps 4 and 5 and record the runs
+- *(F210)* Fix the documents found wrong or missing in the second review
+- *(F211)* Fill the gaps the ubuntu 26.04 manual run found
+- *(F211)* Record the first manual run
+- *(F211)* Detail the several dialogs per page seen in the manual run
+- *(F195)* Accept the wrong-password deviation and update the spec
+- Close milestone M7
+
+### ⚡ Performance
+
+- *(harness)* Stop repeating quick and mutants-diff on the same code
+- *(custodiod)* Link the integration tests as one binary
+
+### 🚜 Refactor
+
+- Serve the passed snap sockets from the library, with a test
+- *(F210)* Print every command through one shared line format
+- *(F212)* Split the interrupted-run tests out of the register skips tests
+
+### 🧪 Testing
+
+- Bound two tests that grew or hung with the machine
+- *(custodiod)* Drop 21 tests that repeat another test
+- *(custodiod)* Drop snap socket tests that repeat another test
+- *(custodiod)* Drop tests of wording, of fakes and of test helpers
+- *(custodiod)* Run the tpm_access tests on a host with a tpm
+- Drop the tests of the e2e host drivers on a stub engine
+- Drop the runs of the e2e case scripts against simulated guests
+- Keep one control per rule in the tests of the small gates
+- *(docs)* Drop the ignore option of the docs check, which nothing sets
+- *(register)* Show that a removal and a snap-only home do not ask nss
+- Keep one control per judgement in the snap and upgrade purge judges
+- Drop the shape tests of e2e scripts, lint lists and manual pages
+- *(F193)* Remove the two synopsis checks of man.rs
+- *(F193)* Kill the surviving mutants of colour, parse and error
+- *(F194)* List_view against the real service with a hostile certificate
+- *(F194)* Pin the escape ranges and the common name reading
+- *(F194)* Cover the list failure text and close the contract
+- *(F199)* Add the judge of the fingerprint cases and its controls
+- *(F199)* Add the fingerprint group, images and wiring
+- *(F202)* Kill the doctor mutants that survived
+- *(F202)* Split the serial case loops into one test each and prove -auth active
+- *(F203)* Check 4 on fixture homes
+- *(F203)* Checks 5 and 6 against fixture roots and a fake service
+- *(F203)* Acceptance 6 on the whole command
+- *(F203)* Kill the surviving mutants of copy_state and journald_conf
+- *(F203)* Prove check 1 could not check with exit 0 on the whole command
+- *(F204)* Add doctor judge, guest step and wiring
+- *(F204)* Stage the service mask, compare directories without mtime
+- *(F205)* Make the zsh stray-output check see the echoed line
+- *(F208)* Derive error, outcome and reason names for api.md and audit.md from the code
+- *(F212)* Fix usage-error level check in help tests
+- *(F212)* Check that documents name only real commands
+- *(F212)* Check that every command an error message names parses
+- *(F212)* Check that doctor fixes, refusals and hints name commands that parse
+- *(F212)* Share the message command check between the doctor, fingerprint and register texts
+- *(F212)* Kill the refusal and refresh option text mutants
+- *(F212)* Route the guide stand-in on setup fingerprint and add the missing runner controls
+- *(F214)* Add the memory-* container cases and select the memory steps
+- *(F214)* Add the vm-memory-* cases under apport and systemd-coredump
+- *(F214)* Send SIGSEGV again to a process that handles the first and wait longer for a control
+- *(F214)* Refuse vm-memory-* skipped in a full vm run and add the negative control
+
+### ⚙️ Miscellaneous Tasks
+
+- Run the coverage tests under nextest so that a hung test is killed
+- Skip the jobs of a pull request that changes only documentation
+- Add feature list drafted by the initializer
+- *(F209)* Record the milestone-wide suite results
+- *(F209)* Record the intermittent alma10 pkttyagent timeout and the green reruns
+- *(F214)* Shorten comments in guest.sh to meet the file size gate
+
+### 🛡️ Security
+
+- Drop the security-score gate, which security-ceiling covers
+- Record failed tests and rejection classes in the loop
+
+### 💼 Other
+
+- Keep the cargo-mutants copies under target
+- Run the script tests in the ci signoff
 ## [0.8.0] - 2026-11-15
 
 ### 🚀 Features

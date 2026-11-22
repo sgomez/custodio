@@ -23,8 +23,8 @@ test-seam = []
 [dependencies]
 aes = { version = "0.9.3", features = ["zeroize"] }
 hmac = { version = "0.13.0", features = ["zeroize"] }
-custodio-client = { path = "../custodio-client", version = "0.8.0" }
-custodio-peer = { path = "../custodio-peer", version = "0.8.0" }
+custodio-client = { path = "../custodio-client", version = "0.9.0" }
+custodio-peer = { path = "../custodio-peer", version = "0.9.0" }
 p12-keystore = "0.4.1"
 p256 = { version = "0.14.0", default-features = false, features = [
   "arithmetic",
@@ -57,7 +57,7 @@ tss-esapi = { version = "=8.0.0-alpha.4", default-features = false }
 zeroize = "1.9.1"
 
 [dev-dependencies]
-custodio-it = { path = "../custodio-it", version = "0.8.0" }
+custodio-it = { path = "../custodio-it", version = "0.9.0" }
 tempfile = "3.27.0"
 custodiod = { path = ".", features = ["test-seam"] }
 
