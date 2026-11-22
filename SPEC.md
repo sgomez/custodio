@@ -121,12 +121,16 @@ exactly one file, `/etc/pam.d/polkit-1`.
 
   ```
   #%PAM-1.0
-  auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10
+  auth     [success=done default=ignore] pam_fprintd.so max-tries=3 timeout=30
   auth     include /usr/lib/pam.d/polkit-1
   account  include /usr/lib/pam.d/polkit-1
   password include /usr/lib/pam.d/polkit-1
   session  include /usr/lib/pam.d/polkit-1
   ```
+
+  Three tries in 30 s are `pam_fprintd`'s defaults. The report's file had one try in 10 s, which the
+  manual run of F211 on a real reader found too strict: a finger placed slightly off fell straight to
+  the password.
 
   It may add comment lines that say Custodio wrote the file and how to undo it; comments must not
   change what any reader of the file sees as `auth ... pam_fprintd.so` (Omarchy's polkit agent decides
@@ -138,8 +142,10 @@ exactly one file, `/etc/pam.d/polkit-1`.
   `/usr/lib/pam.d/polkit-1`, owned by the polkit package and not a conffile. `pam-auth-update`,
   `authselect` and a new rpm-ostree deployment leave `/etc/pam.d/polkit-1` alone (run, report).
   `include` with an absolute path is accepted by Linux-PAM (run on all four).
-- **Whose file it is.** A file is Custodio's only if its bytes are exactly what `enable` writes.
-  Anything else, including Custodio's file edited by hand, is someone else's.
+- **Whose file it is.** A file is Custodio's only if its bytes are exactly what `enable` writes, or
+  what 0.8.0 wrote (the same file with `max-tries=1 timeout=10`): `disable` removes either, and `enable`
+  on the 0.8.0 file refuses and says to run `disable`, then `enable`. Anything else, including
+  Custodio's file edited by hand, is someone else's.
 - **`enable` refuses**, writes nothing and exits non-zero, saying why and what to do next, when:
   - it is not running as root;
   - `/etc/pam.d/polkit-1` exists and is not Custodio's (an administrator's file, Omarchy's
@@ -163,7 +169,7 @@ exactly one file, `/etc/pam.d/polkit-1`.
   so and succeeds. If the file is someone else's, it refuses, changes nothing, and says who might own
   it and how to look. After `disable`, polkit reads the vendor file again, exactly as before `enable`.
 - **What it prints.** On success, `enable` says what changed in plain words: every polkit dialog now
-  accepts the finger, a wrong finger or no touch within 10 seconds falls back to the password, `sudo`
+  accepts the finger, three wrong fingers or no touch within 30 seconds fall back to the password, `sudo`
   and the login are unchanged, and how to undo it. It also prints the lock-screen note (Threat model,
   "Not guaranteed") when it applies, without changing that setting.
 - **The package does not touch PAM.** No package script creates, edits, renames or removes

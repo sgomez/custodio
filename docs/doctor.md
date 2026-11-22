@@ -117,7 +117,7 @@ System
 - The fingerprint is on for the whole system (`common-auth`, `system-auth`, authselect or `/etc/pam.d/sudo`): `ok`, and the line
   names where it is set and says that `sudo` uses the finger too.
 - Both the polkit file and `common-auth` ask for the finger: a `Warning:` line (after a wrong finger or no touch the finger is asked
-  twice, 20 s) with its own `Fix:`: `sudo custodio setup fingerprint disable` when the file is Custodio's, otherwise remove its
+  for twice) with its own `Fix:`: `sudo custodio setup fingerprint disable` when the file is Custodio's, otherwise remove its
   `pam_fprintd.so` line or run `sudo pam-auth-update --disable fprintd`.
 - A broken include. Custodio's file includes the polkit file of your system, and without it no polkit dialog can authenticate,
   not even with the password. It is the first line of the report, and the exit status is 1:

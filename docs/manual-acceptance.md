@@ -1166,7 +1166,7 @@ System
 ```console
 $ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
-      A wrong finger, or 10 s without a touch, falls back to the password.
+      Three wrong fingers, or 30 s without a touch, fall back to the password.
       sudo and the login are unchanged.
       On GNOME the finger may also unlock the lock screen (org.gnome.login-screen enable-fingerprint-authentication); Custodio leaves that setting alone.
       Undo: sudo custodio setup fingerprint disable

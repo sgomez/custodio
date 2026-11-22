@@ -168,9 +168,9 @@ marker() { echo "/tmp/fp-approved-$1"; }
 approve() { rm -f "$(marker "$1")"; auth "$1" "$2" "$3" "$CHECK" "$(marker "$1")"; }
 
 approve polkit-finger '{"prompt-finger":["touch:enrolled-finger"]}' 0
-approve polkit-unenrolled "{\"prompt-finger\":[\"touch:not-enrolled\"],\"prompt-password\":[\"type:$FPPW\"]}" 0
+approve polkit-unenrolled "{\"prompt-finger\":[\"touch:not-enrolled\",\"touch:not-enrolled\",\"touch:not-enrolled\"],\"prompt-password\":[\"type:$FPPW\"]}" 0
 approve polkit-timeout "{\"prompt-password\":[\"type:$FPPW\"]}" 0
-approve negative '{}' 15
+approve negative '{}' 35
 if [ -e "$(marker negative)" ]; then echo present > "$FP/negative.action"; else echo absent > "$FP/negative.action"; fi
 
 # sudo: the harness's passwordless rule is out of the way for this case only (restore() puts it back on any exit)

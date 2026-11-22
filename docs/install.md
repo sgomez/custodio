@@ -114,7 +114,7 @@ per system:
 ```console for=fingerprint
 $ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
-      A wrong finger, or 10 s without a touch, falls back to the password.
+      Three wrong fingers, or 30 s without a touch, fall back to the password.
       sudo and the login are unchanged.
       Undo: sudo custodio setup fingerprint disable
 ```

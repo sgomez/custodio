@@ -13,7 +13,7 @@ EXPECTED = (
     "#%PAM-1.0\n"
     "# Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.\n"
     "# If you edit this file, Custodio treats it as yours and will not touch it again.\n"
-    "auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10\n"
+    "auth     [success=done default=ignore] pam_fprintd.so max-tries=3 timeout=30\n"
     "auth     include /usr/lib/pam.d/polkit-1\n"
     "account  include /usr/lib/pam.d/polkit-1\n"
     "password include /usr/lib/pam.d/polkit-1\n"

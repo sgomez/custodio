@@ -34,11 +34,11 @@ libfprint=1:1.95.1+tod1-0ubuntu2
 libpam-fprintd=1.94.5-4
 EOF2
 printf '0 start\n0.4 prompt-finger\n0.9 scan right-index-finger\n1.1 matched\n1.3 approved\n' > polkit-finger.events
-printf '0 start\n0.4 prompt-finger\n0.9 scan unenrolled\n1.1 nomatch\n1.3 prompt-password\n1.6 typed-right\n1.9 approved\n' > polkit-unenrolled.events
-printf '0 start\n0.4 prompt-finger\n10.6 prompt-password\n10.9 typed-right\n11.2 approved\n' > polkit-timeout.events
+printf '0 start\n0.4 prompt-finger\n0.9 scan unenrolled\n1.1 nomatch\n1.3 prompt-finger\n1.5 scan unenrolled\n1.7 nomatch\n1.9 prompt-finger\n2.1 scan unenrolled\n2.3 nomatch\n2.5 prompt-password\n2.8 typed-right\n3.1 approved\n' > polkit-unenrolled.events
+printf '0 start\n0.4 prompt-finger\n30.6 prompt-password\n30.9 typed-right\n31.2 approved\n' > polkit-timeout.events
 printf '0 start\n0.3 prompt-password\n0.6 typed-wrong\n0.9 refused\n1.2 prompt-password\n1.5 typed-right\n1.8 approved\n' > sudo.events
 printf '[sudo] password for fpuser: \nSorry, try again.\n[sudo] password for fpuser: \n' > sudo.text
-printf '0 start\n0.4 prompt-finger\n0.8 prompt-password\n15.5 killed\n' > negative.events
+printf '0 start\n0.4 prompt-finger\n0.8 prompt-password\n35.5 killed\n' > negative.events
 echo absent > negative.action
 printf '0 start\n0.3 prompt-password\n0.6 typed-right\n0.9 approved\n' > disabled.events
 echo absent > disabled.pam
@@ -94,13 +94,14 @@ ctl finger-nostart polkit-finger 'sed -i "1d" polkit-finger.events'
 # polkit-unenrolled
 MSG="'typed-wrong'" ctl unenr-wrong-typed polkit-unenrolled 'sed -i "s/typed-right/typed-wrong/" polkit-unenrolled.events'
 MSG="'nomatch'" ctl unenr-nofail polkit-unenrolled 'sed -i "/nomatch/d" polkit-unenrolled.events'
+MSG='3 tries' ctl unenr-one-try polkit-unenrolled 'sed -i "/^1.[3-9] \|^2.[1-3] /d" polkit-unenrolled.events'
 MSG="'matched'" ctl unenr-matched polkit-unenrolled 'printf "1.2 matched\n" >> polkit-unenrolled.events'
 ctl unenr-nopassword polkit-unenrolled 'sed -i "/prompt-password/d;/typed/d;/refused/d" polkit-unenrolled.events'
 ctl unenr-not-approved polkit-unenrolled 'sed -i "/approved/d" polkit-unenrolled.events'
-# polkit-timeout: before 10 s, never, after the margin, a scan sent
-MSG='before the 10 s timeout' ctl to-early polkit-timeout 'sed -i "s/^10.6 prompt-password/9.5 prompt-password/" polkit-timeout.events'
-MSG='before the 10 s timeout' ctl to-immediate polkit-timeout 'sed -i "s/^10.6 prompt-password/0.5 prompt-password/" polkit-timeout.events'
-MSG='after 15 s' ctl to-late polkit-timeout 'sed -i "s/^10.6 prompt-password/60.4 prompt-password/" polkit-timeout.events'
+# polkit-timeout: before 30 s, never, after the margin, a scan sent
+MSG='before the 30 s timeout' ctl to-early polkit-timeout 'sed -i "s/^30.6 prompt-password/29.5 prompt-password/" polkit-timeout.events'
+MSG='before the 30 s timeout' ctl to-immediate polkit-timeout 'sed -i "s/^30.6 prompt-password/0.5 prompt-password/" polkit-timeout.events'
+MSG='after 35 s' ctl to-late polkit-timeout 'sed -i "s/^30.6 prompt-password/80.4 prompt-password/" polkit-timeout.events'
 ctl to-never polkit-timeout 'sed -i "/prompt-password/d;/typed/d;/refused/d;/approved/d" polkit-timeout.events'
 MSG="'scan'" ctl to-scan polkit-timeout 'sed -i "s/^0.4 prompt-finger/0.4 prompt-finger\n0.5 scan x/" polkit-timeout.events'
 # sudo
@@ -110,9 +111,9 @@ MSG="'prompt-password'" ctl sudo-nopassword sudo 'printf "0 start\n0.5 approved\
 MSG="'typed-wrong'" ctl sudo-rule-left sudo 'printf "0 start\n0.3 prompt-password\n0.6 typed-right\n0.9 approved\n" > sudo.events'
 MSG="'refused'" ctl sudo-wrong-accepted sudo 'sed -i "/refused/d" sudo.events'
 # negative
-MSG="'approved'" ctl neg-approved negative 'printf "15.7 approved\n" >> negative.events'
+MSG="'approved'" ctl neg-approved negative 'printf "35.7 approved\n" >> negative.events'
 MSG='was performed' ctl neg-action negative 'echo present > negative.action'
-MSG='before the 15 s' ctl neg-fastkill negative 'sed -i "s/^15.5 killed/3 killed/" negative.events'
+MSG='before the 35 s' ctl neg-fastkill negative 'sed -i "s/^35.5 killed/3 killed/" negative.events'
 MSG="'killed'" ctl neg-notkilled negative 'sed -i "/killed/d" negative.events'
 MSG="'typed-right'" ctl neg-password negative 'printf "5 typed-right\n" >> negative.events'
 # disabled

@@ -203,8 +203,8 @@ It changes no profile.
 .B setup fingerprint enable
 writes
 .IR /etc/pam.d/polkit-1 ,
-so that every polkit dialog, Custodio's among them, first accepts a finger (\fBpam_fprintd.so\fR, one try, 10 seconds)
-and falls back to the password after a wrong finger or without a touch.
+so that every polkit dialog, Custodio's among them, first accepts a finger (\fBpam_fprintd.so\fR, three tries, 30 seconds)
+and falls back to the password after three wrong fingers or without a touch.
 .BR sudo (8)
 and the login are unchanged.
 It must run as root.

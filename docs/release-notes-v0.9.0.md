@@ -27,7 +27,7 @@ and from the container runs of the test suite; where their polkit keeps its PAM 
   `register --refresh-only` became `setup browsers refresh`. `fingerprint` moved under `setup`:
   `setup fingerprint enable` and `disable`. The old names are not commands any more and have no alias.
 - **`custodio setup fingerprint enable` and `disable`.** One command writes `/etc/pam.d/polkit-1` so that a finger answers
-  every polkit dialog, not only Custodio's, and one removes it. It refuses rather than guesses on a system it does not know,
+  every polkit dialog, not only Custodio's (three tries in 30 s, then the password), and one removes it. It refuses rather than guesses on a system it does not know,
   and never touches a file it did not write. See [docs/fingerprint.md](fingerprint.md).
 - **`custodio doctor`.** It checks the reader, the enrolled finger, the PAM file, the Firefox registration, the journal and
   the storage, tells you what is wrong and what to do, and changes nothing. See [docs/doctor.md](doctor.md).
@@ -54,8 +54,9 @@ supported snapd interface.
 
 ## Upgrading
 
-An upgrade changes no key and no file in the state directory. `custodio setup fingerprint` is off until you run `enable`. After an
-upgrade, `custodio setup browsers enable` brings the copy of the module the snap runs up to date:
+An upgrade changes no key and no file in the state directory. `custodio setup fingerprint` is off until you run `enable`. If you
+turned the finger on with 0.8.0, the finger keeps its one try in 10 s: `sudo custodio setup fingerprint disable`, then
+`sudo custodio setup fingerprint enable`, gives it three tries in 30 s. After an upgrade, `custodio setup browsers enable` brings the copy of the module the snap runs up to date:
 
 ```console
 $ custodio setup browsers enable

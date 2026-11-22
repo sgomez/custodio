@@ -361,7 +361,7 @@ fn polkit(f: &Facts) -> (Check, bool) {
             "remove pam_fprintd.so from /etc/pam.d/polkit-1, or: sudo pam-auth-update --disable fprintd"
         };
         c.warning = Some(Warning {
-            text: "polkit-1 and common-auth both ask for the finger, so a failed touch waits twice (20 s)".to_owned(),
+            text: "polkit-1 and common-auth both ask for the finger, so a failed finger is asked for twice".to_owned(),
             fix: fix.to_owned(),
         });
     }

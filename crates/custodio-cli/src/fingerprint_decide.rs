@@ -17,7 +17,7 @@ pub const VENDOR_FILE: &str = "/usr/lib/pam.d/polkit-1";
 const FILE: &str = "#%PAM-1.0\n\
 # Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.\n\
 # If you edit this file, Custodio treats it as yours and will not touch it again.\n\
-auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10\n\
+auth     [success=done default=ignore] pam_fprintd.so max-tries=3 timeout=30\n\
 auth     include /usr/lib/pam.d/polkit-1\n\
 account  include /usr/lib/pam.d/polkit-1\n\
 password include /usr/lib/pam.d/polkit-1\n\
@@ -29,10 +29,19 @@ pub const fn file_bytes() -> &'static [u8] {
     FILE.as_bytes()
 }
 
-/// Whether `bytes` are exactly Custodio's file.
+/// The `pam_fprintd` arguments of the file 0.8.0 wrote, and the ones that replaced them.
+const OLD_ARGS: &str = "max-tries=1 timeout=10";
+const ARGS: &str = "max-tries=3 timeout=30";
+
+/// Whether `bytes` are exactly the file 0.8.0 wrote: one try for the finger.
+fn is_custodios_of_0_8(bytes: &[u8]) -> bool {
+    bytes.len() == FILE.len() && *bytes == *FILE.replacen(ARGS, OLD_ARGS, 1).as_bytes()
+}
+
+/// Whether `bytes` are exactly Custodio's file, this one or the one 0.8.0 wrote.
 #[must_use]
 pub fn is_custodios(bytes: &[u8]) -> bool {
-    bytes == file_bytes()
+    bytes == file_bytes() || is_custodios_of_0_8(bytes)
 }
 
 /// The first non-comment `auth` line that has `pam_fprintd.so`, as a reader such as Omarchy's
@@ -255,7 +264,7 @@ pub fn done_line(done: Done) -> Line {
     match done {
         Done::Enabled { lock_note } => {
             let mut l = line("finger on for every polkit dialog")
-                .with("A wrong finger, or 10 s without a touch, falls back to the password.")
+                .with("Three wrong fingers, or 30 s without a touch, fall back to the password.")
                 .with("sudo and the login are unchanged.");
             if lock_note {
                 l = l.with(LOCK_NOTE);
@@ -351,7 +360,15 @@ pub fn decide_enable(o: &Observed) -> EnableDecision {
         return EnableDecision::Refuse(not_root());
     }
     match &o.polkit_file {
-        FileState::Regular(b) if is_custodios(b) => return EnableDecision::AlreadyEnabled,
+        FileState::Regular(b) if b == file_bytes() => return EnableDecision::AlreadyEnabled,
+        FileState::Regular(b) if is_custodios_of_0_8(b) => {
+            return EnableDecision::Refuse(Refusal::new(
+                format!(
+                    "custodio setup fingerprint: {POLKIT_FILE} is an older Custodio file that gives the finger one try; nothing was changed"
+                ),
+                "Run 'sudo custodio setup fingerprint disable', then 'sudo custodio setup fingerprint enable' for three tries.",
+            ));
+        }
         FileState::Missing => {}
         _ => return EnableDecision::Refuse(foreign()),
     }

@@ -12,7 +12,7 @@ Then:
 ```console
 $ sudo custodio setup fingerprint enable
 ok    polkit  finger on for every polkit dialog
-      A wrong finger, or 10 s without a touch, falls back to the password.
+      Three wrong fingers, or 30 s without a touch, fall back to the password.
       sudo and the login are unchanged.
       Undo: sudo custodio setup fingerprint disable
 ```
@@ -25,7 +25,7 @@ One file, `/etc/pam.d/polkit-1`, and nothing else. This is the file, byte for by
 #%PAM-1.0
 # Written by 'custodio setup fingerprint enable'. Remove it with 'sudo custodio setup fingerprint disable'.
 # If you edit this file, Custodio treats it as yours and will not touch it again.
-auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10
+auth     [success=done default=ignore] pam_fprintd.so max-tries=3 timeout=30
 auth     include /usr/lib/pam.d/polkit-1
 account  include /usr/lib/pam.d/polkit-1
 password include /usr/lib/pam.d/polkit-1
@@ -35,8 +35,8 @@ session  include /usr/lib/pam.d/polkit-1
 It applies to every polkit action, not only Custodio's: any dialog that asks for your password accepts a finger, `pkexec`,
 software installation and disk management included, and the actions that ask for an administrator too. Custodio cannot narrow it
 to its own actions: PAM has one service for polkit. It does not touch `sudo`, which keeps asking for the password, nor the login
-and lock screens, which have their own settings ([below](#the-gnome-lock-screen-on-ubuntu)). A wrong finger, or ten seconds
-without a touch, falls back to the password prompt of the same dialog. Running `enable` again changes nothing.
+and lock screens, which have their own settings ([below](#the-gnome-lock-screen-on-ubuntu)). Three wrong fingers, or thirty
+seconds without a touch, fall back to the password prompt of the same dialog. Running `enable` again changes nothing.
 
 On GNOME, `enable` adds a line about the lock screen; with no reader it still writes the file and warns, with `doctor`'s reader line, that polkit keeps
 asking for the password until there is a reader and an enrolled finger.
@@ -105,6 +105,9 @@ $ sudo custodio setup fingerprint enable 2>&1
 custodio setup fingerprint: /etc/pam.d/polkit-1 exists and is not Custodio's (or is not a regular file); nothing was changed
 Look at who owns it ('dpkg -S', 'rpm -qf' or 'pacman -Qo' on that path) and remove or merge it yourself, then run 'sudo custodio setup fingerprint enable' again.
 ```
+
+The file 0.8.0 wrote gave the finger one try in 10 s. `enable` refuses it and says to run `disable` and then `enable`, which
+writes the file above with three tries in 30 s; `disable` and `doctor` still treat the old file as Custodio's.
 
 Fingerprint is already on for the whole system (the global switch), so the override would be redundant. Turn the global switch
 off first. On the Debian family it is `pam_fprintd` in `common-auth` (`pam-auth-update`):

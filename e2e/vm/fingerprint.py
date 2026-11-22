@@ -24,7 +24,8 @@ CASES = ("stage", "polkit-finger", "polkit-unenrolled", "polkit-timeout", "sudo"
          "fallback-module", "fallback-daemon", "fallback-reader", "fallback-finger")
 VERSIONS = ("polkit", "fprintd", "libfprint", "libpam-fprintd")
 STAGE_FACTS = ("virtual_driver", "socket", "device", "enrolled", "override")
-TIMEOUT = 10.0  # pam_fprintd timeout=10
+TIMEOUT = 30.0  # pam_fprintd timeout=30
+TRIES = 3  # pam_fprintd max-tries=3
 MARGIN = 5.0  # the password prompt of the timeout case comes between TIMEOUT and TIMEOUT + MARGIN seconds
 NEGATIVE_WAIT = TIMEOUT + MARGIN  # the negative control waits this long before it declares "unapproved", then kills the waiting process
 FALLBACK_BY = 5.0  # a fallback case asks for the password within this many seconds: no wait of the timeout
@@ -134,6 +135,9 @@ def j_unenrolled(d, _):
     if p:
         return p
     p += j_password_after(ev, ["scan", "nomatch"])
+    misses = names(ev).count("nomatch")
+    if misses != TRIES:
+        p.append(f"the finger was refused {misses} times before the password, not the {TRIES} tries of the file")
     return p + forbid(ev, "matched")
 
 

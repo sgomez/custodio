@@ -9,7 +9,7 @@ use custodio_cli::fingerprint_decide::{
 
 const DESIGN_LINES: [&str; 5] = [
     "#%PAM-1.0",
-    "auth     [success=done default=ignore] pam_fprintd.so max-tries=1 timeout=10",
+    "auth     [success=done default=ignore] pam_fprintd.so max-tries=3 timeout=30",
     "auth     include /usr/lib/pam.d/polkit-1",
     "account  include /usr/lib/pam.d/polkit-1",
     "password include /usr/lib/pam.d/polkit-1",
@@ -97,6 +97,31 @@ fn whose_file_it_is() {
     assert!(!is_custodios(crlf.as_bytes()));
     assert!(!is_custodios(b""));
     assert!(!is_custodios(b"auth sufficient pam_fprintd.so\n"));
+}
+
+/// The file 0.8.0 wrote: one try for the finger, 10 s.
+fn file_of_0_8() -> Vec<u8> {
+    String::from_utf8(file_bytes().to_vec())
+        .unwrap()
+        .replace("max-tries=3 timeout=30", "max-tries=1 timeout=10")
+        .into_bytes()
+}
+
+#[test]
+fn the_file_of_0_8_is_still_custodios() {
+    let old = file_of_0_8();
+    assert_ne!(old, file_bytes());
+    assert!(is_custodios(&old));
+    let mut o = base(Family::Debian);
+    o.polkit_file = FileState::Regular(old);
+    assert_eq!(decide_disable(&o), DisableDecision::Remove);
+    let m = refusal(decide_enable(&o));
+    assert!(
+        m.contains("one try")
+            && m.contains("setup fingerprint disable")
+            && m.contains("setup fingerprint enable"),
+        "{m}"
+    );
 }
 
 #[test]
