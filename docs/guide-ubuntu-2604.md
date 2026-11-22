@@ -57,10 +57,16 @@ The "On GNOME" line is about the lock screen, which this command does not change
 [fingerprint.md](fingerprint.md#the-gnome-lock-screen-on-ubuntu) says how to turn the finger off there. What this changes and what
 it does not guarantee is in [fingerprint.md](fingerprint.md). Skip this step if you prefer the password.
 
+If step 2 said `on for the whole system (/etc/pam.d/common-auth), sudo too` instead of `FAIL  polkit  off`, Ubuntu already lets the
+finger answer everything, `sudo` and the login included (`pam_fprintd` in `common-auth`, which `pam-auth-update` manages), and the
+command above refuses to change anything. Either leave it so and skip this step, or keep the finger to the polkit dialogs: run
+`sudo pam-auth-update --disable fprintd`, then the command above. `sudo pam-auth-update --enable fprintd` turns the global switch on again.
+
 ## 4. Export your key from Firefox and import it
 
 In Firefox open Settings, Privacy & Security, Certificates, View Certificates, tab Your Certificates. Select your certificate and
-choose Backup. Save it as `ana.p12` in the directory you are in and choose a password for it. Then:
+choose Backup. Save it as `ana.p12` in the directory you are in and choose a password for it. If you already have your certificate as a
+`.p12` (or `.pfx`) file, use that file instead and skip the export. Then:
 
 ```console
 $ custodio import --id ana ana.p12
@@ -72,6 +78,9 @@ warn  ana  ecdsa-p256  encrypted-host
 
 On a machine with a TPM the first line says `ok` and `tpm`, without the note under it. Delete the original file as the message
 says. Firefox will see the key after step 5, which ends with a restart of Firefox.
+
+Then delete the certificate from Firefox's own store: in the same tab, Your Certificates, select it and choose Delete. Otherwise
+Firefox holds the key twice, its own copy unencrypted in your profile, and may sign with that copy without asking Custodio.
 
 ## 5. Register the module and sign in
 
@@ -86,7 +95,7 @@ ok    Firefox (snap)  efgh5678.default: registered
 ```
 
 Open Firefox again, and sign in to the site that asks for your certificate; the polkit dialog asks for your password (or your finger,
-if you did step 3). Then:
+if you did step 3). Expect several dialogs for one page: Firefox signs once per connection it opens, and every signature asks. Then:
 
 ```console
 $ custodio list

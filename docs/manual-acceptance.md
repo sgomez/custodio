@@ -1139,7 +1139,9 @@ custodio: to check the setup at any time, run: custodio doctor
 ```
 
 2. Run `custodio doctor`. It must name what is missing. Enrol a finger with your desktop if the first lines say none is enrolled
-   (the reader and the finger are a person's):
+   (the reader and the finger are a person's). If the `polkit` line says `on for the whole system (/etc/pam.d/common-auth), sudo too`,
+   the finger is on for everything already: run `sudo pam-auth-update --disable fprintd` (step 3 of the guide) and `custodio doctor`
+   again, so that the line says `FAIL  polkit  off` as below:
 
 ```console fails=yes
 $ custodio doctor
@@ -1174,7 +1176,8 @@ ok    polkit  finger on for every polkit dialog
    are a person's (a finger at a screen).
 
 4. In Firefox export your certificate (Settings, Privacy & Security, Certificates, View Certificates, Your Certificates, Backup) as `ana.p12` into the
-   directory you are in, with a password, and import it. Use **your exported file** in this command; approve the dialog with your finger:
+   directory you are in, with a password, and import it; a `.p12` you already have does as well. Use **your file** in this command; approve the
+   dialog with your finger:
 
 ```console
 $ custodio import --id ana ana.p12
@@ -1185,10 +1188,13 @@ warn  ana  ecdsa-p256  encrypted-host
 ```
 
    On your machine the first line may differ (a TPM key says `ok` and `tpm`, with only the two steps under it); write what you see.
-   Do not restart Firefox yet: it sees the key after step 5.
+   Do not restart Firefox yet: it sees the key after step 5. Delete the certificate from Firefox's own store (Your Certificates, Delete), so
+   that in step 5 Firefox can only sign through Custodio.
 
 5. Close Firefox completely, register the module, open Firefox again, and sign in with your finger at a real site that requires a
-   client certificate (a person's):
+   client certificate (a person's). Several dialogs for one page are normal: Firefox signs once per connection. With no certificate of your
+   own, the public one of badssl.com (https://badssl.com/certs/badssl.com-client.p12, password `badssl.com`) imported in step 4 signs you in at
+   https://client.badssl.com/, which turns green:
 
 ```console
 $ custodio setup browsers enable
@@ -1269,12 +1275,18 @@ check() { # check NAME COMMAND...: clean when the command succeeds
     if "$@"; then echo "clean: $name"; else echo "NOT CLEAN: $name"; rc=1; fi
 }
 polkit_file_absent() { [ ! -e "$R/etc/pam.d/polkit-1" ]; }
-no_firefox_entry() { ! grep -rqsi custodio "$HOME"/.mozilla/firefox/*/pkcs11.txt "$HOME"/snap/firefox/common/.mozilla/firefox/*/pkcs11.txt; }
-no_module_copy() { [ -z "$(find "$HOME" "$R/usr" -name 'libcustodio_pkcs11*' 2> /dev/null)" ]; }
+# Every profile directory that custodio setup browsers enable writes to; a glob that matches nothing stays as written and grep -s skips it.
+no_profile_entry() {
+    local c=${XDG_CONFIG_HOME:-$HOME/.config}
+    ! grep -qsi custodio "$HOME"/.mozilla/firefox/*/pkcs11.txt "$c"/mozilla/firefox/*/pkcs11.txt \
+        "$HOME"/snap/firefox/common/.mozilla/firefox/*/pkcs11.txt "$HOME"/.thunderbird/*/pkcs11.txt "$c"/thunderbird/*/pkcs11.txt \
+        "$HOME"/.librewolf/*/pkcs11.txt "$HOME"/.config/librewolf/librewolf/*/pkcs11.txt "$HOME"/.floorp/*/pkcs11.txt "$HOME"/.waterfox/*/pkcs11.txt
+}
+no_module_copy() { [ ! -e "$HOME/snap/firefox/common/libcustodio_pkcs11.so" ] && [ -z "$(find "$R/usr" -name 'libcustodio_pkcs11*' 2> /dev/null)" ]; }
+# The home directory is not searched: the package writes there only the two things above, and other files may be named custodio.
 nothing_else_left() {
     local f k keep extra=
-    # The downloaded package is not something the package left.
-    for f in $(find "$R/etc" "$R/usr" "$R/var" "$R/run" "$HOME" -iname '*custodio*' ! -name 'custodio_*.deb' 2> /dev/null); do
+    for f in $(find "$R/etc" "$R/usr" "$R/var" "$R/run" -iname '*custodio*' 2> /dev/null); do
         keep=
         for k in $KEPT; do case $f in "$k" | "$k"/*) keep=1 ;; esac; done
         [ -n "$keep" ] || extra="$extra $f"
@@ -1282,7 +1294,7 @@ nothing_else_left() {
     [ -z "$extra" ] || { echo "left:$extra"; return 1; }
 }
 check "/etc/pam.d/polkit-1 is absent" polkit_file_absent
-check "no Custodio entry in the Firefox profiles" no_firefox_entry
+check "no Custodio entry in the browser profiles" no_profile_entry
 check "no copy of the module" no_module_copy
 check "nothing left beyond the state directory" nothing_else_left
 exit "$rc"

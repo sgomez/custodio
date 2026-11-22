@@ -3,8 +3,8 @@
 # runs every `console` block there as written, in one fixture system, with the stand-ins of test-docs-guide.sh (the real dpkg installs,
 # removes and purges the .deb; the real custodio on private buses with a fake fprintd), so the install notice and every output the page
 # shows are compared. Then it runs the page's own final-checks script (the `bash` block of the page) on the fixture root: clean after the
-# documented way back; on a fixture left dirty, each check must say NOT CLEAN by itself (one control per check). The kept paths come from
-# that block, not from this script. A person's (listed below): the .p12 exported from Firefox, every touch of the reader, pkexec with a
+# documented way back and on a home with files of its own named custodio; on a fixture left dirty, each check must say NOT CLEAN by
+# itself (one control per check). The kept paths come from that block, not from this script. A person's (listed below): the .p12 exported from Firefox, every touch of the reader, pkexec with a
 # finger, the real site, Tab at the shell, the reviews of sections 27 and 28. Negative controls: broken copies of the page must fail.
 # Usage: scripts/test-docs-manual-m7.sh   (DOC overrides the page; CHECK_ONLY=1 skips the controls)
 # shellcheck disable=SC2016
@@ -25,15 +25,18 @@ if [ -n "${M7_MODE:-}" ]; then
         profile) echo 'library=libcustodio_pkcs11.so' >> "$prof" ;;
         copy) mkdir -p "$d/home/snap/firefox/common"; : > "$d/home/snap/firefox/common/libcustodio_pkcs11.so" ;;
         extra) : > "$R/etc/custodio-leftover.conf" ;;
+        thunderbird) mkdir -p "$d/home/.thunderbird/x.default"; echo 'library=libcustodio_pkcs11.so' > "$d/home/.thunderbird/x.default/pkcs11.txt" ;;
+        socket) mkdir -p "$R/run/snap.firefox"; : > "$R/run/snap.firefox/custodio.sock" ;;
+        devhome) mkdir -p "$d/home/src/custodio/target" "$d/home/.cache/custodio"; : > "$d/home/src/custodio/target/libcustodio_pkcs11.so" ;;
     esac
     rc=0
     out=$(R=$R HOME=$d/home bash "$M7_CHECKS") || rc=$?
     echo "$out" > "$(dirname "$M7_CHECKS")/final.out"
-    if [ "$M7_MODE" = clean ]; then
+    if [ "$M7_MODE" = clean ] || [ "$M7_MODE" = devhome ]; then
         [ "$rc" = 0 ] && [ "$(grep -c '^clean: ' "$(dirname "$M7_CHECKS")/final.out")" = 4 ] || { echo "the final checks are not clean after the way back:" >&2; echo "$out" >&2; exit 1; }
     else
         # the check for that dirt reports NOT CLEAN by itself, and the exit status says so
-        case $M7_MODE in pam) want='polkit-1' ;; profile) want='Firefox profiles' ;; copy) want='copy of the module' ;; extra) want='nothing left' ;; esac
+        case $M7_MODE in pam) want='polkit-1' ;; profile | thunderbird) want='browser profiles' ;; copy) want='copy of the module' ;; extra | socket) want='nothing left' ;; esac
         if [ "$rc" != 1 ] || ! grep -q "^NOT CLEAN: .*$want" "$(dirname "$M7_CHECKS")/final.out"; then echo "the final checks did not catch '$M7_MODE':" >&2; echo "$out" >&2; exit 1; fi
     fi
     exit 0
@@ -121,10 +124,10 @@ t = sys.stdin.read()
 m = re.search(r"```console\n\$ custodio setup browsers disable\n(?:(?!```).)*```\n", t, re.S)
 sys.stdout.write(t.replace(m.group(0), ""))'
     # the final checks on a fixture left dirty: each check reports NOT CLEAN by itself
-    for mode in pam profile copy extra; do
+    for mode in pam profile copy extra thunderbird socket devhome; do
         (run_page "$DOC" "$TMP/d$mode" "$mode" > /dev/null 2>&1 && exit 0 || exit 1) &
         pids+=($!)
-        names+=("final check catches a dirty fixture: $mode")
+        names+=("final check on the fixture: $mode")
     done
     for i in "${!pids[@]}"; do
         if wait "${pids[$i]}"; then echo "control ok: ${names[$i]}"; else bad "control '${names[$i]}' failed (or passed on a broken page)"; fi
