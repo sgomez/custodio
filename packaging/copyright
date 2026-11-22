@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: custodio
 Upstream-Contact: rFirma <info@rfirma.com>
-Source: https://github.com/rfirma/custodio
+Source: https://github.com/sgomez/custodio
 
 Files: *
 Copyright: 2026 rFirma

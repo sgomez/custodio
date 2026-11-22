@@ -14,7 +14,7 @@ use crate::register_cli::{Refusal, RegisterError};
 use crate::register_native::RunError;
 use crate::{ArgError, CliError, ImportFailure, ServiceFailure};
 
-const REPORT: &str = "report a bug (see README.md)";
+const REPORT: &str = "report a bug at https://github.com/sgomez/custodio/issues";
 
 /// What went wrong and the next step, as one text of at least two lines, without a final newline.
 #[must_use]

@@ -201,6 +201,8 @@ fn check(text: &str) {
     );
     assert!(!text.contains(PASSWORD), "{text:?}");
     assert!(!text.ends_with('\n'), "{text:?}");
+    // The packages do not install README.md, so a next step there cannot be taken.
+    assert!(!text.contains("README"), "{text:?}");
 }
 
 #[test]
@@ -230,7 +232,7 @@ fn the_three_password_and_file_failures_say_different_next_steps() {
             .is_some_and(|l| l.contains("Export the file again")),
         "{b}"
     );
-    assert!(b.contains("README.md"), "{b}");
+    assert!(b.contains("Your Certificates, Backup"), "{b}");
     assert!(!b.contains("password"), "{b}");
     let next = c.lines().nth(1).unwrap_or_default();
     assert!(

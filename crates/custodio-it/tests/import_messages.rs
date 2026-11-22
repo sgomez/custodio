@@ -121,11 +121,7 @@ fn a_file_that_cannot_be_used_says_to_export_it_again() -> TestResult {
         failed(
             &got,
             "the .p12 file cannot be used",
-            &[
-                "Export the file again",
-                "README.md",
-                "Export a certificate from Firefox",
-            ],
+            &["Export the file again", "Your Certificates, Backup"],
             &["password"],
         );
     }

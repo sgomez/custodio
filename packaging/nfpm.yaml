@@ -11,7 +11,7 @@ section: utils
 priority: optional
 maintainer: rFirma <info@rfirma.com>
 vendor: rFirma
-homepage: https://github.com/rfirma/custodio
+homepage: https://github.com/sgomez/custodio
 license: EUPL-1.2
 description: |
   Signing service for PKCS#12 keys

@@ -586,5 +586,8 @@ with an empty context.
   host has Custodio installed, which `skips::the_default_module_path_is_the_installed_one` refuses on purpose).
   `scripts/test-arch-lifecycle.sh` (package gate) not run; only its expected notice text and a comment changed.
 - Not done / known issues: doctor's register fix still reads "custodio setup browsers enable, then restart the browsers"
-  (a person with Firefox open gets a skipped profile, with its own fix). The `README.md` references in CLI messages remain.
+  (a person with Firefox open gets a skipped profile, with its own fix).
+- Later: CLI errors no longer point to README.md (not installed): bugs go to https://github.com/sgomez/custodio/issues, the
+  .p12 export path is spelled out; every error is checked not to name README. The project URL in the units, copyright and
+  nfpm was github.com/rfirma/custodio, which is wrong (the person: the repo is github.com/sgomez/custodio); fixed.
 - Next session should: nothing; the person rereads and closes F210 with `just milestone pass F210`.

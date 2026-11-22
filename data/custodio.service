@@ -1,6 +1,6 @@
 [Unit]
 Description=Custodio signing service
-Documentation=https://github.com/rfirma/custodio
+Documentation=https://github.com/sgomez/custodio
 After=dbus.service polkit.service
 Requires=dbus.socket
 

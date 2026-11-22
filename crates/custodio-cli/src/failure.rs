@@ -147,10 +147,10 @@ impl ServiceFailure {
                 "Run the command again and retype the password of the .p12 file."
             }
             Self::UnreadableP12 => {
-                "Export the file again (README.md, 'Export a certificate from Firefox'), then run the command again."
+                "Export the file again from Firefox (Settings, Privacy & Security, Certificates, View Certificates, Your Certificates, Backup), then run the command again."
             }
             Self::WrongPasswordOrBadP12 => {
-                "Retype the password; if it fails again, export the file again (README.md, 'Export a certificate from Firefox')."
+                "Retype the password; if it fails again, export the file again from Firefox (Settings, Privacy & Security, Certificates, View Certificates, Your Certificates, Backup)."
             }
             Self::UnsupportedKeyType => {
                 "Export the key as RSA 2048 or ECDSA P-256; see 'ImportP12' in docs/api.md."
@@ -162,7 +162,7 @@ impl ServiceFailure {
                 "Read the service log: journalctl -u custodio.service; nothing was changed."
             }
             Self::Internal => {
-                "Read the service log: journalctl -u custodio.service; if it shows no cause, report a bug (see README.md)."
+                "Read the service log: journalctl -u custodio.service; if it shows no cause, report a bug at https://github.com/sgomez/custodio/issues."
             }
             Self::TpmFailed => {
                 "Read the service log: journalctl -u custodio.service; see 'TPM capabilities' in docs/api.md."
@@ -180,7 +180,7 @@ impl ServiceFailure {
                 "Check that the service is installed and running: systemctl status custodio.service; see docs/install.md."
             }
             Self::Unknown(_) => {
-                "This CLI may be older than the service; update it, or report a bug (see README.md)."
+                "This CLI may be older than the service; update it, or report a bug at https://github.com/sgomez/custodio/issues."
             }
         }
     }
