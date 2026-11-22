@@ -292,9 +292,11 @@ systemd's hand-written bash and zsh completions, which call the program for dyna
 - **Wrong password versus unreadable file.** Today `ImportP12` fails as `WrongPasswordOrBadP12` and the
   journal writes `wrong_password` for both. The service must tell apart, and the CLI and the journal
   must show differently: (a) a file whose integrity MAC is present and does not verify with the
-  password, which is a wrong password; (b) a file that cannot be read as PKCS#12 or holds no usable
-  key and certificate (no private key, several, a key without a certificate) whatever the password,
-  which is an unreadable file; and (c) a file with no MAC that does not decrypt, where the library
+  password, which is a wrong password, whatever the file holds (its contents are sealed by that
+  password); (b) a file that cannot be read as PKCS#12 or holds no usable key and certificate (no
+  private key, several, a key without a certificate), with the right password, and with any password
+  when the defect shows without decrypting (bytes that are not PKCS#12, unencrypted bags without a
+  MAC), which is an unreadable file; and (c) a file with no MAC that does not decrypt, where the library
   cannot tell (a) from (b), which keeps a combined message. Two new D-Bus errors, one for (a) and
   one for (b); `WrongPasswordOrBadP12` stays for (c) only. In the journal, (a) and (c) keep
   `wrong_password` and (b) gets one new outcome. All are added under the compatibility rules of
@@ -501,8 +503,9 @@ Automated, on the host (unit, integration, fuzz and package checks):
     service; with the service absent, completion prints nothing and finishes within a bound the
     contract sets. Every package format installs the three files where the shells load them.
 13. Importing a `.p12` with a MAC and the wrong password gives the wrong-password D-Bus error, journal
-    outcome and CLI message; an unreadable or unusable file gives the unreadable ones whatever the
-    password; a file without a MAC that does not decrypt gives the combined ones. None of these opens
+    outcome and CLI message, whatever the file holds; an unreadable or unusable file gives the
+    unreadable ones with the right password, and with any password when its defect shows without
+    decrypting (see `SPEC_DEVIATIONS.md`, F195); a file without a MAC that does not decrypt gives the combined ones. None of these opens
     the file before polkit approves; `just api-contract` passes with the documented names.
 14. The classifier finding names the cause of the `252:0` answers with evidence. Then either a test
     reproducing that cause gets the same answer at every start, or the service exposes the reason for
