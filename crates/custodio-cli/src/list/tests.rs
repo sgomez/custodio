@@ -463,6 +463,10 @@ fn the_debug_form_of_an_entry_has_no_certificate() {
         !shown.contains("222") && !shown.to_lowercase().contains("de, ad"),
         "{shown}"
     );
+    assert!(
+        shown.contains("\"k\"") && shown.contains("rsa2048"),
+        "{shown}"
+    );
 }
 
 fn args(list: &[&str]) -> Result<Command, ArgError> {
@@ -551,4 +555,43 @@ fn a_list_failure_reads_as_a_sentence_with_the_id_escaped() {
         ListFailure::Service(ServiceFailure::AuthorizationUnavailable).to_string(),
         ServiceFailure::AuthorizationUnavailable.to_string()
     );
+}
+
+#[test]
+fn soon_is_thirty_days() {
+    let end = now();
+    let day = Duration::from_hours(24);
+    assert_eq!(Expiry::of(Some(end), end - 30 * day), Some(Expiry::Soon));
+    assert_eq!(Expiry::of(Some(end), end - 31 * day), Some(Expiry::Valid));
+}
+
+#[test]
+fn times_not_in_the_certificate_form_are_shown_unchanged() {
+    assert_eq!(
+        readable_time("2030-01-02T03:04:05Z"),
+        "2030-01-02 03:04:05 UTC"
+    );
+    assert_eq!(readable_time("2030-01-02T03:04Z"), "2030-01-02T03:04Z");
+    assert_eq!(day("2030-01-02T03:04:05Z"), "2030-01-02");
+    assert_eq!(day("30-01-02T03:04:05Z"), "30-01-02T03:04:05Z");
+}
+
+#[test]
+fn only_the_header_row_is_bold() {
+    let keys = vec![key("bb", "rsa2048", RSA), key("a", "ecdsa-p256", P256)];
+    for terminal in [false, true] {
+        let look = Look {
+            terminal,
+            colour: true,
+            ..Look::plain(now())
+        };
+        let out = table(&keys, look);
+        let bold: Vec<bool> = out.lines().map(|l| l.starts_with("\x1b[1m")).collect();
+        let want = if terminal {
+            vec![true, false, false]
+        } else {
+            vec![false, false]
+        };
+        assert_eq!(bold, want, "{out:?}");
+    }
 }

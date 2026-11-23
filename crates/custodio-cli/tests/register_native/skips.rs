@@ -366,6 +366,7 @@ fn skip_reasons_decide_the_exit_code() {
     assert_eq!(rows.len(), 1, "{out}");
     assert_eq!(rows[0].state, State::NotOk, "{out}");
     assert!(rows[0].text.starts_with("a.default: "), "{out}");
+    assert!(rows[0].text.contains("not writable"), "{out}");
     // nothing at all
     let f = Fixture::new();
     let (result, out) = command_result(&f, &f.module("a"));

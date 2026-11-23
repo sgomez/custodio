@@ -294,7 +294,7 @@ fn foreign_files() {
         let m = refusal(decide_enable(&o));
         assert!(m.contains("/etc/pam.d/polkit-1"), "{m}");
         assert!(
-            m.contains("custodio setup fingerprint disable") || m.contains("not Custodio"),
+            m.contains("is not Custodio's") && !m.contains("one try"),
             "{m}"
         );
     }

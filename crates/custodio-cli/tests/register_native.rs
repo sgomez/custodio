@@ -327,3 +327,40 @@ fn the_lines_of_a_run_put_the_fix_under_a_held_profile_and_the_restart_once_at_t
     let none = register_lines(&Report::default(), false);
     assert_eq!((none.len(), none[0].state), (1, State::Ok));
 }
+
+#[test]
+fn a_line_about_the_snap_copy_names_the_copy_and_not_a_profile() {
+    use custodio_cli::register_native::Line;
+    let line = |outcome| {
+        Line {
+            browser: "Firefox",
+            path: Path::new("/h/a.default").to_path_buf(),
+            outcome,
+        }
+        .report_line()
+    };
+    let render = |l| custodio_cli::report::render(&[l], false);
+    let copy = render(line(Outcome::CopyPlaced));
+    assert!(copy.contains("module copy: "), "{copy}");
+    let profile = render(line(Outcome::Registered));
+    assert!(
+        !profile.contains("module copy") && profile.contains("a.default: "),
+        "{profile}"
+    );
+}
+
+#[test]
+fn each_run_error_is_a_custodio_sentence_naming_what_is_missing() {
+    use custodio_cli::register_native::RunError;
+    for (e, named) in [
+        (RunError::MissingModule("/x/libm.so".into()), "/x/libm.so"),
+        (RunError::NoModutil("modutil-x".into()), "modutil-x"),
+        (RunError::NoHome, "HOME"),
+    ] {
+        let text = e.to_string();
+        assert!(
+            text.starts_with("custodio: ") && text.contains(named),
+            "{text}"
+        );
+    }
+}

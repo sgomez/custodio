@@ -211,6 +211,7 @@ fn the_copy_is_written_by_rename() {
         .collect();
     assert_eq!(failed.len(), 1, "{out}");
     assert!(failed[0].text.contains(tmp.to_str().unwrap()), "{out}");
+    assert!(failed[0].text.contains("is a directory"), "{out}");
     assert!(tmp.is_dir());
     assert_eq!(s.f.snapshot(), before);
     fs::remove_dir(&tmp).unwrap();

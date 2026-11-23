@@ -358,3 +358,37 @@ fn the_failing_checks_are_named_once_each_in_report_order() {
     f.files.polkit_file = FileState::NotRegular;
     assert_eq!(decide(&f).failing(), ["Firefox", STORAGE]);
 }
+
+#[test]
+fn a_broken_include_says_whether_the_vendor_file_is_missing_or_not_a_regular_file() {
+    let mut f = facts(Reader::Devices(1), Fingers::Listed(2));
+    f.files.polkit_file = FileState::Regular(file_bytes().to_vec());
+    for (vendor, what) in [
+        (VendorState::Missing, "which is missing"),
+        (VendorState::NotRegular, "which is not a regular file"),
+    ] {
+        f.files.vendor = vendor;
+        let report = decide(&f);
+        assert!(
+            report.checks[0].text.ends_with(what),
+            "{}",
+            report.checks[0].text
+        );
+    }
+}
+
+#[test]
+fn an_unknown_storage_reason_is_a_capitalised_sentence() {
+    let mut f = facts(Reader::Devices(1), Fingers::Listed(2));
+    f.service = Service::Answered(StateStorage::Unknown, Some("no-mount".into()));
+    let report = decide(&f);
+    let check = report
+        .checks
+        .iter()
+        .find(|c| c.name == STORAGE)
+        .expect("a storage check");
+    assert_eq!(
+        check.note.as_deref(),
+        Some("No mount covers it (no-mount).")
+    );
+}

@@ -54,3 +54,30 @@ fn headings_are_bold_and_the_text_is_the_same_without_the_escapes() {
         assert_eq!(strip(&headings(&text, true)), text);
     }
 }
+
+#[test]
+fn prefix_bolds_custodio_or_custodio_and_one_command_and_nothing_else() {
+    assert_eq!(
+        prefix("custodio: x", true),
+        format!("{}{}", bold("custodio:", true), " x")
+    );
+    assert_eq!(
+        prefix("custodio list: x", true),
+        format!("{}{}", bold("custodio list:", true), " x")
+    );
+    for text in [
+        "custodio list a: x",
+        "custodiox: x",
+        "other: x",
+        "custodio x",
+    ] {
+        assert_eq!(prefix(text, true), text);
+    }
+    assert_eq!(prefix("custodio: x", false), "custodio: x");
+}
+
+#[test]
+fn strip_removes_only_sequences_of_digits_and_semicolons() {
+    assert_eq!(strip("a\x1b[1;31mb\x1b[0mc"), "abc");
+    assert_eq!(strip("a\x1b[xmb"), "a\x1b[xmb");
+}
