@@ -69,10 +69,10 @@ What any client needs from the service, rFirma included. The rFirma side waits f
   that stops loading cannot be imported again without the `.p12`. No PIN either: polkit is already
   the barrier, and against a stolen machine full-disk encryption does the same at no cost.
 
-## M5 — The encrypted fallback on real machines
+## M5 — The encrypted fallback on real machines (done)
 
 M4's encrypted fallback was proven only in containers and with stand-ins for `systemd-creds`
-(`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Before M6:
+(`docs/milestones/M4/SPEC_DEVIATIONS.md`, F110 and F134). Released as v0.7.0. Before M6:
 
 - One end-to-end target on a VM: the Ubuntu 26.04 minimal cloud image with a virtual TPM. On
   systemd 259 and later the daemon seals `encrypted-tpm` with no PCR, the same route as Fedora 44
@@ -92,10 +92,11 @@ M4's encrypted fallback was proven only in containers and with stand-ins for `sy
   `ubuntu2404` end-to-end target and the Ubuntu 24.04 install steps go. This supersedes M2's
   support for Ubuntu 24.04 with `dbus-broker`.
 
-## M6 — Browsers and public release
+## M6 — Browsers and public release (features done)
 
 Ubuntu's Firefox snap and Firefox builds without p11-kit use Custodio; route and rejected
-alternatives in `docs/reports/firefox-snap.md`.
+alternatives in `docs/reports/firefox-snap.md`. The features were released as v0.8.0; of the steps
+for a person, only making the repository public is done.
 
 - The service also listens on `/run/snap.firefox/custodio.sock`: list and sign only, a peer only
   with the Firefox snap's exact AppArmor label, polkit on a `unix-process` subject from the peer's
@@ -115,7 +116,7 @@ alternatives in `docs/reports/firefox-snap.md`.
 By a person, after the features:
 
 - External review of the authorization path, the FFI layer and the snap socket.
-- Repository made public; packages published in repositories next to rFirma's channel on
+- Repository made public (done); packages published in repositories next to rFirma's channel on
   `rfirma.com`.
 - rFirma integration, built in rFirma's repository against the M3 API: it detects Custodio, imports
   a `.p12` into it and offers to delete the original, and its flatpak ships the module with
@@ -156,7 +157,6 @@ only the documentation. Scope and acceptance in `docs/milestones/M7/SPEC.md`; re
   the hash cannot be proven.
 - **Snap and systemd-sysext** packages.
 - **More key types:** RSA 3072/4096, P-384.
-- **Fingerprint acceptance:** M0's SPEC acceptance 6 on a machine with a reader.
 - **Composed RSA-PSS:** `CKM_SHA256_RSA_PKCS_PSS` and peers (`CKM_RSA_PKCS_PSS` is in M4), once a
   target client needs them.
 - **Refuse the encrypted kinds:** an administrator setting, deferred by M4's SPEC; an organisation

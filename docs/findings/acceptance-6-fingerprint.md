@@ -29,3 +29,9 @@ Journal (`-t custodiod`): 2 `signature made`, 1 `signature denied`, uid 1000, ke
 Acceptance 6 passes with a simulated sensor. Not covered: a real reader's driver, and the image matching that `virtual_image` would
 exercise. The same setup works for `pkexec`.
 
+
+## Acceptance 6 with a real reader (F211, 2026-11-22)
+
+Run by a person on their own machine as M7's F211 (`docs/manual-acceptance.md` section 26, blocks 1 to 8 passed; record in
+`docs/milestones/M7/PROGRESS.md`). Ubuntu 26.04.1 LTS, reader `3274:8012` MicroarrayTechnology MAFP (fprintd: "MAFP MOC
+Fingerprint Sensor (press)", match on chip), fprintd 1.94.5-4, libfprint-2-2 1:1.95.1+tod1-0ubuntu2, `custodio` 0.9.0.
