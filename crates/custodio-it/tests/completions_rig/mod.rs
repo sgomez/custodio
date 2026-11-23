@@ -146,10 +146,20 @@ impl Setup {
                 std::fs::write(dir.join("custodio"), completion)?;
             }
             Shell::Zsh => {
+                use std::os::unix::fs::PermissionsExt;
                 // A directory in `fpath`, as `compinit` of a user's zsh finds it.
                 let dir = setup.files.path().join("site-functions");
                 std::fs::create_dir(&dir)?;
                 std::fs::write(dir.join("_custodio"), completion)?;
+                // A package's modes, whatever the umask: under 002 (GitHub's runner) compinit would
+                // find the directory or its parent insecure and skip it.
+                for d in [setup.files.path(), dir.as_path()] {
+                    std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o755))?;
+                }
+                std::fs::set_permissions(
+                    dir.join("_custodio"),
+                    std::fs::Permissions::from_mode(0o644),
+                )?;
                 std::fs::write(setup.files.path().join("init.zsh"), ZSH_INIT)?;
             }
             Shell::Fish => {
@@ -177,6 +187,9 @@ impl Setup {
         let path = format!("{}:/usr/bin:/bin", self.bindir.path().display());
         let results = self.files.path().join("results");
         let _ = std::fs::remove_file(&results);
+        for ext in ["tabbed", "ready"] {
+            let _ = std::fs::remove_file(results.with_extension(ext));
+        }
         let mut cmd = match self.shell {
             Shell::Bash => {
                 let mut c = Command::new("bash");
@@ -268,37 +281,61 @@ exit 0
 "#;
 
 /// What a user's `zsh` has before the first TAB: the completion directory in `fpath`, `compinit`
-/// (no dump file), and a `compadd` that also records the matches that fit the word.
+/// (no dump file), a `compadd` that also records the matches that fit the word, a line in
+/// `$RESULTS.ready` each time the line editor is ready for keys, and a TAB that leaves
+/// `$RESULTS.tabbed` once the completion is over. `-i` skips
+/// insecure directories instead of asking: GitHub's runner has a world-writable
+/// /usr/local/share/zsh/site-functions, and the question would hang the test.
 const ZSH_INIT: &str = r#"
 fpath=($COMPLETION_DIR/site-functions $fpath)
 autoload -Uz compinit
-compinit -D
+compinit -i -D
 compadd() {
     local -a m
     builtin compadd -O m "$@"
     (($#m)) && print -rl -- "${m[@]}" >>$RESULTS
     builtin compadd "$@"
 }
+_tab_then_mark() {
+    zle expand-or-complete
+    : >$RESULTS.tabbed
+}
+zle -N _tab_then_mark
+bindkey '^I' _tab_then_mark
+zle-line-init() { print x >>$RESULTS.ready }
+zle -N zle-line-init
 PS1='' RPS1='' PROMPT_EOL_MARK=''
 unsetopt prompt_sp zle_bracketed_paste
 "#;
 
 /// Types the words and TAB into a real zsh on a pseudo terminal, with the line editor and
-/// completion system of an interactive shell. When nothing is offered, whatever the terminal shows
-/// between the TAB and the next command, bar the echo of what was typed, goes to stderr (a list of
-/// matches is not stray output).
+/// completion system of an interactive shell. Keys wait for the line editor (before it, the
+/// terminal echoes them and its ^U erases them) and, after the TAB, for the completion to end. When nothing is offered, whatever the terminal
+/// shows between the TAB and the next command, bar the echo of what was typed, goes to stderr (a
+/// list of matches is not stray output).
 const ZSH_DRIVER: &str = r#"
-zmodload zsh/zpty zsh/datetime
+zmodload zsh/zpty zsh/datetime zsh/zselect
 zpty z "TERM=dumb zsh -f -i"
 zpty -w z "source $COMPLETION_DIR/init.zsh"
 zpty -w z "echo READY"
 zpty -r z buf '*READY*READY*'
+# The second line editor since init.zsh: the one after READY.
+wait=$EPOCHREALTIME
+until [[ -e $RESULTS.ready ]] && ((${#${(f)"$(<$RESULTS.ready)"}} >= 2)); do
+    ((EPOCHREALTIME - wait < 25)) || break
+    zselect -t 1
+done
 line="$*"
 start=$EPOCHREALTIME
 zpty -w -n z "$line"$'\t'
-zpty -w z $'\x15'"echo DONE"
-zpty -r z buf '*DONE*DONE*'
+buf=
+while [[ ! -e $RESULTS.tabbed ]] && ((EPOCHREALTIME - start < 25)); do
+    if zpty -r -t z chunk; then buf+=$chunk; else zselect -t 1; fi
+done
 print -r -- $((EPOCHREALTIME - start)) >$RESULTS.took
+zpty -w z $'\x15'"echo DONE"
+zpty -r z rest '*DONE*DONE*'
+buf+=$rest
 zpty -d z
 setopt extendedglob
 [[ -s $RESULTS ]] && exit 0
