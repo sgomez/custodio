@@ -146,10 +146,20 @@ impl Setup {
                 std::fs::write(dir.join("custodio"), completion)?;
             }
             Shell::Zsh => {
+                use std::os::unix::fs::PermissionsExt;
                 // A directory in `fpath`, as `compinit` of a user's zsh finds it.
                 let dir = setup.files.path().join("site-functions");
                 std::fs::create_dir(&dir)?;
                 std::fs::write(dir.join("_custodio"), completion)?;
+                // A package's modes, whatever the umask: under 002 (GitHub's runner) compinit finds
+                // the directory or its parent insecure and waits for an answer on the terminal.
+                for d in [setup.files.path(), dir.as_path()] {
+                    std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o755))?;
+                }
+                std::fs::set_permissions(
+                    dir.join("_custodio"),
+                    std::fs::Permissions::from_mode(0o644),
+                )?;
                 std::fs::write(setup.files.path().join("init.zsh"), ZSH_INIT)?;
             }
             Shell::Fish => {
