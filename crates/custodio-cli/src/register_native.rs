@@ -1,4 +1,4 @@
-//! `custodio register`: the module in each native browser profile, with NSS's `modutil` (SPEC Design 3).
+//! `custodio setup browsers enable`: the module in each native browser profile, with NSS's `modutil` (SPEC Design 3).
 //!
 //! The rules are the `Decision:` lines of `docs/findings/F172.md`. `modutil` is the only writer of module entries; the
 //! command only reads `pkcs11.txt` to recognise an entry, and swaps the one file it changed in with `rename(2)`.
@@ -10,7 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::browser_files::{FileError, LockState, read_bounded};
-use crate::list::escape;
+use crate::cert_text::escape;
 pub use crate::register_cli::{
     Refusal, RegisterArgs, RegisterError, default_journal_socket, parse_register_args,
     refresh_only_command, refuse_root_and_sudo, register_command,
@@ -18,6 +18,7 @@ pub use crate::register_cli::{
 use crate::register_discover::{Environment, Profile, discover};
 use crate::register_modutil::{instead_of_registering, modutil};
 use crate::register_snap::{copy_path, snap_lines};
+use crate::report::{self, State};
 
 /// Where every package installs the module.
 pub const INSTALLED_MODULE: &str = "/usr/lib/custodio/libcustodio_pkcs11.so";
@@ -122,6 +123,8 @@ pub enum Outcome {
     NothingToRemove,
     /// A browser has the profile open: fixable by the person.
     Held(String),
+    /// The system NSS loads the p11-kit proxy, which already shows the module.
+    ThroughP11Kit,
     /// Not fixable by the person.
     Skipped(String),
     /// Fixable: the reason.
@@ -141,6 +144,20 @@ pub enum Outcome {
 }
 
 impl Outcome {
+    /// Whether it is about the snap's copy of the module rather than a profile.
+    #[must_use]
+    pub const fn is_copy(&self) -> bool {
+        matches!(
+            self,
+            Self::CopyPlaced
+                | Self::CopyRefreshed
+                | Self::CopyUpToDate
+                | Self::CopyRemoved
+                | Self::CopyKept
+                | Self::CopyFailed(_)
+        )
+    }
+
     /// Whether the person can fix it, so that the exit status is not zero.
     #[must_use]
     pub const fn is_fixable_skip(&self) -> bool {
@@ -148,35 +165,50 @@ impl Outcome {
     }
 }
 
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Outcome {
+    /// The state and short text of its line.
+    #[must_use]
+    pub fn state_text(&self) -> (State, String) {
         match self {
-            Self::Registered => f.write_str("registered"),
-            Self::AlreadyRegistered(name) => {
-                write!(f, "already registered (as \"{}\")", escape(name))
+            Self::Registered => (State::Ok, "registered".to_owned()),
+            Self::AlreadyRegistered(_) => (State::Ok, "already registered".to_owned()),
+            Self::AlreadyRegisteredElsewhere(_) => {
+                (State::Ok, "already registered from another path".to_owned())
             }
-            Self::AlreadyRegisteredElsewhere(name) => write!(
-                f,
-                "already registered (as \"{}\", from another path that still exists; left as it is)",
-                escape(name)
+            Self::Refreshed => (
+                State::Ok,
+                "registered again, the old path was gone".to_owned(),
             ),
-            Self::Refreshed => {
-                f.write_str("refreshed (the entry pointed to a path that no longer exists)")
+            Self::Removed(1) | Self::CopyRemoved => (State::Ok, "removed".to_owned()),
+            Self::Removed(n) => (State::Ok, format!("removed {n} entries")),
+            Self::NothingToRemove => (State::Ok, "nothing to remove".to_owned()),
+            Self::ThroughP11Kit => (State::Ok, P11_KIT.to_owned()),
+            Self::Held(why) | Self::Failed(why) | Self::CopyFailed(why) => {
+                (State::NotOk, escape(why))
             }
-            Self::Removed(1) => f.write_str("removed 1 entry"),
-            Self::Removed(n) => write!(f, "removed {n} entries"),
-            Self::NothingToRemove => f.write_str("nothing to remove"),
-            Self::Held(why) => write!(f, "skipped, {why}: close the browser and run this again"),
-            Self::Skipped(why) | Self::Failed(why) => write!(f, "skipped, {why}"),
-            Self::CopyPlaced => f.write_str("copy placed"),
-            Self::CopyRefreshed => f.write_str("copy refreshed (it differed from the module)"),
-            Self::CopyUpToDate => f.write_str("copy up to date"),
-            Self::CopyRemoved => f.write_str("copy removed"),
-            Self::CopyKept => f.write_str("copy kept, a profile that is open may still use it"),
-            Self::CopyFailed(why) => write!(f, "copy failed, {why}"),
+            Self::Skipped(why) => (State::Warn, escape(why)),
+            Self::CopyPlaced => (State::Ok, "placed".to_owned()),
+            Self::CopyRefreshed => (
+                State::Ok,
+                "replaced, it differed from the module".to_owned(),
+            ),
+            Self::CopyUpToDate => (State::Ok, "up to date".to_owned()),
+            Self::CopyKept => (
+                State::Ok,
+                "kept, an open profile may still use it".to_owned(),
+            ),
         }
     }
+
+    /// Whether the browsers see something new after a restart.
+    #[must_use]
+    pub const fn changed_entries(&self) -> bool {
+        matches!(self, Self::Registered | Self::Refreshed | Self::Removed(_))
+    }
 }
+
+/// What the line of a profile says when the system NSS already shows the module.
+pub const P11_KIT: &str = "through p11-kit, nothing to register";
 
 /// What the command is asked to do.
 #[derive(Debug, Clone)]
@@ -197,15 +229,18 @@ pub struct Line {
     pub outcome: Outcome,
 }
 
-impl fmt::Display for Line {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {}: {}",
-            self.browser,
-            self.path.display(),
-            self.outcome
-        )
+impl Line {
+    /// Its line in the shared format: the browser, then the profile directory (or, for the snap's
+    /// copy, `module copy`) and what happened.
+    #[must_use]
+    pub fn report_line(&self) -> report::Line {
+        let (state, what) = self.outcome.state_text();
+        let place = if self.outcome.is_copy() {
+            "module copy".to_owned()
+        } else {
+            crate::register_discover::profile_label(&self.path)
+        };
+        report::Line::new(state, self.browser, format!("{place}: {what}"))
     }
 }
 

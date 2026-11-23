@@ -124,6 +124,10 @@ By a person, after the features:
 
 ## Unassigned
 
+- **Firefox sees key changes without a restart:** the module's slot is fixed and it has no
+  `C_WaitForSlotEvent`, so Firefox reads the token once. A removable slot that reports the token as taken out
+  and put back is the usual technique; not tried here, nor its effect on LibreOffice and rFirma. M7 only
+  says that a restart is needed.
 - **Chromium and Thunderbird snaps:** the same snapd rules should let them use a socket of their own
   in `/run/snap.<snap>/` (inferred, `docs/reports/firefox-snap.md`); M6 ships only Firefox.
 - **Firefox Flatpak:** the sandboxed Firefox does not see the host's module (seen on Fedora in F54);
@@ -131,7 +135,11 @@ By a person, after the features:
   module inside the sandbox's reach, `--system-talk-name=com.rfirma.Custodio1` through
   `flatpak override`) or a documented limitation.
 - **Several dialogs per page in TLS client authentication:** correct by design, but tiring on real
-  sites. A short grace window would conflict with "never cache an authorization".
+  sites. Each new TLS connection signs once; over HTTP/1.1 Firefox opens several in parallel (page,
+  favicon, assets), so client.badssl.com asked for the finger several times in F211, where HTTP/2 or a
+  resumed session would ask once. `network.http.max-persistent-connections-per-server=1` reduces it, at
+  the cost of every site. A short grace window, scoped to one client process and one key, would conflict
+  with "never cache an authorization": a decision for the person, not a build session.
 - **Document details in the dialog:** what polkit can show safely, and whether it is worth it when
   the hash cannot be proven.
 - **Snap and systemd-sysext** packages.

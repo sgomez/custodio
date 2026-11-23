@@ -1,14 +1,14 @@
 #!/usr/bin/python3 -I
 """The judgements of the tpmfail-* cases (F139, acceptance 7 of SPEC.md), as functions of files. Each subcommand prints one problem per line and nothing when the evidence is
 right (exit 0 either way; exit 2 on a bad call), so scripts/test-e2e-tpmfail.sh can show each one fails on bad evidence. The five facts of an injection:
-  tpmfail.py failed OUT RC ERROR       (a) the import exited non-zero, the CLI named com.rfirma.Custodio1.Error.ERROR, and printed no success, no Storage line
+  tpmfail.py failed OUT RC ERROR       (a) the import exited non-zero, the CLI said what it says for com.rfirma.Custodio1.Error.ERROR, and printed no key line (no success)
   tpmfail.py nothing BEFORE AFTER LIST ID
                                        (b) the state directory listings (find + sha256) are identical, and LIST ("ID<TAB>TYPE<TAB>KIND") has no ID
   tpmfail.py journal JSON ID CAUSE SECRET...
                                        (c) JSON (journalctl -o json of the import entries after the attempt) holds exactly one entry: operation import, outcome storage_failure,
                                            CUSTODIO_CAUSE CAUSE, key ID, no stored kind, none of the SECRETs anywhere in it
   tpmfail.py noweaker OUT LIST JSON ID (d) no encrypted-host or encrypted-tpm in the CLI output, the entries, or the row of ID in the list (other keys may have any kind)
-  tpmfail.py kind OUT LIST ID KIND     (d, e) a later import (or a control) of ID succeeded with exactly the kind KIND: CLI Storage line and list row
+  tpmfail.py kind OUT LIST ID KIND     (d, e) a later import (or a control) of ID succeeded with exactly the kind KIND: one CLI key line and list row
 The kind is compared by exact value: "tpm" and "encrypted-tpm" are other kinds.
 """
 import json
@@ -16,6 +16,11 @@ import re
 import sys
 
 ERROR_PREFIX = "com.rfirma.Custodio1.Error."
+# What the CLI says for each error (crates/custodio-cli/src/failure.rs): the error name itself is no longer printed
+MESSAGE = {
+    "TpmFailed": "the TPM failed or cannot be used; nothing was stored",
+    "CredentialsUnavailable": "the credential service is unavailable; nothing was stored",
+}
 WEAKER = ("encrypted-host", "encrypted-tpm")
 
 
@@ -31,12 +36,35 @@ def failed_problems(out, rc, error):
     elif int(status) == 0:
         problems.append("the import exited 0")
     text = read(out)
-    if f"({ERROR_PREFIX}{error})" not in text:
-        problems.append(f"{out}: the CLI does not name {ERROR_PREFIX}{error}")
-    for line in text.split("\n"):
-        if line.startswith(("Imported key", "Storage:")):
-            problems.append(f"{out}: a success line: {line!r}")
+    if MESSAGE[error] not in text:
+        problems.append(f"{out}: the CLI does not say {MESSAGE[error]!r} ({ERROR_PREFIX}{error})")
+    for key in key_lines(text):
+        problems.append(f"{out}: a success line: the key line of {key['id']!r}")
     return problems
+
+
+# The key lines of `custodio import` output, read by layout (crates/custodio-cli/src/lib.rs, write_imported): "WORD  ID  TYPE  KIND" with WORD ok or warn,
+# then the notes under it (indented 6 spaces). The words of a note are not judged, only that it is there.
+KEY_LINE = re.compile(r"(ok|warn) +(\S+)  +(\S+)  +(\S+)")
+
+
+def key_lines(text):
+    # On a terminal (import.py runs the CLI on a pty) the CLI colours the word: the layout is read without the colour codes.
+    lines = re.sub(r"\x1b\[[0-9;]*m", "", text).replace("\r", "").split("\n")
+    found = []
+    for i, ln in enumerate(lines):
+        m = KEY_LINE.fullmatch(ln)
+        if not m:
+            continue
+        notes = []
+        for nxt in lines[i + 1:]:
+            if not nxt.startswith("      ") or not nxt.strip():
+                break
+            notes.append(nxt.strip())
+        # The next steps close the lines under the key, from the one that says "shred -u": they are not notes.
+        steps = next((j for j, n in enumerate(notes) if "shred -u " in n), len(notes))
+        found.append({"word": m[1], "id": m[2], "type": m[3], "kind": m[4], "notes": notes[:steps], "steps": notes[steps:]})
+    return found
 
 
 def rows(path):
@@ -84,11 +112,9 @@ def noweaker_problems(out, listing, journal, key_id):
 
 def kind_problems(out, listing, key_id, kind):
     problems = []
-    storage = [ln for ln in read(out).split("\n") if ln.startswith("Storage:")]
-    if len(storage) != 1 or not storage[0].startswith(f"Storage: {kind}."):
-        problems.append(f"{out}: Storage lines {storage!r}, expected one of kind {kind}")
-    if f"Imported key '{key_id}'" not in read(out):
-        problems.append(f"{out}: no 'Imported key {key_id}' line")
+    keys = key_lines(read(out))
+    if [(k["id"], k["kind"]) for k in keys] != [(key_id, kind)]:
+        problems.append(f"{out}: key lines {[(k['id'], k['kind']) for k in keys]!r}, expected one of {key_id} with kind {kind}")
     found = [r for r in rows(listing) if r and r[0] == key_id]
     if len(found) != 1 or len(found[0]) < 3 or found[0][2] != kind:
         problems.append(f"{listing}: {key_id} is listed as {found!r}, expected once with kind {kind}")

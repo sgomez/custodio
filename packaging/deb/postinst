@@ -31,6 +31,15 @@ configure)
     else
         deb-systemd-invoke start custodio-firefox.socket || true
     fi
+    # The notice is for a first install only: $2 is empty then. An upgrade, and a reinstall after a removal that was not a purge, have $2 set
+    # and stay silent (conservative: the person decided on install). Nothing here runs the command or touches the login configuration.
+    if [ -z "$2" ]; then
+        {
+            echo "custodio: Custodio's dialogs ask for your password; the fingerprint is off."
+            echo "custodio: to let a finger answer them, and every other polkit dialog, run: sudo custodio setup fingerprint enable"
+            echo "custodio: to check the setup at any time, run: custodio doctor"
+        } >&2
+    fi
     ;;
 abort-upgrade | abort-remove | abort-deconfigure)
     rm -f /run/custodio-restart-after-upgrade

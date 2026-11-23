@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The modutil package of each format (MODUTIL in scripts/package_expected.py, F172) is a run-time dependency of that format in NFPM_YAML
-# (default packaging/nfpm.yaml), under its name. `custodio register` runs modutil (F183).
+# (default packaging/nfpm.yaml), under its name. `custodio setup browsers enable` runs modutil (F183).
 # usage: scripts/check-register-deps.sh [NFPM_YAML]
 set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)

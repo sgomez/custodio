@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The gate of `just unit-hardening`: custodio.service keeps the three settings the pidfd cross-check
 # relies on (docs/findings/F30.md, M1.2), PrivateDevices=yes and the TPM access F109 decided
-# (DeviceAllow=/dev/tpmrm0 rw, BindPaths=-/dev/tpmrm0, SupplementaryGroups=tss), each exactly once. It also refuses any line that opens the raw TPM node
+# (DeviceAllow=/dev/tpmrm0 rw, BindPaths=-/dev/tpmrm0, SupplementaryGroups=tss) and F214's LimitCORE=0 and MemorySwapMax=0 (no core, no swap), each exactly once. It also refuses any line that opens the raw TPM node
 # (named, wildcarded, as char-misc / 10:224 or by binding /dev) and any TCTI override or a way to hide one
 # (EnvironmentFile=, PassEnvironment=). The credential service (F110) needs no directive. Argument: UNIT (default data/custodio.service).
 set -euo pipefail
@@ -11,7 +11,8 @@ unit=${1:-$ROOT/data/custodio.service}
 fail=0
 
 for want in ProtectProc=invisible ProcSubset=pid PrivateUsers=identity PrivateDevices=yes \
-    DeviceAllow=/dev/tpmrm0\ rw BindPaths=-/dev/tpmrm0 SupplementaryGroups=tss; do
+    DeviceAllow=/dev/tpmrm0\ rw BindPaths=-/dev/tpmrm0 SupplementaryGroups=tss \
+    LimitCORE=0 MemorySwapMax=0; do
     key=${want%%=*}
     total=$(grep -c "^[[:space:]]*${key}[[:space:]]*=" "$unit" || true)
     # Strip whitespace around '=' and at the line ends before the exact comparison.

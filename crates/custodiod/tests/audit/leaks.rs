@@ -371,7 +371,7 @@ fn operation_entries_hold_no_secrets() -> TestResult {
     for o in ReplaceOutcome::all() {
         entries.push(OperationEntry::replace_certificate(o, None, id()?).with_app_id(read()?));
     }
-    assert_eq!(entries.len(), 18 + 4 + 5);
+    assert_eq!(entries.len(), 21 + 4 + 5);
     for entry in &entries {
         let text = operation_texts(entry)?;
         assert!(

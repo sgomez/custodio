@@ -1,7 +1,7 @@
 //! Custodio import tool.
 #![forbid(unsafe_code)]
 
-use std::io;
+use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -9,6 +9,8 @@ use custodio_cli::agent::process::Pkttyagent;
 use custodio_cli::agent::{Process, WithAgent};
 use custodio_cli::browser_files::local_address;
 use custodio_cli::bus::DbusImporter;
+use custodio_cli::key_ids;
+use custodio_cli::list::KeyLister;
 use custodio_cli::register_discover::Environment;
 use custodio_cli::register_native::{
     RegisterArgs, RegisterError, RunError, default_journal_socket, refresh_only_command,
@@ -16,7 +18,7 @@ use custodio_cli::register_native::{
 };
 use custodio_cli::tty::Terminal;
 use custodio_cli::{
-    CliError, Command, finish, import_command, list_command, parse_command, run_delete,
+    CliError, Command, delete_command, finish, import_command, list_command, parse_command,
 };
 
 /// `register` edits files only: it needs no bus.
@@ -31,6 +33,7 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
     };
     let euid = rustix::process::geteuid().as_raw();
     let var = |name: &str| std::env::var_os(name);
+    let on = colour_on(rustix::termios::isatty(io::stdout()));
     if args.refresh_only {
         return refresh_only_command(
             args,
@@ -40,17 +43,42 @@ fn run_register(args: &RegisterArgs) -> Result<(), CliError> {
             Path::new(default_journal_socket()),
             &mut io::stdout(),
             &mut io::stderr(),
+            on,
         )
         .map_err(CliError::Register);
     }
-    register_command(args, &env, euid, var, &mut io::stdout(), &mut io::stderr())
-        .map_err(CliError::Register)
+    register_command(args, &env, euid, var, &mut io::stdout(), on).map_err(CliError::Register)
 }
 
 fn run() -> Result<(), CliError> {
     let command = parse_command(std::env::args().skip(1)).map_err(CliError::Args)?;
     if let Command::Register(args) = &command {
         return run_register(args);
+    }
+    if let Command::Fingerprint(action) = &command {
+        let on = colour_on(rustix::termios::isatty(io::stdout()));
+        return custodio_cli::fingerprint_cmd::run(
+            *action,
+            &mut io::stdout(),
+            &mut io::stderr(),
+            on,
+        )
+        .map_err(CliError::Fingerprint);
+    }
+    if matches!(command, Command::Doctor) {
+        let on = colour_on(rustix::termios::isatty(io::stdout()));
+        return custodio_cli::doctor_cmd::run(&mut io::stdout(), on).map_err(CliError::Doctor);
+    }
+    if matches!(command, Command::KeyIds) {
+        return key_ids();
+    }
+    if let Command::Help(topic) = &command {
+        // A closed standard output is not a failure of the tool.
+        let out_tty = rustix::termios::isatty(io::stdout());
+        let on = colour_on(out_tty);
+        let text = custodio_cli::colour::headings(&custodio_cli::help::text(*topic), on);
+        let _ = io::stdout().write_all(text.as_bytes());
+        return Ok(());
     }
     let bus = DbusImporter::system().map_err(|e| CliError::SystemBus(e.to_string()))?;
     // Only `import` and `delete` make the service ask polkit, so only they may need an agent. The
@@ -67,16 +95,74 @@ fn run() -> Result<(), CliError> {
             &storage,
             &mut io::stdout(),
             &mut io::stderr(),
+            colour_on(rustix::termios::isatty(io::stdout())),
         )
         .map_err(CliError::Import),
-        Command::Delete(id) => run_delete(&id, &mut Terminal, &with_agent(bus), &mut io::stdout())
-            .map_err(CliError::Delete),
-        Command::Register(_) => unreachable!("handled before the bus is opened"),
-        Command::List => list_command(&bus, &storage, &mut io::stdout(), &mut io::stderr())
-            .map_err(CliError::List),
+        Command::Delete(id) => delete_command(
+            &id,
+            &mut Terminal,
+            &with_agent(bus),
+            &mut io::stdout(),
+            colour_on(rustix::termios::isatty(io::stdout())),
+        )
+        .map_err(CliError::Delete),
+        Command::Register(_)
+        | Command::Help(_)
+        | Command::Fingerprint(_)
+        | Command::Doctor
+        | Command::KeyIds => {
+            unreachable!("handled before the bus is opened")
+        }
+        Command::List(args) => {
+            let terminal = rustix::termios::isatty(io::stdout());
+            let look = custodio_cli::Look {
+                terminal,
+                colour: colour_on(terminal),
+                now: std::time::SystemTime::now(),
+            };
+            list_command(
+                &bus,
+                &storage,
+                &args,
+                look,
+                &mut io::stdout(),
+                &mut io::stderr(),
+            )
+            .map_err(CliError::List)
+        }
     }
 }
 
+/// The hidden `__key-ids`: on any failure nothing is printed and the exit status is 1, so a shell
+/// completion sees an empty list. The whole call, connecting included, gets `CALL_LIMIT`.
+fn key_ids() -> Result<(), CliError> {
+    let text = key_ids::within(key_ids::CALL_LIMIT, || {
+        let bus = DbusImporter::system().ok()?;
+        let keys = bus.list_keys().ok()?;
+        Some(key_ids::render(&keys))
+    });
+    match text {
+        Some(text) => {
+            let _ = io::stdout().write_all(text.as_bytes());
+            Ok(())
+        }
+        None => std::process::exit(1),
+    }
+}
+
+/// Whether a stream that is (or is not) a terminal gets colour: see `custodio_cli::colour`.
+fn colour_on(stream_is_terminal: bool) -> bool {
+    custodio_cli::colour::enabled(
+        stream_is_terminal,
+        rustix::termios::isatty(io::stdout()),
+        std::env::var_os("NO_COLOR")
+            .map(|v| v.to_string_lossy().into_owned())
+            .as_deref(),
+    )
+}
+
 fn main() -> ExitCode {
-    ExitCode::from(finish(&run(), &mut io::stderr()))
+    let result = run();
+    let on = colour_on(rustix::termios::isatty(io::stderr()));
+    ExitCode::from(finish(&result, &mut io::stderr(), on))
 }

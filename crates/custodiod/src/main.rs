@@ -13,7 +13,7 @@ use custodiod::creds::systemd::SystemdCreds;
 use custodiod::polkit::PolkitAuthorizer;
 use custodiod::snap_socket::{self, Signing};
 use custodiod::startup::start;
-use custodiod::storage::classify_state_dir;
+use custodiod::storage::diagnose_state_dir;
 use custodiod::store::KeyStore;
 use custodiod::tpm::{TpmAccess, open::from_environment};
 use zbus::{Connection, block_on};
@@ -25,7 +25,22 @@ fn state_dir(var: Option<OsString>) -> PathBuf {
     fs::canonicalize(&dir).unwrap_or(dir)
 }
 
+/// F214: no core file and no handler-made dump of the decrypted keys, whatever the unit and the core handler say.
+/// The limit goes first, then the flag: a non-dumpable process is skipped by the kernel before any handler is run.
+fn harden() -> rustix::io::Result<()> {
+    use rustix::process::{DumpableBehavior, Resource, Rlimit, set_dumpable_behavior, setrlimit};
+    setrlimit(
+        Resource::Core,
+        Rlimit {
+            current: Some(0),
+            maximum: Some(0),
+        },
+    )?;
+    set_dumpable_behavior(DumpableBehavior::NotDumpable)
+}
+
 fn run() -> Result<(), Box<dyn Error>> {
+    harden()?;
     let store = Arc::new(KeyStore::open(state_dir(env::var_os("STATE_DIRECTORY")))?);
     block_on(async {
         // An import chooses TPM, encrypted TPM-bound or encrypted host-bound from what this access point finds.
@@ -39,7 +54,7 @@ fn run() -> Result<(), Box<dyn Error>> {
             Arc::clone(&journal),
             Arc::clone(&key_credentials) as Arc<dyn Credentials>,
             Arc::clone(&tpm),
-            || classify_state_dir(env::var_os("STATE_DIRECTORY")),
+            || diagnose_state_dir(env::var_os("STATE_DIRECTORY")),
         )
         .await?;
         // The socket asks the same polkit, over the same connection, about the peer's process.

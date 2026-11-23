@@ -1,5 +1,5 @@
 //! The integration tests of the service in one binary: one link per build (and per mutant) instead of one per file.
-//! `fd_leak` stays a binary of its own: it counts the descriptors of its process.
+//! `fd_leak` stays a binary of its own: it counts the descriptors of its process; `import_split` is one too (F195).
 
 // Support shared by several of the modules below, compiled once.
 #[path = "audit/bus.rs"]
@@ -85,10 +85,6 @@ mod snap_socket_sign;
 mod snap_socket_surface;
 #[path = "state_format.rs"]
 mod state_format;
-#[path = "state_storage.rs"]
-mod state_storage;
-#[path = "storage_api.rs"]
-mod storage_api;
 #[path = "storage_choice.rs"]
 mod storage_choice;
 #[path = "tpm_access.rs"]
@@ -114,7 +110,14 @@ fn every_test_file_is_a_module_here() -> Result<(), Box<dyn std::error::Error>> 
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or_default();
-        if path.extension().is_some_and(|e| e == "rs") && name != "it.rs" && name != "fd_leak.rs" {
+        if path.extension().is_some_and(|e| e == "rs")
+            && name != "it.rs"
+            && name != "fd_leak.rs"
+            && name != "import_split.rs"
+            && name != "state_storage.rs"
+            && name != "storage_api.rs"
+            && name != "storage_stability.rs"
+        {
             assert!(
                 listed.contains(&format!("#[path = \"{name}\"]")),
                 "{name} is not a module of tests/it.rs"

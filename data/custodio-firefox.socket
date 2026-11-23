@@ -1,6 +1,6 @@
 [Unit]
 Description=Custodio socket for the Firefox snap
-Documentation=https://github.com/rfirma/custodio
+Documentation=https://github.com/sgomez/custodio
 # The directory /run/snap.firefox/ comes from tmpfiles.d (data/tmpfiles.d/custodio-snap.conf), root 0755. It is never a
 # RuntimeDirectory= of the service: that would be removed and made again with the service.
 
@@ -11,6 +11,8 @@ FileDescriptorName=snap-firefox
 Accept=no
 # Any uid may connect: the browser runs as the user, and the peer is checked by the service, not by the file mode.
 SocketMode=0666
+# Stopping the unit (the removal of the package) deletes the socket file; systemd leaves it otherwise.
+RemoveOnStop=yes
 Service=custodio.service
 
 [Install]

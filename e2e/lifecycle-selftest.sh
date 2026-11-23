@@ -95,6 +95,15 @@ rejects "a file under a directory that another package owns" 'leftover: file /us
 tree
 rejects "a list that lacks the files" 'no file' leftover_problems "$tmp/empty.list" no_owner "$root"
 
+# --- what the socket unit made at run time -------------------------------------------------------------------------------------------
+run=$tmp/run
+mkdir -p "$run"
+accepts "no snap directory" runtime_leftover_problems "$run"
+mkdir "$run/snap.firefox"
+rejects "the empty snap directory left" 'leftover: directory /run/snap.firefox' runtime_leftover_problems "$run"
+: > "$run/snap.firefox/custodio.sock"
+rejects "the socket file left" 'leftover: file /run/snap.firefox/custodio.sock' runtime_leftover_problems "$run"
+
 # --- the service ----------------------------------------------------------------------------------------------------------------------
 proc=$tmp/proc
 mkdir -p "$proc/100"

@@ -53,10 +53,7 @@ fn tpm_untouched_when_p12_is_wrong() -> TestResult {
         block_on(async {
             let svc = Svc::start(tpm, creds.clone(), Answer::Yes).await?;
             let got = svc.import("k", subject.p12, "not the password").await;
-            assert_eq!(
-                got,
-                Err(custodio_client::ERROR_WRONG_PASSWORD_OR_BAD_P12.to_owned())
-            );
+            assert_eq!(got, Err(custodio_client::ERROR_WRONG_PASSWORD.to_owned()));
             assert_eq!(
                 svc.tpm.opens(),
                 0,

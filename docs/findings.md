@@ -100,3 +100,10 @@ Rules:
 - [F178](findings/F178.md) — module socket client: zbus needs the `p2p` feature; the namespaced child sees a test dir as root-owned; a changed reply signature ends as `Unavailable`; the instance-name grammar is inferred from snapd, not run
 - [F180](findings/F180.md) — state directory classification: mountinfo + /sys/dev/block + dm uuid `CRYPT-`, no tool, readable under the unit; everything not proven dm-crypt is unknown.
 - [F188](findings/F188.md) — M6 acceptance 19 (Firefox snap rev 8763, ubuntu2604): TLS client auth passes with RSA 2048 and P-256; two dialogs per page load (page and favicon connections).
+- [F189](findings/F189.md) — storage classifier flip (`252:0`): not reproduced; the kernel exposes the whole LVM chain before any mount, so `unknown` is kept with an exposed reason (route 2), F180 rules stand.
+- [F190](findings/F190.md) — journald storage without root: last valid `Storage=` of the main file + drop-ins (/etc, /run, /usr/local/lib, /usr/lib), `auto` needs `stat /var/log/journal`, 259+ defaults to persistent, `/run/log/journal` proves nothing.
+- [F191](findings/F191.md) — completion locations and key ids: bash/fish dirs shared by all formats, zsh differs (.deb `vendor-completions`, .rpm/Arch `site-functions`, parity exception); `custodio __key-ids` with a 2 s timeout inside `custodio`, no polkit.
+- [F195](findings/F195.md) — import failures: a MAC-bearing unusable file with a wrong password gives the same `MAC tag mismatch` as a good one; (b) cannot be told there.
+- [F199](findings/F199.md) — fprintd packages, module paths and the ctypes PAM client per family; Debian's fprintd profile is off by default
+- [F200](findings/F200.md) — VM fingerprint group (Ubuntu 26.04, polkit 127, fprintd 1.94.5): pkexec fails under su so pkttyagent+pkcheck; text agent asks the password once; timeout reports `no-match`; journal key field `CUSTODIO_KEY_ID`.
+- [F201](findings/F201.md) — double prompt, switch + override on Ubuntu 26.04: matching finger prompts once, a wrong finger or no touch twice (B 20 s) or four times/40 s (Omarchy-style file); doctor warns on both fprintd lines.

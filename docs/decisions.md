@@ -252,3 +252,8 @@ Format: a title and three short bullets, a couple of lines each:
 - Why: `scripts/deps_check.py` forbids any path from a client crate to `custodiod`, dev edges included; `cargo test -p
   custodio-cli` builds neither the `cdylib` nor an example.
 - Rejected: `custodio-cli -[dev]-> custodio-it` or `custodiod` (fails `just deps-check`); skipping when a binary is absent.
+
+## 2026-11-15 — Colour only when standard output is a terminal too (F193)
+- Decision: a stream is coloured only if it and standard output are both terminals and `NO_COLOR` is unset or empty; with standard output a pipe, standard error has no colour either (`colour::enabled`).
+- Why: acceptance 10 says no escape sequence when standard output is not a terminal.
+- Rejected: deciding each stream on its own (what Design 3 alone would allow).

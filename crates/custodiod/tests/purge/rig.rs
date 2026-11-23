@@ -245,7 +245,11 @@ impl Env {
                 sink,
                 Arc::new(MemoryCreds::host()),
                 Arc::new(NoTpm),
-                || custodiod::storage::StateStorage::Unknown,
+                || {
+                    custodiod::storage::Diagnosis::unknown(
+                        custodiod::storage::UnknownReason::NoMount,
+                    )
+                },
             ))
         }))
     }

@@ -9,8 +9,15 @@ use std::time::Duration;
 
 use crate::fixture::listed;
 use crate::{Snap, args, command, module_bytes, plant, snap};
+use custodio_cli::help::REFRESH_PREFIX;
+use custodio_cli::register_cli::refresh_line;
 use custodio_cli::register_native::RegisterArgs;
-use custodio_cli::register_snap::JOURNAL_IDENTIFIER;
+use custodio_cli::register_snap::{JOURNAL_IDENTIFIER, Refresh};
+
+/// What refresh-only prints for `outcome`, as the product renders it.
+fn shown(s: &Snap, outcome: &Refresh) -> String {
+    custodio_cli::report::render(&[refresh_line(outcome, &s.copy, &s.f.home())], false)
+}
 
 /// A datagram socket standing for journald.
 pub struct Journal {
@@ -51,6 +58,10 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
         );
         assert!(entry.contains(&format!("PRIORITY={priority}\n")), "{entry}");
         assert!(
+            entry.contains(&format!("MESSAGE={REFRESH_PREFIX}: ")),
+            "{entry}"
+        );
+        assert!(
             entry.contains(copy) && entry.contains(word),
             "{word}: {entry}"
         );
@@ -58,12 +69,12 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
     let (_, out, err) = run(&s);
     assert!(err.is_empty(), "a reachable journal prints nothing: {err}");
     check(&sock.recv(), 6, "no copy");
-    assert!(out.contains("no copy"));
+    assert_eq!(out, shown(&s, &Refresh::NoCopy));
     plant(&s.copy, b"stale");
     let (result, out, _) = run(&s);
     assert!(result.is_ok());
     check(&sock.recv(), 6, "refreshed");
-    assert!(out.contains("refreshed"));
+    assert_eq!(out, shown(&s, &Refresh::Refreshed));
     let _ = run(&s);
     check(&sock.recv(), 6, "up to date");
     // a failure: the directory is read-only
@@ -94,6 +105,12 @@ fn refresh_only_logs_its_outcome_to_the_journal() {
         err.contains("journal") && err.contains("/nonexistent/journal"),
         "{err}"
     );
+    let lines: Vec<&str> = err.lines().collect();
+    assert_eq!(lines.len(), 2, "{err}");
+    assert!(
+        lines[1].contains("systemctl status systemd-journald"),
+        "{err}"
+    );
     plant(&s.copy, b"stale");
     fs::set_permissions(dir, fs::Permissions::from_mode(0o555)).unwrap();
     let (result, _, err) = command(
@@ -116,7 +133,7 @@ fn refresh_only_touches_nothing_but_the_copy() {
     let marker = s.f.marker();
     let mk = marker.to_str().unwrap();
     let ms = s.module.to_str().unwrap();
-    let args = ["register", "--refresh-only", "--module", ms];
+    let args = ["setup", "browsers", "refresh", "--module", ms];
     let tracked = |s: &Snap| -> BTreeMap<PathBuf, Vec<u8>> {
         s.f.snapshot()
             .into_iter()
@@ -142,30 +159,33 @@ fn refresh_only_touches_nothing_but_the_copy() {
         let out = s.f.binary(&args, path, &[("MARKER", mk)]);
         assert_eq!(out.status.code(), Some(0), "{out:?}");
         assert_eq!(fs::read(&s.copy).unwrap(), module_bytes(&s));
-        assert!(String::from_utf8_lossy(&out.stdout).contains("refreshed"));
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            shown(&s, &Refresh::Refreshed)
+        );
         assert!(!marker.exists(), "modutil was not run");
         assert_eq!(tracked(&s), before, "only the copy changed");
     }
     assert_eq!(listed(&native.join("a.default"), &s.module), 1);
     // a usage error is exit 2
     let bad =
-        s.f.binary(&["register", "--refresh-only", "--remove"], &stub, &[]);
+        s.f.binary(&["setup", "browsers", "refresh", "--bogus"], &stub, &[]);
     assert_eq!(bad.status.code(), Some(2));
 }
 
 #[test]
 fn the_refresh_only_command_line() {
     use custodio_cli::register_native::parse_register_args;
-    let a = |v: &[&str]| parse_register_args(v.iter().map(|s| (*s).to_owned()));
+    let a = |v: &[&str]| parse_register_args("refresh", v.iter().map(|s| (*s).to_owned())).ok();
     assert_eq!(
-        a(&["--refresh-only"]),
+        a(&[]),
         Some(RegisterArgs {
             refresh_only: true,
             ..RegisterArgs::default()
         })
     );
     assert_eq!(
-        a(&["--module", "/x/lib.so", "--refresh-only"]),
+        a(&["--module", "/x/lib.so"]),
         Some(RegisterArgs {
             module: Some("/x/lib.so".into()),
             remove: false,
@@ -173,10 +193,10 @@ fn the_refresh_only_command_line() {
         })
     );
     for bad in [
-        &["--refresh-only", "--remove"][..],
-        &["--remove", "--refresh-only"],
-        &["--refresh-only", "--refresh-only"],
-        &["--refresh-only", "x"],
+        &["--remove"][..],
+        &["--refresh-only"],
+        &["--module", "a", "--module", "b"],
+        &["x"],
     ] {
         assert_eq!(a(bad), None, "{bad:?}");
     }

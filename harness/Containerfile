@@ -14,6 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       swtpm swtpm-tools tpm2-tools libtss2-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# The CLI's completion test drives the real shells (bash with bash-completion, zsh, fish), so they must be installed.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash-completion zsh fish \
+    && rm -rf /var/lib/apt/lists/*
+
 # lintian for `just package-lint`, at the version of packaging/lint/pins.txt (a test keeps them in step) from the dated snapshot as the only
 # apt source of this install, so a point release cannot remove it. rpmlint is not installed: Debian's is not the pinned Fedora one, so the
 # gate runs rpmlint, and namcap (not packaged for Debian), in containers. podman (rootless, the host socket is never mounted) and uidmap run

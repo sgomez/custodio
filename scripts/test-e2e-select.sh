@@ -38,7 +38,7 @@ phases() {
     printf '%s\n' "$@" > "$tmp/sel"
     E2E_SELECT_FILE=$tmp/sel bash -c '
         source "$1/e2e/select.sh"
-        for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done
+        for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor memory upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done
         true' _ "$ROOT"
 }
 want() { # want NAME "PHASES" SELECTION...
@@ -84,25 +84,42 @@ want old-modes-only "" upgrade-oldpath-version-greater
 want mixed "user upgrade " nss-deny upgrade-no-manual-step
 all=$(cd "$ROOT" && grep -vh '^[[:space:]]*\(#\|$\)' e2e/cases.list e2e/targets/*/cases.list | sort -u)
 # shellcheck disable=SC2086 # one id per word
-want every-case "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle " $all
+want every-case "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor memory upgrade lifecycle " $all
 # no selection file: everything runs, and a phase name that is none is refused
-got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
-[ "$got" = "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle " ] || bad "no selection: the steps are '$got'"
+got=$(E2E_SELECT_FILE=$tmp/none bash -c 'source "$1/e2e/select.sh"; for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor memory upgrade lifecycle; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
+[ "$got" = "user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor memory upgrade lifecycle " ] || bad "no selection: the steps are '$got'"
 if E2E_SELECT_FILE=$tmp/sel bash -c 'source "$1/e2e/select.sh"; phase_runs nonsense' _ "$ROOT" 2> /dev/null; then bad "an unknown phase was accepted"; fi
 # every id of the lists belongs to a group, and each script that reports ids of one step is in that group
 for id in $all; do
     g=$(bash -c 'source "$1/e2e/select.sh"; case_group "$2"' _ "$ROOT" "$id")
-    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | tpm | tpm-kind | sign | noplain | tpmdup | pcr | fallback | tpmfail | tpmclear | tpmslots | journalkind | upgrade | lifecycle | other-mode) ;; *) bad "$id: group '$g'" ;; esac
+    case $g in user | unavailable | journal | owner | ops-polkit | replace | delete | journal-ops | appid | cli | tpm | tpm-kind | sign | noplain | tpmdup | pcr | fallback | tpmfail | tpmclear | tpmslots | journalkind | fingerprint | doctor | memory | upgrade | lifecycle | other-mode) ;; *) bad "$id: group '$g'" ;; esac
 done
 # the guest uses the decision: each step is behind phase_runs
-for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
-# a target whose own list owes no M4 case does not run the M4 steps, with or without a selection (alma10 reported cases its accounting does not know)
-for tgt in alma10 "$tmp/no-such-dir"; do
+for p in user unavailable journal owner ops-polkit replace delete journal-ops appid cli tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind fingerprint doctor memory upgrade lifecycle; do grep -q "phase_runs $p" "$ROOT/e2e/guest.sh" || bad "guest.sh does not ask phase_runs $p"; done
+# a target whose own list owes no M4 case does not run the M4 steps, with or without a selection (arch reported cases its accounting does not know)
+for tgt in arch "$tmp/no-such-dir"; do
     for sel in none "$tmp/sel"; do
         got=$(E2E_TARGET_DIR=$ROOT/e2e/targets/$tgt E2E_SELECT_FILE=$sel bash -c 'source "$1/e2e/select.sh"; for p in tpm-kind sign noplain tpmdup pcr fallback tpmfail tpmclear tpmslots journalkind user; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
         case $sel in none) [ "$got" = "user " ] || bad "target $tgt, no selection: the steps are '$got', expected only 'user '" ;; *) [ -z "${got//user /}" ] || bad "target $tgt: M4 steps run: '$got'" ;; esac
     done
 done
-[ -d "$ROOT/e2e/targets/alma10" ] && [ ! -f "$ROOT/e2e/targets/alma10/cases.list" ] || bad "alma10 now has its own list: this control needs another target"
+[ -d "$ROOT/e2e/targets/arch" ] && [ ! -f "$ROOT/e2e/targets/arch/cases.list" ] || bad "arch now has its own list: this control needs another target"
+
+# F200: a vm-fingerprint-* case belongs to its own step (not vm, not vm-silent); the step runs when one of them is selected, and only in a target that lists them (the VM list)
+vmt=$tmp/vmtarget; mkdir -p "$vmt"; cp "$ROOT/e2e/vm/cases.list" "$vmt/cases.list"
+printf 'vm-fingerprint-sudo\n' > "$tmp/fpsel"
+got=$(E2E_TARGET_DIR=$vmt E2E_SELECT_FILE=$tmp/fpsel bash -c 'source "$1/e2e/select.sh"; case_group vm-fingerprint-sign; case_group vm-silent-no-key; case_group vm-unit-shipped; for p in vm-fingerprint vm-silent snap; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT" | tr '\n' ' ')
+[ "$got" = "vm-fingerprint vm-silent vm vm-fingerprint " ] || bad "F200: groups and steps for a vm-fingerprint selection: '$got'"
+got=$(E2E_TARGET_DIR=$ROOT/e2e/targets/arch E2E_SELECT_FILE=$tmp/fpsel bash -c 'source "$1/e2e/select.sh"; phase_runs vm-fingerprint && printf run; true' _ "$ROOT")
+[ -z "$got" ] || bad "F200: the step runs in a target that does not list the group: '$got'"
+
+# F214: vm-memory-* is its own step (before the generic vm one) and memory-* its own container step; both run only where the target lists them
+got=$(E2E_TARGET_DIR=$vmt bash -c 'source "$1/e2e/select.sh"; case_group vm-memory-swap-max; case_group memory-core-limit' _ "$ROOT" | tr '\n' ' ')
+[ "$got" = "vm-memory memory " ] || bad "F214: groups of the memory cases: '$got'"
+printf 'vm-memory-swap-max\n' > "$tmp/memsel"
+got=$(E2E_TARGET_DIR=$vmt E2E_SELECT_FILE=$tmp/memsel bash -c 'source "$1/e2e/select.sh"; for p in vm-memory vm-fingerprint snap; do phase_runs "$p" && printf "%s " "$p"; done; true' _ "$ROOT")
+[ "$got" = "vm-memory " ] || bad "F214: steps for a vm-memory selection: '$got'"
+got=$(E2E_TARGET_DIR=$ROOT/e2e/targets/arch E2E_SELECT_FILE=$tmp/memsel bash -c 'source "$1/e2e/select.sh"; phase_runs vm-memory && printf run; phase_runs memory && printf run; true' _ "$ROOT")
+[ -z "$got" ] || bad "F214: a step runs in a target that does not list the group: '$got'"
 
 exit "$fail"

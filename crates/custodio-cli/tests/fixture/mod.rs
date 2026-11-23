@@ -135,6 +135,8 @@ impl Fixture {
         };
         c.args(args)
             .env_clear()
+            // Under cargo llvm-cov the instrumented binary writes its profile where this says.
+            .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
             .env("HOME", self.home())
             .env("PATH", path);
         for (k, v) in env {

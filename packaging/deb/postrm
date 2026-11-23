@@ -12,6 +12,8 @@ remove | purge)
     if systemctl is-active --quiet custodio-firefox.socket 2>/dev/null; then
         deb-systemd-invoke stop custodio-firefox.socket || true
     fi
+    # The socket's directory comes from tmpfiles.d, gone with the package; RemoveOnStop= already took the socket file.
+    rmdir /run/snap.firefox 2>/dev/null || true
     if systemctl is-active --quiet custodio.service 2>/dev/null; then
         deb-systemd-invoke stop custodio.service || true
     fi

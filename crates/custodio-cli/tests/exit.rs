@@ -28,6 +28,8 @@ fn every_failure() -> Vec<CliError> {
         "com.rfirma.Custodio1.Error.PolkitDenied",
         "com.rfirma.Custodio1.Error.AuthorizationUnavailable",
         "com.rfirma.Custodio1.Error.WrongPasswordOrBadP12",
+        "com.rfirma.Custodio1.Error.WrongPassword",
+        "com.rfirma.Custodio1.Error.UnreadableP12",
         "com.rfirma.Custodio1.Error.UnsupportedKeyType",
         "com.rfirma.Custodio1.Error.CertificateMismatch",
         "com.rfirma.Custodio1.Error.AuditUnavailable",
@@ -62,19 +64,37 @@ fn success_is_0_every_failure_is_1_usage_is_2() {
 #[test]
 fn finish_writes_the_diagnostic_of_a_failure_only() {
     let mut err = Vec::new();
-    assert_eq!(finish(&Ok(()), &mut err), 0);
+    assert_eq!(finish(&Ok(()), &mut err, false), 0);
     assert_eq!(err, b"" as &[u8]);
     for e in every_failure() {
         let mut err = Vec::new();
-        assert_eq!(finish(&Err(e), &mut err), 1);
+        assert_eq!(finish(&Err(e), &mut err, false), 1);
         assert_ne!(err, b"" as &[u8]);
     }
     let mut err = Vec::new();
-    assert_eq!(finish(&Err(CliError::Args(ArgError::Usage)), &mut err), 2);
     assert_eq!(
-        String::from_utf8_lossy(&err).trim_end(),
-        custodio_cli::USAGE
+        finish(&Err(CliError::Args(ArgError::Usage)), &mut err, false),
+        2
     );
+    let text = String::from_utf8_lossy(&err);
+    assert!(text.trim_end().ends_with(&custodio_cli::usage()), "{text}");
+}
+
+#[test]
+fn a_doctor_report_that_fails_adds_nothing_on_standard_error() {
+    use custodio_cli::doctor_cmd::Failure;
+    for (failure, status, quiet) in [
+        (Failure::BrokenInclude, 1, true),
+        (Failure::Unsatisfied(vec!["journal"]), 1, true),
+        (Failure::Root, 2, false),
+    ] {
+        let mut err = Vec::new();
+        assert_eq!(
+            finish(&Err(CliError::Doctor(failure)), &mut err, false),
+            status
+        );
+        assert_eq!(err.is_empty(), quiet, "{}", String::from_utf8_lossy(&err));
+    }
 }
 
 fn run(args: &[&str]) -> io::Result<Output> {
@@ -92,12 +112,11 @@ fn run(args: &[&str]) -> io::Result<Output> {
 #[test]
 fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io::Error> {
     for args in [
-        &[][..],
-        &["import"],
+        &["import"][..],
         &["import", "--password", "x", "a.p12"],
         &["import", "--id", "a", "--id", "b", "a.p12"],
         &["import", "my cert.p12"],
-        &["list", "extra"],
+        &["list", "extra", "more"],
         &["list", "--id", "x"],
         &["delete"],
         &["delete", "a", "b"],
@@ -110,6 +129,14 @@ fn the_binary_exits_2_on_usage_errors_with_nothing_on_stdout() -> Result<(), io:
         assert_eq!(out.stdout, b"" as &[u8], "{args:?}");
         assert_ne!(out.stderr, b"" as &[u8], "{args:?}");
     }
+    Ok(())
+}
+
+#[test]
+fn the_binary_alone_prints_the_help() -> Result<(), io::Error> {
+    let out = run(&[])?;
+    assert_eq!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Commands:"));
     Ok(())
 }
 

@@ -4,8 +4,7 @@
 
 use std::io::Write;
 
-/// The README heading the warning points to, as the anchor of its link.
-pub const README_ANCHOR: &str = "full-disk-encryption";
+use crate::report::{self, Line, State};
 
 /// What the service reported for its state directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,27 +33,31 @@ pub trait StorageReader {
     fn state_storage(&self) -> Option<StateStorage>;
 }
 
-/// The warning for a result, or nothing for *encrypted*.
+/// The name of the key storage line, in `doctor`, `import` and `list`.
+pub const NAME: &str = "key storage";
+
+/// The state and short text of an answer: the same words in every command.
 #[must_use]
-pub fn warning(storage: StateStorage) -> Option<String> {
-    let why = match storage {
-        StateStorage::Encrypted => return None,
-        StateStorage::NotEncrypted => {
-            "The service's state directory is not on an encrypted device."
-        }
-        StateStorage::Unknown => {
-            "The service could not tell whether its state directory is on an encrypted device."
-        }
-    };
-    Some(format!(
-        "Warning: {why} Without full-disk encryption, whoever takes this machine can use your keys, though they cannot \
-copy a tpm key. See README.md#{README_ANCHOR}."
-    ))
+pub const fn summary(storage: StateStorage) -> (State, &'static str) {
+    match storage {
+        StateStorage::Encrypted => (State::Ok, "on an encrypted disk"),
+        StateStorage::NotEncrypted => (State::Warn, "not on an encrypted disk"),
+        StateStorage::Unknown => (State::Warn, "cannot tell if encrypted"),
+    }
 }
 
-/// Asks the service and prints the warning, if any, to `err`. A failed write is ignored: the warning blocks nothing.
-pub fn warn<R: StorageReader, W: Write>(reader: &R, err: &mut W) {
-    if let Some(text) = reader.state_storage().and_then(warning) {
-        let _ = writeln!(err, "{text}");
+/// The line `import` and `list` print, or nothing for *encrypted*: the summary, and where the
+/// rest is.
+#[must_use]
+pub fn warning(storage: StateStorage) -> Option<Line> {
+    let (state, text) = summary(storage);
+    (state != State::Ok).then(|| Line::new(state, NAME, format!("{text} (see custodio doctor)")))
+}
+
+/// Asks the service and prints the warning, if any, to `err`, coloured when `on`. A failed write
+/// is ignored: the warning blocks nothing.
+pub fn warn<R: StorageReader, W: Write>(reader: &R, err: &mut W, on: bool) {
+    if let Some(line) = reader.state_storage().and_then(warning) {
+        let _ = write!(err, "\n{}", report::render(&[line], on));
     }
 }

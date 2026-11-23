@@ -1,0 +1,4 @@
+# Cases of this target only, added to e2e/cases.list by e2e/run.sh.
+# F199: the SELinux label of the written file and authselect apply-changes (Fedora family)
+fingerprint-selinux-label
+fingerprint-authselect

@@ -31,14 +31,15 @@ expect_bad count-empty count_problems x '' ''
 expect_bad count-text count_problems x a a
 
 # list_problems
-printf 'id: a\n  type: rsa2048\nid: b\n' > "$tmp/list"
+printf 'a  rsa2048  tpm  CN=x\\x0aforged  row  2030-01-01\nb  rsa2048  tpm  y  2030-01-01\n' > "$tmp/list"
 expect_ok list list_problems "$tmp/list" +a +b -c
 expect_bad list-missing list_problems "$tmp/list" +c
 expect_bad list-foreign list_problems "$tmp/list" -a
+expect_ok list-forged-row-is-no-key list_problems "$tmp/list" -forged
 printf 'You have no keys in the custodio service.\n' > "$tmp/none"
 expect_bad list-none list_problems "$tmp/none" +a
 expect_ok list-none-ok list_problems "$tmp/none" -a
-printf '  id: a\nxid: a\nid: ab\n' > "$tmp/list2"
+printf '  a  x  y  z  w\nxa  x  y  z  w\nab  x  y  z  w\n' > "$tmp/list2"
 expect_bad list-substring list_problems "$tmp/list2" +a
 
 # verify_problems

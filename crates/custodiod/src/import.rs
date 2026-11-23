@@ -49,8 +49,12 @@ pub enum KeyKind {
 pub enum ImportError {
     /// The file is too large to be a `.p12` we accept.
     TooLarge,
-    /// Not a valid PKCS#12 file, or the password is wrong.
-    Parse(String),
+    /// The file has a MAC and it does not verify with the password.
+    WrongPassword,
+    /// The file has no MAC and does not decrypt: the library cannot tell a wrong password from a bad file.
+    WrongPasswordOrBad,
+    /// The file is not readable PKCS#12, whatever the password.
+    Unreadable(String),
     /// The file holds no private key.
     NoPrivateKey,
     /// The file holds more than one private key; import one at a time.
@@ -75,10 +79,14 @@ impl fmt::Display for ImportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooLarge => write!(f, "the .p12 file is larger than {MAX_P12_LEN} bytes"),
-            Self::Parse(why) => write!(
+            Self::WrongPassword => {
+                write!(f, "the password does not match the MAC of the .p12 file")
+            }
+            Self::WrongPasswordOrBad => write!(
                 f,
-                "cannot read the .p12 file (corrupt, unsupported, or wrong password): {why}"
+                "cannot decrypt the .p12 file (wrong password or corrupt file)"
             ),
+            Self::Unreadable(why) => write!(f, "cannot read the .p12 file: {why}"),
             Self::NoPrivateKey => write!(f, "the .p12 file contains no private key"),
             Self::MultipleKeys => write!(f, "the .p12 file contains more than one private key"),
             Self::NoCertificate => write!(f, "the private key has no certificate in the .p12 file"),
@@ -146,8 +154,21 @@ pub fn parse_p12(data: &[u8], password: &SecretString) -> Result<ParsedP12, Impo
         Err(P12Error::DerError(not_der)) => from_ber(data, password, not_der),
         other => other,
     }
-    .map_err(|e| ImportError::Parse(e.to_string()))?;
+    .map_err(|e| classify_p12_error(&e, ber::has_mac(data)))?;
     check_archive(&archive)
+}
+
+/// What the library's error says about the file, from the error alone (no clock): `MacError` means the file has
+/// `macData` and it does not verify (the library checks the MAC before it reads a bag); `Pkcs5Error` is a failed
+/// decryption of a file without one, which a wrong password and a corrupt file both give. With `macData` present
+/// the password is proven right when the MAC verifies, so a decryption failure after it is a corrupt file, (b).
+/// Everything else is a structure the library cannot read, whatever the password. See `docs/findings/F195.md`.
+fn classify_p12_error(e: &P12Error, has_mac: bool) -> ImportError {
+    match e {
+        P12Error::MacError(_) => ImportError::WrongPassword,
+        P12Error::Pkcs5Error(_) if !has_mac => ImportError::WrongPasswordOrBad,
+        other => ImportError::Unreadable(other.to_string()),
+    }
 }
 
 /// A `.p12` in BER, as NSS (Firefox) writes it; `not_der` is why it is not DER, returned when it is not BER

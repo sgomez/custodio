@@ -16,7 +16,7 @@ It stops a process running as you from signing by mistake. It does not protect a
 running as the same uid, against root, or your intent: the dialog cannot prove what is being
 signed. What it protects, from whom and what it leaves out is in the [threat model](docs/threat-model.md); to
 report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milestones.md](docs/milestones.md); what the first public release contains is in the
-[release notes](docs/release-notes-v0.8.0.md), and the steps a person checks it by in
+[release notes](docs/release-notes-v0.8.0.md) (and [0.9.0](docs/release-notes-v0.9.0.md)), and the steps a person checks it by in
 [docs/manual-acceptance.md](docs/manual-acceptance.md).
 
 ## Names
@@ -30,17 +30,30 @@ report a vulnerability, see [SECURITY.md](SECURITY.md). Roadmap in [docs/milesto
 Administrators: see [docs/install.md](docs/install.md) for installing on each supported system, the system bus
 requirement, upgrading, what removal leaves behind, and the journal setting the audit trail needs.
 
+To let a finger answer the polkit dialogs, see [docs/fingerprint.md](docs/fingerprint.md). To see what is missing on your system, run `custodio doctor`; every check and its fixes are in [docs/doctor.md](docs/doctor.md). A guide from the package to your first signature and back, on Ubuntu 26.04, is [docs/guide-ubuntu-2604.md](docs/guide-ubuntu-2604.md).
+
 ## Using it
 
 Import a `.p12` file. The command asks for the file's password on the terminal, then polkit asks you to approve:
 
 ```console
 $ custodio import --id ana ana.p12
-Imported key 'ana' (ecdsa-p256).
-Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-Now delete the original file: it still holds your private key.
-  shred -u ana.p12   (or remove it with your file manager and empty the trash)
+warn  ana  ecdsa-p256  encrypted-host
+      Root, and anyone with a copy of /var/lib, can use this key.
+      Delete the original: shred -u ana.p12
+      Restart Firefox, and any program using Custodio, to see the key.
 ```
+
+If the import fails, the error says what to do. "wrong password for the .p12 file": retype the password. "the .p12
+file cannot be used": the file is not readable or does not hold exactly one private key with its certificate; export it
+again (see below). "wrong password, or the .p12 file is damaged": a file with no integrity check, where the two cannot be
+told apart; do both.
+
+### Export a certificate from Firefox
+
+In Firefox, open Settings, Privacy & Security, Certificates, View Certificates, Your Certificates. Select the certificate,
+choose Backup, and give a password. Firefox writes a `.p12` file with the private key and its certificate. Import that
+file as above. Export one certificate at a time: a file with several keys is refused.
 
 Delete the original after the import, as it says: whoever can read that file can use the key without Custodio. If you
 lose the key in Custodio, only the original `.p12` brings it back; Custodio cannot export it.
@@ -49,13 +62,17 @@ lose the key in Custodio, only the original `.p12` brings it back; Custodio cann
 
 ```console
 $ custodio list
-id: ana
-  type: ecdsa-p256
-  kind: encrypted-host
-  note: This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.
-  subject: CN=custodio test p256
-  valid until: 2126-10-03T16:05:48Z
+ana  ecdsa-p256  encrypted-host  custodio test p256  2126-10-03
+
+Note: encrypted-tpm and encrypted-host keys are files that root can use while the machine runs.
 ```
+
+Each row is a key: its id, key type, storage kind, the common name of its certificate and the day its certificate expires,
+followed by `expired` once it has, or `expires soon` within 30 days. On a terminal a header row (ID, TYPE, STORAGE,
+SUBJECT, EXPIRES) comes first; a script gets the rows only. Text from a certificate is shown with its control characters
+escaped, so it cannot change your screen. `custodio list ana` shows that one key in full, and `custodio list -v` every
+key: the whole subject, the issuer, the serial number, the start and end of the validity and the SHA-256 fingerprint of
+the certificate.
 
 `custodio delete <key id>` asks you to type `yes` and then polkit. You only see and sign with your own keys. Over SSH or on
 a console without a graphical polkit agent, `import` and `delete` ask for the password on the terminal. Details in
@@ -63,9 +80,11 @@ a console without a graphical polkit agent, `import` and `delete` ask for the pa
 
 ```console
 $ custodio delete ana
-Deleted key 'ana'.
+ok    ana  deleted
+      Restart Firefox, and any program using Custodio, to see the change.
 $ custodio list
 You have no keys in the custodio service.
+Import one with: custodio import <file.p12>
 ```
 
 ### Storage kinds
@@ -90,23 +109,25 @@ list of modules in each profile, so it must have Custodio registered. Close Fire
 and not with `sudo`: it writes into your home):
 
 ```console
-$ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+$ custodio setup browsers enable
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 It finds the profiles of Firefox, its derivatives and the Firefox snap, and prints what it did in each. Run it again
-whenever you like: what is already registered stays as it is. A profile that a running browser holds is skipped and the
-command exits with an error that names it; close the browser and run it again.
+whenever you like: what is already registered stays as it is. A profile that a running browser holds is skipped: its
+line is `FAIL`, with the fix under it, and the command exits with an error.
 
 To remove the registration, run this before you uninstall the package:
 
 ```console
-$ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+$ custodio setup browsers disable
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 Always use these two commands. Do not load the module through Firefox's "Browse" button in the device manager: the
@@ -120,7 +141,7 @@ button goes through the document portal and the snap is then denied access to th
 - Only the Firefox snap is supported: not Chromium, Thunderbird or Firefox as a Flatpak.
 - Mozilla's own Firefox build on Fedora and RHEL/Alma uses its bundled NSS and does not see Custodio. Register it by
   hand as [docs/install.md](docs/install.md) ("Firefox") describes. Their packaged Firefox needs nothing: the
-  system NSS loads p11-kit, which already shows Custodio, and `custodio register` says so and leaves those profiles alone.
+  system NSS loads p11-kit, which already shows Custodio, and `custodio setup browsers enable` says so and leaves those profiles alone.
 - TLS client authentication with a Custodio key shows one polkit dialog for every signature, which can be several for
   one page.
 - A lost key needs the original `.p12`.
@@ -136,7 +157,8 @@ When it starts, the service checks, with no external tool, whether the block dev
 dm-crypt, and journals the result (`CUSTODIO_STATE_STORAGE`, see [docs/audit.md](docs/audit.md)). `custodio import` and
 `custodio list` print a warning on standard error when the result is `not-encrypted`, or `unknown` (a chain the service
 cannot read, RAID or dm-integrity it does not classify, a network, overlay or in-memory filesystem, a filesystem's own
-encryption such as fscrypt or ZFS native encryption, btrfs). The warning blocks nothing. Encrypt the disk that holds
+encryption such as fscrypt or ZFS native encryption, btrfs). The warning blocks nothing and names `custodio doctor`,
+whose key storage check says what to do. Encrypt the disk that holds
 `/var/lib/custodio` with your distribution's installer or `cryptsetup`; `unknown` on an encrypted disk the service
 cannot classify is a reason to look, not proof of a problem. The rules are in `docs/findings/F180.md`.
 

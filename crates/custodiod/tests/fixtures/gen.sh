@@ -78,3 +78,41 @@ for n in p256-other p384 ed25519 rsa3072; do
   openssl x509 -in "$tmp/$n.crt.pem" -outform DER -out "cert-$n.der"
 done
 chmod 644 ./*.der
+
+# A certificate of the p256-other key whose subject and issuer carry ESC sequences, newlines, DEL, C0 and C1
+# controls and a bidirectional override, written unchanged into UTF8String values (list view tests, F194).
+# Serial 4245 (0x1095). Its issuer is a throwaway CA, so subject and issuer differ.
+openssl pkcs12 -in p256-other.p12 -password env:OLD_PW -nodes -nocerts -out "$tmp/hostile.key" 2>/dev/null
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out "$tmp/hostile-ca.key" 2>/dev/null
+openssl req -utf8 -new -x509 -key "$tmp/hostile-ca.key" -days 36500 -out "$tmp/hostile-ca.crt" \
+  -subj $'/CN=ca\x1b]0;pwn\x07\n\x7fCA/O=i\x01\xc2\x85ssuer\xe2\x80\xae'
+openssl req -utf8 -new -key "$tmp/hostile.key" -out "$tmp/hostile.csr" \
+  -subj $'/CN=a\x1b[31mb\nc\x7fd/O=x\x01y'
+openssl x509 -req -in "$tmp/hostile.csr" -CA "$tmp/hostile-ca.crt" -CAkey "$tmp/hostile-ca.key" -set_serial 4245 \
+  -days 36500 -outform DER -out cert-p256-other-hostile.der 2>/dev/null
+chmod 644 ./*.der
+
+# Import failure fixtures (F195), all under "test-password", derived from the p256 and p256-other keys.
+# Whole-file marker "# F195" below is what lets the section run alone: sed -n '/^# F195 begin/,$p' gen.sh.
+# F195 begin
+set -euo pipefail
+tmp=${tmp:-$(mktemp -d)}
+export OLD_PW=test-password
+openssl pkcs12 -in p256.p12 -password env:OLD_PW -nokeys -out "$tmp/f195-a.crt" 2>/dev/null
+openssl pkcs12 -in p256.p12 -password env:OLD_PW -nodes -nocerts -out "$tmp/f195-a.key" 2>/dev/null
+f195() { # name, extra pkcs12 args: writes <name>.p12 (MAC) and <name>-nomac.p12
+  local name=$1
+  shift
+  openssl pkcs12 -export "$@" -passout pass:test-password -out "$name.p12" 2>/dev/null
+  openssl pkcs12 -export -nomac "$@" -passout pass:test-password -out "$name-nomac.p12" 2>/dev/null
+}
+openssl pkcs12 -export -nomac -inkey "$tmp/f195-a.key" -in "$tmp/f195-a.crt" -passout pass:test-password \
+  -out good-nomac.p12 2>/dev/null
+f195 nokey -in "$tmp/f195-a.crt" -nokeys
+f195 nocert -inkey "$tmp/f195-a.key" -nocerts
+# Two keys in one file, with and without a MAC: no tool here writes them, so a small example of custodiod does.
+cargo run -q --locked --manifest-path ../../../../Cargo.toml -p custodiod --example gen_twokeys -- \
+  p256.p12 p256-other.p12 test-password .
+# Bytes that are not PKCS#12 at all.
+printf 'this is not a PKCS#12 file\n' >notp12.bin
+chmod 644 ./*.p12 ./*.bin

@@ -18,7 +18,6 @@ use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
 
 use custodio_cli::ServiceFailure;
-use custodio_cli::USAGE;
 use custodio_cli::delete::question;
 use custodio_client::{BUS_NAME, OBJECT_PATH};
 use custodiod::polkit::DELETE_ACTION_ID;
@@ -58,7 +57,10 @@ fn confirming_asks_before_the_service_and_deletes_after_the_answer() -> TestResu
     run.send(b"yes\n")?;
     let done = run.finish()?;
     assert_eq!(done.status.code(), Some(0), "{}", done.stderr);
-    assert_eq!(done.stdout, "Deleted key 'old-key'.\n");
+    assert_eq!(
+        custodio_cli::colour::strip(&done.stdout),
+        custodio_cli::report::render(&[custodio_cli::delete::deleted_line("old-key")], false)
+    );
     assert_eq!(done.stderr, "");
     assert_eq!(rig.polkit_asked(), [DELETE_ACTION_ID.to_owned()]);
     // One call, `DeleteKey(s)` to the documented name, path and interface.
@@ -100,7 +102,7 @@ fn declined(answer: Option<&[u8]>) -> Result<Finished, Box<dyn Error>> {
     Ok(done)
 }
 
-const DECLINE: &str = "custodio: not confirmed; nothing was deleted\n";
+const DECLINE: &str = "custodio: not confirmed; nothing was deleted\nRun 'custodio delete <key id>' again and type yes to delete the key.\n";
 
 #[test]
 fn answering_no_deletes_nothing_and_calls_nothing() -> TestResult {
@@ -179,7 +181,7 @@ fn without_a_terminal_it_refuses_and_reads_no_answer_from_stdin() -> TestResult 
     assert_eq!(done.stdout, "");
     assert_eq!(
         done.stderr,
-        "custodio: deleting a key must be confirmed on a terminal and there is none; nothing was deleted\n"
+        "custodio: deleting a key must be confirmed on a terminal and there is none; nothing was deleted\nRun 'custodio delete <key id>' from a terminal.\n"
     );
     assert_eq!(rig.service_calls(), []);
     assert_eq!(rig.polkit_asked(), Vec::<String>::new());
@@ -229,7 +231,13 @@ fn options_are_usage_errors_before_any_question() -> TestResult {
             .clone();
         assert_eq!(done.status.code(), Some(2), "{args:?}");
         assert_eq!(done.stdout, "");
-        assert_eq!(done.stderr.trim_end(), USAGE);
+        let parsed = custodio_cli::parse_command(args.iter().map(|a| (*a).to_owned()));
+        let expected = parsed.map_or_else(
+            |e| custodio_cli::error::render(&custodio_cli::CliError::Args(e)),
+            |_| String::new(),
+        );
+        assert!(!expected.is_empty(), "{args:?} parsed");
+        assert_eq!(done.stderr.trim_end(), expected);
         assert!(shown.is_empty(), "{shown:?}");
     }
     assert_eq!(rig.service_calls(), []);

@@ -84,6 +84,63 @@ bus check prints a notice and does not refuse. The service checks again every ti
 that the keys stay on disk and does not stop the service; reboot after it. The keys stay, as described in
 [Removing and purging](#removing-and-purging).
 
+## Shell completion
+
+The package installs a completion for bash, zsh and fish. Each shell finds its file without
+configuration, except zsh on most systems:
+
+| Shell | File | Loaded |
+|---|---|---|
+| bash | `/usr/share/bash-completion/completions/custodio` | by the `bash-completion` package, on first use |
+| fish | `/usr/share/fish/vendor_completions.d/custodio.fish` | by fish, on first use |
+| zsh | `/usr/share/zsh/vendor-completions/_custodio` (Debian, Ubuntu) or `/usr/share/zsh/site-functions/_custodio` (Fedora, Alma, Arch) | by `compinit` |
+
+zsh offers nothing until `compinit` runs. Ubuntu runs it for every user. On Debian, Alma, Arch and
+for Fedora users not created from the skeleton, add this line to your own `~/.zshrc`:
+
+```bash
+autoload -U compinit; compinit
+```
+
+The completion also offers your key ids for `list` and `delete`. It asks the service for the list
+only, so no authorization dialog opens and nothing is written; when the service is not running, or
+does not answer within 2 seconds, it offers no key ids.
+
+## Fingerprint for polkit dialogs
+
+Optional: let a finger answer the polkit dialogs, Custodio's among them. Enrol a finger with your desktop's tools first, then, once
+per system:
+
+```console for=fingerprint
+$ sudo custodio setup fingerprint enable
+ok    polkit  finger on for every polkit dialog
+      Three wrong fingers, or 30 s without a touch, fall back to the password.
+      sudo and the login are unchanged.
+      Undo: sudo custodio setup fingerprint disable
+```
+
+What it changes, what it does not guarantee, the refusals and the GNOME lock screen are in [fingerprint.md](fingerprint.md);
+`sudo custodio setup fingerprint disable` undoes it. Remove it before you remove the package: removal leaves the file, which keeps
+working.
+
+## Checking the system
+
+`custodio doctor` checks the six things that decide whether Custodio and its fingerprint work, and prints a fix under each one that
+is not right. Run it as yourself, not with `sudo`. Every check and its fixes are in [doctor.md](doctor.md).
+
+```console for=fingerprint fixture=ok
+$ custodio doctor
+Fingerprint (optional)
+  ok    reader       1 reader
+  ok    finger       1 finger enrolled
+  ok    polkit       on
+Browsers
+  ok    profiles     none found, nothing to register
+System
+  ok    journal      persistent
+  ok    key storage  on an encrypted disk
+```
+
 ## TPM2 Software Stack
 
 Custodio links the TPM2 Software Stack (`libtss2-esys`, `libtss2-tctildr`, `libtss2-mu`) and loads the
@@ -107,17 +164,18 @@ Firefox keeps its own list of modules in each profile, so Custodio has to be reg
 as yourself (not as root and not with `sudo`: the command writes into your home):
 
 ```console
-$ custodio register
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: registered
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy placed
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: registered
+$ custodio setup browsers enable
+ok    Firefox         abcd1234.default-release: registered
+ok    Firefox (snap)  module copy: placed
+ok    Firefox (snap)  efgh5678.default: registered
+      Restart the browsers to see the change.
 ```
 
 It finds the profiles of Firefox, of its derivatives and of the Firefox snap, and prints what it did in each. The snap
 cannot read `/usr/lib`, so the command places a copy of the module in the snap's own directory and registers the copy.
 Run it again whenever you like: what is already registered stays as it is. A profile that a running browser holds is
-skipped and the command exits with an error that names it. Do this once for each user, and again for a new profile.
-The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio register --remove` before
+skipped: its line is `FAIL`, with the fix under it, and the command exits with an error. Do this once for each user, and again for a new profile.
+The [threat model](threat-model.md#the-registration-command) says what the command touches. Run `custodio setup browsers disable` before
 you uninstall the package ([Removing and purging](#removing-and-purging)).
 
 Do not load the module through Firefox's "Browse" button in the device manager: the button goes through the document
@@ -201,14 +259,19 @@ upgrade; the authorization of the earlier request is not kept, because every sig
 
 ## Removing and purging
 
-Before you uninstall, undo the registration, as each user who ran it. It is in the user's home, which the package
+Before you uninstall, undo the fingerprint and the registration. The package leaves `/etc/pam.d/polkit-1` in place,
+still letting a finger answer polkit, so if you turned the fingerprint on, run `sudo custodio setup fingerprint disable`
+first ([above](#fingerprint-for-polkit-dialogs)).
+
+Then undo the registration, as each user who ran it, with the browsers closed. It is in the user's home, which the package
 cannot reach:
 
 ```console
-$ custodio register --remove
-Firefox /home/ana/.mozilla/firefox/abcd1234.default-release: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/.mozilla/firefox/efgh5678.default: removed 1 entry
-Firefox (snap) /home/ana/snap/firefox/common/libcustodio_pkcs11.so: copy removed
+$ custodio setup browsers disable
+ok    Firefox         abcd1234.default-release: removed
+ok    Firefox (snap)  efgh5678.default: removed
+ok    Firefox (snap)  module copy: removed
+      Restart the browsers to see the change.
 ```
 
 Then remove the package, with the tool of your system:

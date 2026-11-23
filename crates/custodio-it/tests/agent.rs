@@ -314,7 +314,10 @@ fn an_agent_that_ends_or_never_says_anything_does_not_hang_the_cli() -> TestResu
         let start = Instant::now();
         let done = delete_on_tty(&rig, &kit, mode, b"yes\n")?.finish()?;
         assert_eq!(done.status.code(), Some(0), "{mode}: {}", done.stderr);
-        assert_eq!(done.stdout, "Deleted key 'k'.\n");
+        assert_eq!(
+            custodio_cli::colour::strip(&done.stdout),
+            custodio_cli::report::render(&[custodio_cli::delete::deleted_line("k")], false)
+        );
         assert_eq!(done.stderr, "");
         assert!(start.elapsed() < WAIT, "{mode}");
         let agent = kit.wait_started()?;

@@ -12,5 +12,5 @@ script	scripts/test-arch-lifecycle-real.sh	130	worst 97s; raised by a person 202
 script	scripts/test-shell-scripts.sh	120	worst 92s; raised by a person 2026-11-07: parallel-run noise
 script	scripts/test-e2e-upgrade.sh	90	worst 65s; raised by a person 2026-11-07: parallel-run noise
 script	scripts/test-deb-lifecycle.sh	100	worst 73s; raised by a person 2026-11-07: parallel-run noise
-vm	full	580	set by a person 2026-11-10: ~15% over the measured 503s (F168); not read by the loop yet
+vm	full	700	set by a person 2026-11-21: room for the F214 core-dump cases (~70-100s) over the measured 503s (F168); not read by the loop yet
 vm	lacking	500	set by a person 2026-11-10: ~15% over the measured 430s (F168); not read by the loop yet

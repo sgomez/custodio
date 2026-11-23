@@ -2,67 +2,81 @@
 """The judgements of the fallback-* cases (F138, acceptance 6 of SPEC.md, mode none: kind encrypted-host), as functions of files. Each subcommand prints one
 problem per line and nothing when the evidence is right (exit 0 either way; exit 2 on a bad call), so scripts/test-e2e-fallback.sh can show each one fails on bad evidence.
 The kind is compared by exact value, never by a substring: "tpm" and "encrypted-tpm" are other kinds.
-  fallback.py import FILE ID KEYTYPE   the CLI output of `custodio import --id ID`: says it imported ID as KEYTYPE and has exactly one Storage line, of kind encrypted-host
-  fallback.py why FILE...              the Storage line of each import output says the key is weaker than a TPM key and the reason: this machine has no TPM
+  fallback.py import FILE ID KEYTYPE   the CLI output of `custodio import --id ID`: exactly one key line, of ID as KEYTYPE with kind encrypted-host
+  fallback.py why FILE...              the key line of each import output is a warning (warn) with one note under it
   fallback.py api FILE ID:KEYTYPE...   owner-call.py list output ("ID<TAB>TYPE<TAB>KIND"): each ID once, with KEYTYPE and kind encrypted-host
-  fallback.py cli FILE ID:KEYTYPE...   `custodio list` output: the block of each ID once, with `type: KEYTYPE` and `kind: encrypted-host`
-F161: `fallback.py --mode lacking|full SUBCOMMAND ...` judges a VM run. lacking: kind encrypted-tpm, and `why` wants "weaker than a TPM key" and the reason "lacks a capability".
-full: kind tpm for every key and `why` wants no word "weaker" in any output. No --mode (or --mode none) is the container run above.
+  fallback.py cli FILE ID:KEYTYPE...   `custodio list` output: the row of each ID once, with the type KEYTYPE and the kind encrypted-host
+F161: `fallback.py --mode lacking|full SUBCOMMAND ...` judges a VM run. lacking: kind encrypted-tpm, and `why` wants the warning and its note.
+full: kind tpm for every key and `why` wants ok with no note. No --mode (or --mode none) is the container run above.
 """
 import re
 import sys
 
 KIND = "encrypted-host"
 MODE = "none"
-REASON = "no TPM"
 
 
 def read(path):
     return open(path, encoding="utf-8", errors="replace").read().replace("\r", "")
 
 
-def storage_lines(path):
-    # the Storage text may continue on the lines that follow it, up to an empty line or the reminder to delete the original
-    lines = read(path).split("\n")
+# The key lines of `custodio import` output, read by layout (crates/custodio-cli/src/lib.rs, write_imported): "WORD  ID  TYPE  KIND" with WORD ok or warn,
+# then the notes under it (indented 6 spaces). The words of a note are not judged, only that it is there.
+KEY_LINE = re.compile(r"(ok|warn) +(\S+)  +(\S+)  +(\S+)")
+
+
+def key_lines(text):
+    # On a terminal (import.py runs the CLI on a pty) the CLI colours the word: the layout is read without the colour codes.
+    lines = re.sub(r"\x1b\[[0-9;]*m", "", text).replace("\r", "").split("\n")
     found = []
     for i, ln in enumerate(lines):
-        if ln.startswith("Storage:"):
-            text = ln
-            for nxt in lines[i + 1:]:
-                if not nxt or nxt.startswith(("Now delete", "Storage:")):
-                    break
-                text += " " + nxt.strip()
-            found.append(text)
+        m = KEY_LINE.fullmatch(ln)
+        if not m:
+            continue
+        notes = []
+        for nxt in lines[i + 1:]:
+            if not nxt.startswith("      ") or not nxt.strip():
+                break
+            notes.append(nxt.strip())
+        # The next steps close the lines under the key, from the one that says "shred -u": they are not notes.
+        steps = next((j for j, n in enumerate(notes) if "shred -u " in n), len(notes))
+        found.append({"word": m[1], "id": m[2], "type": m[3], "kind": m[4], "notes": notes[:steps], "steps": notes[steps:]})
     return found
 
 
+def one_key(path):
+    keys = key_lines(read(path))
+    if len(keys) != 1:
+        return None, [f"{path}: {len(keys)} key lines, expected 1"]
+    return keys[0], []
+
+
 def import_problems(path, key_id, key_type):
-    out = []
-    if f"Imported key '{key_id}' ({key_type})." not in read(path).split("\n"):
-        out.append(f"{path}: no line \"Imported key '{key_id}' ({key_type}).\"")
-    storage = storage_lines(path)
-    if len(storage) != 1:
-        out.append(f"{path}: {len(storage)} Storage lines, expected 1")
-    elif not storage[0].startswith(f"Storage: {KIND}. "):
-        out.append(f"{path}: the Storage line is {storage[0]!r}, expected kind {KIND}")
+    key, out = one_key(path)
+    if key is None:
+        return out
+    if (key["id"], key["type"]) != (key_id, key_type):
+        out.append(f"{path}: the key line is of {key['id']!r} as {key['type']!r}, expected {key_id!r} as {key_type!r}")
+    if key["kind"] != KIND:
+        out.append(f"{path}: the kind is {key['kind']!r}, expected {KIND}")
     return out
 
 
 def why_problems(paths):
     out = []
     for path in paths:
-        storage = storage_lines(path)
-        if len(storage) != 1:
-            out.append(f"{path}: {len(storage)} Storage lines, expected 1")
+        key, problems = one_key(path)
+        out += problems
+        if key is None:
             continue
         if MODE == "full":
-            if "weaker" in read(path):
-                out.append(f"{path}: the output speaks of a weaker kind, but the key is in the TPM")
+            if key["word"] != "ok" or key["notes"]:
+                out.append(f"{path}: the key line is {key['word']!r} with {len(key['notes'])} notes, but the key is in the TPM")
             continue
-        if not re.search(r"\bweaker than a TPM key\b", storage[0]):
-            out.append(f"{path}: the Storage text does not say the key is weaker than a TPM key")
-        if REASON not in storage[0]:
-            out.append(f"{path}: the Storage text does not give the reason ({REASON})")
+        if key["word"] != "warn":
+            out.append(f"{path}: the key line says {key['word']!r}, not warn: it does not say the key is weaker")
+        if len(key["notes"]) != 1:
+            out.append(f"{path}: {len(key['notes'])} notes under the key line, expected 1 saying who can use the key")
     return out
 
 
@@ -94,21 +108,18 @@ def api_problems(path, specs):
 
 
 def cli_problems(path, specs):
-    blocks, cur = {}, None
+    blocks = {}
     for ln in read(path).split("\n"):
-        m = re.fullmatch(r"id: (.*)", ln)
-        if m:
-            cur = m.group(1)
-            blocks.setdefault(cur, []).append({})
-        elif cur is not None:
-            m = re.fullmatch(r"  (type|kind): (.*)", ln)
-            if m:
-                blocks[cur][-1][m.group(1)] = m.group(2)
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        f = re.split(r"  +", ln)
+        if len(f) >= 3:
+            blocks.setdefault(f[0], []).append({"type": f[1], "kind": f[2]})
     out = []
     for key_id, key_type in expected(specs):
         mine = blocks.get(key_id, [])
         if len(mine) != 1:
-            out.append(f"{path}: {len(mine)} blocks for {key_id}, expected 1")
+            out.append(f"{path}: {len(mine)} rows for {key_id}, expected 1")
             continue
         if mine[0].get("type") != key_type:
             out.append(f"{key_id}: type {mine[0].get('type')!r}, expected {key_type!r}")
@@ -118,13 +129,12 @@ def cli_problems(path, specs):
 
 
 def main(argv):
-    global KIND, MODE, REASON
+    global KIND, MODE
     if argv[:1] == ["--mode"] and len(argv) >= 2:
         if argv[1] not in ("none", "full", "lacking"):
             sys.exit(f"fallback: unknown mode {argv[1]!r}")
         MODE = argv[1]
         KIND = {"none": KIND, "full": "tpm", "lacking": "encrypted-tpm"}[MODE]
-        REASON = "lacks a capability" if MODE == "lacking" else REASON
         argv = argv[2:]
     if len(argv) == 4 and argv[0] == "import":
         problems = import_problems(*argv[1:])

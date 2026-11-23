@@ -4,148 +4,49 @@
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use custodio_client::{Kind, MAX_P12_LEN};
 use secrecy::{ExposeSecret, SecretString};
 use zeroize::Zeroizing;
 
-pub use delete::{Confirmation, DeleteFailure, KeyDeleter, run_delete};
+pub use delete::{Confirmation, DeleteFailure, KeyDeleter, delete_command, run_delete};
 pub use failure::ServiceFailure;
-pub use list::{KeyEntry, KeyLister, ListFailure, run_list};
+pub use help::{COMMANDS, CommandSpec, OptionSpec};
+pub use list::{KeyEntry, KeyLister, ListArgs, ListFailure, Look, run_list, run_show};
+pub use parse::{
+    ArgError, Command, ImportArgs, Wrong, fuzz_cli_args, parse_args, parse_command, usage,
+};
 pub use storage::{StateStorage, StorageReader};
 
 pub mod agent;
 pub mod browser_files;
 pub mod bus;
+pub mod cert_text;
+pub mod colour;
+#[cfg(test)]
+mod command_names;
 pub mod delete;
+pub mod doctor_cmd;
+pub mod doctor_decide;
+pub mod doctor_later;
+pub mod error;
 pub mod failure;
+pub mod fingerprint_cmd;
+pub mod fingerprint_decide;
+pub mod help;
+pub mod journald_conf;
+pub mod key_ids;
 pub mod list;
+pub mod parse;
 pub mod register_cli;
 pub mod register_discover;
 mod register_modutil;
 pub mod register_native;
 pub mod register_snap;
+pub mod report;
 pub mod storage;
 pub mod tty;
-
-pub const USAGE: &str = "usage: custodio import [--id <key id>] <file.p12>\n\
-       custodio list\n\
-       custodio delete <key id>\n\
-       custodio register [--module <path>] [--remove | --refresh-only]\n\
-The password and the confirmation of a delete are asked on the terminal; they are never taken from\n\
-arguments or the environment.";
-
-/// What the command line asks for.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Command {
-    Import(ImportArgs),
-    List,
-    Delete(String),
-    Register(register_native::RegisterArgs),
-}
-
-/// Parse the arguments after the program name: `list` (nothing may follow it) or `import ...`.
-///
-/// # Errors
-/// [`ArgError::Usage`] for anything unexpected, and the errors of [`parse_args`] for `import`.
-pub fn parse_command<I: IntoIterator<Item = String>>(args: I) -> Result<Command, ArgError> {
-    let mut it = args.into_iter().peekable();
-    if it.peek().map(String::as_str) == Some("list") {
-        it.next();
-        return if it.next().is_none() {
-            Ok(Command::List)
-        } else {
-            Err(ArgError::Usage)
-        };
-    }
-    if it.peek().map(String::as_str) == Some("register") {
-        it.next();
-        return register_native::parse_register_args(it)
-            .map(Command::Register)
-            .ok_or(ArgError::Usage);
-    }
-    if it.peek().map(String::as_str) == Some("delete") {
-        it.next();
-        // `--` ends the options, so an id that starts with `-` can still be deleted. It is the
-        // only option accepted, and it is not a bypass of the confirmation.
-        if it.peek().map(String::as_str) == Some("--") {
-            it.next();
-        } else if it.peek().is_some_and(|id| id.starts_with('-')) {
-            return Err(ArgError::Usage);
-        }
-        return match (it.next(), it.next()) {
-            (Some(id), None) => Ok(Command::Delete(id)),
-            _ => Err(ArgError::Usage),
-        };
-    }
-    parse_args(it).map(Command::Import)
-}
-
-/// Parsed command line.
-#[derive(Debug, PartialEq, Eq)]
-pub struct ImportArgs {
-    pub file: PathBuf,
-    pub id: String,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ArgError {
-    Usage,
-    BadId,
-}
-
-impl fmt::Display for ArgError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Usage => f.write_str(USAGE),
-            Self::BadId => f.write_str("cannot derive a key id from the file name; use --id"),
-        }
-    }
-}
-
-impl std::error::Error for ArgError {}
-
-/// Parse the arguments after the program name. Any option other than `--id` (for example
-/// `--password`) is a usage error: secrets must not travel through argv.
-///
-/// # Errors
-/// [`ArgError::Usage`] for anything unexpected, [`ArgError::BadId`] if no id can be derived.
-pub fn parse_args<I: IntoIterator<Item = String>>(args: I) -> Result<ImportArgs, ArgError> {
-    let mut it = args.into_iter();
-    if it.next().as_deref() != Some("import") {
-        return Err(ArgError::Usage);
-    }
-    let mut file = None;
-    let mut id = None;
-    while let Some(arg) = it.next() {
-        if arg == "--id" {
-            if id.replace(it.next().ok_or(ArgError::Usage)?).is_some() {
-                return Err(ArgError::Usage);
-            }
-        } else if arg.starts_with('-') || file.replace(PathBuf::from(arg)).is_some() {
-            return Err(ArgError::Usage);
-        }
-    }
-    let file = file.ok_or(ArgError::Usage)?;
-    let id = match id {
-        Some(id) => id,
-        None => default_id(&file).ok_or(ArgError::BadId)?,
-    };
-    Ok(ImportArgs { file, id })
-}
-
-/// File stem, if it is already a valid id (letters, digits, `_`, `-`). Nothing is rewritten.
-fn default_id(file: &Path) -> Option<String> {
-    let stem = file.file_stem()?.to_str()?;
-    let valid = !stem.is_empty()
-        && stem.len() <= 59
-        && !stem.ends_with("-cert")
-        && stem
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-');
-    valid.then(|| stem.to_owned())
-}
 
 /// Where the password comes from. The real one is the controlling terminal.
 pub trait PasswordPrompt {
@@ -202,39 +103,60 @@ fn read_limited(path: &Path) -> Result<Zeroizing<Vec<u8>>, ImportFailure> {
     Ok(data)
 }
 
-/// What the person is told about where the key now lives. The reason of a weaker kind comes from
-/// the kind alone: the import result names no missing capability.
-fn kind_text(kind: &Kind) -> String {
+/// The note under a weaker or unknown storage kind; `None` for `tpm`.
+fn kind_note(kind: &Kind) -> Option<&'static str> {
     match kind {
-        Kind::Tpm => "Storage: tpm. The key is in the TPM and cannot be copied out of it.".to_owned(),
-        Kind::EncryptedHost => "Storage: encrypted-host. This key is weaker than a TPM key: this machine has no TPM, so the key is \
-a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it."
-            .to_owned(),
-        Kind::EncryptedTpm => "Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability \
-the key type needs, so the key is a file encrypted with a key bound to this TPM. Root can use it while the machine runs.\n\
-See \"TPM capabilities\" in docs/api.md for what each key type needs."
-            .to_owned(),
-        Kind::Unknown(text) => format!(
-            "Storage: {}. This CLI does not know this kind, so it cannot say what the key is protected against.",
-            list::escape(text)
+        Kind::Tpm => None,
+        Kind::EncryptedTpm => Some("Root can use this key while the machine runs."),
+        Kind::EncryptedHost => Some("Root, and anyone with a copy of /var/lib, can use this key."),
+        Kind::Unknown(_) => Some("This CLI does not know this storage kind."),
+    }
+}
+
+/// The line of an imported key: `ok` (`tpm`) or `warn` (any other kind), the key id, then type
+/// and kind as `list` shows them; under it the kind's note and [`next_steps`].
+#[must_use]
+pub fn imported_line(
+    id: &str,
+    key_type: &str,
+    kind: &Kind,
+    file: &Path,
+    home: Option<&Path>,
+) -> report::Line {
+    let note = kind_note(kind);
+    let state = if note.is_some() {
+        report::State::Warn
+    } else {
+        report::State::Ok
+    };
+    let mut line = report::Line::new(
+        state,
+        cert_text::escape(id),
+        format!(
+            "{}  {}",
+            cert_text::escape(key_type),
+            cert_text::escape(kind.wire())
         ),
-    }
+    );
+    line.under.extend(note.map(str::to_owned));
+    line.under.extend(next_steps(file, home));
+    line
 }
 
-/// The sentence `custodio list` adds under a key whose kind is weaker than a TPM key: the reason
-/// of [`kind_text`], without its `Storage:` prefix and without the pointer line. A `tpm` key and a
-/// kind this CLI does not know get none.
-pub(crate) fn weaker_note(kind: &Kind) -> Option<String> {
-    if !matches!(kind, Kind::EncryptedHost | Kind::EncryptedTpm) {
-        return None;
-    }
-    let text = kind_text(kind);
-    let first = text.lines().next()?;
-    first.split_once(". ").map(|(_, reason)| reason.to_owned())
+/// What to do after an import: delete the original, restart Firefox.
+#[must_use]
+pub fn next_steps(file: &Path, home: Option<&Path>) -> [String; 2] {
+    [
+        format!(
+            "Delete the original: shred -u {}",
+            report::shell_path(file, home)
+        ),
+        "Restart Firefox, and any program using Custodio, to see the key.".to_owned(),
+    ]
 }
 
-/// Read the file, ask for the password, send both to the service, then tell the person to delete
-/// the original. The reminder is printed only after the service accepted the import.
+/// Read the file, ask for the password, send both to the service, then show the key and the next
+/// steps. Those are printed only after the service accepted the import.
 ///
 /// # Errors
 /// See [`ImportFailure`].
@@ -244,6 +166,16 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
     importer: &I,
     out: &mut W,
 ) -> Result<(), ImportFailure> {
+    import_painted(args, prompt, importer, out, false)
+}
+
+fn import_painted<P: PasswordPrompt, I: Importer, W: Write>(
+    args: &ImportArgs,
+    prompt: &mut P,
+    importer: &I,
+    out: &mut W,
+    colour: bool,
+) -> Result<(), ImportFailure> {
     let data = read_limited(&args.file)?;
     let password = prompt
         .password(&format!("Password for {}: ", args.file.display()))
@@ -252,22 +184,14 @@ pub fn run_import<P: PasswordPrompt, I: Importer, W: Write>(
         .import_p12(&args.id, &data, &password)
         .map_err(ImportFailure::Service)?;
     // Output errors must not hide the fact that the import happened.
-    let _ = writeln!(
-        out,
-        "Imported key '{}' ({}).",
-        args.id,
-        list::escape(&key_type)
-    );
-    let _ = writeln!(out, "{}", kind_text(&kind));
-    let _ = writeln!(
-        out,
-        "Now delete the original file: it still holds your private key.\n  shred -u {}   (or remove it with your file manager and empty the trash)",
-        args.file.display()
-    );
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let line = imported_line(&args.id, &key_type, &kind, &args.file, home.as_deref());
+    let _ = write!(out, "{}", report::render(&[line], colour));
     Ok(())
 }
 
-/// `custodio import`: [`run_import`], then the storage warning on `err` when the import succeeded.
+/// `custodio import`: [`run_import`], in colour if `colour`, then the storage warning on `err`
+/// when the import succeeded.
 ///
 /// # Errors
 /// See [`ImportFailure`]; the warning never adds one.
@@ -278,24 +202,31 @@ pub fn import_command<P: PasswordPrompt, I: Importer, S: StorageReader, W: Write
     storage: &S,
     out: &mut W,
     err: &mut E,
+    colour: bool,
 ) -> Result<(), ImportFailure> {
-    run_import(args, prompt, importer, out)?;
-    storage::warn(storage, err);
+    import_painted(args, prompt, importer, out, colour)?;
+    storage::warn(storage, err, colour);
     Ok(())
 }
 
-/// `custodio list`: [`run_list`], then the storage warning on `err` when the list was shown without error.
+/// `custodio list`: [`run_show`] for a key id, [`run_list`] otherwise, then the storage warning on `err`
+/// when the keys were shown without error.
 ///
 /// # Errors
 /// See [`ListFailure`]; the warning never adds one.
 pub fn list_command<L: KeyLister, S: StorageReader, W: Write, E: Write>(
     lister: &L,
     storage: &S,
+    args: &ListArgs,
+    look: Look,
     out: &mut W,
     err: &mut E,
 ) -> Result<(), ListFailure> {
-    run_list(lister, out)?;
-    storage::warn(storage, err);
+    match &args.id {
+        Some(id) => run_show(lister, id, out, look)?,
+        None => run_list(lister, out, look, args.verbose)?,
+    }
+    storage::warn(storage, err, look.colour);
     Ok(())
 }
 
@@ -310,6 +241,8 @@ pub enum CliError {
     List(ListFailure),
     Delete(DeleteFailure),
     Register(register_native::RegisterError),
+    Fingerprint(fingerprint_cmd::Failure),
+    Doctor(doctor_cmd::Failure),
 }
 
 impl fmt::Display for CliError {
@@ -321,6 +254,8 @@ impl fmt::Display for CliError {
             Self::List(e) => write!(f, "custodio: {e}"),
             Self::Delete(e) => write!(f, "custodio: {e}"),
             Self::Register(e) => write!(f, "{e}"),
+            Self::Fingerprint(e) => write!(f, "{e}"),
+            Self::Doctor(e) => write!(f, "{e}"),
         }
     }
 }
@@ -332,23 +267,38 @@ impl std::error::Error for CliError {}
 pub const fn exit_status(result: &Result<(), CliError>) -> u8 {
     match result {
         Ok(()) => 0,
-        Err(CliError::Args(_) | CliError::Register(register_native::RegisterError::Refused(_))) => {
-            2
-        }
+        Err(
+            CliError::Args(_)
+            | CliError::Register(register_native::RegisterError::Refused(_))
+            | CliError::Doctor(doctor_cmd::Failure::Root),
+        ) => 2,
         Err(
             CliError::SystemBus(_)
             | CliError::Import(_)
             | CliError::List(_)
             | CliError::Delete(_)
-            | CliError::Register(_),
+            | CliError::Register(_)
+            | CliError::Fingerprint(_)
+            | CliError::Doctor(
+                doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied(_),
+            ),
         ) => 1,
     }
 }
 
-/// Writes the diagnostic of a failed run to `err` (nothing on success) and returns the exit status.
-pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W) -> u8 {
-    if let Err(e) = result {
-        let _ = writeln!(err, "{e}");
+/// Writes the diagnostic of a failed run to `err` (nothing on success, nor after a doctor report)
+/// and returns the exit status.
+/// `coloured` puts the `custodio:` prefix of the first line in bold.
+pub fn finish<W: Write>(result: &Result<(), CliError>, err: &mut W, coloured: bool) -> u8 {
+    match result {
+        // The report on standard output already ends with how many problems there are.
+        Ok(())
+        | Err(CliError::Doctor(
+            doctor_cmd::Failure::BrokenInclude | doctor_cmd::Failure::Unsatisfied(_),
+        )) => {}
+        Err(e) => {
+            let _ = writeln!(err, "{}", colour::prefix(&error::render(e), coloured));
+        }
     }
     exit_status(result)
 }

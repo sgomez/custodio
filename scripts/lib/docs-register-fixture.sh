@@ -1,5 +1,5 @@
 # shellcheck shell=bash disable=SC2016,SC2153
-# Fixtures for the docs tests that run `custodio register` on a documented page (F185, shared by F186). Sourced; the caller
+# Fixtures for the docs tests that run `custodio setup browsers enable` on a documented page (F185, shared by F186). Sourced; the caller
 # sets ROOT, LIB (scripts/lib/docs_check.py) and CLI (target/debug/custodio-cli). Nothing here changes the host: `custodio
 # register` without --module uses /usr/lib/custodio/libcustodio_pkcs11.so, which is not here, so the commands run in a user and
 # mount namespace where an overlay puts an empty module file there, and then in a nested user namespace mapped to the invoking
@@ -35,7 +35,7 @@ native=$HOME/.mozilla/firefox/abcd1234.default-release
 snap=$HOME/snap/firefox/common/.mozilla/firefox/efgh5678.default
 copy=$HOME/snap/firefox/common/libcustodio_pkcs11.so
 case $1 in
-    "custodio register")
+    "custodio setup browsers enable")
         grep -qxF -- "-dbdir sql:$native -add Custodio -libfile /usr/lib/custodio/libcustodio_pkcs11.so -force" "$STUB_LOG" || { echo "no -add of the installed module in the native profile" >&2; exit 1; }
         grep -qxF -- "library=/usr/lib/custodio/libcustodio_pkcs11.so" "$native/pkcs11.txt" 2> /dev/null || { echo "the native profile has no entry" >&2; exit 1; }
         [ -f "$copy" ] || { echo "no snap copy" >&2; exit 1; }
@@ -43,7 +43,7 @@ case $1 in
         grep -qxF -- "library=$copy" "$snap/pkcs11.txt" || { echo "the snap profile has no entry" >&2; exit 1; }
         echo registered >> "$log"
         ;;
-    "custodio register --remove")
+    "custodio setup browsers disable")
         [ ! -e "$copy" ] || { echo "the snap copy is still there" >&2; exit 1; }
         ! grep -qs custodio "$snap/pkcs11.txt" "$native/pkcs11.txt" || { echo "an entry is still there" >&2; exit 1; }
         grep -q -- "-delete Custodio" "$STUB_LOG" || { echo "no -delete" >&2; exit 1; }

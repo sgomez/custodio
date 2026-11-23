@@ -16,6 +16,8 @@ fn every_variant_has_its_name() {
             "AuthorizationUnavailable",
         ),
         (ServiceError::WrongPasswordOrBadP12, "WrongPasswordOrBadP12"),
+        (ServiceError::WrongPassword, "WrongPassword"),
+        (ServiceError::UnreadableP12, "UnreadableP12"),
         (ServiceError::UnsupportedKeyType, "UnsupportedKeyType"),
         (ServiceError::CertificateMismatch, "CertificateMismatch"),
         (ServiceError::AuditUnavailable, "AuditUnavailable"),
@@ -112,22 +114,18 @@ fn store_errors_map() {
 fn import_errors_map() {
     let table = [
         (ImportError::TooLarge, ServiceError::InvalidArgs),
+        (ImportError::WrongPassword, ServiceError::WrongPassword),
         (
-            ImportError::Parse("sentinel".into()),
+            ImportError::WrongPasswordOrBad,
             ServiceError::WrongPasswordOrBadP12,
         ),
         (
-            ImportError::NoPrivateKey,
-            ServiceError::WrongPasswordOrBadP12,
+            ImportError::Unreadable("sentinel".into()),
+            ServiceError::UnreadableP12,
         ),
-        (
-            ImportError::MultipleKeys,
-            ServiceError::WrongPasswordOrBadP12,
-        ),
-        (
-            ImportError::NoCertificate,
-            ServiceError::WrongPasswordOrBadP12,
-        ),
+        (ImportError::NoPrivateKey, ServiceError::UnreadableP12),
+        (ImportError::MultipleKeys, ServiceError::UnreadableP12),
+        (ImportError::NoCertificate, ServiceError::UnreadableP12),
         (
             ImportError::CertificateMismatch,
             ServiceError::CertificateMismatch,

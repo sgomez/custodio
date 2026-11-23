@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use custodio_client::{
     ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN, ERROR_POLKIT_DENIED,
-    ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12, MAX_P12_LEN,
+    ERROR_UNREADABLE_P12, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD, MAX_P12_LEN,
 };
 use custodiod::audit::MemorySink;
 use custodiod::credentials::BusCredentials;
@@ -190,7 +190,7 @@ fn import_wrong_password_is_denied_not_tried() -> TestResult {
         // Control: once approved, the same call reaches the decoder exactly once.
         let r = Rig::start(Answer::Yes).await?;
         let got = r.import("k", RSA_P12, "wrong").await;
-        assert_eq!(got, Err(ERROR_WRONG_PASSWORD_OR_BAD_P12.to_owned()));
+        assert_eq!(got, Err(ERROR_WRONG_PASSWORD.to_owned()));
         assert_eq!(r.decoder_calls(), 1);
         Ok(())
     })
@@ -201,18 +201,8 @@ fn import_after_approval_errors() -> TestResult {
     block_on(async {
         let r = Rig::start(Answer::Yes).await?;
         let cases = [
-            (
-                "a",
-                RSA_P12.to_vec(),
-                "wrong",
-                ERROR_WRONG_PASSWORD_OR_BAD_P12,
-            ),
-            (
-                "b",
-                b"not a p12".to_vec(),
-                PASSWORD,
-                ERROR_WRONG_PASSWORD_OR_BAD_P12,
-            ),
+            ("a", RSA_P12.to_vec(), "wrong", ERROR_WRONG_PASSWORD),
+            ("b", b"not a p12".to_vec(), PASSWORD, ERROR_UNREADABLE_P12),
             ("c", fx("rsa3072")?, PASSWORD, ERROR_UNSUPPORTED_KEY_TYPE),
             ("d", fx("ed25519")?, PASSWORD, ERROR_UNSUPPORTED_KEY_TYPE),
         ];
@@ -222,8 +212,8 @@ fn import_after_approval_errors() -> TestResult {
             assert_eq!(r.polkit_calls(), n + 1);
             assert_eq!(r.decoder_calls(), n + 1);
         }
-        assert_ne!(ERROR_WRONG_PASSWORD_OR_BAD_P12, ERROR_UNSUPPORTED_KEY_TYPE);
-        assert_ne!(ERROR_WRONG_PASSWORD_OR_BAD_P12, ERROR_POLKIT_DENIED);
+        assert_ne!(ERROR_UNREADABLE_P12, ERROR_UNSUPPORTED_KEY_TYPE);
+        assert_ne!(ERROR_WRONG_PASSWORD, ERROR_POLKIT_DENIED);
         assert_ne!(ERROR_UNSUPPORTED_KEY_TYPE, ERROR_POLKIT_DENIED);
         assert_eq!(r.list().await?, Listed::new());
         Ok(())

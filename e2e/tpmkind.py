@@ -2,12 +2,12 @@
 """The judgements of the tpm-kind-* cases (F133, acceptance 1 of SPEC.md), as functions of files. Each subcommand prints one problem per line and
 nothing when the evidence is right (exit 0 either way; exit 2 on a bad call), so tpmkind-selftest.sh can show each one fails on bad evidence.
 The kind is compared by exact value "tpm" (the wire name), never by a substring: "encrypted-tpm" and "encrypted-host" are other kinds.
-  tpmkind.py import FILE ID KEYTYPE      the CLI output of `custodio import --id ID`: says it imported ID as KEYTYPE and "Storage: tpm." exactly once
+  tpmkind.py import FILE ID KEYTYPE      the CLI output of `custodio import --id ID`: exactly one key line, of ID as KEYTYPE with kind tpm, ok and no note
   tpmkind.py api FILE ID:KEYTYPE...      owner-call.py list output ("ID<TAB>TYPE<TAB>KIND"): each ID once, with KEYTYPE and kind tpm
-  tpmkind.py cli FILE ID:KEYTYPE...      `custodio list` output: the block of each ID once, with `type: KEYTYPE` and `kind: tpm`
+  tpmkind.py cli FILE ID:KEYTYPE...      `custodio list` output: the row of each ID once, with the type KEYTYPE and the kind tpm
   tpmkind.py journal FILE ID...          `journalctl -o json` rows: per ID exactly one import entry of custodio.service, outcome stored, kind tpm
 F161: `tpmkind.py --mode full|lacking SUBCOMMAND ...` (a VM run; no --mode, or --mode swtpm, is the container run above). full: kind tpm for every key, nothing called weaker.
-lacking: kind encrypted-tpm for every key (RSA 2048 and P-256 alike), and the import output says the key is weaker than a TPM key and why: the TPM of this machine lacks a capability.
+lacking: kind encrypted-tpm for every key (RSA 2048 and P-256 alike), and the import output is a warning (warn) with one note saying who can use the key.
 """
 import json
 import re
@@ -15,26 +15,47 @@ import sys
 
 TPM = "tpm"
 ETPM = "encrypted-tpm"
-WEAK_STORAGE = re.compile(r"Storage: encrypted-tpm\. This key is weaker than a TPM key: the TPM of this machine lacks a capability\b.*")
 KIND = TPM  # the kind every key of the run must have; set by --mode
 UNIT = "custodio.service"
 
 
+# The key lines of `custodio import` output, read by layout (crates/custodio-cli/src/lib.rs, write_imported): "WORD  ID  TYPE  KIND" with WORD ok or warn,
+# then the notes under it (indented 6 spaces). The words of a note are not judged, only that it is there.
+KEY_LINE = re.compile(r"(ok|warn) +(\S+)  +(\S+)  +(\S+)")
+
+
+def key_lines(text):
+    # On a terminal (import.py runs the CLI on a pty) the CLI colours the word: the layout is read without the colour codes.
+    lines = re.sub(r"\x1b\[[0-9;]*m", "", text).replace("\r", "").split("\n")
+    found = []
+    for i, ln in enumerate(lines):
+        m = KEY_LINE.fullmatch(ln)
+        if not m:
+            continue
+        notes = []
+        for nxt in lines[i + 1:]:
+            if not nxt.startswith("      ") or not nxt.strip():
+                break
+            notes.append(nxt.strip())
+        # The next steps close the lines under the key, from the one that says "shred -u": they are not notes.
+        steps = next((j for j, n in enumerate(notes) if "shred -u " in n), len(notes))
+        found.append({"word": m[1], "id": m[2], "type": m[3], "kind": m[4], "notes": notes[:steps], "steps": notes[steps:]})
+    return found
+
+
 def import_problems(path, key_id, key_type):
-    lines = open(path, encoding="utf-8", errors="replace").read().replace("\r", "").split("\n")
-    out = []
-    if f"Imported key '{key_id}' ({key_type})." not in lines:
-        out.append(f"{path}: no line \"Imported key '{key_id}' ({key_type}).\"")
-    storage = [ln for ln in lines if ln.startswith("Storage:")]
-    if len(storage) != 1:
-        out.append(f"{path}: {len(storage)} Storage lines, expected 1")
-    elif KIND == ETPM:
-        if not WEAK_STORAGE.fullmatch(storage[0]):
-            out.append(f"{path}: the Storage line is {storage[0]!r}, expected kind {ETPM} saying the key is weaker than a TPM key because the TPM lacks a capability")
-    elif not re.fullmatch(r"Storage: tpm\. The key is in the TPM and cannot be copied out of it\.", storage[0]):
-        out.append(f"{path}: the Storage line is {storage[0]!r}, expected kind tpm")
-    if KIND == TPM and any("weaker" in ln for ln in lines):
-        out.append(f"{path}: the output speaks of a weaker kind")
+    keys = key_lines(open(path, encoding="utf-8", errors="replace").read())
+    if len(keys) != 1:
+        return [f"{path}: {len(keys)} key lines, expected 1"]
+    key, out = keys[0], []
+    if (key["id"], key["type"]) != (key_id, key_type):
+        out.append(f"{path}: the key line is of {key['id']!r} as {key['type']!r}, expected {key_id!r} as {key_type!r}")
+    if key["kind"] != KIND:
+        out.append(f"{path}: the kind is {key['kind']!r}, expected {KIND}")
+    if KIND == ETPM and (key["word"] != "warn" or len(key["notes"]) != 1):
+        out.append(f"{path}: {key['word']!r} with {len(key['notes'])} notes, expected warn with one note saying who can use the key")
+    if KIND == TPM and (key["word"] != "ok" or key["notes"]):
+        out.append(f"{path}: {key['word']!r} with {len(key['notes'])} notes: the output speaks of a weaker kind")
     return out
 
 
@@ -66,21 +87,18 @@ def api_problems(path, specs):
 
 
 def cli_problems(path, specs):
-    blocks, cur = {}, None
+    blocks = {}
     for ln in open(path, encoding="utf-8").read().split("\n"):
-        m = re.fullmatch(r"id: (.*)", ln)
-        if m:
-            cur = m.group(1)
-            blocks.setdefault(cur, []).append({})
-        elif cur is not None:
-            m = re.fullmatch(r"  (type|kind): (.*)", ln)
-            if m:
-                blocks[cur][-1][m.group(1)] = m.group(2)
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        f = re.split(r"  +", ln)
+        if len(f) >= 3:
+            blocks.setdefault(f[0], []).append({"type": f[1], "kind": f[2]})
     out = []
     for key_id, key_type in expected(specs):
         mine = blocks.get(key_id, [])
         if len(mine) != 1:
-            out.append(f"{path}: {len(mine)} blocks for {key_id}, expected 1")
+            out.append(f"{path}: {len(mine)} rows for {key_id}, expected 1")
             continue
         if mine[0].get("type") != key_type:
             out.append(f"{key_id}: type {mine[0].get('type')!r}, expected {key_type!r}")

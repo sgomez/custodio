@@ -75,3 +75,10 @@ journal-kind-purge
 journal-kind-owner
 journal-kind-key-lost
 journal-kind-temporarily-unavailable
+# F199: pam-auth-update --enable/--disable fprintd leave the override byte-identical (Debian family)
+fingerprint-pam-auth-update
+# F214: the unit's core and swap settings and the running service's core limit and dumpable flag; e2e/memory-run.sh (the crashes under the core handlers are vm-memory-*)
+memory-unit-settings
+memory-core-limit
+memory-not-dumpable
+memory-service-answers

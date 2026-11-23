@@ -47,10 +47,11 @@ expect_bad state-missing ops_state_problems l "$tmp/none" "$tmp/s1"
 expect_ok differ ops_differ_problems l "$tmp/s1" "$tmp/s3"
 expect_bad differ-same ops_differ_problems l "$tmp/s1" "$tmp/s2"
 
-printf 'id: a\n  type: rsa2048\nid: b\n' > "$tmp/list"
+printf 'a  rsa2048  tpm  CN=x\\x0aforged  row  2030-01-01\nb  rsa2048  tpm  y  2030-01-01\ncert a 00\n' > "$tmp/list"
 expect_ok listed ops_listed_problems "$tmp/list" +a +b -c
 expect_bad listed-missing ops_listed_problems "$tmp/list" +c
 expect_bad listed-present ops_listed_problems "$tmp/list" -a
-printf 'id: ab\n' > "$tmp/list2"
+expect_ok listed-forged-row-is-no-key ops_listed_problems "$tmp/list" -forged -cert
+printf 'ab  rsa2048  tpm  CN=x  2030-01-01\n' > "$tmp/list2"
 expect_bad listed-substring ops_listed_problems "$tmp/list2" +a
 exit "$fail"

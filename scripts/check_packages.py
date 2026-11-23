@@ -82,7 +82,7 @@ LABELS = ("deb", "rpm", "arch")
 
 def wanted_files(label):
     """path -> mode of every file the package of this format installs."""
-    return {**expected.FILES, expected.DAEMON[label]: 0o755, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
+    return {**expected.FILES, expected.DAEMON[label]: 0o755, expected.ZSH[label]: 0o644, **(expected.ARCH_ONLY_FILES if label == "arch" else {})}
 
 
 def check_config():
@@ -110,9 +110,9 @@ def check_config():
             if dst in seen[label]:
                 fail("nfpm.yaml", f"{dst} is listed twice" + ("" if packager is None else f" for {label}"))
             seen[label][dst] = info.get("mode")
-            if packager is not None and dst not in expected.ARCH_ONLY_FILES and dst not in expected.DAEMON.values() and dst != expected.UNIT:
-                # A packager-limited entry is for a file of that format's own: the Arch-only files, the daemon, the unit.
-                fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files, the daemon and the unit may be")
+            if packager is not None and dst not in expected.ARCH_ONLY_FILES and dst not in expected.DAEMON.values() and dst not in expected.ZSH.values() and dst != expected.UNIT:
+                # A packager-limited entry is for a file of that format's own: the Arch-only files, the daemon, the zsh completion, the unit.
+                fail("nfpm.yaml", f"{dst} is limited to packager {packager}, which only the Arch-only files, the daemon, the zsh completion and the unit may be")
             if dst in expected.ARCH_ONLY_FILES and label != "arch":
                 fail("nfpm.yaml", f"{dst} must be limited to the archlinux packager")
         if not dst.startswith("/usr/"):
@@ -172,6 +172,8 @@ def check_package(label, nfpm_name, pattern):
     listed_dirs = {}
     listed_links = set()
     for path, kind, mode, owner, group in listing:
+        if any(path == d or path.startswith(d + "/") for d in PAM_DIRS):
+            fail(label, f"{path} is in a PAM directory: the package must leave PAM alone")
         if path != "/usr" and not path.startswith("/usr/"):
             fail(label, f"{path} is not under /usr")
         if owner not in ("root", "0") or group not in ("root", "0"):
@@ -266,7 +268,45 @@ def check_needed(label, pkg, files):
                 fail(label, f"{path} needs {soname}, so '{expected.NEEDED[soname][index]}' must be a dependency")
 
 
+PAM_DIRS = ("/etc/pam.d", "/usr/lib/pam.d")
+NOTICE_PHRASES = ("sudo custodio setup fingerprint enable", "custodio doctor")
+
+
+def script_texts(label, pkg):
+    """({name: text} of every script of the package, the name of its install script)."""
+    out = {}
+    if label == "deb":
+        for n in ("preinst", "postinst", "prerm", "postrm"):
+            path = f"{extract_dir}/deb-control/{n}"
+            if os.path.exists(path):
+                out[n] = open(path, errors="replace").read()
+        return out, "postinst"
+    if label == "rpm":
+        for t, n in {"PREIN": "pre", "POSTIN": "post", "PREUN": "preun", "POSTUN": "postun"}.items():
+            text = run(["rpm", "--dbpath", f"{extract_dir}/rpmdb", "-qp", "--qf", f"%{{{t}}}", pkg])
+            if text != "(none)":
+                out[n] = text
+        return out, "post"
+    out[".INSTALL"] = run(["bsdtar", "-xOf", pkg, ".INSTALL"], optional=True)
+    for sub in ("hooks", "scripts"):
+        for path in sorted(glob.glob(f"{extract_dir}/arch/usr/share/libalpm/{sub}/*")):
+            if os.path.isfile(path):
+                out[f"{sub}/{os.path.basename(path)}"] = open(path, errors="replace").read()
+    return out, ".INSTALL"
+
+
+def check_pam_scripts(label, pkg):
+    texts, install = script_texts(label, pkg)
+    for name, text in texts.items():
+        if "/etc/pam.d" in text:
+            fail(label, f"the script {name} refers to /etc/pam.d: the package must leave PAM alone")
+    for phrase in NOTICE_PHRASES:
+        if phrase not in texts.get(install, ""):
+            fail(label, f"the install script {install} lacks '{phrase}' in its notice")
+
+
 def check_scripts(label, pkg):
+    check_pam_scripts(label, pkg)
     if label == "deb":
         got = {n for n in ("preinst", "postinst", "prerm", "postrm") if os.path.exists(f"{extract_dir}/deb-control/{n}")}
         want = expected.DEB_SCRIPTS

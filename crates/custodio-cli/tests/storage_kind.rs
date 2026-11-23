@@ -5,10 +5,13 @@ use std::path::PathBuf;
 
 use custodio_cli::{
     ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, PasswordPrompt, ServiceFailure,
-    run_import, run_list,
+    next_steps, run_import, run_list,
 };
 use custodio_client::Kind;
 use secrecy::SecretString;
+
+mod import_view;
+use import_view::{Imported, parse, shred_target};
 
 const KEY_TYPES: [&str; 2] = ["rsa2048", "ecdsa-p256"];
 const CERT: &[u8] = include_bytes!("../../custodio-it/tests/fixtures/cert-p256-other.der");
@@ -34,88 +37,116 @@ impl Importer for Fake {
     }
 }
 
-fn import(result: Result<(String, Kind), ServiceFailure>) -> (Result<(), ImportFailure>, String) {
+fn import_file(
+    name: &str,
+    result: Result<(String, Kind), ServiceFailure>,
+) -> (Result<(), ImportFailure>, String, PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
-    let file: PathBuf = dir.path().join("k.p12");
+    let file: PathBuf = dir.path().join(name);
     std::fs::write(&file, b"p12").expect("write");
     let args = ImportArgs {
-        file,
+        file: file.clone(),
         id: "mykey".into(),
     };
     let mut out = Vec::new();
     let r = run_import(&args, &mut Prompt, &Fake(result), &mut out);
-    (r, String::from_utf8_lossy(&out).into_owned())
+    (r, String::from_utf8_lossy(&out).into_owned(), file)
 }
 
-fn imported(key_type: &str, kind: Kind) -> String {
-    let (r, out) = import(Ok((key_type.into(), kind)));
+fn import(result: Result<(String, Kind), ServiceFailure>) -> (Result<(), ImportFailure>, String) {
+    let (r, out, _) = import_file("k.p12", result);
+    (r, out)
+}
+
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
+/// The output of a successful import of `key_type` stored as `kind`, after the checks that hold for
+/// every kind: the key's cells, and the product's next steps last under it. Returns the line with
+/// those steps taken off, so `under` holds only what the kind adds.
+fn imported(key_type: &str, kind: &Kind) -> Imported {
+    let (r, out, file) = import_file("k.p12", Ok((key_type.into(), kind.clone())));
     assert!(r.is_ok());
-    assert!(out.contains(key_type), "{out}");
-    assert!(out.contains("Now delete the original file"), "{out}");
-    out
+    let mut view = parse(&out);
+    assert_eq!(
+        view.cells,
+        [
+            "mykey",
+            key_type,
+            &custodio_cli::cert_text::escape(kind.wire())
+        ],
+        "{out}"
+    );
+    let steps = next_steps(&file, home().as_deref());
+    let kept = view
+        .under
+        .len()
+        .checked_sub(steps.len())
+        .expect("the steps");
+    assert_eq!(view.under[kept..], steps, "{out}");
+    view.under.truncate(kept);
+    view
 }
 
 #[test]
-fn import_tpm() {
+fn a_tpm_key_is_ok_with_nothing_under_it_but_the_steps() {
     for t in KEY_TYPES {
-        let out = imported(t, Kind::Tpm);
-        assert!(out.contains("tpm"), "{out}");
-        assert!(out.contains("cannot be copied"), "{out}");
-        assert!(!out.contains("weaker"), "{out}");
-        assert!(!out.contains("capability"), "{out}");
-        assert!(!out.contains("no TPM"), "{out}");
+        let view = imported(t, &Kind::Tpm);
+        assert_eq!(view.word, "ok");
+        assert!(view.under.is_empty(), "{view:?}");
     }
 }
 
 #[test]
-fn import_encrypted_host() {
+fn any_other_kind_is_a_warning_with_one_note_of_its_own() {
+    let kinds = [
+        Kind::EncryptedHost,
+        Kind::EncryptedTpm,
+        Kind::Unknown("future".into()),
+    ];
+    let mut notes = Vec::new();
     for t in KEY_TYPES {
-        let out = imported(t, Kind::EncryptedHost);
-        assert!(out.contains("encrypted-host"), "{out}");
-        assert!(out.contains("weaker"), "{out}");
-        assert!(out.contains("no TPM"), "{out}");
-        assert!(out.contains("Root"), "{out}");
-        assert!(out.contains("/var/lib"), "{out}");
-        assert!(!out.contains("capability"), "{out}");
+        for kind in &kinds {
+            let view = imported(t, kind);
+            assert_eq!(view.word, "warn", "{kind:?}");
+            assert_eq!(view.under.len(), 1, "{kind:?}");
+            notes.push(view.under[0].clone());
+        }
     }
+    notes.sort();
+    notes.dedup();
+    assert_eq!(
+        notes.len(),
+        kinds.len(),
+        "each kind has its own note: {notes:?}"
+    );
 }
 
 #[test]
-fn import_encrypted_tpm() {
-    for t in KEY_TYPES {
-        let out = imported(t, Kind::EncryptedTpm);
-        assert!(out.contains("encrypted-tpm"), "{out}");
-        assert!(out.contains("weaker"), "{out}");
-        assert!(out.contains("lacks a capability"), "{out}");
-        assert!(!out.contains("no TPM"), "{out}");
-        assert!(out.contains("Root"), "{out}");
-        assert!(out.contains("while the machine runs"), "{out}");
-        assert!(out.contains("docs/api.md"), "{out}");
-        assert!(out.contains("TPM capabilities"), "{out}");
-        assert!(!out.contains("journal"), "{out}");
-    }
+fn an_unknown_kind_is_shown_escaped() {
+    let view = imported("rsa2048", &Kind::Unknown("odd\x1b[2Jkind".into()));
+    assert!(view.cells.iter().all(|c| !c.contains('\x1b')), "{view:?}");
 }
 
 #[test]
-fn weaker_reasons_differ() {
-    let host = imported("rsa2048", Kind::EncryptedHost);
-    let tpm = imported("rsa2048", Kind::EncryptedTpm);
-    assert_ne!(host, tpm);
-    assert!(!host.contains("lacks a capability"));
-    assert!(!tpm.contains("/var/lib"));
+fn the_delete_step_is_a_command_the_shell_reads_back_as_the_file() {
+    for name in ["k.p12", "my cert.p12", "it's.p12", "~k.p12"] {
+        let (r, out, file) = import_file(name, Ok(("rsa2048".into(), Kind::Tpm)));
+        assert!(r.is_ok());
+        let target = shred_target(&parse(&out)).unwrap_or_else(|| panic!("no shred: {out}"));
+        assert_eq!(read_back(&target), file.display().to_string(), "{target}");
+    }
 }
 
-#[test]
-fn import_unknown_kind() {
-    for t in KEY_TYPES {
-        let out = imported(t, Kind::Unknown("odd\x1b[2Jkind".into()));
-        assert!(out.contains("odd\\x1b[2Jkind"), "{out}");
-        assert!(!out.contains('\x1b'), "{out}");
-        assert!(out.contains("does not know"), "{out}");
-        assert!(!out.contains("weaker"), "{out}");
-        assert!(!out.contains("stronger"), "{out}");
-        assert!(!out.contains("in the TPM"), "{out}");
-    }
+/// What `sh` makes of `word`, with `HOME` as this process has it.
+fn read_back(word: &str) -> String {
+    let echoed = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("printf %s {word}"))
+        .output()
+        .expect("sh");
+    String::from_utf8_lossy(&echoed.stdout).into_owned()
 }
 
 #[test]
@@ -145,23 +176,22 @@ fn entry(id: &str, kind: Kind) -> KeyEntry {
 
 fn list(keys: Vec<KeyEntry>) -> String {
     let mut out = Vec::new();
-    run_list(&Keys(keys), &mut out).expect("list");
+    let look = custodio_cli::Look::plain(std::time::SystemTime::now());
+    run_list(&Keys(keys), &mut out, look, false).expect("list");
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// The `kind:` line of the block of `id`.
+/// The third cell of the row of `id`: the kind.
 fn kind_of(out: &str, id: &str) -> String {
-    let mut lines = out.lines().skip_while(|l| *l != format!("id: {id}"));
-    lines.next().expect("block");
-    for l in lines {
-        if l.starts_with("id: ") {
-            break;
-        }
-        if let Some(k) = l.trim().strip_prefix("kind: ") {
-            return k.to_owned();
-        }
-    }
-    panic!("no kind line for {id} in {out}");
+    let row = out
+        .lines()
+        .find(|l| l.split("  ").next() == Some(id))
+        .unwrap_or_else(|| panic!("no row for {id} in {out}"));
+    row.split("  ")
+        .filter(|c| !c.is_empty())
+        .nth(2)
+        .expect("kind cell")
+        .to_owned()
 }
 
 #[test]
@@ -178,40 +208,6 @@ fn list_shows_each_kind() {
     assert_eq!(kind_of(&out, "c"), "future");
     assert_eq!(kind_of(&out, "d"), "encrypted-tpm");
     assert_eq!(kind_of(&out, "e"), "encrypted-host");
-}
-
-/// The lines of the block of `id`, up to the next block.
-fn block_of(out: &str, id: &str) -> String {
-    let mut lines = out.lines().skip_while(|l| *l != format!("id: {id}"));
-    let mut block = lines.next().expect("block").to_owned();
-    for l in lines.take_while(|l| !l.starts_with("id: ")) {
-        block.push('\n');
-        block.push_str(l);
-    }
-    block
-}
-
-#[test]
-fn list_says_weaker_for_the_two_weaker_kinds_only() {
-    let out = list(vec![
-        entry("a", Kind::EncryptedHost),
-        entry("b", Kind::Tpm),
-        entry("c", Kind::Unknown("future".into())),
-        entry("d", Kind::EncryptedTpm),
-    ]);
-    let a = block_of(&out, "a");
-    assert!(a.contains("weaker than a TPM key"), "{a}");
-    assert!(a.contains("encrypted with the host key"), "{a}");
-    assert!(a.contains("no TPM"), "{a}");
-    let d = block_of(&out, "d");
-    assert!(d.contains("weaker than a TPM key"), "{d}");
-    assert!(d.contains("lacks a capability"), "{d}");
-    assert!(d.contains("bound to this TPM"), "{d}");
-    assert!(!d.contains("host key"), "{d}");
-    for id in ["b", "c"] {
-        let b = block_of(&out, id);
-        assert!(!b.contains("weaker"), "{b}");
-    }
 }
 
 #[test]

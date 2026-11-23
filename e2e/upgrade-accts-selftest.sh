@@ -30,7 +30,7 @@ cp "$A/bob-new.der" "$A/before/bob-rsa1.der"
 list() { # USER ID...: the shape of `custodio list`
     local u=$1
     shift
-    for id in "$@"; do printf 'id: %s\n  type: x\n  subject: CN=%s-%s\n' "$id" "$u" "$id"; done
+    for id in "$@"; do printf '%s  x  encrypted-host  %s-%s  2030-01-01\n' "$id" "$u" "$id"; done
 }
 list alice ec1 rsa1 > "$A/before/alice.list"
 list bob bobonly rsa1 > "$A/before/bob.list"
@@ -78,15 +78,18 @@ variant() { # NAME: ACC copy in $tmp/v-NAME
 }
 # lists
 variant foreign
-printf 'id: bobonly\n  type: x\n' >> "$tmp/v-foreign/after/alice.list"
+printf 'bobonly  x  encrypted-host  y  2030-01-01\n' >> "$tmp/v-foreign/after/alice.list"
 rejects "a key of the other account in a list" "shows bobonly, which is not one of his or her keys" acct_after_problems "$tmp/v-foreign"
-variant extra; printf 'id: zzz\n' >> "$tmp/v-extra/before/bob.list"
+variant extra; printf 'zzz  x  encrypted-host  y  2030-01-01\n' >> "$tmp/v-extra/before/bob.list"
 rejects "an extra key" "shows zzz" acct_seed_problems "$tmp/v-extra"
+# A subject that tries to forge a row is escaped by the CLI to one line: it adds no key.
+printf 'ec1  x  encrypted-host  CN=y\\x0abobonly  x  encrypted-host  z  2030-01-01\nrsa1  x  encrypted-host  q  2030-01-01\n' > "$tmp/hostile.list"
+[ "$(acct_ids_of "$tmp/hostile.list")" = "ec1 rsa1" ] || { echo "upgrade-accts-selftest: FAIL: a hostile subject forged a key: $(acct_ids_of "$tmp/hostile.list")"; exit 1; }
 variant missing; list bob rsa1 > "$tmp/v-missing/after/bob.list"
 rejects "a missing key" "the list does not show bobonly" acct_after_problems "$tmp/v-missing"
 variant bobasalice; cp "$A/before/bob.list" "$tmp/v-bobasalice/after/alice.list"
 rejects "bob's list taken as alice's" "alice: the list shows bobonly" acct_after_problems "$tmp/v-bobasalice"
-variant listchanged; sed -i 's/CN=alice-ec1/CN=other/' "$tmp/v-listchanged/after/alice.list"
+variant listchanged; sed -i 's/alice-ec1/other/' "$tmp/v-listchanged/after/alice.list"
 rejects "a subject that changed" "alice: the list after the upgrade differs" acct_after_problems "$tmp/v-listchanged"
 variant nolist; rm "$tmp/v-nolist/after/alice.list"
 rejects "no list" "missing or empty" acct_after_problems "$tmp/v-nolist"

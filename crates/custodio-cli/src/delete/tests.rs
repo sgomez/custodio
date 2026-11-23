@@ -71,7 +71,7 @@ fn a_yes_makes_one_call_with_the_id_and_prints_the_line() {
     let (result, out) = run(Some("yes\n"), &rec);
     assert!(result.is_ok());
     assert_eq!(*rec.calls.borrow(), ["my-key"]);
-    assert_eq!(out, "Deleted key 'my-key'.\n");
+    assert_eq!(out, crate::report::render(&[deleted_line("my-key")], false));
 }
 
 #[test]
@@ -135,9 +135,9 @@ fn delete_takes_exactly_one_id() {
         parse(&["delete", "my-key"]),
         Ok(crate::Command::Delete("my-key".into()))
     );
+    assert_eq!(parse(&["delete"]), Err(crate::ArgError::Bare("delete")));
     for args in [
-        &["delete"][..],
-        &["delete", "a", "b"],
+        &["delete", "a", "b"][..],
         &["delete", "--yes", "a"],
         &["delete", "-y", "a"],
         &["delete", "--force", "a"],
@@ -147,7 +147,10 @@ fn delete_takes_exactly_one_id() {
         &["delete", "--", "a", "b"],
         &["delete", "--", "--", "--yes"],
     ] {
-        assert_eq!(parse(args), Err(crate::ArgError::Usage), "{args:?}");
+        assert!(
+            matches!(parse(args), Err(crate::ArgError::CommandUsage("delete", _))),
+            "{args:?}"
+        );
     }
 }
 
@@ -161,10 +164,16 @@ fn a_double_dash_lets_an_id_start_with_a_dash() {
         );
     }
     // Without it, the same words are options and stay usage errors.
-    assert_eq!(parse(&["delete", "-k"]), Err(crate::ArgError::Usage));
+    assert_eq!(
+        parse(&["delete", "-k"]),
+        Err(crate::ArgError::CommandUsage(
+            "delete",
+            crate::Wrong::UnknownOption("-k".into())
+        ))
+    );
 }
 
 #[test]
 fn the_usage_text_names_delete() {
-    assert!(crate::USAGE.contains("custodio delete <key id>"));
+    assert!(crate::usage().contains("custodio delete [--] <key id>"));
 }

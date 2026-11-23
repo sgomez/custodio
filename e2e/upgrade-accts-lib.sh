@@ -10,7 +10,7 @@
 ACCT_ALICE_IDS="ec1 rsa1"
 ACCT_BOB_IDS="bobonly rsa1"
 
-acct_ids_of() { sed -n 's/^id: //p' "$1" | sort | tr '\n' ' ' | sed 's/ $//'; }
+acct_ids_of() { awk 'NF == 0 || /^You have no keys/ { exit } { print $1 }' "$1" | sort | tr '\n' ' ' | sed 's/ $//'; }
 acct_sha() { sha256sum < "$1" | cut -d' ' -f1; }
 acct_expect() { # USER: the ids of the account
     case $1 in alice) echo "$ACCT_ALICE_IDS" ;; bob) echo "$ACCT_BOB_IDS" ;; *) return 1 ;; esac

@@ -11,7 +11,7 @@ section: utils
 priority: optional
 maintainer: rFirma <info@rfirma.com>
 vendor: rFirma
-homepage: https://github.com/rfirma/custodio
+homepage: https://github.com/sgomez/custodio
 license: EUPL-1.2
 description: |
   Signing service for PKCS#12 keys
@@ -153,6 +153,26 @@ contents:
   - src: target/man/custodio.1.gz
     dst: /usr/share/man/man1/custodio.1.gz
     file_info: {mode: 0644, owner: root, group: root}
+  # Completions (F191, F205): bash and fish load theirs from the same directory in every format. zsh does not: the default fpath of Debian and
+  # Ubuntu has vendor-completions, that of Fedora, Alma and Arch has site-functions (docs/decisions/packaging.md; packaging/parity-exceptions.txt).
+  - src: packaging/completions/custodio.bash
+    dst: /usr/share/bash-completion/completions/custodio
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/completions/custodio.fish
+    dst: /usr/share/fish/vendor_completions.d/custodio.fish
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/completions/_custodio
+    dst: /usr/share/zsh/vendor-completions/_custodio
+    packager: deb
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/completions/_custodio
+    dst: /usr/share/zsh/site-functions/_custodio
+    packager: rpm
+    file_info: {mode: 0644, owner: root, group: root}
+  - src: packaging/completions/_custodio
+    dst: /usr/share/zsh/site-functions/_custodio
+    packager: archlinux
+    file_info: {mode: 0644, owner: root, group: root}
 
 # nfpm does not compute shared-library dependencies: libc and libgcc_s are what `readelf -d` shows on the binaries.
 overrides:
@@ -163,7 +183,7 @@ overrides:
       - polkitd (>= 124)
       - dbus-system-bus
       - p11-kit
-      - libnss3-tools # modutil, which `custodio register` runs (F172, F184)
+      - libnss3-tools # modutil, which `custodio setup browsers enable` runs (F172, F184)
       # TPM2 Software Stack (F125): the three linked libraries, the TCTI that libtss2-tctildr loads by dlopen, and tpm-udev, which creates
       # the `tss` group the unit names (SupplementaryGroups=tss). The same t64 names on debian13 and ubuntu2604.
       - libtss2-esys-3.0.2-0t64
@@ -189,7 +209,7 @@ overrides:
       - systemd >= 257 # user-scoped systemd-creds Varlink calls (F110: alma10 257, fedora44 259)
       - dbus
       - p11-kit
-      - nss-tools # modutil, which `custodio register` runs (F172, F184)
+      - nss-tools # modutil, which `custodio setup browsers enable` runs (F172, F184)
       - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:
@@ -205,7 +225,7 @@ overrides:
       - systemd>=257 # user-scoped systemd-creds Varlink calls (F110: arch decided as ubuntu2604)
       - dbus
       - p11-kit
-      - nss # modutil, which `custodio register` runs (F172, F184)
+      - nss # modutil, which `custodio setup browsers enable` runs (F172, F184)
       - tpm2-tss # libtss2-esys, -tctildr, -mu and the tcti-device; creates the `tss` group the unit names (F109, F125)
       - util-linux # setpriv for the pkttyagent helper (F89); pkttyagent comes with polkit above
     scripts:

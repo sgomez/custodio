@@ -122,12 +122,15 @@ expect_bad tc samelist "$tmp/l-one" "$tmp/l1" a b
 expect_ok tc gone "$tmp/l-gone" a b
 expect_bad tc gone "$tmp/l1" a b
 expect_bad tc gone "$tmp/l-one" a b
-printf 'id: a\n  type: rsa2048\n  kind: tpm\n\nid: b\n  type: ecdsa-p256\n  kind: tpm\n' > "$tmp/c-ok"
-printf 'id: a\n  type: rsa2048\n  kind: tpm\n\nid: b\n  type: ecdsa-p256\n  kind: encrypted-tpm\n' > "$tmp/c-kind"
-printf 'id: a\n  type: rsa2048\n  kind: tpm\n' > "$tmp/c-one"
+printf 'a  rsa2048  tpm  CN=a  2030-01-01\nb  ecdsa-p256  tpm  CN=b  2030-01-01\n' > "$tmp/c-ok"
+printf 'a  rsa2048  tpm  CN=a  2030-01-01\nb  ecdsa-p256  encrypted-tpm  CN=b  2030-01-01\n' > "$tmp/c-kind"
+printf 'a  rsa2048  tpm  CN=a  2030-01-01\n' > "$tmp/c-one"
+# a hostile subject is one escaped line: it cannot add a row for b
+printf 'a  rsa2048  tpm  CN=y\\x0ab  ecdsa-p256  tpm  z  2030-01-01\n' > "$tmp/c-forged"
 expect_ok tc clilist "$tmp/c-ok" tpm a b
 expect_bad tc clilist "$tmp/c-kind" tpm a b
 expect_bad tc clilist "$tmp/c-one" tpm a b
+expect_bad tc clilist "$tmp/c-forged" tpm a b
 expect_bad tc clilist "$tmp/missing" tpm a b
 # the state directory
 printf 'f /var/lib/custodio/1000/a 600 100\nabc  /var/lib/custodio/1000/a\n' > "$tmp/s1"

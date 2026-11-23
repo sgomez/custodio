@@ -85,7 +85,7 @@ replace)
         rd_not_sha_problems "the replace changed the certificate" "$RD/after.der" "$RD/before.der"
         ops_differ_problems "replace-same (snapshot)" "$RD/r0.user" "$RD/r1.user")"
     judge replace-list-shows-new "$(rd_subject_problems "$RD/list-after" rep-key f93-new f93-old
-        grep -qxF '  type: rsa2048' "$RD/list-after" || echo "type of rep-key is not rsa2048 or the block is gone"
+        awk '$1 == "rep-key" && $2 == "rsa2048" { found = 1 } END { exit !found }' "$RD/list-after" || echo "type of rep-key is not rsa2048 or the row is gone"
         list_problems "$RD/list-after" +rep-key)"
     judge replace-module-shows-new "$(rd_sha_problems "module certificate after the replace" "$RD/after.der" "$RD/cert2.der"
         rd_not_sha_problems "module certificate is not the old one" "$RD/after.der" "$RD/cert1.der")"

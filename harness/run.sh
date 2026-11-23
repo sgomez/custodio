@@ -23,8 +23,14 @@ if [[ $engine == *podman ]]; then
   userns=(--userns=keep-id --cap-add=SYS_ADMIN '--security-opt=unmask=/proc/*' --systemd=always) target_opts=:U
   # bash stays PID 1, not exec'd: it reaps daemonized orphans (the VM stubs); `just` would leave them zombies, and
   # systemd=always refuses --init.
-  prelude=(bash -c 'sudo chown -R dev:dev /sys/fs/cgroup || exit; "$@"; exit' _)
+  # shellcheck disable=SC2016 # the container's bash expands these
+  prelude=(bash -c 'sudo chown -R dev:dev /sys/fs/cgroup || exit
+    for t in /images/*.tar; do [[ -e $t ]] && { podman load -q -i "$t" >/dev/null || exit; }; done
+    "$@"; exit' _)
 fi
+# Saved images the nested podman loads instead of rebuilding them, e.g. the Arch ones when archive.archlinux.org is down.
+images_dir="${XDG_CACHE_HOME:-$HOME/.cache}/custodio-images"
+[[ $engine == *podman && -d $images_dir ]] && userns+=(-v "$images_dir:/images:ro")
 # The VM target needs /dev/kvm (docs/findings/F150.md). Rootless podman bind-mounts the host node; keep-groups keeps a `kvm` group access
 # through the user namespace. Without the device on this host nothing is added, and `just vm-host-check` in the container reports it.
 if [[ $engine == *podman && -e /dev/kvm ]]; then userns+=(--device /dev/kvm --group-add keep-groups); fi

@@ -138,6 +138,8 @@ package-gate-test:
     scripts/test-package-scripts.sh
     scripts/test-check-packages.sh
     scripts/test-check-packages-deps.sh
+    scripts/test-check-packages-pam.sh
+    scripts/test-check-packages-completions.sh
     scripts/test-check-parity.sh
     scripts/test-glibc-ceiling.sh
     scripts/test-snap-base-fit.sh
@@ -160,6 +162,8 @@ test-scripts:
     scripts/test-sysusers-sync.sh
     scripts/check-tpm-install-sync.sh
     scripts/test-tpm-install-sync.sh
+    scripts/check-shell-install-sync.sh
+    scripts/test-shell-install-sync.sh
     scripts/test-with-swtpm.sh
     scripts/test-vm-credread.sh
     scripts/test-vm-host-check.sh
@@ -168,6 +172,9 @@ test-scripts:
     scripts/test-bus-check.sh
     scripts/test-deps-check.sh
     scripts/test-docs-api.sh
+    scripts/test-docs-fingerprint.sh
+    scripts/test-docs-guide.sh
+    scripts/test-docs-manual-m7.sh
     scripts/test-docs-install.sh
     scripts/test-docs-readme.sh
     scripts/test-docs-install-register.sh
@@ -190,6 +197,7 @@ test-scripts:
     scripts/test-e2e-vm-kinds.sh
     scripts/test-e2e-vm-silent.sh
     scripts/test-e2e-vm-snap.sh
+    scripts/test-e2e-vm-fingerprint.sh
     scripts/test-e2e-select.sh
     scripts/test-e2e-selftests.sh
     scripts/test-e2e-catalog.sh
@@ -201,6 +209,8 @@ test-scripts:
     scripts/test-e2e-tpmfail.sh
     scripts/test-e2e-tpmclear.sh
     scripts/test-e2e-tpmslots.sh
+    scripts/test-e2e-fingerprint.sh
+    scripts/test-e2e-doctor.sh
     scripts/test-e2e-journalkind.sh
     scripts/test-e2e-upgradekinds.sh
     scripts/test-e2e-upgrade-purge-judge.sh
@@ -213,12 +223,26 @@ test-scripts:
     scripts/test-check-snap-sockets.sh
     scripts/test-check-test-socket-dir.sh
     scripts/test-check-test-label.sh
+    scripts/test-check-fixture-seams.sh
 
 # The shellcheck file list covers scripts by extension or shebang.
 shell-scripts-test:
     scripts/test-shell-scripts.sh
     scripts/test-check-unit-hardening.sh
     scripts/test-tree-hash.sh
+    scripts/test-check-fixture-seams.sh
+
+# F197: the fixture seam of custodio-cli (feature `fixture-root`, variables CUSTODIO_FIXTURE_*) is not in what ships: the release binary,
+# built the way the packages build it (`cargo build --release --locked`, default features), has none of its names, and no shipped file or
+# manifest enables it.
+fixture-seams:
+    cargo build --release --locked -p custodio-cli
+    scripts/check-fixture-seams.sh target/release/custodio-cli
+    scripts/check-fixture-seams.sh
+    # The check sees the real seam: a debug build with the feature must fail it, naming all three variables.
+    cargo build --locked -p custodio-cli --features fixture-root
+    if scripts/check-fixture-seams.sh target/debug/custodio-cli 2> target/fixture-seams.err; then echo "fixture-seams: the check passed a build that has the seam" >&2; exit 1; fi
+    for v in CUSTODIO_FIXTURE_ROOT CUSTODIO_FIXTURE_EUID CUSTODIO_FIXTURE_FAIL; do grep -q "$v" target/fixture-seams.err || { echo "fixture-seams: the check did not see $v in a build with the seam" >&2; exit 1; }; done
 
 # The exposure of the service is not above M5's 0.7 (tenths of the 0-10 score of `systemd-analyze security`: 7; lower is safer). F170 measured
 # `PrivateUsers=identity` at 0.7 and `no` at 0.8, so the uid route cannot be paid for by loosening something else.
@@ -233,7 +257,7 @@ snap-sockets:
 socket-dir-override:
     scripts/check-test-socket-dir.sh
 
-# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access (each once, no raw TPM node, no TCTI override), so the
+# The unit keeps ProtectProc=invisible, ProcSubset=pid, PrivateUsers=identity, PrivateDevices=yes and the F109 TPM access and F214's LimitCORE=0 and MemorySwapMax=0 (each once, no raw TPM node, no TCTI override), so the
 # pidfd cross-check is not paid for by loosening the unit.
 unit-hardening:
     scripts/check-unit-hardening.sh
@@ -330,7 +354,9 @@ mutants *args:
     cargo mutants -p custodio-pkcs11 --file crates/custodio-pkcs11/src/composed.rs --file crates/custodio-pkcs11/src/module/mechanism.rs --file crates/custodio-pkcs11/src/backend.rs --file crates/custodio-pkcs11/src/backend/socket.rs --no-shuffle --colors never --output target/mutants-pkcs11 "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-peer --file crates/custodio-peer/src/lib.rs --no-shuffle --colors never --output target/mutants-peer "${extra[@]}" "$@" || status=1
     cargo mutants -p custodio-client --file crates/custodio-client/src/kind.rs --no-shuffle --colors never --output target/mutants-client "${extra[@]}" "$@" || status=1
-    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
+    # custodio-cli: apply_owner (chown root:root), apply_label (SELinux) and restorecon_path (the absolute path of restorecon) of fingerprint_cmd.rs are only a system call each and need real root and
+    # SELinux; F199 proves them on a real /etc. They are excluded by name (three functions), and nothing else is (the label step's failure path is tested).
+    cargo mutants -p custodio-cli --file crates/custodio-cli/src/storage.rs --file crates/custodio-cli/src/register_native.rs --file crates/custodio-cli/src/register_cli.rs --file crates/custodio-cli/src/register_snap.rs --file crates/custodio-cli/src/parse.rs --file crates/custodio-cli/src/help.rs --file crates/custodio-cli/src/colour.rs --file crates/custodio-cli/src/error.rs --file crates/custodio-cli/src/cert_text.rs --file crates/custodio-cli/src/list.rs --file crates/custodio-cli/src/fingerprint_decide.rs --file crates/custodio-cli/src/fingerprint_cmd.rs --file crates/custodio-cli/src/doctor_decide.rs --file crates/custodio-cli/src/doctor_later.rs --file crates/custodio-cli/src/doctor_cmd.rs --file crates/custodio-cli/src/journald_conf.rs --exclude-re 'fingerprint_cmd\.rs.*(replace (apply_(owner|label)|restorecon_path)\b| in apply_(owner|label)$)' --no-shuffle --colors never --output target/mutants-cli "${extra[@]}" "$@" || status=1
     # A build that ran out of disk counts as "unviable", which passes: void the run instead.
     for out in target/mutants target/mutants-pkcs11 target/mutants-peer target/mutants-client target/mutants-cli; do
         if grep -rqs 'No space left on device' "$out/mutants.out/log"; then
@@ -541,7 +567,7 @@ fuzz-build:
 # expected target that `cargo fuzz list` does not report, and when no target ran. Corpus and artifacts go to a temporary
 # directory, so the local corpus is neither read nor changed. `cargo fuzz run` builds first, so the binary is never stale.
 # `expected` is overridable for the negative control: `just fuzz-smoke "a b c"`.
-fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules":
+fuzz-smoke expected="delete_args replace_cert_args app_id dbus_args p12_parse pkcs11_args tpm_blob cred_frame record_decode tpm_sign_input peer_label socket_message profile_index nss_modules cli_args cert_fields pam_file journald_conf":
     #!/usr/bin/env bash
     set -euo pipefail
     runs=2000

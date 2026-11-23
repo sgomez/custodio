@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 ctrlc = { version = "3.5.2", features = ["termination"] }
-custodio-client = { path = "../custodio-client", version = "0.8.0" }
+custodio-client = { path = "../custodio-client", version = "0.9.0" }
 rustix = { version = "1.1.6", features = [
   "termios",
   "fs",
@@ -21,9 +21,22 @@ rustix = { version = "1.1.6", features = [
   "system",
 ] }
 secrecy = "0.10.3"
+sha2 = "0.11.1"
 x509-cert = { version = "0.3.0", default-features = false }
 zbus = { version = "6", default-features = false, features = ["comms", "proxy", "default-rt"] }
 zeroize = "1.9.1"
 
+[features]
+# Tests only: points `custodio fingerprint` at a fixture root (CUSTODIO_FIXTURE_ROOT, _EUID, _FAIL).
+# Never default, never in a package; `just fixture-seams` fails a release build that has it.
+fixture-root = []
+
 [dev-dependencies]
+zbus = { version = "6", default-features = false, features = [
+  "comms",
+  "proxy",
+  "default-rt",
+  "service",
+] }
+custodio-cli = { path = ".", features = ["fixture-root"] }
 tempfile = "3.27.0"

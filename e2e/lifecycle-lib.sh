@@ -105,6 +105,15 @@ leftover_problems() {
     [ "$bad" -eq 0 ]
 }
 
+# runtime_leftover_problems [RUN]: the Firefox snap socket and its directory, made by systemd and tmpfiles.d rather than unpacked, are gone.
+# RUN replaces /run for fixtures.
+runtime_leftover_problems() {
+    local run=${1:-/run} bad=0
+    if [ -e "$run/snap.firefox/custodio.sock" ]; then echo "leftover: file /run/snap.firefox/custodio.sock"; bad=1; fi
+    if [ -d "$run/snap.firefox" ]; then echo "leftover: directory /run/snap.firefox"; bad=1; fi
+    [ "$bad" -eq 0 ]
+}
+
 # --- the service --------------------------------------------------------------------------------------------------------------
 
 # stopped_problems ACTIVE MAINPID PROC OLD_PID: the unit's ActiveState is not active, MainPID is 0, the pid that ran before is gone.

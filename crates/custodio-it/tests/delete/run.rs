@@ -291,5 +291,5 @@ pub fn delete_args(id: &str) -> [&str; 2] {
 }
 
 pub fn message(failure: &ServiceFailure) -> String {
-    format!("custodio: {failure}\n")
+    format!("custodio: {failure}\n{}\n", failure.next_step())
 }

@@ -7,6 +7,14 @@ DAEMON = {
     "arch": "/usr/lib/custodio/custodiod",
 }
 
+# The zsh completion of each format (F191, F205): the default fpath of Debian and Ubuntu has vendor-completions, that of Fedora, Alma and Arch has
+# site-functions. packaging/parity-exceptions.txt lists the two paths.
+ZSH = {
+    "deb": "/usr/share/zsh/vendor-completions/_custodio",
+    "rpm": "/usr/share/zsh/site-functions/_custodio",
+    "arch": "/usr/share/zsh/site-functions/_custodio",
+}
+
 # Installed files of every package, the service binary apart (DAEMON): path -> mode.
 FILES = {
     "/usr/bin/custodio": 0o755,
@@ -26,6 +34,8 @@ FILES = {
     "/usr/share/licenses/custodio/LICENSE": 0o644,
     "/usr/share/doc/custodio/copyright": 0o644,
     "/usr/share/man/man1/custodio.1.gz": 0o644,
+    "/usr/share/bash-completion/completions/custodio": 0o644,
+    "/usr/share/fish/vendor_completions.d/custodio.fish": 0o644,
     "/usr/share/doc/custodio/changelog.Debian.gz": 0o644,
 }
 
@@ -90,7 +100,7 @@ TSS_LIBS = {
 }
 SYSTEMD = {"deb": "systemd (>= 257)", "rpm": "systemd >= 257", "arch": "systemd>=257"}
 
-# The package that ships `modutil` (F172, verified there): `custodio register` runs it to add the module to the NSS databases of Firefox
+# The package that ships `modutil` (F172, verified there): `custodio setup browsers enable` runs it to add the module to the NSS databases of Firefox
 # and Thunderbird (F183). The deb names libnss3-tools, the rpm nss-tools, Arch's nss. scripts/check-register-deps.sh compares this with nfpm.yaml.
 MODUTIL = {"deb": "libnss3-tools", "rpm": "nss-tools", "arch": "nss"}
 

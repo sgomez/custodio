@@ -1,9 +1,9 @@
 """Derive a throwaway nfpm config from packaging/nfpm.yaml for a fixture case (run as `python3 -I`).
 
 usage: nfpm_edit.py SRC DST OP [ARG...]
-Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
+Ops: none | oldpath | daemon FMT PATH | unit-src FMT SRC | all-formats DST | drop DST | drop-for FMT DST | redst FMT OLD NEW | unpackager DST | mode DST MODE | owner DST NAME | group DST NAME | dup DST | add DST [MODE]
      | link DST TARGET | dir DST MODE [OWNER] | type DST TYPE | override-contents FMT | override-unknown FMT | dep-add FMT DEP | dep-del FMT DEP
-     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | recommends-add FMT DEP | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE
+     | dep-set FMT OLD NEW | script-del FMT KEY | script-add FMT KEY | provides-add FMT ENTRY | recommends-add FMT DEP | predep-add DEP | predep-set OLD NEW | predep-del DEP | predep-to-depends DEP | script-set FMT KEY FILE | scripts-dir DIR
 """
 import sys
 
@@ -31,6 +31,18 @@ PACKAGER = {"deb": "deb", "rpm": "rpm", "arch": "archlinux", "archlinux": "archl
 if op == "drop":
     for e in entries(args[0]):
         contents.remove(e)
+elif op == "drop-for":  # drop-for FMT DST: the package of that format lacks DST, the others keep it
+    fmt = PACKAGER[args[0]]
+    for e in entries(args[1]):
+        if e.get("packager") is None:
+            contents.remove(e)
+            contents.extend({**e, "packager": other} for other in ("deb", "rpm", "archlinux") if other != fmt)
+        elif e["packager"] == fmt:
+            contents.remove(e)
+elif op == "redst":  # redst FMT OLD NEW: the entry of that format for OLD is installed at NEW
+    for e in entries(args[1]):
+        if e.get("packager") == PACKAGER[args[0]]:
+            e["dst"] = args[2]
 elif op == "unpackager":  # an Arch-only file listed for every format
     entry(args[0]).pop("packager")
 elif op == "mode":
@@ -104,6 +116,12 @@ elif op == "script-add":  # a script file of the real set, under a key the gate 
     target[args[1]] = ov["scripts"].get("postinstall", "packaging/deb/postinst")
 elif op == "script-set":  # a script file of the test, under a key the real set has
     cfg["overrides"][args[0]]["scripts"][args[1]] = args[2]
+elif op == "scripts-dir":  # scripts-dir DIR: every DIR/FMT-KEY (FMT deb, rpm or archlinux, KEY preinstall, postinstall, preremove or postremove) is the script of that format and key
+    import os
+    for fmt in ("deb", "rpm", "archlinux"):
+        for key in ("preinstall", "postinstall", "preremove", "postremove"):
+            if os.path.exists(f"{args[0]}/{fmt}-{key}"):
+                cfg["overrides"][fmt]["scripts"][key] = f"{args[0]}/{fmt}-{key}"
 elif op != "none":
     sys.exit("nfpm_edit: unknown op " + op)
 yaml.safe_dump(cfg, open(dst, "w"), sort_keys=False)

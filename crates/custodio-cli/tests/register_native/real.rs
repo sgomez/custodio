@@ -35,7 +35,13 @@ fn nss_sees_the_custodio_token_and_the_certificate() {
     let plain = f.home().join("plain.default");
     new_profile(&plain);
     let out = f.binary(
-        &["register", "--module", m.to_str().unwrap()],
+        &[
+            "setup",
+            "browsers",
+            "enable",
+            "--module",
+            m.to_str().unwrap(),
+        ],
         &real_path(),
         &[],
     );

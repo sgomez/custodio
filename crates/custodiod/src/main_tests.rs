@@ -104,7 +104,11 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
-                || custodiod::storage::StateStorage::Unknown,
+                || {
+                    custodiod::storage::Diagnosis::unknown(
+                        custodiod::storage::UnknownReason::NoMount,
+                    )
+                },
             )
             .await?;
             let client = Builder::address(address.as_str()).build().await?;
@@ -173,7 +177,11 @@ mod wiring {
                 Arc::new(JournalSink::new(&journal)),
                 Arc::new(custodiod::creds::memory::MemoryCreds::host()),
                 Arc::new(custodiod::tpm::open::NoTpm),
-                || custodiod::storage::StateStorage::Unknown,
+                || {
+                    custodiod::storage::Diagnosis::unknown(
+                        custodiod::storage::UnknownReason::NoMount,
+                    )
+                },
             )
             .await?;
             assert!(service.unique_name().is_some());
@@ -205,4 +213,14 @@ mod wiring {
         );
         Ok(())
     }
+}
+
+#[test]
+fn core_limit_and_dumpable() -> TestResult {
+    use rustix::process::{DumpableBehavior, Resource, dumpable_behavior, getrlimit};
+    harden()?;
+    let limit = getrlimit(Resource::Core);
+    assert_eq!((limit.current, limit.maximum), (Some(0), Some(0)));
+    assert_eq!(dumpable_behavior()?, DumpableBehavior::NotDumpable);
+    Ok(())
 }

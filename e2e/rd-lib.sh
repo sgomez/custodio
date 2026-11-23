@@ -23,10 +23,10 @@ rd_not_sha_problems() {
     [ -s "$3" ] || { echo "$1: $3 is empty or missing"; return; }
     if same_file "$2" "$3"; then echo "$1: $2 is the same certificate as $3"; fi
 }
-# rd_subject_problems LISTFILE ID WANT UNWANTED: the block of ID in `custodio list` has a subject line with WANT and without UNWANTED (the two must not contain each other)
+# rd_subject_problems LISTFILE ID WANT UNWANTED: the row of ID in `custodio list` has a subject cell (the fourth, cells are two spaces apart) with WANT and without UNWANTED (the two must not contain each other)
 rd_subject_problems() {
     local subject
-    subject=$(awk -v id="id: $2" '$0 == id { on = 1; next } /^id: / { on = 0 } on && /^  subject: / { print }' "$1")
+    subject=$(awk -F'  +' -v id="$2" 'NF == 0 { exit } $1 == id { print $4; exit }' "$1")
     [ -n "$subject" ] || { echo "$1: no subject line for $2"; return; }
     case $subject in *"$3"*) ;; *) echo "$2: subject '$subject' lacks '$3'" ;; esac
     case $subject in *"$4"*) echo "$2: subject '$subject' has '$4'" ;; esac

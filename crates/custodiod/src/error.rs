@@ -4,8 +4,9 @@
 //! The messages are for people and never contain key ids, paths, passwords, `.p12` bytes, parser
 //! errors or any input: the variant is all a reply says. Names are only ever added to.
 //!
-//! A `.p12` with no private key, several private keys, or a key without a certificate is reported
-//! as [`ServiceError::WrongPasswordOrBadP12`]: the file cannot be used as an import.
+//! A `.p12` whose MAC does not verify is [`ServiceError::WrongPassword`]; one that is not readable PKCS#12, or
+//! holds no private key, several, or a key without a certificate, is [`ServiceError::UnreadableP12`]; one with no
+//! MAC that does not decrypt, where the library cannot tell, stays [`ServiceError::WrongPasswordOrBadP12`].
 
 use std::fmt;
 
@@ -13,7 +14,8 @@ use custodio_client::{
     ERROR_AUDIT_UNAVAILABLE, ERROR_AUTHORIZATION_UNAVAILABLE, ERROR_CERTIFICATE_MISMATCH,
     ERROR_CREDENTIALS_UNAVAILABLE, ERROR_INTERNAL, ERROR_INVALID_ARGS, ERROR_KEY_ID_TAKEN,
     ERROR_KEY_LOST, ERROR_NO_SUCH_KEY, ERROR_POLKIT_DENIED, ERROR_TEMPORARILY_UNAVAILABLE,
-    ERROR_TPM_FAILED, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD_OR_BAD_P12,
+    ERROR_TPM_FAILED, ERROR_UNREADABLE_P12, ERROR_UNSUPPORTED_KEY_TYPE, ERROR_WRONG_PASSWORD,
+    ERROR_WRONG_PASSWORD_OR_BAD_P12,
 };
 use zbus::message::{Header, Message};
 use zbus::names::ErrorName;
@@ -33,6 +35,10 @@ pub enum ServiceError {
     PolkitDenied,
     AuthorizationUnavailable,
     WrongPasswordOrBadP12,
+    /// The `.p12` has a MAC and it does not verify with the password.
+    WrongPassword,
+    /// The `.p12` is not readable PKCS#12, or holds no usable key and certificate, whatever the password.
+    UnreadableP12,
     UnsupportedKeyType,
     CertificateMismatch,
     AuditUnavailable,
@@ -49,13 +55,15 @@ pub enum ServiceError {
 
 impl ServiceError {
     /// Every variant.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::InvalidArgs,
         Self::NoSuchKey,
         Self::KeyIdTaken,
         Self::PolkitDenied,
         Self::AuthorizationUnavailable,
         Self::WrongPasswordOrBadP12,
+        Self::WrongPassword,
+        Self::UnreadableP12,
         Self::UnsupportedKeyType,
         Self::CertificateMismatch,
         Self::AuditUnavailable,
@@ -76,6 +84,8 @@ impl ServiceError {
             Self::PolkitDenied => ERROR_POLKIT_DENIED,
             Self::AuthorizationUnavailable => ERROR_AUTHORIZATION_UNAVAILABLE,
             Self::WrongPasswordOrBadP12 => ERROR_WRONG_PASSWORD_OR_BAD_P12,
+            Self::WrongPassword => ERROR_WRONG_PASSWORD,
+            Self::UnreadableP12 => ERROR_UNREADABLE_P12,
             Self::UnsupportedKeyType => ERROR_UNSUPPORTED_KEY_TYPE,
             Self::CertificateMismatch => ERROR_CERTIFICATE_MISMATCH,
             Self::AuditUnavailable => ERROR_AUDIT_UNAVAILABLE,
@@ -97,6 +107,8 @@ impl ServiceError {
             Self::PolkitDenied => "not authorized",
             Self::AuthorizationUnavailable => "authorization unavailable",
             Self::WrongPasswordOrBadP12 => "wrong password or unreadable .p12 file",
+            Self::WrongPassword => "wrong password for the .p12 file",
+            Self::UnreadableP12 => "unreadable .p12 file or no usable key and certificate",
             Self::UnsupportedKeyType => "unsupported key type",
             Self::CertificateMismatch => "certificate does not match the key",
             Self::AuditUnavailable => "audit unavailable",
@@ -152,10 +164,12 @@ impl From<&ImportError> for ServiceError {
     fn from(e: &ImportError) -> Self {
         match e {
             ImportError::TooLarge => Self::InvalidArgs,
-            ImportError::Parse(_)
+            ImportError::WrongPassword => Self::WrongPassword,
+            ImportError::WrongPasswordOrBad => Self::WrongPasswordOrBadP12,
+            ImportError::Unreadable(_)
             | ImportError::NoPrivateKey
             | ImportError::MultipleKeys
-            | ImportError::NoCertificate => Self::WrongPasswordOrBadP12,
+            | ImportError::NoCertificate => Self::UnreadableP12,
             ImportError::CertificateMismatch => Self::CertificateMismatch,
             ImportError::UnsupportedKey(_) => Self::UnsupportedKeyType,
             ImportError::Tpm(_) => Self::TpmFailed,

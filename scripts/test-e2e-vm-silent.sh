@@ -16,7 +16,8 @@ CASES="vm-silent-import-fails vm-silent-journal-cause vm-silent-nothing-stored v
 source "$LIB"
 
 # ---- the judgements
-ETPM_TEXT="Storage: encrypted-tpm. This key is weaker than a TPM key: the TPM of this machine lacks a capability the key type needs, so the key is a file encrypted with a key bound to this TPM."
+# the key line of `custodio import` for an encrypted-tpm key, and its note
+ETPM_TEXT="warn  $ID  rsa2048  encrypted-tpm\n      Root can use this key while the machine runs.\n      Delete the original: shred -u x.p12\n      Restart Firefox, and any program using Custodio, to see the key."
 jline() { # CAUSE: one import entry of the key
     printf '{"_SYSTEMD_UNIT":"custodio.service","CUSTODIO_OPERATION":"import","CUSTODIO_KEY_ID":"%s","CUSTODIO_OUTCOME":"storage_failure","CUSTODIO_CAUSE":"%s"}\n' "$ID" "$1"
 }
@@ -24,14 +25,14 @@ mkgood() { # DIR
     local d=$1 h=$1/hidden r=$1/restored
     mkdir -p "$h" "$r"
     echo partial > "$h/has2.out"; echo 1 > "$h/has2.rc"
-    printf "Error: the credential could not be sealed (com.rfirma.Custodio1.Error.CredentialsUnavailable)\n" > "$h/import.out"; echo 1 > "$h/import.rc"
+    printf "custodio: the credential service is unavailable; nothing was stored\n" > "$h/import.out"; echo 1 > "$h/import.rc"
     printf 'd /var/lib/custodio 700 4096\nf /var/lib/custodio/other.rec 600 120\nabc123  /var/lib/custodio/other.rec\n' > "$h/state-before"
     cp "$h/state-before" "$h/state-after"
     printf 'other\trsa2048\tencrypted-tpm\n' > "$h/list.out"
-    printf 'id: other\n  type: rsa2048\n  kind: encrypted-tpm\n' > "$h/cli-list.out"
+    printf 'other  rsa2048  encrypted-tpm  CN=o  2030-01-01\n' > "$h/cli-list.out"
     jline binding_mismatch > "$h/journal.json"
     echo yes > "$r/has2.out"; echo 0 > "$r/has2.rc"
-    printf "Imported key '%s' (rsa2048).\n%s\n" "$ID" "$ETPM_TEXT" > "$r/import.out"
+    printf '%b\n' "$ETPM_TEXT" > "$r/import.out"
     printf 'other\trsa2048\tencrypted-tpm\n%s\trsa2048\tencrypted-tpm\n' "$ID" > "$r/list.out"
     echo "reader: key $ID: ok" > "$r/reader.out"; echo 0 > "$r/reader.rc"
     : > "$r/restore.problems"
@@ -47,9 +48,9 @@ ctl() {
     out=$(vs_problems "$c" "$d" "$ID")
     [ -n "$out" ] || bad "control $n: the case $c accepts bad evidence"
 }
-ctl succeeds vm-silent-import-fails "printf \"Imported key '$ID' (rsa2048).\n$ETPM_TEXT\n\" > hidden/import.out; echo 0 > hidden/import.rc"
+ctl succeeds vm-silent-import-fails "printf '%b\n' '$ETPM_TEXT' > hidden/import.out; echo 0 > hidden/import.rc"
 ctl exit0 vm-silent-import-fails 'echo 0 > hidden/import.rc'
-ctl othererr vm-silent-import-fails 'echo "Error (com.rfirma.Custodio1.Error.TpmFailed)" > hidden/import.out'
+ctl othererr vm-silent-import-fails 'echo "custodio: the TPM failed or cannot be used; nothing was stored" > hidden/import.out'
 ctl hidden-yes vm-silent-import-fails 'echo yes > hidden/has2.out; echo 0 > hidden/has2.rc'
 ctl newfile vm-silent-nothing-stored 'echo "f /var/lib/custodio/vs-key.rec 600 900" >> hidden/state-after'
 ctl newsum vm-silent-nothing-stored 'echo "def456  /var/lib/custodio/vs-key.rec" >> hidden/state-after'
@@ -66,11 +67,11 @@ ctl stored vm-silent-journal-cause 'sed -i "s/storage_failure/stored/" hidden/jo
 ctl kind-in-entry vm-silent-journal-cause 'sed -i "s/}\$/,\"CUSTODIO_STORAGE_KIND\":\"encrypted-tpm\"}/" hidden/journal.json'
 for k in tpm encrypted-host encrypted-tpm; do
     ctl "left-api-$k" vm-silent-no-key "printf '$ID\trsa2048\t$k\n' >> hidden/list.out"
-    ctl "left-cli-$k" vm-silent-no-key "printf 'id: $ID\n  type: rsa2048\n  kind: $k\n' >> hidden/cli-list.out"
+    ctl "left-cli-$k" vm-silent-no-key "printf '$ID  rsa2048  $k  CN=o  2030-01-01\n' >> hidden/cli-list.out"
 done
-ctl weaker-in-text vm-silent-no-key 'echo "Storage: encrypted-host." >> hidden/import.out'
+ctl weaker-in-text vm-silent-no-key 'echo "warn  vs-key  rsa2048  encrypted-host" >> hidden/import.out'
 ctl lists-empty vm-silent-no-key ': > hidden/list.out; : > hidden/cli-list.out'
-ctl restored-fails vm-silent-restored-imports 'echo "Error (com.rfirma.Custodio1.Error.CredentialsUnavailable)" > restored/import.out'
+ctl restored-fails vm-silent-restored-imports 'echo "custodio: the credential service is unavailable; nothing was stored" > restored/import.out'
 for k in tpm encrypted-host; do
     ctl "restored-$k" vm-silent-restored-imports "sed -i s/encrypted-tpm/$k/g restored/import.out restored/list.out"
 done

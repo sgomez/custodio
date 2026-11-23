@@ -9,7 +9,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/same-file.sh"
 OPS_DENIED="error com.rfirma.Custodio1.Error.PolkitDenied"
 OPS_UNAVAILABLE="error com.rfirma.Custodio1.Error.AuthorizationUnavailable"
-OPS_WRONG_PASSWORD="error com.rfirma.Custodio1.Error.WrongPasswordOrBadP12"
+OPS_WRONG_PASSWORD="error com.rfirma.Custodio1.Error.WrongPassword"
 OPS_ACTION_IMPORT=com.rfirma.custodio.import-certificate
 OPS_ACTION_DELETE=com.rfirma.custodio.delete-certificate
 OPS_ACTION_REPLACE=com.rfirma.custodio.replace-certificate
@@ -34,13 +34,13 @@ ops_state_problems() {
     same_file "$before" "$after" || echo "$label: the state changed: $(diff "$before" "$after" | head -n 4 | tr '\n' '|')"
 }
 
-# ops_listed_problems FILE ID...: "+ID" must be listed in the snapshot (custodio list part: a line "id: ID"), "-ID" must not
+# ops_listed_problems FILE ID...: "+ID" must be listed in the snapshot (custodio list part: a row that starts with "ID" and two spaces), "-ID" must not
 ops_listed_problems() {
     local file=$1 spec id
     shift
     for spec in "$@"; do
         id=${spec#?}
-        if grep -qxF "id: $id" "$file"; then
+        if grep -q "^$id  " "$file"; then
             [ "${spec%"$id"}" = + ] || echo "$file lists $id"
         else
             [ "${spec%"$id"}" = - ] || echo "$file does not list $id"

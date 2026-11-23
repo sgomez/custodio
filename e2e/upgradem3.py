@@ -117,7 +117,12 @@ def cli_ids(path):
     t = read(path)
     if t is None:
         return None, [f"{path}: missing"]
-    return [m.group(1) for m in (re.fullmatch(r"id: (.*)", ln) for ln in t.split("\n")) if m], []
+    ids = []
+    for ln in t.split("\n"):
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        ids.append(re.split(r"  +", ln)[0])
+    return ids, []
 
 
 def listing_ids(d):

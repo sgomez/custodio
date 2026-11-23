@@ -1,0 +1,339 @@
+{
+  "milestone": "M7",
+  "features": [
+    {
+      "id": "F189",
+      "title": "Research: why the storage classifier answers unknown, then not-encrypted, for device 252:0",
+      "description": "docs/findings/F189.md, headed '## F189' and indexed in docs/findings.md, names the cause of custodiod classifying the same LVM volume on an unencrypted partition (device 252:0) as unknown at one start and not-encrypted at a later one (SPEC Design 4, open question 1), with evidence: a reproduction, the /sys/dev/block entries (dm/uuid, slaves) and the mountinfo the service read, or the code path in crates/custodiod/src/storage.rs, against the rules of docs/findings/F180.md. Its 'Decision: ' line says which route F196 takes: a fix so that the same storage gets the same answer at every start (and whether a unit setting is needed without weakening the unit), or a kept unknown whose reason the service exposes. Any F180 rule the evidence shows wrong is corrected there. If neither route is possible, the builder writes BLOCKED.md, as the spec's open question says. Changes no product code.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F189.md && grep -q '^## F189' \"$f\" && for w in '252:0' '/sys/dev/block' 'dm/uuid' 'slaves' 'mountinfo' 'LVM' 'udev' 'storage.rs' 'F180'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F189.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F190",
+      "title": "Research: reading journald's effective storage without root",
+      "description": "docs/findings/F190.md, headed '## F190' and indexed, settles how `custodio doctor` tells, as an ordinary user and without starting or asking anything, whether journald keeps entries across a reboot (SPEC Design 2 check 5, open question 3): journald.conf, its drop-ins in /etc, /run and /usr/lib journald.conf.d in their precedence order, Storage=auto with and without /var/log/journal, persistent, volatile and none, and a volatile override under /run/log/journal; on systemd 257 and later and on the default install of each supported target. It names the documented fix for each non-persistent case and which states doctor must report as 'could not check'. Its 'Decision: ' line is what F203 implements.",
+      "depends_on": [],
+      "verify": "f=docs/findings/F190.md && grep -q '^## F190' \"$f\" && for w in 'Storage=' 'auto' 'persistent' 'volatile' '/var/log/journal' '/run/log/journal' 'journald.conf.d' '257' 'debian13' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F190.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F191",
+      "title": "Research: shell completion locations per package format and fast key ids without polkit",
+      "description": "docs/findings/F191.md, headed '## F191' and indexed, settles where the .deb, .rpm and Arch package (all built by nfpm from packaging/nfpm.yaml) put the bash, zsh and fish completion files so that each shell loads them with no configuration on every supported target (bash-completion's directory, zsh's vendor directory, which differs between the Debian family and Fedora or Arch, fish's vendor directory), and whether that forces a difference between formats that docs/decisions/packaging.md's parity rules must record. It also settles how completion gets the person's key ids from the service through `custodio` quickly, with no polkit request and nothing written (ListKeys, its cost, a timeout, the service absent), and the time bound acceptance 12 can set. Its 'Decision: ' line is what F205 and F205 implement (SPEC open question 4).",
+      "depends_on": [],
+      "verify": "f=docs/findings/F191.md && grep -q '^## F191' \"$f\" && for w in '/usr/share/bash-completion/completions' '/usr/share/zsh/vendor-completions' '/usr/share/zsh/site-functions' '/usr/share/fish/vendor_completions.d' 'fpath' 'nfpm' 'parity' 'ListKeys' 'polkit' 'debian13' 'ubuntu2604' 'fedora44' 'alma10' 'arch'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F191.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F192",
+      "title": "zsh, fish and bash-completion in the dev container and CI",
+      "description": "The completion test of F205 drives the real shells, which the dev container lacks. harness/Containerfile and every CI job that runs the CLI's tests install bash-completion, zsh and fish from the distribution, with a comment saying why. Rebuilding the dev container is a person's step: once the Containerfile and CI change is committed, the builder writes BLOCKED.md asking for the rebuild, and the feature passes on the rebuilt container (as F104 did).",
+      "depends_on": [],
+      "verify": "just quick && test -r /usr/share/bash-completion/bash_completion && zsh -fc 'autoload -U compinit && compinit -u -D && print ok' | grep -qx ok && fish --no-config -c 'echo ok' | grep -qx ok",
+      "passes": true
+    },
+    {
+      "id": "F193",
+      "title": "Real help, colour rules and two-line errors, with the man page parity test and the parser's fuzz target",
+      "description": "`custodio --help`, `custodio -h` and `custodio <command> --help` for every existing command print, on standard output with status 0, what the command does, its arguments and options and an example (SPEC Design 3, acceptance 7). A usage error still goes to standard error with status 2 and says how to get help. Arguments stay parsed by hand: no clap or other argument-parsing or completion-generating crate (a test of the dependency tree fails if one appears). A test, crates/custodio-cli/tests/help.rs, checks that every command and option in the help is in packaging/custodio.1 and the other way round, for every command the CLI has, so that the commands of F197 and F202 are covered when they add their help. A new fuzz target cli_args for the argument parser, added to fuzz-smoke's expected list. The help and parser modules join the custodio-cli list of the `mutants` recipe. Colour is written only when the stream is a terminal and never when NO_COLOR is non-empty; without colour the output has no escape sequence and says the same things (acceptance 10). Every error the CLI prints, from every command, is at least two lines on standard error: what went wrong, then the next step (a command, a documented section, or 'report a bug' with where): usage errors, the service absent, polkit denial and unavailability, every error of docs/api.md, register's refusals (acceptance 11); no message contains a password, key material or unescaped untrusted text. Unit tests over every error variant and every D-Bus error name of docs/api.md (a name the CLI does not map fails), and crates/custodio-cli/tests/output_rules.rs runs the CLI with and without a pseudo-terminal and NO_COLOR. The colour and error modules join the custodio-cli list of the `mutants` recipe.",
+      "depends_on": [],
+      "verify": "just quick && cargo test -p custodio-cli --test help --locked && just mutants-diff F193 && just fuzz-build && just lint-fuzz && just fuzz-smoke && cargo test -p custodio-cli --test output_rules --locked",
+      "passes": true
+    },
+    {
+      "id": "F194",
+      "title": "Certificate text escaped, `custodio list` as a table and `custodio list <id>` in full",
+      "description": "A module of custodio-cli decodes the fields `custodio list` shows from a certificate's DER (subject, issuer, serial, validity, SHA-256 fingerprint), tolerating any input: a malformed field gives a placeholder, never a panic. Every control character, DEL and non-printable byte of a decoded string is escaped, so no field can drive the terminal or forge a line or row (SPEC Design 3, threat model). How a subject is shown (common name or RFC 4514) is the builder's, documented later in the help. crates/custodio-cli/tests/cert_text.rs on certificates with control characters, escape sequences and newlines in subject and issuer, and malformed DER; a new fuzz target cert_fields added to fuzz-smoke's expected list (acceptance 9, parser part). The module joins the custodio-cli list of the `mutants` recipe. `custodio list` prints one row per key: id, key type, storage kind, subject and end of validity; one note at the foot, only when any key has encrypted-tpm or encrypted-host, explains weaker storage and points to the README; the M6 state-directory warning stays; with no keys it says so and how to import one. `custodio list <id>` prints that key with everything in the row plus issuer, serial, start of validity and SHA-256 fingerprint, selecting from ListKeys on the client side (no API change); an id the person does not have is a two-line error naming `custodio list`. Help and man page updated. crates/custodio-it/tests/list_view.rs against the real service: the note exactly once or not at all, the full view, the unknown id, and a hostile certificate listed with every field escaped, no byte below 0x20 but the layout's line ends, no DEL, and as many rows as keys (acceptances 8 and 9).",
+      "depends_on": [
+        "F193"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test cert_text --locked && just mutants-diff F194 && just fuzz-build && just lint-fuzz && just fuzz-smoke && cargo test -p custodio-it --test list_view --locked && cargo test -p custodio-cli --test help --locked",
+      "passes": true
+    },
+    {
+      "id": "F195",
+      "title": "Import tells a wrong password from an unreadable file, in the service and the CLI, and the Firefox restart note",
+      "description": "ImportP12 distinguishes (a) a file whose MAC is present and does not verify with the password, (b) a file that is not readable PKCS#12 or holds no usable key and certificate (no private key, several, a key without a certificate) whatever the password, and (c) a file with no MAC that does not decrypt. Two new D-Bus errors for (a) and (b); WrongPasswordOrBadP12 stays for (c) only. In the journal (a) and (c) keep wrong_password and (b) gets one new outcome. Decided from the file and the library's result, never from timing; the file is still never opened before polkit approves. docs/api.md and docs/audit.md add the names under their compatibility rules; `just api-contract` checks them. crates/custodiod/tests/import_split.rs imports real .p12 files for (a), (b) and (c) against the real service and checks the D-Bus error, the journal outcome and that a denied polkit request leaves the file unopened (acceptance 13, service part). The p12_parse fuzz target still runs. custodio import maps the two new D-Bus errors and the combined one to two-line messages: for (a) retype the password; for (b) export the file again (the README shows how from Firefox); for (c) both. After a successful `custodio import` and `custodio delete`, the CLI says that Firefox and any other running program that loaded the module see the change only after they restart (SPEC Design 4, acceptances 13 and 15). Man page updated. crates/custodio-it/tests/import_messages.rs runs the CLI against the real service with the .p12 fixtures of F195 and checks each message and the restart note.",
+      "depends_on": [
+        "F193"
+      ],
+      "verify": "just quick && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test import_split --locked && just mutants-diff F195 && just fuzz-build && just fuzz-smoke && cargo test -p custodio-it --test import_messages --locked && cargo test -p custodio-it --test import_errors --locked",
+      "passes": true
+    },
+    {
+      "id": "F196",
+      "title": "The storage classifier: same answer at every start, or an explained unknown",
+      "description": "Following the decision of docs/findings/F189.md: either the cause is fixed so that the same storage gets the same answer at every start, with a test in crates/custodiod/tests/storage_stability.rs that reproduces the cause on fixture sysfs and mount trees, or the unknown stays and the service exposes its reason through a read-only, documented, bus-only addition to the API under its compatibility rule, checked by `just api-contract`. Either way unknown is never turned into encrypted (a test case for each unknown of F180 and F189), and F180's rules stay unless F189 shows one wrong (acceptance 14, service part; doctor's part is F203). On the other route, storage_stability.rs checks the exposed reason for each unavoidable unknown.",
+      "depends_on": [
+        "F189"
+      ],
+      "verify": "just quick && just api-contract && scripts/test-docs-api.sh && cargo test -p custodiod --test storage_stability --locked && cargo test -p custodiod --test state_storage --locked && cargo test -p custodiod --test storage_api --locked && just mutants-diff F196",
+      "passes": true
+    },
+    {
+      "id": "F197",
+      "title": "`custodio fingerprint enable` and `disable`: decisions, refusals, the command and the check that no fixture seam ships",
+      "description": "A pure module of custodio-cli, with no I/O, holds the exact bytes `enable` writes (the five lines of SPEC Design 1 and comment lines that leave the auth ... pam_fprintd.so line as any reader sees it), decides whether a /etc/pam.d/polkit-1 is Custodio's (exactly those bytes), detects fingerprint active globally from file contents per family (pam_fprintd in common-auth on the Debian family; authselect's with-fingerprint feature on the Fedora family; pam_fprintd in system-auth or sudo on Arch; the report's 'Detection'), and decides, from an observed state, what enable and disable do: each refusal of Design 1 with its two-line message and the package names per family, already-enabled, global-already-active, no-reader warning, nothing-to-disable, foreign file. crates/custodio-cli/tests/fingerprint_decide.rs covers every state (acceptances 2, 3, 4 as decisions). A fuzz target pam_file for the PAM and authselect parsers, added to fuzz-smoke's expected list. The module joins the custodio-cli list of the `mutants` recipe. The subcommand applies those decisions to the real system: refuses unless root; probes pam_fprintd.so, fprintd and fprintd's devices (no reader is a warning, not a refusal); writes /etc/pam.d/polkit-1 atomically (no file or the whole file), mode 0644, root:root, with the SELinux label the policy gives a new file in /etc/pam.d where SELinux is enforcing; a second enable changes nothing; disable removes only Custodio's file; prints what changed and how to undo it, and the lock-screen note when it applies. Help and man page. crates/custodio-cli/tests/fingerprint.rs runs it against a fixture file system for acceptances 1 to 4: the exact file, mode and owner, byte-identical re-run, the no-reader warning, every refusal (not root, Omarchy-style, administrator's, one byte changed, symlink, no vendor file, no module, no fprintd) and every global form changing nothing, disable leaving everything else byte-identical. The seam that points it at a fixture root never ships: a new recipe `just fixture-seams` fails when a release build has it, with scripts/test-check-fixture-seams.sh and a negative control (as scripts/check-test-label.sh). The command's module joins the `mutants` recipe.",
+      "depends_on": [
+        "F193"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test fingerprint_decide --locked && just mutants-diff F197 && just fuzz-build && just lint-fuzz && just fuzz-smoke && cargo test -p custodio-cli --test fingerprint --locked && cargo test -p custodio-cli --test help --locked && scripts/test-check-fixture-seams.sh && just fixture-seams",
+      "passes": true
+    },
+    {
+      "id": "F198",
+      "title": "The packages leave PAM alone and the install notice names the fingerprint command and doctor",
+      "description": "No package format ships a file under /etc/pam.d/ or /usr/lib/pam.d/, and no package script (deb, rpm, Arch) refers to /etc/pam.d; the package check (scripts/check-packages.sh) enforces both; a new scripts/test-check-packages-pam.sh runs it on fixture packages (one shipping a PAM file, one whose script names /etc/pam.d, one without the notice) as negative controls and on a clean one. The install notice says the fingerprint is off and names `sudo custodio fingerprint enable` and `custodio doctor`; scripts/test-package-scripts.sh runs each format's install script and checks the notice (acceptance 5). Removal prints no warning about an existing override.",
+      "depends_on": [
+        "F197"
+      ],
+      "verify": "just quick && scripts/test-check-packages-pam.sh && scripts/test-check-packages.sh && scripts/test-package-scripts.sh",
+      "passes": true
+    },
+    {
+      "id": "F199",
+      "title": "End-to-end: the fingerprint command on every target",
+      "description": "A fingerprint-* group of container cases in e2e/cases.list, run as root on the real /etc of the debian13 and ubuntu2604 targets (their Containerfiles add fprintd, libpam-fprintd and a PAM client): enable writes the exact file, mode 0644, root:root; a PAM client of service polkit-1 authenticates a test user by password through the override's include (no reader, so pam_fprintd falls through); enable again changes nothing; a foreign file, a missing vendor file and a missing module are refused with nothing changed; disable restores /etc/pam.d byte for byte; `pam-auth-update --enable fprintd` and `--disable fprintd` leave the override byte-identical (acceptance 17, Debian family). scripts/test-e2e-fingerprint.sh judges fixture outputs with negative controls. On fedora44, alma10 and arch (their Containerfiles add fprintd, the PAM module of each family and a PAM client) the group runs the same cases, plus the SELinux label of the written file equal to the policy's default for /etc/pam.d where SELinux is enforcing (Fedora, Alma), and `authselect apply-changes` leaving the override byte-identical on Fedora and Alma (acceptance 17).",
+      "depends_on": [
+        "F197"
+      ],
+      "verify": "just quick && scripts/test-e2e-fingerprint.sh && just e2e-cases debian13 'fingerprint-*' && just e2e-cases ubuntu2604 'fingerprint-*' && ! grep -qs '^fingerprint-' e2e/targets/fedora44/skip.list e2e/targets/alma10/skip.list e2e/targets/arch/skip.list && just e2e-cases fedora44 'fingerprint-*' && just e2e-cases alma10 'fingerprint-*' && just e2e-cases arch 'fingerprint-*'",
+      "passes": true
+    },
+    {
+      "id": "F200",
+      "title": "VM group: the virtual sensor, polkit with the override, a signature by finger and the four fallbacks",
+      "description": "A vm-fingerprint-* group in e2e/vm/cases.list (full mode) stages libfprint's virtual device in the Ubuntu 26.04 VM as in docs/findings/acceptance-6-fingerprint.md and the report's method, with fprintd, libpam-fprintd and the polkit agent from Ubuntu's signed archive, and enrolls a finger. After `custodio fingerprint enable`: the enrolled finger approves a polkit authentication (pkexec or pkcheck with pkttyagent); an unenrolled finger and no touch within 10 seconds fall back to the password, which approves; sudo asks for the password only and shows no fingerprint prompt (any passwordless sudo rule of the harness out of the way); a negative control (no touch, no password) stays unapproved; after disable polkit no longer offers the finger. If the virtual sensor cannot be staged the group fails, never skips (acceptances 18 and 19). scripts/test-e2e-vm-fingerprint.sh judges fixture records with negative controls. This feature runs the group alone once. The group also has: a Custodio signature approved by the enrolled finger, verified with openssl, with its journal entry; each fallback case (pam_fprintd module, fprintd daemon, reader, enrolled finger missing) goes straight to the password; the run records the polkit, fprintd, libfprint and libpam-fprintd versions (acceptance 18). The new cases are vm-fingerprint-sign and vm-fingerprint-fallback-module, -daemon, -reader and -finger. The judge's negative controls cover the new cases.",
+      "depends_on": [
+        "F197"
+      ],
+      "verify": "just quick && scripts/test-e2e-vm-fingerprint.sh && scripts/test-e2e-vm-cases.sh && just e2e-vm-cases full 'vm-fingerprint-*' && just e2e-vm-check full 'vm-fingerprint-sign vm-fingerprint-fallback-module vm-fingerprint-fallback-daemon vm-fingerprint-fallback-reader vm-fingerprint-fallback-finger'",
+      "passes": true
+    },
+    {
+      "id": "F201",
+      "title": "Research: the double prompt with the global switch and an override",
+      "description": "docs/findings/F201.md, headed '## F201' and indexed, records a run in the Ubuntu 26.04 VM with the virtual sensor of F200: `pam-auth-update --enable fprintd` together with a /etc/pam.d/polkit-1 holding a pam_fprintd line (Custodio's and an Omarchy-style file), what polkit asks after a matching finger, a wrong finger and no touch, with the versions. Its 'Decision: ' line says whether `custodio doctor` flags that combination and with what fix, which F202 implements (SPEC open question 5). Changes no product code.",
+      "depends_on": [
+        "F200"
+      ],
+      "verify": "f=docs/findings/F201.md && grep -q '^## F201' \"$f\" && for w in 'pam-auth-update' 'common-auth' 'pam_fprintd' 'max-tries' 'virtual' 'pkttyagent' 'ubuntu2604' 'Omarchy'; do grep -qF -- \"$w\" \"$f\" || exit 1; done && grep -qE '\\*\\*(verified|inferred)\\*\\*' \"$f\" && grep -qE '^Decision: ' \"$f\" && grep -qF '(findings/F201.md)' docs/findings.md",
+      "passes": true
+    },
+    {
+      "id": "F202",
+      "title": "`custodio doctor`: the command, its exit status and the three fingerprint checks",
+      "description": "A read-only subcommand that refuses root (as register does), prints one line per check with a state and, for each unsatisfied one, its fix, and never opens a polkit dialog, a password prompt or a browser. Check 1: fprintd reports a device, or fprintd is missing and the package for the family is named. Check 2: the person has an enrolled finger; when fprintd refuses to answer (an ssh session) the state is 'could not check' with the reason, never 'missing'. The exit-status rule of SPEC Design 2 (checks 1 to 3 do not count but a broken include does; 'could not check' counts) is in place for every check. Help and man page. Unit tests for every state; crates/custodio-cli/tests/doctor_reader.rs against fixture system files and a fake fprintd on a private bus. Its fixture seam is covered by `just fixture-seams`. Modules join the `mutants` recipe. Check 3 reports whether fingerprint is active for polkit and how: Custodio's override (and whether its include still resolves: a missing vendor file is reported first, as the most urgent problem, and makes the exit status non-zero), someone else's /etc/pam.d/polkit-1 with an auth pam_fprintd.so line, or globally with F197's detection (then it says sudo uses the finger too), and the combination F201 decided on. Tests in crates/custodio-cli/tests/doctor_polkit.rs for each state, including the broken include.",
+      "depends_on": [
+        "F193",
+        "F197",
+        "F201"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test doctor_reader --locked && cargo test -p custodio-cli --test help --locked && scripts/test-check-fixture-seams.sh && just fixture-seams && just mutants-diff F202 && cargo test -p custodio-cli --test doctor_polkit --locked",
+      "passes": true
+    },
+    {
+      "id": "F203",
+      "title": "`custodio doctor`: Firefox, the persistent journal, the state directory's storage, and the whole command",
+      "description": "Check 4 reports, per profile and read-only, whether the module is registered, using the same discovery as `custodio register`: native profiles, the Firefox snap's profiles and its module copy (a stale copy included), and p11-kit systems, where Firefox sees the module without registration (satisfied). No profile at all is reported as such, not as a failure. The fix names `custodio register`. Tests in crates/custodio-cli/tests/doctor_firefox.rs on fixture homes; the fixture tree is byte-identical afterwards. Check 5 reads journald's effective storage without root as docs/findings/F190.md decided, with the documented fix for each case; its parser of journald configuration gets a fuzz target journald_conf in fuzz-smoke's expected list. Check 6 reports StateStorage from the service: encrypted, not-encrypted with the full-disk encryption advice, or unknown with the reason F196 exposes and what to do; the service unreachable is reported with its fix and the check is 'could not check' (acceptance 14, doctor's part); both checks are tested in crates/custodio-cli/tests/doctor_system.rs. crates/custodio-cli/tests/doctor_acceptance.rs proves acceptance 6 on the whole command: each of the six checks in each state, the exit status with checks 1 to 3 unsatisfied and the rest satisfied (0) and for a broken include or any of 4 to 6 (non-zero), the refusal of root, the fixture tree byte-identical afterwards and no polkit request made.",
+      "depends_on": [
+        "F190",
+        "F196",
+        "F202"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test doctor_firefox --locked && just mutants-diff F203 && cargo test -p custodio-cli --test doctor_system --locked && cargo test -p custodio-cli --test doctor_acceptance --locked && just fuzz-build && just lint-fuzz && just fuzz-smoke",
+      "passes": true
+    },
+    {
+      "id": "F204",
+      "title": "End-to-end: doctor on every target",
+      "description": "A doctor-* group of container cases runs `custodio doctor` as a regular user on every target after install, and checks that it reports, for that container, what is missing without error, exits as its checks dictate, and leaves /etc and the user's home unchanged (acceptance 17, doctor part).",
+      "depends_on": [
+        "F199",
+        "F203"
+      ],
+      "verify": "just quick && just e2e-cases debian13 'doctor-*' && just e2e-cases ubuntu2604 'doctor-*' && just e2e-cases fedora44 'doctor-*' && just e2e-cases alma10 'doctor-*' && just e2e-cases arch 'doctor-*'",
+      "passes": true
+    },
+    {
+      "id": "F205",
+      "title": "Completions for bash, zsh and fish, with key ids, shipped by every package format",
+      "description": "Hand-written completion files packaging/completions/custodio.bash, _custodio (zsh) and custodio.fish complete every command and option (fingerprint and doctor included) and the person's key ids for list, delete and any other command that takes one, obtained from the service through `custodio` as docs/findings/F191.md decided: no polkit request, nothing written, nothing printed and a prompt return when the service is absent. A test drives the real shells against a running service (a command, an option and a key id each) and with the service absent, within the bound the contract sets; the files pass shellcheck (bash), `zsh -n` and `fish --no-execute`, and a test fails when a command or option of the help is missing from a completion file (acceptance 12, shell part). The test is crates/custodio-it/tests/completions.rs. packaging/nfpm.yaml installs the completion files in the .deb, .rpm and Arch package where docs/findings/F191.md says each shell loads them without configuration; any difference between formats is recorded as the parity rules of docs/decisions/packaging.md require (packaging/parity-exceptions.txt). The package check fails when a format lacks one of the three files at its location, with a negative control in a new scripts/test-check-packages-completions.sh, which also checks a clean fixture (acceptance 12, package part).",
+      "depends_on": [
+        "F191",
+        "F192",
+        "F194",
+        "F197",
+        "F198",
+        "F203"
+      ],
+      "verify": "just quick && cargo test -p custodio-it --test completions --locked && shellcheck packaging/completions/custodio.bash && zsh -n packaging/completions/_custodio && fish --no-execute packaging/completions/custodio.fish && scripts/test-check-packages-completions.sh && scripts/test-check-packages.sh && scripts/test-check-parity.sh",
+      "passes": true
+    },
+    {
+      "id": "F206",
+      "title": "Checkpoint: the command line, the defects of 0.8.0, the fingerprint command, doctor and completions",
+      "description": "Every gate on F189 to F205: full checks, API contract, fuzz smoke, memory safety, the container suite on every target (the fingerprint-* and doctor-* groups included), the package gates, coverage and CRAP. A failure is fixed here.",
+      "depends_on": [
+        "F189",
+        "F190",
+        "F191",
+        "F192",
+        "F193",
+        "F194",
+        "F195",
+        "F196",
+        "F197",
+        "F198",
+        "F199",
+        "F200",
+        "F201",
+        "F202",
+        "F203",
+        "F204",
+        "F205"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate",
+      "passes": true
+    },
+    {
+      "id": "F207",
+      "title": "Documents: fingerprint, the lock screen, the Firefox restart, doctor, the Ubuntu 26.04 guide and docs/install.md",
+      "description": "User documents linked from the README (SPEC Design 5): how to turn the fingerprint on and off, exactly what it changes (one file, every polkit action, not sudo, not the login), the fallback to the password, every limit of the threat model's 'Not guaranteed', what to do when enable refuses (Omarchy's setup, an administrator's file, the global switches), the other supported systems with their package names and what was and was not run; the GNOME lock screen on Ubuntu (GDM's own PAM file and the GNOME setting, how to turn it off with gsettings, the untested gdm user); the Firefox restart after import and delete; every doctor check, its states and fixes. scripts/test-docs-fingerprint.sh runs every command the documents show as written (against the real CLI and fixture systems), with negative controls; prose is a person's (acceptance 20). A guide a person follows without other help: install the .deb; run doctor and act on it, enrolling a finger with the desktop's tools; `sudo custodio fingerprint enable`; export a .p12 from Firefox's certificate manager ('Your Certificates', backup) and import it; `custodio register`; restart Firefox and sign in; `custodio list` and the completions; then delete, `custodio register --remove`, `sudo custodio fingerprint disable`, removing the package, and what removal and purge leave. docs/install.md gains the fingerprint command, doctor and completions. scripts/test-docs-guide.sh runs every command of the guide as written, with negative controls; scripts/test-docs-install.sh still passes (acceptance 16).",
+      "depends_on": [
+        "F195",
+        "F197",
+        "F201",
+        "F203",
+        "F205"
+      ],
+      "verify": "just quick && scripts/test-docs-fingerprint.sh && scripts/test-docs-readme.sh && scripts/test-docs-guide.sh && scripts/test-docs-install.sh && scripts/test-docs-install-register.sh",
+      "passes": true
+    },
+    {
+      "id": "F208",
+      "title": "Threat model, SECURITY.md, the release notes of 0.9.0 and the manual acceptance steps",
+      "description": "docs/threat-model.md gains M7's in-scope items and every 'Not guaranteed' limit; SECURITY.md's scope says the fingerprint command writes a system PAM file; docs/release-notes-v0.9.0.md (what is new, known limits, the Firefox restart, Debian 13 and Alma 10 not run in a VM) linked from the README; docs/api.md and docs/audit.md agree with F195 and F196. scripts/test-docs-release-notes.sh checks the 0.9.0 notes and scripts/test-docs-threat-model.sh still passes; both run the commands the documents show. docs/manual-acceptance.md gains the steps of acceptance 22 (and the reviews of 20 and 21) with a form to return: reader model, package versions, pass or fail per step with the line that shows it, every place the documents were not enough, and the final checks (/etc/pam.d/polkit-1 absent, no Custodio entry in the Firefox profiles, no module copy, nothing left beyond what the documents say removal keeps). scripts/test-docs-manual-m7.sh runs the steps' commands that can run without a reader, with negative controls.",
+      "depends_on": [
+        "F207"
+      ],
+      "verify": "just quick && DOC=docs/release-notes-v0.9.0.md scripts/test-docs-release-notes.sh && scripts/test-docs-threat-model.sh && scripts/test-docs-api.sh && scripts/test-docs-manual-m7.sh",
+      "passes": true
+    },
+    {
+      "id": "F209",
+      "title": "Checkpoint and last automated feature: the whole milestone",
+      "description": "Every gate on the whole milestone: full checks, API contract, fuzz smoke, memory safety, the container suite on every target, the package gates, coverage and CRAP, and the VM suite in both modes, the vm-fingerprint-* group included. A failure is fixed here; a VM group that cannot stage the virtual sensor fails and is reported, never skipped.",
+      "depends_on": [
+        "F189",
+        "F190",
+        "F191",
+        "F192",
+        "F193",
+        "F194",
+        "F195",
+        "F196",
+        "F197",
+        "F198",
+        "F199",
+        "F200",
+        "F201",
+        "F202",
+        "F203",
+        "F204",
+        "F205",
+        "F206",
+        "F207",
+        "F208"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": true
+    },
+    {
+      "id": "F212",
+      "title": "`custodio setup`: the setup commands grouped under one command",
+      "description": "`custodio register` and `custodio fingerprint` move under one command, `custodio setup` (SPEC Design 3, acceptance 23): `setup browsers enable [--module <path>]` adds the module to the browser profiles, `disable` removes the entries of every Custodio module file (no --module), `refresh [--module <path>]` only updates the Firefox snap's copy of the module (from <path> when given); `setup fingerprint enable` and `disable` are Design 1's. Each action keeps the effects, refusals, output and exit statuses that register and fingerprint have before this feature, with only command names changed; the existing register and fingerprint tests, re-pointed to the new argv, prove it. `custodio register` and `custodio fingerprint` are unknown commands, with no alias. `custodio setup` alone, or a topic with no action, is a usage error (standard error, status 2) whose message is that level's short help ending with the next-step line; `--help` at every level of `setup` prints that level's help on standard output with status 0. Every message, document, test, e2e script and packaging file uses the new names: doctor's Fix: lines, the refusals, enable's undo hint, the polkit file header, the install notice of every package format, the help, packaging/custodio.1 (the parity test of crates/custodio-cli/tests/help.rs covers every level of setup), the three completion files (the topics after setup, the actions after each topic), data/systemd-user/custodio-refresh.service (`custodio setup browsers refresh`), the container and VM end-to-end cases, the README, docs/install.md, the guide, docs/fingerprint.md, docs/doctor.md, docs/manual-acceptance.md (every section, M6's included), SECURITY.md, docs/threat-model.md and docs/release-notes-v0.9.0.md, which says that register became setup browsers and that fingerprint moved under setup. The journal identifier custodio-register is not a command name and stays. Historical records keep the old names: CHANGELOG.md, docs/release-notes-v0.8.0.md, docs/milestones/**, docs/findings/**, PROGRESS.md and earlier contracts; since the 0.8.0 notes describe the 0.8.0 binary, `just check` stops running scripts/test-docs-release-notes.sh on them and runs it on the current release's notes only. crates/custodio-cli/tests/setup.rs proves the rest of acceptance 23 on fixtures: register and fingerprint unknown, bare setup and each bare topic, --help at every level. This supersedes the command names in the descriptions of F193, F197, F198, F205, F207 and F208. The milestone's gates run at F213.",
+      "depends_on": [
+        "F193",
+        "F197",
+        "F198",
+        "F202",
+        "F203",
+        "F205",
+        "F207",
+        "F208",
+        "F209"
+      ],
+      "verify": "just quick && cargo test -p custodio-cli --test setup --locked && cargo test -p custodio-cli --test help --locked && cargo test -p custodio-it --test completions --locked && shellcheck packaging/completions/custodio.bash && zsh -n packaging/completions/_custodio && fish --no-execute packaging/completions/custodio.fish && scripts/test-docs-readme.sh && scripts/test-docs-install-register.sh && scripts/test-docs-fingerprint.sh && scripts/test-docs-guide.sh && scripts/test-docs-manual-m7.sh && scripts/test-docs-release-notes.sh && scripts/test-docs-threat-model.sh && scripts/test-user-refresh-units.sh && scripts/test-package-scripts.sh && scripts/test-check-packages-pam.sh && scripts/test-e2e-fingerprint.sh && scripts/test-e2e-doctor.sh && scripts/test-e2e-vm-snap.sh && just mutants-diff F212",
+      "passes": true
+    },
+    {
+      "id": "F214",
+      "title": "Decrypted keys stay out of swap and core dumps",
+      "description": "`encrypted-tpm` and `encrypted-host` keys are decrypted in custodiod's memory to sign; nothing keeps that memory off the disk (SPEC Design 4, acceptance 24). custodiod protects itself at start, independent of the unit and of the core handler: first thing in main, before the key store is opened, it sets RLIMIT_CORE to 0 soft and hard and then PR_SET_DUMPABLE 0, both through rustix's `process` wrappers so the crate keeps `forbid(unsafe_code)`, and exits non-zero if either fails; a unit test of the function reads back both the limit and the flag. data/custodio.service, the one source of every package format's unit (scripts/derive-units.sh), gains `LimitCORE=0` and `MemorySwapMax=0` (the only swap protection), and scripts/check-unit-hardening.sh requires each exactly once, with a negative control per setting in scripts/test-check-unit-hardening.sh; `just unit-verify` and the exposure ceiling still pass. Container case group `memory-*` on debian13 (e2e/targets/debian13/cases.list: nothing in it depends on the distribution): `systemctl show` gives `MemorySwapMax=0` and `LimitCORE=0`, /proc/<MainPID>/limits a core size of 0 soft and hard, and the process is not dumpable (its /proc/<pid> entries are root's while it runs as the service's uid), with an in-case control that a dumpable process of another uid reads differently. VM group `vm-memory-*` (Ubuntu 26.04, full mode; the lacking mode reports it skipped through e2e/vm/skip.list); the service's cgroup has memory.swap.max 0. First under the core handler the image ships by default (apport expected; kernel.core_pattern and the handler's version recorded), then with systemd-coredump staged as the handler (installed from the archive if absent, version recorded): a SIGSEGV of custodiod, with the shipped unit and again with a drop-in that sets the unit's LimitCORE=infinity, ends with systemd's Result `signal`, not `core-dump`, and leaves nothing where that handler writes (apport: no /var/crash/*.crash with a CoreDump field, nothing in /var/lib/apport/coredump/; systemd-coredump: nothing in /var/lib/systemd/coredump/); under each handler a transient control process of a packaged binary with LimitCORE=infinity, crashed the same way, ends `core-dump` and leaves its core there, or the case fails; a handler that cannot be run fails the group, never skips; the service starts again on the next call. docs/threat-model.md ('Not guaranteed') and docs/api.md ('Storage kinds') say that the encrypted kinds need encrypted swap and an encrypted hibernation image, and what the flag, the limit and the unit settings cover; root reading the running service's memory stays excluded. docs/release-notes-v0.9.0.md names the change. MADV_DONTDUMP, mlock, memfd_secret and coredump_filter are out of scope. The real packages' unit, `just e2e` and both VM modes run at F213.",
+      "depends_on": [
+        "F212"
+      ],
+      "verify": "just quick && scripts/test-check-unit-hardening.sh && just unit-hardening && just unit-verify && just security-ceiling && cargo test -p custodiod --locked dumpable && scripts/test-docs-threat-model.sh && scripts/test-docs-api.sh && scripts/test-docs-release-notes.sh && just e2e-cases debian13 'memory-*' && just e2e-vm-cases full 'vm-memory-*' && just mutants-diff F214",
+      "passes": true
+    },
+    {
+      "id": "F213",
+      "title": "Checkpoint and last automated feature: the whole milestone after `custodio setup`",
+      "description": "Every gate on the whole milestone after F212's rename and F214's swap and core-dump settings, as F209 ran them: full checks, API contract, fuzz smoke, memory safety, the container suite on every target (the fingerprint-* and doctor-* groups on the new argv), the package gates (the install notice names `sudo custodio setup fingerprint enable`), coverage and CRAP, and the VM suite in both modes, the vm-fingerprint-*, vm-memory-* and snap groups included (the memory-* cases on debian13). A failure is fixed here; a VM group that cannot stage the virtual sensor fails and is reported, never skipped.",
+      "depends_on": [
+        "F189",
+        "F190",
+        "F191",
+        "F192",
+        "F193",
+        "F194",
+        "F195",
+        "F196",
+        "F197",
+        "F198",
+        "F199",
+        "F200",
+        "F201",
+        "F202",
+        "F203",
+        "F204",
+        "F205",
+        "F206",
+        "F207",
+        "F208",
+        "F209",
+        "F212",
+        "F214"
+      ],
+      "verify": "just check && just api-contract && just fuzz-smoke && just memory-safety && just e2e && just package-gates && just coverage-gate && just e2e-vm full && just e2e-vm lacking",
+      "passes": true
+    },
+    {
+      "id": "F210",
+      "title": "By hand: the documents and the help read by a person",
+      "description": "A person checks the fingerprint, lock-screen, Firefox-restart, doctor and end-to-end documents against SPEC Design 5 and the threat model's 'Not guaranteed' (every item present, agreeing with docs/api.md, docs/audit.md and the report), and that `custodio --help` and each command's help, read alone, are enough to use the command (acceptances 20 and 21).",
+      "depends_on": [
+        "F208",
+        "F209",
+        "F213"
+      ],
+      "manual": true,
+      "passes": true
+    },
+    {
+      "id": "F211",
+      "title": "By hand: Ubuntu 26.04 with a real fingerprint reader, from install to removal",
+      "description": "On Ubuntu 26.04 with a real reader and no Custodio installed, a person follows only the documentation through the steps of acceptance 22 in docs/manual-acceptance.md: install notice, doctor naming what is missing, setup fingerprint enable (pkexec takes the finger, sudo asks for the password), import a certificate exported from Firefox with the finger, setup browsers enable, sign in to a real site with the finger, list and completions, doctor reporting nothing, then delete, setup browsers disable, setup fingerprint disable and package removal leaving the system as it was; the returned form is recorded.",
+      "depends_on": [
+        "F208",
+        "F209",
+        "F210",
+        "F213"
+      ],
+      "manual": true,
+      "passes": true
+    }
+  ]
+}

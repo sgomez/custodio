@@ -14,6 +14,9 @@ use custodio_cli::{
     parse_args, run_import,
 };
 use custodio_client::{BUS_NAME, OBJECT_PATH};
+
+#[path = "../../custodio-cli/tests/import_view/mod.rs"]
+mod import_view;
 use custodiod::audit::{AuditSink, FailingSink, MemorySink};
 use custodiod::credentials::BusCredentials;
 use custodiod::dbus::Custodio;
@@ -213,7 +216,7 @@ fn import(importer: &DbusImporter, file: PathBuf, id: &str, password: &str) -> R
     );
     let cli = result.map_err(CliError::Import);
     let mut stderr = Vec::new();
-    let status = finish(&cli, &mut stderr);
+    let status = finish(&cli, &mut stderr, false);
     assert_eq!(status, exit_status(&cli));
     let result = cli.map_err(|e| match e {
         CliError::Import(f) => f,
@@ -274,7 +277,11 @@ fn approval_imports_and_polkit_is_asked_once() -> TestResult {
     assert!(run.result.is_ok(), "{:?}", run.result);
     assert_eq!(run.status, 0);
     let out = String::from_utf8(run.stdout)?;
-    assert!(out.contains("Imported key 'k' (ecdsa-p256)."), "{out}");
+    assert_eq!(
+        import_view::parse(&out).cells[..2],
+        ["k", "ecdsa-p256"],
+        "{out}"
+    );
     assert_eq!(rig.keys()?, ["k".to_owned()]);
     assert_eq!(rig.polkit_asked(), [IMPORT_ACTION_ID.to_owned()]);
     drop(rig.bus);
@@ -373,7 +380,7 @@ fn a_wrong_password_is_wrong_password() -> TestResult {
     let run = import(&rig.importer, file.clone(), "k", "wrong-one");
     assert_failed(
         &run,
-        &ServiceFailure::WrongPasswordOrBadP12,
+        &ServiceFailure::WrongPassword,
         &file,
         "wrong-one",
         P256_P12,

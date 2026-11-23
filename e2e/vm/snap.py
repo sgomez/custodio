@@ -6,7 +6,8 @@ is not snap.firefox.* in enforce mode, the socket is unreachable, the bus is not
 Evidence files (DIR/): record (key=value), snap-list.out, snap-known.out, dir.stat, sock.stat (`stat -c %F|%U|%G|%a|%n`), list.out/list.rc
 (the client's `token<TAB>LABEL` lines), keys.alice, keys.foreign (labels, one per line), sign-NAME.{pid,rc,crt,digest,sig,kind}, subjects (the
 agent's `ACTION PID UID`), alice.uid, journal.json (`journalctl -o json` of the service during the group), bus-in.out, bus-out.out, audit.log,
-register.out, register.rc (the `custodio register` of the place phase), module.sha, copy.sha (hashes of the installed module and of the snap copy), unconf.*/root.*/other.* (client output, rc, refusal.log, signs.before/after), um-METHOD.out, um.*."""
+register.out, register.rc (the `custodio setup browsers enable` of the place phase), module.sha, copy.sha (hashes of the installed module and of the snap copy), unconf.*/root.*/other.* (client output, rc, refusal.log, signs.before/after), um-METHOD.out, um.*."""
+import re
 import json
 import os
 import subprocess
@@ -39,6 +40,16 @@ def lines(d, name):
     return [] if t is None else [x for x in t.splitlines() if x.strip()]
 
 
+def rows(report):
+    """The lines of a report in the shared format (word, name, text); the lines under a name are left out."""
+    out = []
+    for x in report:
+        m = re.match(r"^(ok|FAIL|warn|\?) +(.+?)(?:  +(.*))?$", x)
+        if m:
+            out.append((m.group(1), m.group(2), m.group(3) or ""))
+    return out
+
+
 def kv(d, name):
     out = {}
     for x in lines(d, name):
@@ -67,12 +78,12 @@ def j_register(d):
     p = []
     rc = read(d, "register.rc").strip()
     if rc != "0":
-        p.append(f"custodio register exited with '{rc}', not 0")
-    report = lines(d, "register.out")
-    if not any(x.startswith("Firefox (snap) ") and ": registered" in x for x in report):
-        p.append("the report of custodio register does not say the Firefox snap profile was registered")
-    if any(": skipped" in x or "copy failed" in x for x in report):
-        p.append("the report of custodio register has a skipped or failed line")
+        p.append(f"custodio setup browsers enable exited with '{rc}', not 0")
+    report = rows(lines(d, "register.out"))
+    if not any(w == "ok" and n == "Firefox (snap)" and not t.startswith("module copy:") for w, n, t in report):
+        p.append("the report of custodio setup browsers enable does not say the Firefox snap profile was registered")
+    if any(w != "ok" for w, _, _ in report):
+        p.append("the report of custodio setup browsers enable has a line that is not ok")
     module, copy = read(d, "module.sha").strip(), read(d, "copy.sha").strip()
     if not module or module == "missing":
         p.append("the installed module has no hash")

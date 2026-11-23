@@ -1,313 +1,36 @@
 //! `custodio list` on the documented API: the real service on a private `dbus-daemon`, a fake
 //! polkit that counts its calls, and a credentials double that says which uid is calling.
-//! Needs `dbus-daemon` (`/usr/bin/dbus-daemon` in the dev container); a missing one fails the tests.
 
-use std::error::Error;
-use std::io::{self, BufRead, BufReader};
-use std::pin::Pin;
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::atomic::Ordering;
 
-use custodio_cli::bus::DbusImporter;
-use custodio_cli::list::NO_KEYS;
-use custodio_cli::{
-    CliError, ImportArgs, ListFailure, PasswordPrompt, ServiceFailure, exit_status, finish,
-    run_import, run_list,
-};
+use custodio_cli::cert_text::fields;
+use custodio_cli::list::{NO_KEYS, NONE_HINT, WEAKER_NOTE};
+use custodio_cli::{CliError, ListFailure, ServiceFailure};
 use custodio_client::{BUS_NAME, OBJECT_PATH};
-use custodiod::audit::Caller;
-use custodiod::audit::MemorySink;
-use custodiod::credentials::{CallerCredentials, CredentialsError};
-use custodiod::dbus::Custodio;
-use custodiod::polkit::{AuthError, Authorizer};
-use custodiod::store::KeyStore;
-use secrecy::SecretString;
-use zbus::connection::Builder;
-use zbus::export::futures_core::Stream;
-use zbus::{block_on, message::Type};
 
-type TestResult = Result<(), Box<dyn Error>>;
+mod list_rig;
+use list_rig::{
+    P256_OTHER_P12, P256_P12, P256_RECERT, RSA2048_P12, Rig, TestResult, UID_A, UID_B, UID_C,
+    expected_row, rows,
+};
 
-const P256_P12: &[u8] = include_bytes!("fixtures/p256.p12");
-const P256_OTHER_P12: &[u8] = include_bytes!("fixtures/p256-other.p12");
-const RSA2048_P12: &[u8] = include_bytes!("fixtures/rsa2048.p12");
-const P256_RECERT: &[u8] = include_bytes!("fixtures/cert-p256-recert.der");
-const PASSWORD: &str = "test-password";
-const UID_A: u32 = 4001;
-const UID_B: u32 = 4002;
-const UID_C: u32 = 4003;
-
-/// Says which uid calls, or that the caller cannot be identified.
-#[derive(Clone)]
-struct Switch {
-    uid: Arc<AtomicU32>,
-    broken: Arc<AtomicBool>,
+/// The rig has no TPM, so every key it imports is `encrypted-host`: the rows are followed by the one note.
+fn ends_with_note(stdout: &str) -> bool {
+    stdout.ends_with(&format!("\n\n{WEAKER_NOTE}\n"))
 }
 
-impl CallerCredentials for Switch {
-    fn credentials(
-        &self,
-        _: &str,
-    ) -> impl Future<Output = Result<Caller, CredentialsError>> + Send {
-        std::future::ready(if self.broken.load(Ordering::SeqCst) {
-            Err(CredentialsError::Missing)
-        } else {
-            Ok(Caller {
-                uid: self.uid.load(Ordering::SeqCst),
-                pid: std::process::id(),
-            })
-        })
-    }
+/// The ids and the (type, kind) of each row.
+fn ids_types_kinds(stdout: &str) -> Vec<(String, String, String)> {
+    rows(stdout)
+        .into_iter()
+        .map(|r| (r[0].clone(), r[1].clone(), r[2].clone()))
+        .collect()
 }
 
-#[derive(Clone, Default)]
-struct CountingPolkit(Arc<Mutex<Vec<String>>>);
-
-impl Authorizer for CountingPolkit {
-    fn authorize(
-        &self,
-        _sender: &str,
-        action: &str,
-    ) -> impl Future<Output = Result<(), AuthError>> + Send {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(action.to_owned());
-        std::future::ready(Ok(()))
-    }
-}
-
-struct Bus {
-    child: Child,
-    address: String,
-}
-
-impl Bus {
-    fn start() -> Result<Self, Box<dyn Error>> {
-        let mut child = Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1"])
-            .stdout(Stdio::piped())
-            .spawn()?;
-        let mut address = String::new();
-        BufReader::new(child.stdout.take().ok_or("no stdout")?).read_line(&mut address)?;
-        Ok(Self {
-            child,
-            address: address.trim().to_owned(),
-        })
-    }
-
-    fn client(&self) -> Result<DbusImporter, Box<dyn Error>> {
-        Ok(DbusImporter::new(block_on(
-            Builder::address(self.address.as_str()).build(),
-        )?))
-    }
-}
-
-impl Drop for Bus {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-/// What a monitor on the bus saw: (destination, path, interface, member, signature) of every
-/// method call.
-type Seen = (String, String, String, String, String);
-
-fn monitor(address: &str, log: Arc<Mutex<Vec<Seen>>>) -> Result<zbus::Connection, Box<dyn Error>> {
-    let (conn, stream) = block_on(async {
-        let conn = Builder::address(address).build().await?;
-        let stream = zbus::MessageStream::from(&conn);
-        zbus::fdo::MonitoringProxy::new(&conn)
-            .await?
-            .become_monitor(&[], 0)
-            .await?;
-        Ok::<_, zbus::Error>((conn, stream))
-    })?;
-    std::thread::spawn(move || {
-        let mut stream = stream;
-        block_on(async {
-            while let Some(Ok(msg)) =
-                std::future::poll_fn(|cx| Pin::new(&mut stream).poll_next(cx)).await
-            {
-                let header = msg.header();
-                if msg.message_type() != Type::MethodCall {
-                    continue;
-                }
-                let text = |s: Option<String>| s.unwrap_or_default();
-                let seen = (
-                    text(header.destination().map(ToString::to_string)),
-                    text(header.path().map(ToString::to_string)),
-                    text(header.interface().map(ToString::to_string)),
-                    text(header.member().map(ToString::to_string)),
-                    msg.body().signature().to_string(),
-                );
-                log.lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(seen);
-            }
-        });
-    });
-    Ok(conn)
-}
-
-struct Rig {
-    bus: Bus,
-    client: DbusImporter,
-    uid: Arc<AtomicU32>,
-    broken: Arc<AtomicBool>,
-    polkit: CountingPolkit,
-    seen: Arc<Mutex<Vec<Seen>>>,
-    dir: tempfile::TempDir,
-    _connections: Vec<zbus::Connection>,
-}
-
-impl Rig {
-    /// With `service` false nobody owns the service's bus name.
-    fn start(service: bool) -> Result<Self, Box<dyn Error>> {
-        let bus = Bus::start()?;
-        let dir = tempfile::tempdir()?;
-        let uid = Arc::new(AtomicU32::new(UID_A));
-        let broken = Arc::new(AtomicBool::new(false));
-        let polkit = CountingPolkit::default();
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let mut connections = vec![monitor(&bus.address, seen.clone())?];
-        if service {
-            let store = Arc::new(KeyStore::open(dir.path().join("state"))?);
-            let credentials = Switch {
-                uid: uid.clone(),
-                broken: broken.clone(),
-            };
-            let polkit = polkit.clone();
-            let address = bus.address.clone();
-            connections.push(block_on(async {
-                let conn = Builder::address(address.as_str()).build().await?;
-                let object =
-                    Custodio::new(store, polkit, credentials, Arc::new(MemorySink::default()))
-                        .with_key_credentials(std::sync::Arc::new(
-                            custodiod::creds::memory::MemoryCreds::host(),
-                        ));
-                conn.object_server().at(OBJECT_PATH, object).await?;
-                conn.request_name(BUS_NAME).await?;
-                Ok::<_, zbus::Error>(conn)
-            })?);
-        }
-        let client = bus.client()?;
-        Ok(Self {
-            bus,
-            client,
-            uid,
-            broken,
-            polkit,
-            seen,
-            dir,
-            _connections: connections,
-        })
-    }
-
-    fn as_uid(&self, uid: u32) {
-        self.uid.store(uid, Ordering::SeqCst);
-    }
-
-    /// `custodio import` as the current uid.
-    fn import(&self, id: &str, p12: &[u8]) -> TestResult {
-        let file = self.dir.path().join(format!("{id}.p12"));
-        std::fs::write(&file, p12)?;
-        let args = ImportArgs {
-            file,
-            id: id.to_owned(),
-        };
-        run_import(&args, &mut Typed, &self.client, &mut Vec::new())?;
-        Ok(())
-    }
-
-    /// `ReplaceCertificate` as the current uid.
-    fn replace_certificate(&self, id: &str, der: &[u8]) -> TestResult {
-        block_on(self.client_connection()?.call_method(
-            Some(BUS_NAME),
-            OBJECT_PATH,
-            Some(BUS_NAME),
-            "ReplaceCertificate",
-            &(id, der),
-        ))?;
-        Ok(())
-    }
-
-    fn client_connection(&self) -> Result<zbus::Connection, Box<dyn Error>> {
-        Ok(block_on(
-            Builder::address(self.bus.address.as_str()).build(),
-        )?)
-    }
-
-    fn polkit_calls(&self) -> usize {
-        self.polkit
-            .0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len()
-    }
-
-    /// Calls the monitor has recorded, once it has caught up with `at_least`.
-    fn calls(&self, at_least: usize) -> Vec<Seen> {
-        for _ in 0..100 {
-            if self
-                .seen
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .len()
-                >= at_least
-            {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        self.seen
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// What the person sees: `run_list` and the diagnostic and status `main` derives from it.
-    fn list(&self) -> Listed {
-        let mut stdout = Vec::new();
-        let result = run_list(&self.client, &mut stdout).map_err(CliError::List);
-        let mut stderr = Vec::new();
-        let status = finish(&result, &mut stderr);
-        assert_eq!(status, exit_status(&result));
-        Listed {
-            result,
-            stdout: String::from_utf8_lossy(&stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&stderr).into_owned(),
-            status,
-        }
-    }
-}
-
-struct Typed;
-
-impl PasswordPrompt for Typed {
-    fn password(&mut self, _prompt: &str) -> io::Result<SecretString> {
-        Ok(SecretString::from(PASSWORD))
-    }
-}
-
-struct Listed {
-    result: Result<(), CliError>,
-    stdout: String,
-    stderr: String,
-    status: u8,
-}
-
-/// The reason `custodio list` gives under a key that is `encrypted-host` (the text of the import notice).
-const NOTE: &str = "This key is weaker than a TPM key: this machine has no TPM, so the key is a file encrypted with the host key. Root, and anyone with a copy of /var/lib, can use it.";
-
-/// The rig has no TPM, so every key it imports is `encrypted-host`.
-fn block(id: &str, kind: &str, subject: &str, until: &str) -> String {
-    format!(
-        "id: {id}\n  type: {kind}\n  kind: encrypted-host\n  note: {NOTE}\n  subject: {subject}\n  valid until: {until}\n"
-    )
+fn owned(rows: &[(&str, &str, &str)]) -> Vec<(String, String, String)> {
+    rows.iter()
+        .map(|(a, b, c)| ((*a).to_owned(), (*b).to_owned(), (*c).to_owned()))
+        .collect()
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -334,19 +57,20 @@ fn several_keys_show_their_own_id_type_subject_and_end_of_validity() -> TestResu
     assert_eq!(listed.stderr, "");
     // Sorted by id; each key keeps its own subject and end of validity.
     assert_eq!(
-        listed.stdout,
-        block(
-            "ec",
-            "ecdsa-p256",
-            "CN=custodio test p256-recert",
-            "2126-10-08T20:52:07Z"
-        ) + &block(
-            "rsa",
-            "rsa2048",
-            "CN=custodio test rsa2048",
-            "2126-10-03T16:05:48Z"
-        )
+        ids_types_kinds(&listed.stdout),
+        owned(&[
+            ("ec", "ecdsa-p256", "encrypted-host"),
+            ("rsa", "rsa2048", "encrypted-host")
+        ])
     );
+    let recert = fields(P256_RECERT);
+    let ec = &rows(&listed.stdout)[0];
+    assert_eq!(ec[3], recert.subject_short, "the new certificate's subject");
+    assert!(
+        recert.not_after.starts_with(&ec[4]),
+        "the new certificate's end"
+    );
+    assert!(ends_with_note(&listed.stdout), "{}", listed.stdout);
     assert!(!listed.stdout.contains(NO_KEYS));
     // Certificate bytes are read, never shown.
     assert!(!listed.stdout.contains(&hex(P256_RECERT)));
@@ -363,7 +87,7 @@ fn no_keys_says_so_with_status_0_and_nothing_on_stderr() -> TestResult {
     let listed = rig.list();
     assert!(listed.result.is_ok());
     assert_eq!(listed.status, 0);
-    assert_eq!(listed.stdout, format!("{NO_KEYS}\n"));
+    assert_eq!(listed.stdout, format!("{NO_KEYS}\n{NONE_HINT}\n"));
     assert_eq!(listed.stderr, "");
     assert_eq!(rig.polkit_calls(), 0);
     Ok(())
@@ -390,7 +114,7 @@ fn a_service_error_shows_the_message_of_its_name_and_no_key_line() -> TestResult
             .stderr
             .contains(&ServiceFailure::AuthorizationUnavailable.message())
     );
-    assert!(!listed.stderr.contains("ec"));
+    assert!(!listed.stderr.contains("ec "));
     assert_eq!(rig.polkit_calls(), asked);
     Ok(())
 }
@@ -428,37 +152,37 @@ fn two_uids_see_only_their_own_keys_even_with_the_same_id() -> TestResult {
 
     rig.as_uid(UID_A);
     let a = rig.list();
-    assert_eq!(
-        a.stdout,
-        block(
-            "only-a",
-            "rsa2048",
-            "CN=custodio test rsa2048",
-            "2126-10-03T16:05:48Z"
-        ) + &block(
-            "shared",
-            "ecdsa-p256",
-            "CN=custodio test p256",
-            "2126-10-03T16:05:48Z"
-        )
-    );
     rig.as_uid(UID_B);
     let b = rig.list();
     assert_eq!(
-        b.stdout,
-        block(
-            "shared",
-            "ecdsa-p256",
-            "CN=custodio test p256-other",
-            "2126-10-03T16:05:48Z"
-        )
+        ids_types_kinds(&a.stdout),
+        owned(&[
+            ("only-a", "rsa2048", "encrypted-host"),
+            ("shared", "ecdsa-p256", "encrypted-host")
+        ])
     );
-    assert!(!b.stdout.contains("only-a") && !b.stdout.contains("rsa2048"));
-    assert!(!b.stdout.contains("CN=custodio test p256\n"));
-    assert!(!a.stdout.contains("p256-other"));
+    assert_eq!(
+        ids_types_kinds(&b.stdout),
+        owned(&[("shared", "ecdsa-p256", "encrypted-host")])
+    );
+    assert!(ends_with_note(&a.stdout) && ends_with_note(&b.stdout));
+    // The same id, two people: each row is the certificate of that person's own key.
+    assert_ne!(rows(&a.stdout)[1][3], rows(&b.stdout)[0][3]);
+    let asked_before_truth = rig.polkit_calls();
+    rig.as_uid(UID_A);
+    assert_eq!(
+        rows(&a.stdout),
+        rig.keys().iter().map(expected_row).collect::<Vec<_>>()
+    );
+    rig.as_uid(UID_B);
+    assert_eq!(
+        rows(&b.stdout),
+        rig.keys().iter().map(expected_row).collect::<Vec<_>>()
+    );
+    assert_eq!(rig.polkit_calls(), asked_before_truth);
     rig.as_uid(UID_C);
     let c = rig.list();
-    assert_eq!(c.stdout, format!("{NO_KEYS}\n"));
+    assert_eq!(c.stdout, format!("{NO_KEYS}\n{NONE_HINT}\n"));
     assert_eq!((a.status, b.status, c.status), (0, 0, 0));
     assert_eq!(
         rig.polkit_calls(),

@@ -52,3 +52,26 @@ snap-refused-unconfined
 snap-refused-root
 snap-refused-other-snap
 snap-unknown-methods
+# F200: the fingerprint group of the full mode (virtual sensor, polkit, sudo, a signature by finger, four fallbacks); e2e/vm/fingerprint.sh, judged by e2e/vm/fingerprint.py
+vm-fingerprint-stage
+vm-fingerprint-polkit-finger
+vm-fingerprint-polkit-unenrolled
+vm-fingerprint-polkit-timeout
+vm-fingerprint-sudo
+vm-fingerprint-negative
+vm-fingerprint-disabled
+vm-fingerprint-sign
+vm-fingerprint-fallback-module
+vm-fingerprint-fallback-daemon
+vm-fingerprint-fallback-reader
+vm-fingerprint-fallback-finger
+# F214: custodiod's crashes leave no core under the default handler and under systemd-coredump, with controls; e2e/vm/memory.sh (the full mode; the container cases are memory-*)
+vm-memory-swap-max
+vm-memory-default-stage
+vm-memory-default-crash
+vm-memory-default-crash-override
+vm-memory-default-control
+vm-memory-coredump-stage
+vm-memory-coredump-crash
+vm-memory-coredump-crash-override
+vm-memory-coredump-control

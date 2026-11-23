@@ -1,0 +1,84 @@
+#compdef custodio
+# zsh completion for custodio. Loaded by compinit from a directory in $fpath
+# (/usr/share/zsh/vendor-completions on Debian and Ubuntu, /usr/share/zsh/site-functions elsewhere).
+#
+# The key ids come from `custodio __key-ids`: it asks the service for the list only (no polkit
+# request, nothing written), prints nothing and exits 1 when the service is absent or does not
+# answer within 2 s. Every line it prints is read as data, never as shell text.
+
+_custodio_key_ids() {
+    local -a ids
+    ids=("${(@f)$(custodio __key-ids 2>/dev/null)}")
+    ids=(${ids:#})
+    compadd -- "${ids[@]}"
+}
+
+# The options of the action being typed after `setup <topic> <action>`: only `--module` takes a value.
+_custodio_setup_options() {
+    case "$words[3] $words[4]" in
+        "browsers enable" | "browsers refresh") compadd -- --module -h --help ;;
+        *) compadd -- -h --help ;;
+    esac
+}
+
+# The topics after `setup`, the actions after a topic, a file after `--module`.
+_custodio_setup_words() {
+    case $CURRENT in
+        3) compadd -- browsers fingerprint ;;
+        4)
+            case $words[3] in
+                browsers) compadd -- enable disable refresh ;;
+                fingerprint) compadd -- enable disable ;;
+            esac
+            ;;
+        *)
+            case "$words[3] $words[4]" in
+                "browsers enable" | "browsers refresh")
+                    [[ $words[CURRENT-1] == --module ]] && _files
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_custodio() {
+    local cur=$words[CURRENT] cmd=$words[2] prev=$words[CURRENT-1]
+
+    if ((CURRENT == 2)); then
+        if [[ $cur == -* ]]; then
+            compadd -- -h --help
+        else
+            compadd -- import list delete setup doctor
+        fi
+        return
+    fi
+
+    if [[ $cur == -* && $prev != -- ]]; then
+        case $cmd in
+            import) compadd -- --id -h --help ;;
+            setup) _custodio_setup_options ;;
+            list) compadd -- -v --verbose -h --help ;;
+            delete | doctor) compadd -- -h --help ;;
+        esac
+        return
+    fi
+
+    case $cmd in
+        import)
+            # `--id` names a new key: nothing to complete.
+            [[ $prev == --id ]] || _files
+            ;;
+        list | delete)
+            # One key id, after the options (`-v` for list) and an optional `--`.
+            local i word
+            for ((i = 3; i < CURRENT; i++)); do
+                word=$words[i]
+                [[ $word == -- || ($cmd == list && ($word == -v || $word == --verbose)) ]] || return
+            done
+            _custodio_key_ids
+            ;;
+        setup) _custodio_setup_words ;;
+    esac
+}
+
+_custodio "$@"

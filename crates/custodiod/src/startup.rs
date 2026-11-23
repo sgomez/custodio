@@ -16,7 +16,7 @@ use crate::credentials::BusCredentials;
 use crate::creds::Credentials;
 use crate::dbus::{BUS_NAME, Custodio, OBJECT_PATH};
 use crate::polkit::PolkitAuthorizer;
-use crate::storage::StateStorage;
+use crate::storage::Diagnosis;
 use crate::store::{KeyStore, LegacyEntry, StoreError};
 use crate::tpm::TpmAccess;
 
@@ -103,13 +103,14 @@ pub async fn start<F>(
     journal: Arc<dyn AuditSink>,
     key_credentials: Arc<dyn Credentials>,
     tpm: Arc<dyn TpmAccess>,
-    classify: impl FnOnce() -> StateStorage,
+    classify: impl FnOnce() -> Diagnosis,
 ) -> Result<Connection, StartError>
 where
     F: Future<Output = zbus::Result<Connection>>,
 {
     purge_legacy(&store, journal.as_ref()).map_err(StartError::Purge)?;
-    let storage = classify();
+    let diagnosis = classify();
+    let storage = diagnosis.storage();
     // A missing journal must not keep the service down; the bus still answers with the value.
     if let Err(e) = journal.record_state_storage(storage) {
         eprintln!(
@@ -127,7 +128,7 @@ where
     .with_app_id_source(CgroupAppIdSource::new())
     .with_key_credentials(key_credentials)
     .with_tpm(tpm)
-    .with_state_storage(storage);
+    .with_state_storage(diagnosis);
     connection
         .object_server()
         .at(OBJECT_PATH, service)

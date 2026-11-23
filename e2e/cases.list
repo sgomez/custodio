@@ -103,3 +103,23 @@ reinstall-keys-listed
 reinstall-signs-with-polkit
 reinstall-no-import
 tpm-installed-unit-clean
+# F199: `custodio setup fingerprint` on the real /etc/pam.d of every target (e2e/fingerprint-run.sh); never skipped.
+fingerprint-enable-file
+fingerprint-pam-password
+fingerprint-enable-twice
+fingerprint-refuse-foreign
+fingerprint-refuse-no-vendor
+fingerprint-refuse-no-module
+fingerprint-disable-restores
+# F204: `custodio doctor` as a regular user on every target (e2e/doctor-run.sh); never skipped.
+doctor-six-checks
+doctor-no-reader
+doctor-override-active
+doctor-broken-include
+doctor-no-firefox-profile
+doctor-journal
+doctor-state-storage
+doctor-exit-status
+doctor-never-prompts
+doctor-root-refused
+doctor-changes-nothing

@@ -33,9 +33,11 @@ fn the_credential_name_binds_owner_and_id() {
 fn every_import_error_has_its_own_message() {
     let cases = [
         (ImportError::TooLarge, "larger than"),
+        (ImportError::WrongPassword, "does not match the MAC"),
+        (ImportError::WrongPasswordOrBad, "wrong password or corrupt"),
         (
-            ImportError::Parse("bad mac".into()),
-            "wrong password): bad mac",
+            ImportError::Unreadable("bad der".into()),
+            "read the .p12 file: bad der",
         ),
         (ImportError::NoPrivateKey, "no private key"),
         (ImportError::MultipleKeys, "more than one private key"),
@@ -89,5 +91,71 @@ fn an_rsa_key_under_another_algorithm_is_not_an_rsa2048_key()
     let mut other = cert.to_vec();
     *other.get_mut(at + 10).ok_or("short")? = 0x0a;
     assert_eq!(cert_public_key(KeyKind::Rsa2048, &other), None);
+    Ok(())
+}
+
+/// The three failures of docs/findings/F195.md, by the file and the password.
+#[test]
+fn a_failed_parse_is_told_by_the_librarys_result() -> Result<(), Box<dyn std::error::Error>> {
+    // (file, with the right password, with a wrong one): a = MAC does not verify, b = unreadable, c = cannot tell.
+    let table = [
+        ("nokey.p12", 'b', 'a'),
+        ("nokey-nomac.p12", 'b', 'b'),
+        ("nocert.p12", 'b', 'a'),
+        ("nocert-nomac.p12", 'b', 'c'),
+        ("twokeys.p12", 'b', 'a'),
+        ("twokeys-nomac.p12", 'b', 'c'),
+        ("notp12.bin", 'b', 'b'),
+        ("good-nomac.p12", 'o', 'c'),
+        ("p256.p12", 'o', 'a'),
+        ("rsa2048-nss.p12", 'o', 'a'),
+    ];
+    let letter = |r: Result<ParsedP12, ImportError>| match r {
+        Ok(_) => 'o',
+        Err(ImportError::WrongPassword) => 'a',
+        Err(ImportError::WrongPasswordOrBad) => 'c',
+        Err(_) => 'b',
+    };
+    for (name, right, wrong) in table {
+        let data = std::fs::read(format!(
+            "{}/tests/fixtures/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))?;
+        let got = |pw: &str| letter(parse_p12(&data, &SecretString::from(pw.to_owned())));
+        assert_eq!(got("test-password"), right, "{name} right password");
+        assert_eq!(got("wrong"), wrong, "{name} wrong password");
+    }
+    Ok(())
+}
+
+/// A failed decryption after a verified MAC is a corrupt file, not a wrong password (docs/findings/F195.md).
+#[test]
+fn a_decryption_failure_is_the_combined_error_only_without_a_mac() {
+    let e = P12Error::Pkcs5Error("bad padding".into());
+    assert!(matches!(
+        classify_p12_error(&e, false),
+        ImportError::WrongPasswordOrBad
+    ));
+    assert!(matches!(
+        classify_p12_error(&e, true),
+        ImportError::Unreadable(_)
+    ));
+}
+
+#[test]
+fn a_mac_is_seen_in_the_outer_structure_of_der_and_ber_files() -> Result<(), std::io::Error> {
+    for (name, mac) in [
+        ("p256.p12", true),
+        ("rsa2048-nss.p12", true),
+        ("good-nomac.p12", false),
+        ("twokeys-nomac.p12", false),
+        ("notp12.bin", false),
+    ] {
+        let data = std::fs::read(format!(
+            "{}/tests/fixtures/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))?;
+        assert_eq!(ber::has_mac(&data), mac, "{name}");
+    }
     Ok(())
 }

@@ -54,19 +54,17 @@ def api_rows(path):
 
 
 def cli_rows(path):
-    """(rows, problems): the (id, type, kind) of each block of a `custodio list` file; a block lacking type or kind has None there."""
+    """(rows, problems): the (id, type, kind) of each row of a `custodio list` file; a row lacking type or kind has None there."""
     t = read(path)
     if t is None or not t.strip():
         return None, [f"{path}: missing or empty"]
     blocks = []
     for ln in t.split("\n"):
-        m = re.fullmatch(r"id: (.*)", ln)
-        if m:
-            blocks.append({"id": m.group(1)})
-            continue
-        m = re.fullmatch(r"  (type|kind): (.*)", ln)
-        if m and blocks:
-            blocks[-1].setdefault(m.group(1), m.group(2))
+        if not ln or ln.startswith("You have no keys"):
+            break  # the rows end at the blank line before the note
+        f = re.split(r"  +", ln)
+        if len(f) >= 3:
+            blocks.append({"id": f[0], "type": f[1], "kind": f[2]})
     return [(b["id"], b.get("type"), b.get("kind")) for b in blocks], []
 
 

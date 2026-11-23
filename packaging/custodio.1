@@ -1,19 +1,31 @@
 .TH CUSTODIO 1 "" "custodio" "User Commands"
 .SH NAME
-custodio \- import, list and delete keys of the custodio signing service
+custodio \- manage your keys in the Custodio signing service
 .SH SYNOPSIS
 .B custodio import
 [\fB\-\-id\fR \fIkey id\fR]
 .I file.p12
 .br
 .B custodio list
+[\fB\-v\fR | \fB\-\-verbose\fR]
+[[\fB\-\-\fR] \fIkey id\fR]
 .br
 .B custodio delete
 .I key id
 .br
-.B custodio register
+.B custodio setup browsers enable
 [\fB\-\-module\fR \fIpath\fR]
-[\fB\-\-remove\fR | \fB\-\-refresh\-only\fR]
+.br
+.B custodio setup browsers disable
+.br
+.B custodio setup browsers refresh
+[\fB\-\-module\fR \fIpath\fR]
+.br
+.B custodio setup fingerprint enable
+.br
+.B custodio setup fingerprint disable
+.br
+.B custodio doctor
 .SH DESCRIPTION
 .B custodio
 is the command-line tool of the custodio signing service.
@@ -21,27 +33,77 @@ is the command-line tool of the custodio signing service.
 reads a PKCS#12 file and stores its key where the service keeps keys.
 The file password is asked on the terminal.
 It is never taken from the arguments or from the environment.
+When the import fails because of the file, the error says what to do:
+a wrong password (the file has an integrity check that does not match) asks you to retype it;
+a file that is not readable PKCS#12, or that does not hold exactly one private key with its certificate,
+asks you to export it again (the README shows how from Firefox);
+a file without an integrity check that does not decrypt could be either, and the error says both.
+After a successful import
+.B custodio
+prints the key's id, key type and storage kind after
+.B ok
+(tpm) or
+.B warn
+(any other kind, with a line on who can use the key),
+and under it the next steps: delete the original file with
+.BR shred ,
+and restart Firefox: it and any other running program that loaded the module see the new key only after they restart.
 .PP
 .B list
-shows each of your keys, in order of key id.
-For every key it prints four lines: its
+shows one row for each of your keys, in order of key id, with these columns:
+the
 .I id
 (the key id),
-its
+the
 .I type
 (\fBrsa2048\fR or \fBecdsa\-p256\fR),
 the
+.I storage
+kind
+(\fBtpm\fR, \fBencrypted\-tpm\fR or \fBencrypted\-host\fR),
+the
 .I subject
-of its certificate, and the end of its validity
-.RI ( "valid until" ,
-the certificate's notAfter, in UTC).
+of its certificate, and the day its certificate expires
+(the certificate's notAfter, in UTC, as YYYY\-MM\-DD).
+After the day, \fBexpired\fR marks a certificate past its end of validity, and \fBexpires soon\fR
+one that ends within 30 days.
+The subject is shown as the common name of the certificate, or as the whole subject (RFC 4514) if it has no
+readable common name.
+On a terminal a header row (ID, TYPE, STORAGE, SUBJECT, EXPIRES) comes first;
+when standard output is not a terminal only the rows are printed, so a script reads one key per line.
+If any key is
+.B encrypted\-tpm
+or
+.BR encrypted\-host ,
+one line at the foot says that these kinds are files that root can use while the machine runs,
+which makes them weaker than
+.BR tpm .
 If a certificate cannot be read, the key is still listed, its subject and end of validity
 are shown as "certificate unreadable", and the exit status is 1.
-Control characters in any of these texts are shown as \fB\\x\fINN\fR escapes.
+Control characters and other characters that could change the screen in any of these texts
+are shown as \fB\\x\fINN\fR or \fB\\u{\fINNNN\fB}\fR escapes.
 Only your own keys are listed.
-If you have none, it prints a sentence saying so and exits with status 0.
+If you have none, it prints a sentence saying so and how to import one, and exits with status 0.
+.PP
 .B list
-takes no arguments and does not ask for authorization: it never calls polkit.
+with a
+.I key id
+shows that key in full instead: the key id as a title, then its type, storage kind, the whole subject,
+the issuer, the serial number, the start and the end of its validity (with the same marks) and the SHA\-256
+fingerprint of the certificate.
+With
+.B \-v
+or
+.BR \-\-verbose ,
+it shows every key in full this way, one after the other.
+Write
+.B \-\-
+before a key id that starts with a dash.
+If you have no key with that id, it says so, names
+.BR "custodio list" ,
+and exits with status 1.
+.B list
+does not ask for authorization: it never calls polkit.
 .PP
 After a successful
 .B import
@@ -49,10 +111,11 @@ or
 .BR list ,
 the tool asks the service whether its state directory is on an encrypted device.
 If the service reports that it is not, or that it could not tell, a warning is printed on standard error:
-without full\-disk encryption, whoever takes the machine can use your keys, though they cannot copy a
-.B tpm
-key.
-It points to the section "Full\-disk encryption" of the README.
+the
+.B key storage
+line of
+.BR "custodio doctor" ,
+which has the rest and the fix.
 The warning blocks nothing and does not change what is printed on standard output or the exit status;
 nothing is printed when the state directory is encrypted or when the service is too old to say.
 .PP
@@ -70,13 +133,15 @@ so without a terminal
 .B delete
 refuses and deletes nothing.
 After you confirm, polkit asks for authorization as well; if it is refused, nothing is deleted.
+After a successful delete it says that Firefox and any other running program that loaded the module
+see the change only after they restart.
 .B delete
 takes exactly one argument, the key id, and no options;
 to delete a key whose id starts with a dash, write
 .B \-\-
 before it.
 .PP
-.B register
+.B setup browsers enable
 makes the module visible to the native browsers (Firefox, Thunderbird, LibreWolf, Floorp, Waterfox) of the user who runs it.
 It lists their profiles (legacy
 .I ~/.mozilla/firefox
@@ -89,8 +154,9 @@ An entry whose library is that file is recognised under any name and never added
 an entry for a Custodio module file that no longer exists is updated;
 no other entry is touched.
 Each profile is edited on a copy, and one file is replaced in one step, so an interruption leaves the old state or the new one.
-It prints one line per browser and profile with what it found and did.
-A profile whose browser is open is skipped and named: close the browser and run it again.
+It prints one line per profile: \fBok\fR or \fBFAIL\fR, the browser, the profile directory and what it did,
+and, when an entry changed, that the browsers see it after a restart.
+A profile whose browser is open is skipped: its line is \fBFAIL\fR with the fix under it (close the browser and run it again).
 Those skips and failures make the exit status 1; a system that already loads p11\-kit (nothing to register) does not.
 It refuses to run as root or under sudo (exit status 2): it edits the profiles of the user who runs it.
 It needs no authorization and does not use the service.
@@ -103,32 +169,98 @@ A copy is made only when the snap has a profile.
 If a snap profile already has an entry for the installed module, that entry is kept and the copy is still placed, but that profile does not use it:
 the copy is not a sign that a profile points to it.
 On every run, a copy whose bytes differ from the module is replaced at the same path and reported as
-.BR refreshed ;
+.BR replaced ;
 a run never creates a copy where there was none unless it registers a snap profile.
-If a copy cannot be replaced, the command names it and exits with status 1.
+If a copy cannot be replaced, its line is \fBFAIL\fR with the reason and the exit status is 1.
 .TP
 .B \-\-module \fIpath\fR
-Register this library instead of the installed one.
+Use this library instead of the installed one (\fBenable\fR), or copy from it to the snap's copy (\fBrefresh\fR).
 It must exist: otherwise one error is printed and nothing is changed.
-.TP
-.B \-\-remove
-Remove every entry whose library is a Custodio module file (\fBlibcustodio_pkcs11.so\fR), whatever its name.
+.PP
+.B setup browsers disable
+removes every entry whose library is a Custodio module file (\fBlibcustodio_pkcs11.so\fR), whatever its name.
 This includes an entry added by hand, so it is wider than the entries
-.B register
+.B setup browsers enable
 added itself.
-The module file need not exist.
+The module file need not exist, and
+.B disable
+takes no
+.BR \-\-module .
 It also deletes the snap copy.
 If a snap profile is open, that profile keeps its entry and the copy stays, the profile is named, and the exit status is 1.
-.TP
-.B \-\-refresh\-only
-Only replace the snap copy if it exists and its bytes differ from the module's; do nothing else (no profile is read, and
+.PP
+.B setup browsers refresh
+only replaces the snap copy if it exists and its bytes differ from the module's (from the library given with
+.B \-\-module
+when there is one); it does nothing else (no profile is read, and
 .BR modutil (1)
 is not needed).
 It never creates a copy, and does nothing, with exit status 0, if there is no installed module.
 The outcome (\fBrefreshed\fR, up to date, no copy, no installed module, or the failure and its reason) is written to your journal with the identifier \fBcustodio\-register\fR, at error priority for a failure.
 A journal that cannot be reached is reported on standard error and does not change the exit status.
-It cannot be combined with
-.BR \-\-remove .
+It changes no profile.
+.PP
+.B setup fingerprint enable
+writes
+.IR /etc/pam.d/polkit-1 ,
+so that every polkit dialog, Custodio's among them, first accepts a finger (\fBpam_fprintd.so\fR, three tries, 30 seconds)
+and falls back to the password after three wrong fingers or without a touch.
+.BR sudo (8)
+and the login are unchanged.
+It must run as root.
+It refuses, names the reason and the next step, and changes nothing when the file exists and is not exactly the one it writes
+(an administrator's, a symlink, a changed copy), when polkit's vendor file or \fBpam_fprintd.so\fR or \fBfprintd\fR is missing
+(it names the packages), or when fingerprint is already on for the whole system, which would make the override redundant.
+It prints one \fBok\fR line for \fBpolkit\fR and, under it, the fallback, the lock-screen note when it applies, and the command that undoes it.
+Without a reader it writes the file and warns, on standard error, with the reader line and fix of \fBcustodio doctor\fR
+and the advice to run it: polkit keeps asking for the password until there is one.
+The file is written whole or not at all, mode 0644, owner root, with the SELinux label the policy gives it.
+Running it again changes nothing.
+On GNOME it adds a note that an enrolled finger may also unlock the lock screen; it changes no setting.
+That is GNOME's own setting, which works with or without Custodio's file.
+To turn it off for yourself:
+.B gsettings set org.gnome.login\-screen enable\-fingerprint\-authentication false
+(the GDM login screen reads the setting of the \fBgdm\fR user, which was not tested).
+.PP
+.B setup fingerprint disable
+removes the file, only if it is exactly the one
+.B enable
+writes; with no file it says so and succeeds, and with any other file it refuses.
+It takes no options.
+.PP
+.B doctor
+prints one line for each check, with its state (\fBok\fR, \fBFAIL\fR, \fBwarn\fR, or \fB?\fR when it could not check)
+and, under every check that is not ok, what to do.
+It only reads: it changes nothing, and it never opens a polkit dialog, a password prompt or a browser.
+It refuses to run as root, because the answers are about the person who runs it.
+The checks are:
+.BR fprintd
+lists a fingerprint reader (or is not installed, and the line names the packages for the distribution);
+you have an enrolled finger (over ssh,
+.B fprintd
+refuses to say, and the line says \fB?\fR, never missing);
+and fingerprint is active for polkit, through Custodio's override, through another
+.IR /etc/pam.d/polkit\-1
+or for the whole system (then
+.BR sudo (8)
+uses the finger too).
+A polkit include that does not resolve (the vendor file of the override is missing) is reported first and makes the exit status 1.
+A warning is added when the override and the system's common-auth both ask for the finger, which asks it twice.
+.B fprintd
+is waited for 1.5 seconds for each question.
+Three more checks follow.
+The module is registered in each Firefox profile, one line per profile, found as
+.B setup browsers enable
+finds them (the Firefox snap's copy of the module included, and a stale copy is \fBFAIL\fR);
+a system where NSS loads the p11-kit proxy needs no registration;
+the fix is \fBcustodio setup browsers enable\fR.
+The systemd journal is persistent, read from \fIjournald.conf\fR, its drop-ins and \fI/var/log/journal\fR, never with \fBjournalctl\fR;
+a \fBFAIL\fR line names the file and line that set it.
+The service's state directory is on an encrypted device: not-encrypted or unknown is \fBwarn\fR and the fix points to full-disk encryption;
+a service that does not answer in 1.5 seconds is \fB?\fR.
+The exit status is 0 only when no polkit include is broken and none of these three checks is \fBFAIL\fR or \fB?\fR
+(a \fBwarn\fR does not count):
+a missing reader or finger does not count, because the fingerprint is optional.
 .PP
 When standard input is a terminal,
 .B import
@@ -162,9 +294,18 @@ The command failed: the service or the system bus could not be reached, the serv
 or there is no terminal to confirm it on.
 .TP
 .B 2
-The command line is wrong.
+The command line is wrong: the error says what is wrong.
+.BR import ,
+.B delete
+and each level of
+.B setup
+without what it needs print their short help.
 .SH OPTIONS
 .TP
 .BI \-\-id " key id"
 Name the stored key
 .IR "key id" .
+.TP
+.BR \-h ", " \-\-help
+Print the help of the command, or of the tool when no command is given, on standard output, and exit with status 0.
+It is the only argument allowed with the command.

@@ -1,6 +1,7 @@
 //! Acceptance 10 as one scenario, through the real binary on one fixture home (F183).
 
 mod fixture;
+mod lines;
 
 use std::fs;
 use std::io::Read;
@@ -131,9 +132,11 @@ impl Scenario {
         [&self.legacy, &self.xdg, &self.snap]
     }
 
-    fn run(&self, extra: &[&str]) -> Output {
-        let mut a = vec!["register", "--module", self.module.to_str().unwrap()];
-        a.extend_from_slice(extra);
+    fn run(&self, action: &str) -> Output {
+        let mut a = vec!["setup", "browsers", action];
+        if action == "enable" {
+            a.extend_from_slice(&["--module", self.module.to_str().unwrap()]);
+        }
         self.f.binary(&a, &path(), &[])
     }
 }
@@ -152,13 +155,15 @@ fn acceptance_10_registration_on_one_home() {
     let ms = s.module.to_str().unwrap();
     // a locked native profile is skipped and named, the others are done, the exit is non-zero
     let browser = Browser::open(&s.xdg);
-    let locked = s.run(&[]);
+    let locked = s.run("enable");
     assert_eq!(locked.status.code(), Some(1), "{}", shown(&locked));
-    let text = shown(&locked);
-    assert!(
-        text.contains("x.default") && text.contains("close the browser"),
-        "{text}"
-    );
+    let text = String::from_utf8_lossy(&locked.stdout);
+    let held: Vec<_> = lines::rows(&text)
+        .into_iter()
+        .filter(|r| !r.fixes().is_empty())
+        .collect();
+    assert_eq!(held.len(), 1, "said once: {text}");
+    assert!(held[0].text.starts_with("x.default: "), "{text}");
     assert_eq!(exactly_one_in_each(&[&s.legacy, &s.snap]), Ok(()));
     assert!(
         exactly_one_in_each(&[&s.xdg]).is_err(),
@@ -166,7 +171,7 @@ fn acceptance_10_registration_on_one_home() {
     );
     browser.close();
 
-    let first = s.run(&[]);
+    let first = s.run("enable");
     assert_eq!(first.status.code(), Some(0), "{}", shown(&first));
     assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
     let hand: Vec<_> = entries(&s.legacy)
@@ -191,11 +196,11 @@ fn acceptance_10_registration_on_one_home() {
 
     // a second run leaves the whole home equal
     let one = s.f.snapshot();
-    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(s.run("enable").status.code(), Some(0));
     assert_eq!(s.f.snapshot(), one);
 
     // root and sudo are refused, the home is equal
-    let args = ["register", "--module", ms];
+    let args = ["setup", "browsers", "enable", "--module", ms];
     let root = s.f.command(&args, &path(), &[], true).output().unwrap();
     let sudo = s.f.binary(&args, &path(), &[("SUDO_UID", "1000")]);
     assert_eq!(root.status.code(), Some(2), "{root:?}");
@@ -207,19 +212,28 @@ fn acceptance_10_registration_on_one_home() {
 fn acceptance_10_removal_on_one_home() {
     let s = Scenario::new();
     let foreign_before: Vec<_> = s.all().iter().map(|p| others(p)).collect();
-    assert_eq!(s.run(&[]).status.code(), Some(0));
+    assert_eq!(s.run("enable").status.code(), Some(0));
     assert_eq!(exactly_one_in_each(&s.all()), Ok(()));
 
     // a locked profile keeps its entry; the others are cleaned and the exit is non-zero
     let browser = Browser::open(&s.xdg);
-    let removal = s.run(&["--remove"]);
+    let removal = s.run("disable");
     assert_eq!(removal.status.code(), Some(1), "{}", shown(&removal));
-    assert!(shown(&removal).contains("x.default"));
+    let held: Vec<_> = lines::rows(&String::from_utf8_lossy(&removal.stdout))
+        .into_iter()
+        .filter(|r| !r.fixes().is_empty())
+        .collect();
+    assert_eq!(held.len(), 1, "{}", shown(&removal));
+    assert!(
+        held[0].text.starts_with("x.default: "),
+        "{}",
+        shown(&removal)
+    );
     assert_eq!(exactly_one_in_each(&[&s.xdg]), Ok(()));
     assert!(exactly_one_in_each(&[&s.legacy]).is_err() && exactly_one_in_each(&[&s.snap]).is_err());
     browser.close();
 
-    let removal = s.run(&["--remove"]);
+    let removal = s.run("disable");
     assert_eq!(removal.status.code(), Some(0), "{}", shown(&removal));
     for p in s.all() {
         assert!(

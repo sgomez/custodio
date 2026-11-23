@@ -60,6 +60,8 @@ python3 -I "$RUN" static "$DOC" || fail=1
 grep -qF 'docs/api.md' README.md || bad "README.md does not link docs/api.md"
 [ -f docs/api.md ] || bad "the link target docs/api.md does not exist"
 run_doc "$DOC" || fail=1
+AUDIT=${AUDIT:-docs/audit.md}
+python3 -I "$RUN" names "$DOC" "$AUDIT" || fail=1
 
 if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     # control NAME CHECK(static|run) SED_OR_PY_EXPRESSION...: a broken copy must fail, and must differ from the real document.
@@ -95,6 +97,17 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     control "example removed for one operation" run drop_blocks 'op=ReplaceCertificate'
     control "Debian 13 paragraph names another error" static sed '/^On Debian 13/,/^$/ s/`CredentialsUnavailable`/`TpmFailed`/'
     control "Debian 13 paragraph names another kind" static sed '/^On Debian 13/,/^$/ s/`encrypted-tpm`/`tpm`/'
+    # The names the documents state equal those the code defines (derived from the source): one control per document.
+    names_control() { # names_control NAME SED_EXPRESSION FILE(api|audit)
+        local copy_api=$TMP/names_api.md copy_audit=$TMP/names_audit.md
+        cp "$DOC" "$copy_api"; cp "$AUDIT" "$copy_audit"
+        if [ "$3" = api ]; then sed -i "$2" "$copy_api"; cmp -s "$copy_api" "$DOC" && { bad "control '$1' did not change the document"; return; }
+        else sed -i "$2" "$copy_audit"; cmp -s "$copy_audit" "$AUDIT" && { bad "control '$1' did not change the document"; return; }; fi
+        if python3 -I "$RUN" names "$copy_api" "$copy_audit" > /dev/null 2>&1; then bad "control '$1' passed on a broken document"; else echo "control ok: $1"; fi
+    }
+    names_control "error name changed in api.md" '0,/^- error `com.rfirma.Custodio1.Error.KeyLost`/s//- error `com.rfirma.Custodio1.Error.KeyMislaid`/' api
+    names_control "storage reason changed in api.md" 's/^- reason `no-mount`:/- reason `no-mounts`:/' api
+    names_control "outcome changed in audit.md" '0,/^| `signing_failed` |/s//| `signing_broke` |/' audit
     control "command broken" run sed '0,/ ListKeys$/s// ListKeyz/'
 fi
 if [ "$fail" != 0 ]; then echo "test-docs-api: FAILED" >&2; exit 1; fi

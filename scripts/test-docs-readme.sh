@@ -4,7 +4,7 @@
 # scripted polkit), `register` and `register --remove` on a temporary HOME with a Firefox profile, a snap profile and a stub
 # `modutil` first on PATH. Then it checks the effect of register and remove, the block kinds and every relative link, and that
 # the README links the threat model and SECURITY.md. Negative controls: broken copies of the README must fail.
-# `custodio register` without --module uses /usr/lib/custodio/libcustodio_pkcs11.so, which is not here: the commands run in a user
+# `custodio setup browsers enable` without --module uses /usr/lib/custodio/libcustodio_pkcs11.so, which is not here: the commands run in a user
 # and mount namespace where an overlay puts an empty module file there, and then in a nested user namespace mapped to the
 # invoking uid (register refuses root). Nothing on the host changes. Without `unshare` the test fails; it does not skip.
 # Usage: scripts/test-docs-readme.sh   (DOC overrides the README; CHECK_ONLY=1 skips the controls)
@@ -27,7 +27,7 @@ timeout 900 cargo build --quiet --locked -p custodio-cli || { echo "test-docs-re
 timeout 900 cargo build --quiet --locked -p custodio-it --example docs_api_server || { echo "test-docs-readme: cannot build the test server" >&2; exit 1; }
 
 # The shared helper: the same files and the same default paths as the threat-model test.
-REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md)
+REQUIRED=(docs/threat-model.md SECURITY.md docs/install.md docs/fingerprint.md docs/doctor.md docs/guide-ubuntu-2604.md)
 
 # shellcheck source=scripts/lib/docs-register-fixture.sh
 . scripts/lib/docs-register-fixture.sh
@@ -113,9 +113,11 @@ if [ -z "${CHECK_ONLY:-}" ] && [ "$fail" = 0 ]; then
     }
     control "link to the threat model removed" static sed 's#(docs/threat-model\.md[^)]*)#(docs/install.md)#g'
     control "link to SECURITY.md removed" static sed 's#(SECURITY\.md[^)]*)#(docs/install.md)#g'
+    control "link to the guide removed" static sed 's#(docs/guide-ubuntu-2604\.md[^)]*)#(docs/install.md)#g'
     control "command altered" run sed '0,/^\$ custodio list$/s//$ custodio lst/'
-    control "output altered" run sed '0,/^  kind: encrypted-host$/s//  kind: tpm/'
-    control "remove command replaced by refresh-only" run sed 's/^\$ custodio register --remove$/$ custodio register --refresh-only/'
+    control "output altered" run sed '0,/^ana  ecdsa-p256  encrypted-host  /s//ana  ecdsa-p256  tpm  /'
+    control "setup command with an option the binary rejects" run sed '0,/^\$ custodio setup browsers enable$/s//$ custodio setup browsers enable --nonsense/'
+    control "remove command replaced by refresh-only" run sed 's/^\$ custodio setup browsers disable$/$ custodio setup browsers refresh/'
     for i in "${!pids[@]}"; do
         if wait "${pids[$i]}"; then echo "control ok: ${names[$i]}"; else bad "control '${names[$i]}' passed on a broken README"; fi
     done

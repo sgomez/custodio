@@ -3,10 +3,11 @@
 use std::io;
 use std::path::PathBuf;
 
-use custodio_cli::storage::{README_ANCHOR, StateStorage, StorageReader, warning};
+use custodio_cli::report::render;
+use custodio_cli::storage::{NAME, StateStorage, StorageReader, summary, warning};
 use custodio_cli::{
-    CliError, ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, PasswordPrompt,
-    ServiceFailure, finish, import_command, list_command,
+    CliError, ImportArgs, ImportFailure, Importer, KeyEntry, KeyLister, ListArgs, Look,
+    PasswordPrompt, ServiceFailure, finish, import_command, list_command,
 };
 use custodio_client::Kind;
 use secrecy::SecretString;
@@ -68,6 +69,10 @@ struct Run {
 }
 
 fn run_import(svc: &Svc) -> Run {
+    import_painted(svc, false)
+}
+
+fn import_painted(svc: &Svc, colour: bool) -> Run {
     let dir = tempfile::tempdir().expect("tempdir");
     let file: PathBuf = dir.path().join("k.p12");
     std::fs::write(&file, b"p12").expect("write");
@@ -76,8 +81,8 @@ fn run_import(svc: &Svc) -> Run {
         id: "mykey".into(),
     };
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let result =
-        import_command(&args, &mut Prompt, svc, svc, &mut out, &mut err).map_err(CliError::Import);
+    let result = import_command(&args, &mut Prompt, svc, svc, &mut out, &mut err, colour)
+        .map_err(CliError::Import);
     // The reminder names the temporary file: compare outputs with the directory name taken out.
     let mut run = finish_run(&result, &out, err);
     run.out = run.out.replace(&dir.path().display().to_string(), "<dir>");
@@ -86,12 +91,14 @@ fn run_import(svc: &Svc) -> Run {
 
 fn run_list(svc: &Svc) -> Run {
     let (mut out, mut err) = (Vec::new(), Vec::new());
-    let result = list_command(svc, svc, &mut out, &mut err).map_err(CliError::List);
+    let look = Look::plain(std::time::SystemTime::now());
+    let result = list_command(svc, svc, &ListArgs::default(), look, &mut out, &mut err)
+        .map_err(CliError::List);
     finish_run(&result, &out, err)
 }
 
 fn finish_run(result: &Result<(), CliError>, out: &[u8], mut err: Vec<u8>) -> Run {
-    let status = finish(result, &mut err);
+    let status = finish(result, &mut err, false);
     Run {
         out: String::from_utf8_lossy(out).into_owned(),
         err: String::from_utf8_lossy(&err).into_owned(),
@@ -106,26 +113,34 @@ fn svc(storage: Option<StateStorage>) -> Svc {
     }
 }
 
+/// The warning as the commands print it, without colour.
+fn rendered(storage: StateStorage) -> String {
+    render(&[warning(storage).expect("a warning")], false)
+}
+
 type Command = fn(&Svc) -> Run;
 const COMMANDS: [(&str, Command); 2] = [("import", run_import), ("list", run_list)];
 
 #[test]
-fn not_encrypted_and_unknown_warn_and_point_to_the_readme() {
+fn not_encrypted_and_unknown_warn_on_stderr_and_point_to_doctor() {
     for (name, run) in COMMANDS {
         for storage in [StateStorage::NotEncrypted, StateStorage::Unknown] {
             let r = run(&svc(Some(storage)));
-            assert!(r.err.contains("Warning"), "{name} {storage:?}: {}", r.err);
-            assert!(
-                r.err
-                    .contains("whoever takes this machine can use your keys"),
-                "{}",
+            let text = rendered(storage);
+            assert_eq!(
+                r.err.matches(&text).count(),
+                1,
+                "{name} {storage:?}: {}",
                 r.err
             );
-            assert!(r.err.contains("cannot copy a tpm key"), "{}", r.err);
+            let line = warning(storage).expect("a warning");
+            let (state, words) = summary(storage);
+            assert_eq!((line.state, line.name.as_str()), (state, NAME));
+            assert!(line.text.starts_with(words), "{line:?}");
+            assert!(line.text.contains("custodio doctor"), "{line:?}");
             assert!(
-                r.err.contains(&format!("README.md#{README_ANCHOR}")),
-                "{}",
-                r.err
+                !r.out.contains(&text),
+                "{name}: the warning is not on standard output"
             );
             assert_eq!(r.status, 0, "{name} {storage:?}");
         }
@@ -154,8 +169,9 @@ fn the_data_and_the_status_are_the_same_with_and_without_the_warning() {
             let warned = run(&svc(Some(storage)));
             assert_eq!(warned.out, plain.out, "{name}: standard output");
             assert_eq!(warned.status, plain.status, "{name}: status");
+            let text = rendered(storage);
             assert!(
-                !warned.out.contains("Warning"),
+                !warned.out.contains(&text),
                 "{name}: the warning is not data"
             );
         }
@@ -171,7 +187,8 @@ fn a_failed_command_prints_no_warning() {
             fail: true,
         });
         assert_eq!(r.status, 1, "{name}");
-        assert!(!r.err.contains("Warning"), "{name}: {}", r.err);
+        let text = rendered(StateStorage::NotEncrypted);
+        assert!(!r.err.contains(&text), "{name}: {}", r.err);
     }
 }
 
@@ -198,27 +215,6 @@ fn a_value_the_cli_does_not_know_is_never_encrypted() {
 }
 
 #[test]
-fn warning_anchor_exists_in_readme() {
-    let readme = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../README.md"))
-        .expect("README.md");
-    // GitHub's anchor of a heading: lower case, spaces to '-', punctuation dropped.
-    let anchors: Vec<String> = readme
-        .lines()
-        .filter(|l| l.starts_with('#'))
-        .map(|l| {
-            l.trim_start_matches('#')
-                .trim()
-                .to_lowercase()
-                .chars()
-                .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
-                .map(|c| if c == ' ' { '-' } else { c })
-                .collect()
-        })
-        .collect();
-    assert!(anchors.iter().any(|a| a == README_ANCHOR), "{anchors:?}");
-}
-
-#[test]
 fn import_failure_type_is_unchanged() {
     // The warning adds no failure: the error type of a failed import is still `ImportFailure`.
     let _: fn(&Svc) -> Result<(), ImportFailure> = |s| {
@@ -233,6 +229,16 @@ fn import_failure_type_is_unchanged() {
             s,
             &mut o,
             &mut e,
+            false,
         )
     };
+}
+
+#[test]
+fn import_in_colour_is_the_same_text_once_the_colour_is_taken_out() {
+    let s = svc(Some(StateStorage::Encrypted));
+    let plain = run_import(&s);
+    let painted = import_painted(&s, true);
+    assert_ne!(painted.out, plain.out);
+    assert_eq!(custodio_cli::colour::strip(&painted.out), plain.out);
 }

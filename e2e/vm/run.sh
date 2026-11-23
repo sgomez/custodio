@@ -85,6 +85,7 @@ vmdir=
 declare -A F=([target]=vm [tpm]=$mode [image_serial]=unknown [kernel]=unknown [systemd]=unknown [package_version]=$version [swtpm_version]=unknown [has_tpm2]=unknown)
 steps=()
 SNAP_KEYS=(snap_revision snap_base snapd_deb snapd_snap apparmor dbus_daemon peer_label)
+FP_KEYS=(polkit_version fprintd_version libfprint_version libpam_fprintd_version)
 status=1
 say() { echo "e2e-vm[$mode]: $*" | tee -a "$log" >&2; }
 
@@ -95,7 +96,7 @@ F[swtpm_version]=$(vm_swtpm_run --version 2> /dev/null | head -n 1 || true)
 write_record() {
     local k
     {
-        for k in target tpm image_serial kernel systemd package_version swtpm_version has_tpm2 "${SNAP_KEYS[@]}"; do [ -n "${F[$k]+x}" ] && echo "$k=${F[$k]}"; done
+        for k in target tpm image_serial kernel systemd package_version swtpm_version has_tpm2 "${SNAP_KEYS[@]}" "${FP_KEYS[@]}"; do [ -n "${F[$k]+x}" ] && echo "$k=${F[$k]}"; done
         for k in "${steps[@]}"; do echo "step_${k%%=*}=${k#*=}"; done
     } > "$rec"
     {
@@ -213,15 +214,15 @@ declare -A grp=()
 while read -r name secs; do
     case $name in
     install | service | import) setup=$((setup + secs)) ;;
-    snap | sign | noplain | pcr | fallback | tpmclear | upgrade)
+    snap | vm-fingerprint | vm-memory | sign | noplain | pcr | fallback | tpmclear | upgrade)
         case $name in
-        snap) pat='^snap-' ;; sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
+        snap) pat='^snap-' ;; vm-fingerprint) pat='^vm-fingerprint-' ;; sign) pat='^sign-' ;; noplain) pat='^noplain-' ;; pcr) pat='^pcr-' ;; fallback) pat='^fallback-' ;;
         tpmclear) pat='^tpm-clear-' ;; upgrade) pat='^upgrade-kinds-' ;;
         esac
         ! grep -q "$pat" <<< "$selection" || grp[$name]=$((${grp[$name]:-0} + secs)) ;;
     esac
 done < <(sed -n 's/^E2E-PHASE \([^ ]*\) \([0-9]*\)$/\1 \2/p' "$guest_out")
-for name in snap sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
+for name in snap vm-fingerprint vm-memory sign noplain pcr fallback tpmclear upgrade; do [ -z "${grp[$name]:-}" ] || steps+=("$name=${grp[$name]}"); done
 steps+=("setup=$setup")
 t0=$SECONDS
 [ "$rc" -eq 0 ] || die "the guest run failed with status $rc (see $log)"
@@ -230,6 +231,14 @@ if [ -n "$sel_snap" ] && [ "$mode" = full ]; then
         F[$k]=$(sed -n "s/^E2E-SNAP-RECORD $k=//p" "$guest_out" | head -n 1)
         [ -n "${F[$k]}" ] || F[$k]=unknown
         [ "${F[$k]}" != unknown ] || die "the record field $k of the snap group is unknown (see $log)"
+    done
+fi
+if grep -q '^vm-fingerprint-' <<< "$selection" && [ "$mode" = full ]; then
+    for k in "${FP_KEYS[@]}"; do
+        n=${k%_version}
+        F[$k]=$(sed -n "s/^E2E-FINGERPRINT-RECORD ${n//_/-}=//p" "$guest_out" | head -n 1)
+        [ -n "${F[$k]}" ] || F[$k]=unknown
+        [ "${F[$k]}" != unknown ] || die "the record field $k of the fingerprint group is unknown (see $log)"
     done
 fi
 printf '%s\n' "$selection" > "$tmp/sel"

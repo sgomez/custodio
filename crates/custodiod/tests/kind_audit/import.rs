@@ -415,7 +415,7 @@ fn other_import_entries_unchanged() -> TestResult {
                 // The decoder's own text for this request is planted: it must not reach the entry.
                 let tool = match custodiod::import::parse_p12(p12, &password.into()) {
                     Err(
-                        custodiod::import::ImportError::Parse(text)
+                        custodiod::import::ImportError::Unreadable(text)
                         | custodiod::import::ImportError::UnsupportedKey(text),
                     ) => vec![text.into_bytes()],
                     _ => Vec::new(),

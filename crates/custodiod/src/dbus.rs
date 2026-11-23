@@ -21,7 +21,7 @@ use crate::import::{MAX_P12_LEN, P12Decoder, RealDecoder};
 use crate::offload::run_on_thread;
 use crate::polkit::{ACTION_ID, AuthError, Authorizer};
 use crate::sign::{Mechanism, PssHash};
-use crate::storage::StateStorage;
+use crate::storage::Diagnosis;
 use crate::store::{KeyStore, Kind as StorageKind, Record, StoreError};
 use crate::tpm::TpmAccess;
 use crate::tpm::open::NoTpm;
@@ -47,9 +47,8 @@ const CERT_SUFFIX: &str = "-cert";
 const MAX_ID_LEN: usize = 64 - CERT_SUFFIX.len();
 /// Largest data to sign: a `DigestInfo` or digest is far smaller.
 const MAX_SIGN_DATA_LEN: usize = 1024;
-/// Largest message that can carry a legal `Sign`: the header (path, interface, member, signature, about 150 bytes),
-/// an id of `MAX_ID_LEN`, three words and `MAX_SIGN_DATA_LEN` bytes of data come to under 1.5 KiB; the bound leaves
-/// room for the sender and destination fields a client may add. The snap socket's message bound is this value.
+/// Largest message that can carry a legal `Sign` (header about 150 bytes, an id, three words, the data: under 1.5 KiB),
+/// with room for the sender and destination fields. The snap socket's message bound is this value.
 pub const MAX_SIGN_MESSAGE_LEN: usize = 4096;
 /// Largest password accepted for a `.p12`.
 const MAX_PASSWORD_LEN: usize = 1024;
@@ -252,7 +251,7 @@ pub struct Custodio<A, C> {
     decoder: Arc<dyn P12Decoder>,
     app_ids: Option<GuardedSource>,
     deletes: delete_state::DeleteState,
-    storage: StateStorage,
+    storage: Diagnosis,
 }
 
 impl<A, C> Custodio<A, C> {
@@ -273,13 +272,13 @@ impl<A, C> Custodio<A, C> {
             decoder: Arc::new(RealDecoder),
             app_ids: None,
             deletes: delete_state::DeleteState::default(),
-            storage: StateStorage::Unknown,
+            storage: Diagnosis::default(),
         }
     }
 
     /// The result `StateStorage` returns.
     #[must_use]
-    pub const fn with_state_storage(mut self, storage: StateStorage) -> Self {
+    pub const fn with_state_storage(mut self, storage: Diagnosis) -> Self {
         self.storage = storage;
         self
     }
@@ -292,8 +291,7 @@ impl<A, C> Custodio<A, C> {
         self
     }
 
-    /// Sets how the TPM is reached. The daemon passes the production access point; tests pass a software TPM or a
-    /// faulty one.
+    /// Sets how the TPM is reached: the daemon passes the production access point, tests a software or faulty TPM.
     #[must_use]
     pub fn with_tpm(mut self, tpm: Arc<dyn TpmAccess>) -> Self {
         self.tpm = tpm;
@@ -489,7 +487,12 @@ where
 
     /// The result found at start; asks no polkit.
     fn state_storage(&self) -> &'static str {
-        self.storage.name()
+        self.storage.storage().name()
+    }
+
+    /// Why it is `unknown`; empty otherwise. Asks no polkit.
+    fn state_storage_reason(&self) -> &'static str {
+        self.storage.reason_name()
     }
 
     /// Imports a `.p12` as key `id` of the caller; returns the key type and the storage kind.

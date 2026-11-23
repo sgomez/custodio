@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The gate of `just snap-base-fit` (F184): the module that `custodio register` copies into the Firefox snap must run on the snap's base
+# The gate of `just snap-base-fit` (F184): the module that `custodio setup browsers enable` copies into the Firefox snap must run on the snap's base
 # (packaging/snap-bases.txt): no GLIBC_x.y above its glibc, and only libraries it is recorded to provide.
 # usage: scripts/check-snap-base.sh [ELF | PACKAGE_DIR [BASES_FILE]]
 #   ELF: the library itself. PACKAGE_DIR (default target/packages): its .deb; the module is the same file in all three packages

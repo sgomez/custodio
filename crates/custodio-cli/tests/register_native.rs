@@ -1,6 +1,10 @@
-//! `custodio register` over fixture homes with the real `modutil` (F182, F172's Decisions).
+//! `custodio setup browsers enable` over fixture homes with the real `modutil` (F182, F172's Decisions).
 
 mod fixture;
+#[path = "register_native/killed.rs"]
+mod killed;
+#[path = "lines/mod.rs"]
+mod lines;
 #[path = "register_native/real.rs"]
 mod real;
 #[path = "register_native/skips.rs"]
@@ -55,8 +59,13 @@ fn registers_every_native_profile_once() {
         .collect();
     assert!(names.contains(&("Thunderbird", tb.join("t.default"))));
     assert!(names.contains(&("Firefox", xdg.join("b.default"))));
-    let text = report.lines[0].to_string();
-    assert!(text.contains("Firefox") && text.contains("a.default") && text.contains("registered"));
+    // the line names the browser and the profile directory, and says what happened
+    let line = report.lines[0].report_line();
+    let (state, what) = Outcome::Registered.state_text();
+    assert_eq!(
+        (line.state, line.name.as_str(), line.text),
+        (state, "Firefox", format!("a.default: {what}"))
+    );
 }
 
 fn write_foreign(profile: &Path) {
@@ -78,8 +87,7 @@ fn a_second_run_is_byte_identical() {
     assert_eq!(first.lines.len(), second.lines.len());
     assert!(!first.has_fixable_skip() && !second.has_fixable_skip());
     for l in &second.lines {
-        assert!(matches!(l.outcome, Outcome::AlreadyRegistered(_)), "{l}");
-        assert!(l.to_string().contains("already registered"));
+        assert!(matches!(l.outcome, Outcome::AlreadyRegistered(_)), "{l:?}");
     }
 }
 
@@ -116,7 +124,6 @@ fn an_entry_for_a_vanished_custodio_path_is_updated() {
     write_foreign(&p);
     let report = f.run(&m, false);
     assert_eq!(outcomes(&report), [Outcome::Refreshed]);
-    assert!(report.lines[0].to_string().contains("refreshed"));
     let e = entries(&p);
     let ours: Vec<_> = e
         .iter()
@@ -266,6 +273,94 @@ fn sudo_and_root_are_refused_by_the_check() {
             refuse_root_and_sudo(1000, only),
             Err(Refusal::Sudo),
             "{var}"
+        );
+    }
+}
+
+#[test]
+fn the_lines_of_a_run_put_the_fix_under_a_held_profile_and_the_restart_once_at_the_end() {
+    use custodio_cli::register_cli::{RESTART, register_lines};
+    use custodio_cli::register_native::{Line, Report};
+    use custodio_cli::report::State;
+    let line = |dir: &str, outcome| Line {
+        browser: "Firefox",
+        path: Path::new("/h").join(dir),
+        outcome,
+    };
+    let report = Report {
+        lines: vec![
+            line("a.default", Outcome::Registered),
+            line("b.default", Outcome::Held("x".into())),
+            line("c.default", Outcome::AlreadyRegistered("Custodio".into())),
+        ],
+    };
+    for remove in [false, true] {
+        let lines = register_lines(&report, remove);
+        let rendered = custodio_cli::report::render(&lines, false);
+        let rows = lines::rows(&rendered);
+        assert_eq!(rows.len(), 3, "{rendered}");
+        assert_eq!(
+            rows.iter().map(|r| r.state).collect::<Vec<_>>(),
+            [State::Ok, State::NotOk, State::Ok]
+        );
+        let fixes = rows[1].fixes();
+        assert_eq!(fixes.len(), 1, "{rendered}");
+        assert_eq!(fixes[0].contains("disable"), remove, "{rendered}");
+        assert!(
+            rows[..2]
+                .iter()
+                .all(|r| !r.under.contains(&RESTART.to_owned()))
+        );
+        assert_eq!(rows[2].under, [RESTART], "{rendered}");
+    }
+    // nothing changed: no restart; no profile: one line that is ok
+    let unchanged = Report {
+        lines: vec![line(
+            "c.default",
+            Outcome::AlreadyRegistered("Custodio".into()),
+        )],
+    };
+    assert_eq!(
+        register_lines(&unchanged, false)[0].under,
+        Vec::<String>::new()
+    );
+    let none = register_lines(&Report::default(), false);
+    assert_eq!((none.len(), none[0].state), (1, State::Ok));
+}
+
+#[test]
+fn a_line_about_the_snap_copy_names_the_copy_and_not_a_profile() {
+    use custodio_cli::register_native::Line;
+    let line = |outcome| {
+        Line {
+            browser: "Firefox",
+            path: Path::new("/h/a.default").to_path_buf(),
+            outcome,
+        }
+        .report_line()
+    };
+    let render = |l| custodio_cli::report::render(&[l], false);
+    let copy = render(line(Outcome::CopyPlaced));
+    assert!(copy.contains("module copy: "), "{copy}");
+    let profile = render(line(Outcome::Registered));
+    assert!(
+        !profile.contains("module copy") && profile.contains("a.default: "),
+        "{profile}"
+    );
+}
+
+#[test]
+fn each_run_error_is_a_custodio_sentence_naming_what_is_missing() {
+    use custodio_cli::register_native::RunError;
+    for (e, named) in [
+        (RunError::MissingModule("/x/libm.so".into()), "/x/libm.so"),
+        (RunError::NoModutil("modutil-x".into()), "modutil-x"),
+        (RunError::NoHome, "HOME"),
+    ] {
+        let text = e.to_string();
+        assert!(
+            text.starts_with("custodio: ") && text.contains(named),
+            "{text}"
         );
     }
 }

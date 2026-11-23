@@ -56,3 +56,6 @@ incorrect-owner | usr/lib/systemd/user/paths.target.wants/custodio-refresh.path 
 symlink-found | usr/lib/systemd/user/default.target.wants/custodio-refresh.service points to ../custodio-refresh.service | the link enables the per-user refresh unit for every user from the installed files alone (F184); that is how systemd enables a unit
 symlink-found | usr/lib/systemd/user/paths.target.wants/custodio-refresh.path points to ../custodio-refresh.path | the link enables the per-user refresh path unit for every user from the installed files alone (F184); that is how systemd enables a unit
 dependency-not-needed | nss | the package runs modutil (nss) at run time to register the module with Firefox (F182); namcap sees only linked libraries
+incorrect-owner | usr/share/bash-completion/completions/custodio (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/share/fish/vendor_completions.d/custodio.fish (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0
+incorrect-owner | usr/share/zsh/site-functions/_custodio (0:0) | nfpm writes numeric owner ids only into the Arch package (no user and group names), which namcap reads as 0:0

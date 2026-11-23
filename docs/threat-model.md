@@ -40,6 +40,17 @@ to that caller it looks exactly like a key that does not exist.
 - **The Firefox snap socket** (below): a peer that is not the Firefox snap, a call beyond listing and signing, a socket
   replaced by the snap, and a peer that exhausts the service.
 - **The registration command** (below): it must not write outside the user's own browser profiles and snap directory.
+- **The fingerprint command** ([docs/fingerprint.md](fingerprint.md)). `custodio setup fingerprint enable` writes one file, `/etc/pam.d/polkit-1`,
+  and only when the vendor file it includes exists. On a system that does not match what it knows it refuses rather than guesses. It
+  must not lock anyone out of polkit: a failed or missing finger falls back to the password. It never destroys someone else's
+  configuration: a file it did not write is left alone. It writes atomically, with the mode, owner and label of the other files in
+  `/etc/pam.d/`.
+- **`custodio doctor`** ([docs/doctor.md](doctor.md)) changes nothing: it reads and reports. It needs no root and opens no polkit
+  dialog; asking fprintd may start it through bus activation.
+- **Certificate text.** The subject and issuer names in a `.p12` are chosen by whoever made the file, so they are untrusted: they are
+  printed as data and never interpreted.
+- **The shell completions** ask nothing of polkit, write nothing and fail silently: a completion never shows a dialog, and an
+  absent or slow service gives no candidates and no error.
 
 ## Out of scope
 
@@ -55,6 +66,11 @@ Custodio does not defend against:
   subsystem; forwarding entries off the machine.
 - **A compromise of snapd, of AppArmor or of the snap's publisher,** and a snap whose confinement was loosened
   (devmode, classic confinement). Escapes from the flatpak sandbox and flaws in `xdg-dbus-proxy`.
+- **fprintd, libfprint and the reader's driver.** Whether a finger is matched, and by what, is theirs. Custodio only asks PAM.
+- **An administrator who edits PAM after `enable`.** A file that was edited is the administrator's: Custodio does not touch it again,
+  and a change that removes the vendor include or the fingerprint line is theirs to answer for.
+- **A compromised package.** The maintainer scripts and the files the package installs run as root; a package that was tampered
+  with can do anything root can.
 - **A hostile package mirror,** the integrity of package downloads, and an administrator who deliberately switches the
   system bus to a daemon that lacks `ProcessFD` after installing.
 
@@ -76,6 +92,13 @@ Custodio does not defend against:
   in the service's memory to sign, so root can take the key. An `encrypted-host` key, bound to the host key and not to a TPM,
   protects against almost nothing beyond a copy of the state directory alone: a backup of `/var/lib` or a copy of the disk
   carries the key and the host key together. Import falls back to these kinds without asking.
+- **That a decrypted key never reaches a disk.** The encrypted kinds need encrypted swap and, if the machine hibernates, an
+  encrypted hibernation image: the service decrypts a key in memory to sign, and a swap area or a hibernation image holds
+  memory in the clear unless it is encrypted. What Custodio does covers a crash and the kernel's swapping, not hibernation:
+  the service sets its core limit to 0 and its dumpable flag off when it starts (so no core file and no crash report of
+  apport or systemd-coredump holds its memory, whatever the unit and the handler say), and its unit sets `LimitCORE=0` and
+  `MemorySwapMax=0` (no swap for the service's cgroup). Hibernation writes all memory, so these settings do not help there.
+  Root reading the running service's memory stays excluded, as for the rest of this model.
 - **That keys survive a TPM clear.** A TPM clear, some firmware updates of firmware TPMs or a replaced motherboard change the
   TPM's owner hierarchy, and every key wrapped under it is lost. Keys cannot be exported, so the only recovery is importing
   the `.p12` again. Keys bound to the host key are lost with it or with a change of machine id.
@@ -89,13 +112,35 @@ Custodio does not defend against:
 - **Platforms.** `encrypted-tpm` was run end to end on a virtual TPM on Ubuntu 26.04, not on real firmware, and not on
   Fedora or Arch. On Debian 13 (run) and RHEL/Alma 10 (inferred from Debian 13, not run), with systemd 257, the daemon binds user credentials to a PCR when a TPM is present, the
   service refuses them, and the `encrypted-tpm` kind is unavailable. Systems with a systemd older than 257 are not supported.
+- **That the override covers only Custodio.** With `custodio setup fingerprint enable`, the finger answers every polkit action, not only
+  Custodio's: `pkexec`, software installation, disk management and the actions that ask for an administrator accept it too.
+  Custodio cannot narrow it: PAM has one service for polkit.
+- **That a finger is as strong as a password.** It is weaker. A fingerprint can be copied from surfaces, some readers are fooled
+  by a copy, and it can be taken from a person who is asleep or coerced. A person who needs the password barrier keeps the
+  fingerprint off.
+- **That a finger at the machine cannot approve a remote request.** On Ubuntu the polkit helper is socket activated, so a polkit
+  authentication started from an ssh session also asks for the finger, and a touch on the local reader approves it. On Fedora,
+  `pam_fprintd` skips remote sessions (observed; the reason is inferred).
+- **The login and lock screens.** They are not Custodio's. On Ubuntu, and on any GNOME where
+  `org.gnome.login-screen enable-fingerprint-authentication` keeps its default `true`, enrolling a finger is enough for the lock
+  screen to accept it, with or without Custodio's override. [docs/fingerprint.md](fingerprint.md#the-gnome-lock-screen-on-ubuntu)
+  says how to turn it off. Fedora and Bazzite keep it off through authselect; Omarchy uses a separate file.
+- **That the password path survives a vanished vendor file.** If the file that `/etc/pam.d/polkit-1` includes disappears (a future
+  polkit package that moves it), polkit's password path fails while the finger still works. `sudo` is unaffected, so the system
+  can be recovered. `custodio doctor` detects it; nothing watches for it between its runs.
+- **Debian 13 and Alma 10 with a finger.** The runs with a virtual fingerprint sensor in a VM were made on Ubuntu 26.04,
+  Fedora 44, Bazzite and Omarchy ([report](reports/polkit-fingerprint.md)); Debian 13 and Alma 10 were not run in a VM. Their
+  package names and module paths come from installing the packages in their base images; where their polkit keeps its PAM file
+  was not checked. On them `enable` proceeds
+  only when the files are as where it was run (the vendor file at `/usr/lib/pam.d/polkit-1`, no `/etc/pam.d/polkit-1`), and
+  refuses otherwise.
 - **Several dialogs per page.** TLS client authentication signs once per handshake, and every signature asks.
 
 ## The Firefox snap socket
 
 The Firefox snap is confined by AppArmor. It cannot call the service on the system bus, and it sees its own base's
 `/usr`, not `/usr/lib/custodio`. For it the service listens on one more socket, `/run/snap.firefox/custodio.sock`, and
-`custodio register` places a copy of the module in `~/snap/firefox/common/` that connects there. The report that
+`custodio setup browsers enable` places a copy of the module in `~/snap/firefox/common/` that connects there. The report that
 established this is [docs/reports/firefox-snap.md](reports/firefox-snap.md).
 
 **What the service checks.** On every connection it reads from the kernel the peer's credentials, its pidfd and its security
@@ -133,7 +178,7 @@ Firefox Flatpak and a parallel instance (`firefox_x`) see no slot.
 
 ## The registration command
 
-`custodio register` writes into the home of the user who runs it. It touches only the user's own browser profiles
+`custodio setup browsers enable` writes into the home of the user who runs it. It touches only the user's own browser profiles
 (Firefox, its derivatives and the Firefox snap) and the snap directory `~/snap/firefox/common/`. It refuses to run as root or
 under `sudo`, because it would write into a home that is not the invoking user's. It does not edit a profile a running browser
 holds (the profile lock) and tells you to close it. It writes the module copy and each profile through a scratch copy and
@@ -141,7 +186,7 @@ holds (the profile lock) and tells you to close it. It writes the module copy an
 module, and it uses NSS's own tool, `modutil`, to write the NSS database.
 
 A copy of the module left in `~/snap/firefox/common/` after the package is removed is inert: the socket is gone, so the
-browser sees no slot. Run `custodio register --remove` before you uninstall to remove it with the registrations. Do not load
+browser sees no slot. Run `custodio setup browsers disable` before you uninstall to remove it with the registrations. Do not load
 the module through the Firefox "Browse" button: it goes through the document portal and the snap is then denied access to the file.
 
 ## Full-disk encryption
