@@ -246,6 +246,7 @@
 - *(F214)* Send SIGSEGV again to a process that handles the first and wait longer for a control
 - *(F214)* Refuse vm-memory-* skipped in a full vm run and add the negative control
 - *(release)* Kill the 19 custodio-cli mutants check-slow missed
+- *(release)* Split the expiry and format tests of list into their own module
 
 ### ⚙️ Miscellaneous Tasks
 
