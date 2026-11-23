@@ -151,8 +151,8 @@ impl Setup {
                 let dir = setup.files.path().join("site-functions");
                 std::fs::create_dir(&dir)?;
                 std::fs::write(dir.join("_custodio"), completion)?;
-                // A package's modes, whatever the umask: under 002 (GitHub's runner) compinit finds
-                // the directory or its parent insecure and waits for an answer on the terminal.
+                // A package's modes, whatever the umask: under 002 (GitHub's runner) compinit would
+                // find the directory or its parent insecure and skip it.
                 for d in [setup.files.path(), dir.as_path()] {
                     std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o755))?;
                 }
@@ -278,11 +278,13 @@ exit 0
 "#;
 
 /// What a user's `zsh` has before the first TAB: the completion directory in `fpath`, `compinit`
-/// (no dump file), and a `compadd` that also records the matches that fit the word.
+/// (no dump file), and a `compadd` that also records the matches that fit the word. `-i` skips
+/// insecure directories instead of asking: GitHub's runner has a world-writable
+/// /usr/local/share/zsh/site-functions, and the question would hang the test.
 const ZSH_INIT: &str = r#"
 fpath=($COMPLETION_DIR/site-functions $fpath)
 autoload -Uz compinit
-compinit -D
+compinit -i -D
 compadd() {
     local -a m
     builtin compadd -O m "$@"
