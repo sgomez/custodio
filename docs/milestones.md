@@ -122,6 +122,18 @@ By a person, after the features:
   `--system-talk-name=com.rfirma.Custodio1`. Without Custodio, rFirma works as today.
 - Ask on the snapcraft forum whether host services may rely on `/run/snap.<snap>/`.
 
+## M7 — A release a person can use end to end (done)
+
+A person on Ubuntu 26.04 with a fingerprint reader gets from the package to a signed login following
+only the documentation. Scope and acceptance in `docs/milestones/M7/SPEC.md`; released as v0.9.0.
+
+- `custodio setup fingerprint enable` and `disable`: the finger for polkit only.
+- `custodio doctor`: what is missing, in six checks.
+- A self-explanatory command line: help for every command, a readable `list`, two-line errors,
+  completions for bash, zsh and fish.
+- The import error split, the storage classifier fix, and decrypted keys kept out of swap and core
+  dumps.
+
 ## Unassigned
 
 - **Firefox sees key changes without a restart:** the module's slot is fixed and it has no
