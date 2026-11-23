@@ -107,3 +107,27 @@ jobs:
           else
             gh issue create --title "$title" --label bug --body-file "$RUNNER_TEMP/body.md"
           fi
+
+  # A clean sweep of main settles every issue the report job left open.
+  resolve:
+    needs: [full]
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          for title in "Mutants baseline failing" "Missed mutants" "Mutants sweep unfinished"; do
+            gh issue list --state open --search "in:title \"$title\"" --json number,title \
+              --jq ".[] | select(.title == \"$title\") | .number" |
+            while read -r number; do
+              gh issue close "$number" --reason completed \
+                --comment "Full sweep on \`$SHA\` passed: $RUN_URL"
+            done
+          done
