@@ -37,7 +37,7 @@ jobs:
       # The creds tests run systemd-creds under `unshare --map-root-user`; Ubuntu's AppArmor refuses that by default.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       # No rust-cache: a full sweep runs rarely and builds once per shard.
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@25f51f6b1bf4e18876107cece836f4f77ac17c8c # v2.90.7
         with:
           tool: just@1.59.0,cargo-mutants@27.1.0,cargo-nextest@0.9.148
       - env:
