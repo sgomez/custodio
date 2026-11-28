@@ -1,0 +1,74 @@
+name: Release
+
+# The packages of a version tag (pushed by `just release`) on its GitHub release. The dispatch builds an existing tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to publish, e.g. v0.9.0
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: release
+    # As the CI package job: 26.04 for tss2-sys 4.1.3; `just glibc-ceiling` holds the binaries to the ceiling.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "bad tag: $TAG" >&2; exit 1; }'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ env.TAG }}
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libtss2-dev rpm libarchive-tools zstd python3-yaml
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: just@1.59.0
+      # Pinned release, checksum-verified; keep the version in step with mise.toml and harness/Containerfile.
+      - run: |
+          curl -sSfLo /tmp/nfpm.tgz https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_Linux_x86_64.tar.gz
+          echo "6d7f9a28b2f397934403950fcbba83f598b08d02edbe79a0815b3b4897341750  /tmp/nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf /tmp/nfpm.tgz -C /usr/local/bin nfpm
+      - run: just package
+      - run: just package-parity
+      - run: just glibc-ceiling
+      - run: just snap-base-fit
+      - run: just package-lint
+        env:
+          PACKAGE_LINT_FORCE_CONTAINER: "1"
+      # `just release` writes the tag's version to Cargo.toml: a package with another version is not this release.
+      - run: |
+          v=${TAG#v}
+          for f in target/packages/*; do [[ $f == *"${v%%-*}"* ]] || { echo "$f does not carry $v" >&2; exit 1; }; done
+      - run: cd target/packages && sha256sum -- * > SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: target/packages/*
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${TAG#v}
+          awk -v h="## [$v]" 'index($0, h) == 1 { on = 1; next } on && /^## \[/ { exit } on' CHANGELOG.md > /tmp/notes.md
+          [ -s /tmp/notes.md ] || { echo "no CHANGELOG.md section for $v" >&2; exit 1; }
+          pre=()
+          [[ $v == *-* ]] && pre=(--prerelease)
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --title "$TAG" --notes-file /tmp/notes.md "${pre[@]}"
+          gh release upload "$TAG" --clobber target/packages/*
